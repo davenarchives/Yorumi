@@ -134,6 +134,17 @@ function App() {
     fetchTopAnime();
   }, []);
 
+  useEffect(() => {
+    if (selectedAnime) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [selectedAnime]);
+
   const handleSearch = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!searchQuery.trim()) {
@@ -370,7 +381,7 @@ function App() {
                 <div className="p-4 border-b border-white/5 bg-[#161616]">
                   <h3 className="font-semibold text-gray-400 text-sm uppercase tracking-wide">Episodes ({episodes.length})</h3>
                 </div>
-                <div className="flex-1 overflow-y-auto scrollbar-thin">
+                <div className="flex-1 overflow-y-auto no-scrollbar">
                   {epLoading ? (
                     <div className="flex justify-center p-8"><div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-[#facc15]"></div></div>
                   ) : episodes.length > 0 ? (
@@ -494,7 +505,7 @@ function App() {
                 </div>
                 <div>
                   <h4 className="text-sm font-bold text-gray-400 mb-2 uppercase tracking-wide">Synopsis</h4>
-                  <p className="text-sm text-gray-300 leading-relaxed max-h-60 overflow-y-auto scrollbar-thin">
+                  <p className="text-sm text-gray-300 leading-relaxed max-h-60 overflow-y-auto no-scrollbar">
                     {selectedAnime?.synopsis || 'No synopsis available.'}
                   </p>
                 </div>
