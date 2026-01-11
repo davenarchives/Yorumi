@@ -54,8 +54,8 @@ const AnimeCard: React.FC<AnimeCardProps> = ({ anime, onClick }) => {
                 </h3>
 
                 <div className="flex justify-between items-center text-xs text-gray-400">
-                    <span className={`px-2 py-1 rounded-sm ${anime.status === 'Currently Airing' ? 'bg-green-900/30 text-green-400' : 'bg-gray-800'}`}>
-                        {anime.status === 'Currently Airing' ? 'RUNNING' : 'FINISHED'}
+                    <span className={`px-2 py-1 rounded-sm ${anime.status === 'Currently Airing' ? 'bg-green-900/30 text-green-400' : 'bg-gray-800'} font-medium uppercase tracking-wide`}>
+                        {anime.episodes ? `${anime.episodes} EPISODES` : 'EPISODES TBA'}
                     </span>
                     <div className="flex items-center gap-1 text-white font-medium">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4 text-[#facc15]">
