@@ -31,6 +31,11 @@ interface StreamLink {
 
 function App() {
   const [topAnime, setTopAnime] = useState<Anime[]>([]);
+  const [searchResults, setSearchResults] = useState<Anime[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchLoading, setSearchLoading] = useState(false);
+
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -122,6 +127,34 @@ function App() {
     fetchTopAnime();
   }, []);
 
+  const handleSearch = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!searchQuery.trim()) {
+      setIsSearching(false);
+      return;
+    }
+
+    setSearchLoading(true);
+    setIsSearching(true);
+    try {
+      const res = await fetch(`http://localhost:3001/api/jikan/search?q=${encodeURIComponent(searchQuery)}`);
+      const data = await res.json();
+      if (data && data.data) {
+        setSearchResults(data.data);
+      }
+    } catch (err) {
+      console.error("Search failed", err);
+    } finally {
+      setSearchLoading(false);
+    }
+  };
+
+  const clearSearch = () => {
+    setSearchQuery('');
+    setIsSearching(false);
+    setSearchResults([]);
+  };
+
   const handleAnimeClick = async (anime: Anime) => {
     setSelectedAnime(anime);
     setEpLoading(true);
@@ -192,10 +225,7 @@ function App() {
       const data = await res.json();
 
       if (data && data.length > 0) {
-        // Map and deduplicate to strict AUTO/360P/720P/1080P
         const qualityMap = new Map<string, StreamLink>();
-
-        // Sort original data by raw quality desc first so we pick the best for each bucket
         const sortedData = [...data].sort((a: StreamLink, b: StreamLink) => (parseInt(b.quality) || 0) - (parseInt(a.quality) || 0));
 
         sortedData.forEach((s: StreamLink) => {
@@ -205,7 +235,6 @@ function App() {
           }
         });
 
-        // Convert back to array (1080P, 720P, 360P)
         const standardizedStreams = Array.from(qualityMap.values());
         setStreams(standardizedStreams);
 
@@ -247,20 +276,46 @@ function App() {
     <div className="min-h-screen bg-[#0a0a0a] text-white font-sans">
       <nav className="flex items-center justify-between px-8 py-4 bg-[#0a0a0a] sticky top-0 z-50 shadow-md shadow-black/20">
         <div className="flex items-center gap-8">
-          <h1 className="text-2xl font-bold tracking-tighter text-white">YORUMI</h1>
+          <h1 onClick={clearSearch} className="text-2xl font-bold tracking-tighter text-white cursor-pointer hover:opacity-80 transition-opacity">YORUMI</h1>
           <div className="flex gap-4 text-sm font-medium text-gray-400">
-            <button className="text-white bg-white/10 px-4 py-2 rounded-full hover:bg-white/20 transition-colors">Anime</button>
+            <button onClick={clearSearch} className={`px-4 py-2 rounded-full transition-colors ${!isSearching ? 'text-white bg-white/10' : 'hover:text-white'}`}>Home</button>
             <button className="hover:text-white transition-colors px-4 py-2">Manga</button>
           </div>
+        </div>
+        <div className="flex items-center gap-4">
+          <form onSubmit={handleSearch} className="relative flex items-center">
+            <input
+              type="text"
+              placeholder="Search anime..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="bg-white/5 border border-white/10 rounded-full py-2 px-6 pr-12 w-64 md:w-80 text-sm focus:outline-none focus:border-white/20 focus:bg-white/10 transition-all placeholder:text-gray-500"
+            />
+            <button type="submit" className="absolute right-4 text-gray-400 hover:text-white transition-colors">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+                <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+              </svg>
+            </button>
+          </form>
         </div>
       </nav>
 
       <main className="container mx-auto px-6 py-8">
         <div className="flex justify-between items-center mb-8">
-          <h2 className="text-xl font-bold">Top Anime</h2>
+          <h2 className="text-xl font-bold">
+            {isSearching ? `Search results for "${searchQuery}"` : 'Top Anime'}
+          </h2>
+          {isSearching && (
+            <button onClick={clearSearch} className="text-sm text-gray-400 hover:text-white transition-colors flex items-center gap-1">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+              </svg>
+              Clear Search
+            </button>
+          )}
         </div>
 
-        {loading && topAnime.length === 0 ? (
+        {(loading || searchLoading) && (isSearching ? searchResults.length === 0 : topAnime.length === 0) ? (
           <div className="flex justify-center items-center h-64">
             <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-white"></div>
           </div>
@@ -269,15 +324,20 @@ function App() {
         ) : (
           <>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
-              {topAnime.map((anime, index) => (
-                <AnimeCard key={anime.mal_id} anime={{ ...anime, rank: index + 1 }} onClick={handleAnimeClick} />
+              {(isSearching ? searchResults : topAnime).map((anime, index) => (
+                <AnimeCard key={anime.mal_id} anime={{ ...anime, rank: isSearching ? undefined : index + 1 }} onClick={handleAnimeClick} />
               ))}
             </div>
-            {loadingMore && (
+            {!isSearching && loadingMore && (
               <div className="flex justify-center items-center py-8 gap-2">
                 <div className="w-2 h-2 bg-white rounded-full animate-bounce [animation-delay:-0.3s]"></div>
                 <div className="w-2 h-2 bg-white rounded-full animate-bounce [animation-delay:-0.15s]"></div>
                 <div className="w-2 h-2 bg-white rounded-full animate-bounce"></div>
+              </div>
+            )}
+            {isSearching && searchResults.length === 0 && !searchLoading && (
+              <div className="text-center py-20 text-gray-500">
+                No anime found matching "{searchQuery}"
               </div>
             )}
           </>
@@ -292,7 +352,7 @@ function App() {
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
                 </svg>
-                <span>Back to Home</span>
+                <span>Back</span>
               </button>
               <h2 className="ml-4 text-lg font-bold truncate">{selectedAnime.title}</h2>
             </div>
@@ -328,7 +388,6 @@ function App() {
               <div className="flex-1 bg-black flex flex-col relative">
                 {currentStream && (
                   <div className="absolute top-4 right-4 z-10 flex gap-2">
-                    {/* Quality Menu Toggle */}
                     <div className="relative">
                       <button
                         onClick={() => setShowQualityMenu(!showQualityMenu)}
