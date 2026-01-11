@@ -5,18 +5,18 @@
 > [!IMPORTANT]
 > **Disclaimer**: This is a personal project built for educational purposes and fun only. It is not intended for commercial use or distribution.
 
-![Yorumi Banner](./.github/image.png)
+![Yorumi Banner](./screenshots/image.png)
 
 ## 📸 Screenshots
 
 <table>
   <tr>
-    <td><img src="./.github/image-1.png" alt="Anime Streaming" /></td>
-    <td><img src="./.github/image-2.png" alt="Manga Reader" /></td>
+    <td><img src="./screenshots/image-1.png" alt="Anime Streaming" /></td>
+    <td><img src="./screenshots/image-2.png" alt="Manga Reader" /></td>
   </tr>
   <tr>
-    <td><img src="./.github/image-3.png" alt="Search & Filter" /></td>
-    <td><img src="./.github/image.png" alt="Home View" /></td>
+    <td><img src="./screenshots/image-3.png" alt="Search & Filter" /></td>
+    <td><img src="./screenshots/image.png" alt="Home View" /></td>
   </tr>
 </table>
 
