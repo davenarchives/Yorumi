@@ -47,6 +47,18 @@ interface Manga {
   synopsis?: string;
 }
 
+interface MangaChapter {
+  id: string;
+  title: string;
+  url: string;
+  uploadDate: string;
+}
+
+interface MangaPage {
+  pageNumber: number;
+  imageUrl: string;
+}
+
 interface StreamLink {
   quality: string;
   audio: string;
@@ -75,6 +87,15 @@ function App() {
   const [mangaPage, setMangaPage] = useState(1);
   const [mangaLastPage, setMangaLastPage] = useState(1);
   const [mangaLoading, setMangaLoading] = useState(false);
+
+  // Manga Reader State
+  const [selectedManga, setSelectedManga] = useState<Manga | null>(null);
+  const [mangaChapters, setMangaChapters] = useState<MangaChapter[]>([]);
+  const [currentMangaChapter, setCurrentMangaChapter] = useState<MangaChapter | null>(null);
+  const [chapterPages, setChapterPages] = useState<MangaPage[]>([]);
+  const [mangaChaptersLoading, setMangaChaptersLoading] = useState(false);
+  const [mangaPagesLoading, setMangaPagesLoading] = useState(false);
+  const [zoomLevel, setZoomLevel] = useState(60);
 
   // Watch State
   const [selectedAnime, setSelectedAnime] = useState<Anime | null>(null);
@@ -179,6 +200,18 @@ function App() {
       document.body.style.overflow = 'unset';
     };
   }, [selectedAnime]);
+
+  // Lock body scroll when manga reader is open
+  useEffect(() => {
+    if (selectedManga) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [selectedManga]);
 
   useEffect(() => {
     const performSearch = async () => {
@@ -339,6 +372,71 @@ function App() {
     }
   };
 
+  // Manga Reader Handlers
+  const handleMangaClick = async (manga: Manga) => {
+    setSelectedManga(manga);
+    setMangaChaptersLoading(true);
+    setMangaChapters([]);
+    setCurrentMangaChapter(null);
+    setChapterPages([]);
+    setZoomLevel(60);
+
+    try {
+      // Search for the manga on MangaKatana
+      console.log(`Searching for ${manga.title} on MangaKatana...`);
+      const searchRes = await fetch(`http://localhost:3001/api/manga/search?q=${encodeURIComponent(manga.title)}`);
+      const searchData = await searchRes.json();
+
+      if (searchData?.data && searchData.data.length > 0) {
+        const mangaId = searchData.data[0].id;
+        console.log(`Found manga: ${mangaId}, fetching chapters...`);
+
+        // Fetch chapters
+        const chaptersRes = await fetch(`http://localhost:3001/api/manga/chapters/${encodeURIComponent(mangaId)}`);
+        const chaptersData = await chaptersRes.json();
+
+        if (chaptersData?.data) {
+          setMangaChapters(chaptersData.data);
+        }
+      } else {
+        console.log('Manga not found on MangaKatana');
+      }
+    } catch (e) {
+      console.error('Failed to load manga chapters:', e);
+    } finally {
+      setMangaChaptersLoading(false);
+    }
+  };
+
+  const loadMangaChapter = async (chapter: MangaChapter) => {
+    setCurrentMangaChapter(chapter);
+    setMangaPagesLoading(true);
+    setChapterPages([]);
+
+    try {
+      const res = await fetch(`http://localhost:3001/api/manga/pages?url=${encodeURIComponent(chapter.url)}`);
+      const data = await res.json();
+
+      if (data?.data) {
+        setChapterPages(data.data);
+      }
+    } catch (e) {
+      console.error('Failed to load chapter pages:', e);
+    } finally {
+      setMangaPagesLoading(false);
+    }
+  };
+
+  const zoomIn = () => setZoomLevel(prev => Math.min(200, prev + 10));
+  const zoomOut = () => setZoomLevel(prev => Math.max(30, prev - 10));
+
+  const closeMangaReader = () => {
+    setSelectedManga(null);
+    setMangaChapters([]);
+    setCurrentMangaChapter(null);
+    setChapterPages([]);
+  };
+
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white font-sans">
       <nav className="flex items-center justify-between px-8 py-4 bg-[#0a0a0a] sticky top-0 z-50 shadow-md shadow-black/20">
@@ -394,7 +492,7 @@ function App() {
           <>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
               {topManga.slice(0, (mangaPage === 5 ? 4 : 24)).map((manga, index) => (
-                <MangaCard key={manga.mal_id} manga={{ ...manga, rank: (mangaPage - 1) * 24 + index + 1 }} onClick={() => { }} />
+                <MangaCard key={manga.mal_id} manga={{ ...manga, rank: (mangaPage - 1) * 24 + index + 1 }} onClick={handleMangaClick} />
               ))}
             </div>
 
@@ -660,6 +758,113 @@ function App() {
           </div>
         )
       }
+
+      {/* Manga Reader Modal */}
+      {selectedManga && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-md transition-opacity duration-300">
+          <div className="w-full h-full flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between p-4 bg-[#1a1a1a]/80 border-b border-white/5">
+              <div className="flex items-center">
+                <button onClick={closeMangaReader} className="flex items-center gap-2 text-white/70 hover:text-white transition-colors">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
+                  </svg>
+                </button>
+                <h2 className="ml-4 text-lg font-bold truncate">
+                  {selectedManga.title}
+                  {currentMangaChapter && <span className="text-gray-400 font-normal"> | {currentMangaChapter.title}</span>}
+                </h2>
+              </div>
+
+              {/* Zoom Controls */}
+              <div className="flex items-center gap-2">
+                <button onClick={zoomOut} className="w-8 h-8 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 transition-colors">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607zM13.5 10.5h-6" />
+                  </svg>
+                </button>
+                <span className="text-sm font-bold text-white/80 w-12 text-center">{zoomLevel}%</span>
+                <button onClick={zoomIn} className="w-8 h-8 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 transition-colors">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607zM10.5 7.5v6m3-3h-6" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <div className="flex-1 flex overflow-hidden">
+              {/* Chapter Sidebar */}
+              <div className="w-64 bg-[#111] border-r border-white/5 flex flex-col">
+                <div className="p-4 border-b border-white/5 bg-[#161616] flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 text-gray-400">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
+                    </svg>
+                    <h3 className="font-semibold text-white text-sm">Chapters</h3>
+                  </div>
+                </div>
+                <div className="flex-1 overflow-y-auto no-scrollbar">
+                  {mangaChaptersLoading ? (
+                    <div className="flex justify-center p-8">
+                      <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-[#facc15]"></div>
+                    </div>
+                  ) : mangaChapters.length > 0 ? (
+                    <div className="space-y-0.5">
+                      {mangaChapters.map((chapter) => (
+                        <div
+                          key={chapter.id}
+                          onClick={() => loadMangaChapter(chapter)}
+                          className={`px-4 py-3 cursor-pointer hover:bg-white/5 transition-colors border-l-2 ${currentMangaChapter?.id === chapter.id
+                              ? 'bg-white/10 border-[#facc15]'
+                              : 'border-transparent'
+                            }`}
+                        >
+                          <div className="text-sm font-medium truncate">{chapter.title}</div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="p-8 text-center text-gray-500">No chapters found on MangaKatana.</div>
+                  )}
+                </div>
+              </div>
+
+              {/* Reading Area */}
+              <div className="flex-1 bg-[#0a0a0a] overflow-y-auto">
+                {mangaPagesLoading ? (
+                  <div className="flex flex-col items-center justify-center h-full gap-4">
+                    <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#facc15]"></div>
+                    <p className="text-gray-400 animate-pulse">Loading pages...</p>
+                  </div>
+                ) : chapterPages.length > 0 ? (
+                  <div className="flex flex-col items-center py-4 gap-1">
+                    {chapterPages.map((page) => (
+                      <img
+                        key={page.pageNumber}
+                        src={page.imageUrl}
+                        alt={`Page ${page.pageNumber}`}
+                        className="transition-all duration-200"
+                        style={{ width: `${zoomLevel}%` }}
+                        loading="lazy"
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-full text-gray-500 gap-4">
+                    <div className="w-20 h-20 rounded-full bg-white/5 flex items-center justify-center">
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-10 h-10">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
+                      </svg>
+                    </div>
+                    <p>Select a chapter to start reading</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div >
   );
 }
