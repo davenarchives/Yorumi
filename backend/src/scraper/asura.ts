@@ -1,14 +1,13 @@
+
 import puppeteer from 'puppeteer';
 
-const BASE_URL = 'https://asuracomic.net';
-const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36';
-
+// Inlined interfaces to avoid import issues
 export interface MangaSearchResult {
     id: string;
     title: string;
     url: string;
     thumbnail: string;
-    source: 'asura';
+    source: 'asura' | 'mangakatana'; // relaxed type to match
 }
 
 export interface MangaDetails {
@@ -21,7 +20,7 @@ export interface MangaDetails {
     synopsis: string;
     coverImage: string;
     url: string;
-    source: 'asura';
+    source: 'asura' | 'mangakatana';
 }
 
 export interface Chapter {
@@ -36,274 +35,222 @@ export interface ChapterPage {
     imageUrl: string;
 }
 
-/**
- * Search for manga on AsuraScans
- */
+const BASE_URL = 'https://asuracomic.net';
+const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
+async function launchBrowser() {
+    return await puppeteer.launch({
+        headless: true,
+        args: ['--no-sandbox', '--disable-setuid-sandbox']
+    });
+}
+
 export async function searchManga(query: string): Promise<MangaSearchResult[]> {
+    const url = `${BASE_URL}/series?name=${encodeURIComponent(query)}`;
     let browser = null;
     try {
-        browser = await puppeteer.launch({
-            headless: true,
-            args: ['--no-sandbox', '--disable-setuid-sandbox']
-        });
+        browser = await launchBrowser();
         const page = await browser.newPage();
         await page.setUserAgent(USER_AGENT);
+        await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
 
-        // Block resources
-        await page.setRequestInterception(true);
-        page.on('request', (req) => {
-            if (['image', 'stylesheet', 'font', 'media'].includes(req.resourceType())) {
-                req.abort();
-            } else {
-                req.continue();
-            }
-        });
+        try {
+            await page.waitForSelector('a[href*="/series/"]', { timeout: 8000 });
+        } catch (e) {
+            console.log('Asura search timeout (no results?)');
+            return [];
+        }
 
-        // Search URL
-        const url = `${BASE_URL}/series?name=${encodeURIComponent(query)}`;
-        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+        const results = await page.evaluate(() => {
+            const items = Array.from(document.querySelectorAll('a[href*="/series/"]'));
+            const map = new Map();
 
-        // Wait for results
-        await page.waitForSelector('.grid.grid-cols-2, .grid.grid-cols-1', { timeout: 5000 }).catch(() => { });
+            items.forEach(a => {
+                const href = a.getAttribute('href') || '';
+                if (!href.includes('/series/')) return;
 
-        const results = await page.evaluate((baseUrl) => {
-            const items = document.querySelectorAll('a[href^="/series/"]');
-            const data: any[] = [];
+                const id = href.split('/series/')[1]?.split('/')[0];
+                if (!id) return;
 
-            items.forEach((el) => {
-                // Determine if this is a manga item (ignoring random links)
-                // Asura usually displays grid items.
-                // We'll trust links that look like /series/
-                const link = el.getAttribute('href');
-                if (!link) return;
+                let title = a.textContent?.trim() || '';
+                let img = '';
 
-                // Structure might vary, but usually the 'a' wraps the card or is inside.
-                // Let's look for a parent wrapper that contains title and img if possible.
-                // But simplest is to extract from the A tag if it has title/img inside.
-                // Asura grid items often look like: <a href="/series/xyz"><img src="...">...<span class="title">...</span></a>
+                const titleEl = a.querySelector('span.font-bold, h3, div.text-sm');
+                if (titleEl) title = titleEl.textContent?.trim() || title;
 
-                // Let's rely on finding grid items explicitly if possible
-                // Fallback: iterate all /series/ links
+                const imgEl = a.querySelector('img');
+                if (imgEl) img = imgEl.src;
 
-                const titleEl = el.querySelector('.font-bold, .title') || el; // Try to extract title text
-                const imgEl = el.querySelector('img');
-
-                if (titleEl && imgEl) {
-                    const title = (titleEl as HTMLElement).innerText.trim();
-                    const thumbnail = imgEl.getAttribute('src') || '';
-                    const fullUrl = link.startsWith('http') ? link : `${baseUrl}${link}`;
-                    const id = link.replace('/series/', '');
-
-                    if (title && id) {
-                        data.push({ id, title, url: fullUrl, thumbnail });
-                    }
+                if (id && title && !map.has(id)) {
+                    map.set(id, {
+                        id,
+                        title,
+                        url: href,      // internal use
+                        thumbnail: img, // map to thumbnail
+                        source: 'asura'
+                    });
                 }
             });
-            return data;
-        }, BASE_URL);
+            return Array.from(map.values());
+        });
 
-        return results.map(r => ({ ...r, source: 'asura' }));
+        return results.map((r: any) => ({
+            id: r.id,
+            title: r.title,
+            url: `${BASE_URL}/series/${r.id}`,
+            thumbnail: r.thumbnail,
+            source: 'asura'
+        }));
 
     } catch (error) {
-        console.error('Asura Search Error:', error);
+        console.error('Error searching Asura:', error);
         return [];
     } finally {
         if (browser) await browser.close();
     }
 }
 
-/**
- * Get Manga Details
- */
-export async function getMangaDetails(id: string): Promise<MangaDetails> {
+export async function getMangaDetails(mangaId: string): Promise<MangaDetails> {
+    const url = `${BASE_URL}/series/${mangaId}`;
     let browser = null;
     try {
-        browser = await puppeteer.launch({
-            headless: true,
-            args: ['--no-sandbox', '--disable-setuid-sandbox']
-        });
+        browser = await launchBrowser();
         const page = await browser.newPage();
         await page.setUserAgent(USER_AGENT);
+        await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
 
-        // Block heavy resources
-        await page.setRequestInterception(true);
-        page.on('request', (req) => {
-            if (['image', 'stylesheet', 'font', 'media'].includes(req.resourceType())) {
-                req.abort();
-            } else {
-                req.continue();
-            }
-        });
+        await page.waitForSelector('h1, span.font-bold', { timeout: 8000 }).catch(() => null);
 
-        const url = `${BASE_URL}/series/${id}`;
-        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-        await page.waitForSelector('h1', { timeout: 5000 }).catch(() => { });
+        const details = await page.evaluate(() => {
+            const title = document.querySelector('h1')?.textContent?.trim() || document.querySelector('span.text-xl')?.textContent?.trim() || 'Unknown Title';
+            const synopsis = document.querySelector('span.text-base, p.description')?.textContent?.trim() || '';
+            const status = document.querySelector('div.status')?.textContent?.trim() || 'Unknown';
+            const img = document.querySelector('img[alt="' + title + '"]')?.getAttribute('src') || document.querySelector('img')?.src || '';
 
-        const details = await page.evaluate((mangaId) => {
-            const title = (document.querySelector('h1') as HTMLElement)?.innerText.trim() || '';
-            const synopsis = (document.querySelector('span.font-medium.text-sm') as HTMLElement)?.innerText.trim() || ''; // Adjusted selector guess
-            const coverImage = document.querySelector('img[alt="poster"]')?.getAttribute('src') || document.querySelector('img')?.getAttribute('src') || '';
-
-            // Extract metadata (Author, Status) - Selectors are tricky on dynamic sites without visual.
-            // We'll try to execute generic extraction
-            const status = 'Unknown'; // Placeholder
-            const author = 'Unknown';
-
-            // Genres
-            const genreButtons = Array.from(document.querySelectorAll('button, a')).filter(el => el.classList.contains('text-xs') || el.getAttribute('href')?.includes('genre'));
-            const genres = genreButtons.map(el => (el as HTMLElement).innerText.trim());
+            const genres = Array.from(document.querySelectorAll('button, a.badge')).map(b => b.textContent?.trim() || '').filter(t => t.length > 2);
 
             return {
-                id: mangaId,
                 title,
-                altNames: [],
-                author,
-                status,
-                genres: [...new Set(genres)], // Dedup
                 synopsis,
-                coverImage,
-                url: document.location.href,
-                source: 'asura'
+                status,
+                coverImage: img,
+                genres,
+                author: 'Unknown',
+                altNames: []
             };
-        }, id);
+        });
 
-        return { ...details, source: 'asura' };
+        return {
+            id: mangaId,
+            title: details.title,
+            altNames: details.altNames,
+            author: details.author,
+            status: details.status,
+            genres: details.genres,
+            synopsis: details.synopsis,
+            coverImage: details.coverImage,
+            url,
+            source: 'asura'
+        };
 
     } catch (error) {
-        console.error('Asura Details Error:', error);
+        console.error('Error getting Asura details:', error);
         throw error;
     } finally {
         if (browser) await browser.close();
     }
 }
 
-/**
- * Get Chapter List (Usually typically part of details page, but let's separate for consistency)
- * Note: Asura loads chapters dynamically or paginated sometimes.
- * We'll reuse the page instance if we can, but since these are stateless functions, we re-scrape.
- */
-export async function getChapterList(id: string): Promise<Chapter[]> {
+export async function getChapterList(mangaId: string): Promise<Chapter[]> {
+    const url = `${BASE_URL}/series/${mangaId}`;
     let browser = null;
     try {
-        browser = await puppeteer.launch({
-            headless: true,
-            args: ['--no-sandbox', '--disable-setuid-sandbox']
-        });
+        browser = await launchBrowser();
         const page = await browser.newPage();
         await page.setUserAgent(USER_AGENT);
-
-        await page.setRequestInterception(true);
-        page.on('request', (req) => {
-            if (['image', 'stylesheet', 'font', 'media'].includes(req.resourceType())) {
-                req.abort();
-            } else {
-                req.continue();
-            }
-        });
-
-        const url = `${BASE_URL}/series/${id}`;
         await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
 
-        // Asura chapter list might need scroll or it's just a long list
-        // Let's wait for chapter links
-        await page.waitForSelector('a[href*="/chapter/"]', { timeout: 5000 }).catch(() => { });
+        try {
+            await page.waitForSelector('a[href*="/chapter/"]', { timeout: 8000 });
+        } catch (e) {
+            console.log('Asura chapter list timeout');
+        }
 
-        const chapters = await page.evaluate((baseUrl) => {
-            const links = Array.from(document.querySelectorAll(`a[href*="/chapter/"]`));
-            return links.map(el => {
-                const title = (el as HTMLElement).innerText.trim().replace(/\n/g, ' ');
-                const href = el.getAttribute('href')!;
-                const fullUrl = href.startsWith('http') ? href : `${baseUrl}${href}`;
-                // Extract chapter ID from URL: /series/slug/chapter/123 -> 123
-                // Or /chapter/123456
-                const parts = href.split('/');
-                const chapterId = parts[parts.length - 1] || parts[parts.length - 2];
+        const chapters = await page.evaluate((mangaId) => {
+            const links = Array.from(document.querySelectorAll('a'));
+            const list = [];
+            const seen = new Set();
 
-                // Try to find date
-                const dateEl = el.querySelector('.text-xs, .date');
-                const uploadDate = dateEl ? (dateEl as HTMLElement).innerText.trim() : '';
+            for (const a of links) {
+                if (a.href.includes('/chapter/')) {
+                    const parts = a.href.split('/chapter/');
+                    const id = parts[1];
+                    if (id && !seen.has(id)) {
+                        seen.add(id);
+                        const title = a.innerText.trim() || `Chapter ${id}`;
+                        list.push({
+                            id: id,
+                            title: title,
+                            uploadDate: new Date().toISOString(),
+                            url: a.href
+                        });
+                    }
+                }
+            }
+            return list;
+        }, mangaId);
 
-                return {
-                    id: chapterId,
-                    title,
-                    url: fullUrl,
-                    uploadDate
-                };
-            }).filter(c => c.id);
-        }, BASE_URL);
-
-        // Dedup chapters by ID
-        const unique = new Map();
-        chapters.forEach(c => unique.set(c.id, c));
-        return Array.from(unique.values());
+        return chapters.sort((a, b) => parseFloat(b.id) - parseFloat(a.id));
 
     } catch (error) {
-        console.error('Asura Chapter List Error:', error);
+        console.error('Error getting Asura chapters:', error);
         return [];
     } finally {
         if (browser) await browser.close();
     }
 }
 
-/**
- * Get Chapter Pages
- */
-export async function getChapterPages(chapterIdOrUrl: string): Promise<ChapterPage[]> {
+export async function getChapterPages(chapterUrl: string): Promise<ChapterPage[]> {
+    const fullUrl = chapterUrl.startsWith('http') ? chapterUrl : `${BASE_URL}${chapterUrl}`;
     let browser = null;
     try {
-        // If passed a full URL, use it. If passed an ID, construct it (harder without series slug).
-        // The service should pass the full URL from the chapter object.
-        let url = chapterIdOrUrl;
-        if (!url.startsWith('http')) {
-            throw new Error('Asura getChapterPages requires full URL');
-        }
-
-        browser = await puppeteer.launch({
-            headless: true,
-            args: ['--no-sandbox', '--disable-setuid-sandbox']
-        });
+        browser = await launchBrowser();
         const page = await browser.newPage();
         await page.setUserAgent(USER_AGENT);
+        await page.goto(fullUrl, { waitUntil: 'networkidle2', timeout: 30000 });
 
-        // We MUST load images for Asura? 
-        // Actually no, we just need the SRC attributes.
-        // But some sites lazy load src.
-        // Asura usually has images in DOM.
-        // We can block images to save bandwidth, but scripts must run.
-        await page.setRequestInterception(true);
-        page.on('request', (req) => {
-            if (['image', 'media'].includes(req.resourceType())) {
-                req.abort();
-            } else {
-                req.continue();
-            }
-        });
-
-        await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
-
-        // Wait for imagesContainer or similar. Asura usually has specific reader div.
-        // Or just wait for any image with relevant src
-        await page.waitForSelector('img[src*="storage.asuracomic.net"], img[src*="gg.asuracomic.net"]', { timeout: 10000 }).catch(() => { });
+        try {
+            await page.evaluate(async () => {
+                await new Promise((resolve) => {
+                    let totalHeight = 0;
+                    const distance = 500;
+                    const timer = setInterval(() => {
+                        window.scrollBy(0, distance);
+                        totalHeight += distance;
+                        if (totalHeight >= document.body.scrollHeight) {
+                            clearInterval(timer);
+                            resolve(true);
+                        }
+                    }, 100);
+                });
+            });
+            await page.waitForSelector('img[alt*="page"], div.flex-col img', { timeout: 10000 });
+        } catch (e) { }
 
         const pages = await page.evaluate(() => {
             const images = Array.from(document.querySelectorAll('img'));
-            // Filter assuming common Asura CDNs or large layout
-            // Asura Comic reader usually is a vertical list of images.
-            // Often inside a specific container like #reader, or just broad.
-
             return images
-                .map(img => img.getAttribute('src') || '')
-                .filter(src => src.includes('asuracomic.net') || src.includes('gg.asuracomic') || src.includes('b-cdn.net')) // Adjust filters based on observation
-                .map((url, i) => ({
-                    pageNumber: i + 1,
-                    imageUrl: url
+                .filter(img => img.naturalWidth > 400 && !img.src.includes('logo') && !img.src.includes('banner'))
+                .map((img, index) => ({
+                    pageNumber: index + 1,
+                    imageUrl: img.src
                 }));
         });
 
-        return pages;
+        return pages.filter(p => p.imageUrl.startsWith('http'));
 
     } catch (error) {
-        console.error('Asura Pages Error:', error);
+        console.error('Error getting Asura pages:', error);
         return [];
     } finally {
         if (browser) await browser.close();
