@@ -18,6 +18,7 @@ interface Anime {
   type: string;
   episodes: number | null;
   year?: number;
+  synopsis?: string;
 }
 
 interface StreamLink {
@@ -130,7 +131,16 @@ function App() {
     setScraperSession(null);
 
     try {
-      console.log(`Searching for ${anime.title}...`);
+      // 1. Fetch full details to get synopsis
+      console.log(`Fetching details for ID ${anime.mal_id}...`);
+      const detailRes = await fetch(`http://localhost:3001/api/jikan/anime/${anime.mal_id}`);
+      const detailData = await detailRes.json();
+      if (detailData && detailData.data) {
+        setSelectedAnime(detailData.data);
+      }
+
+      // 2. Search for the anime to get session
+      console.log(`Searching for ${anime.title} on scraper...`);
       let searchRes = await fetch(`http://localhost:3001/api/scraper/search?q=${encodeURIComponent(anime.title)}`);
       let searchData = await searchRes.json();
 
@@ -417,7 +427,9 @@ function App() {
                 </div>
                 <div>
                   <h4 className="text-sm font-bold text-gray-400 mb-2 uppercase tracking-wide">Synopsis</h4>
-                  <p className="text-sm text-gray-300 leading-relaxed max-h-60 overflow-y-auto scrollbar-thin">This is a placeholder for the synopsis.</p>
+                  <p className="text-sm text-gray-300 leading-relaxed max-h-60 overflow-y-auto scrollbar-thin">
+                    {selectedAnime?.synopsis || 'No synopsis available.'}
+                  </p>
                 </div>
               </div>
             </div>
