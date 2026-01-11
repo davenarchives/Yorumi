@@ -1,5 +1,6 @@
 
 import puppeteer from 'puppeteer';
+import { MangaSearchResult, Chapter, ChapterPage, MangaDetails } from './mangakatana';
 
 // Inlined interfaces to avoid import issues
 export interface MangaSearchResult {
@@ -62,7 +63,8 @@ export async function searchManga(query: string): Promise<MangaSearchResult[]> {
         }
 
         const results = await page.evaluate(() => {
-            const items = Array.from(document.querySelectorAll('a[href*="/series/"]'));
+            // Target specific grid to exclude sidebar "Popular Today"
+            const items = Array.from(document.querySelectorAll('div.grid a[href*="/series/"]'));
             const map = new Map();
 
             items.forEach(a => {
@@ -72,9 +74,13 @@ export async function searchManga(query: string): Promise<MangaSearchResult[]> {
                 const id = href.split('/series/')[1]?.split('/')[0];
                 if (!id) return;
 
+                // Exclude if it looks like a sidebar item (just in case selector leaks)
+                if (a.closest('.float-right')) return;
+
                 let title = a.textContent?.trim() || '';
                 let img = '';
 
+                // Try to find better title/image inside
                 const titleEl = a.querySelector('span.font-bold, h3, div.text-sm');
                 if (titleEl) title = titleEl.textContent?.trim() || title;
 
