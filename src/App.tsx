@@ -69,7 +69,7 @@ interface StreamLink {
 
 function App() {
   const [topAnime, setTopAnime] = useState<Anime[]>([]);
-  const [searchResults, setSearchResults] = useState<Anime[]>([]);
+  const [searchResults, setSearchResults] = useState<(Anime | Manga)[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -217,7 +217,12 @@ function App() {
     const performSearch = async () => {
       setSearchLoading(true);
       try {
-        const res = await fetch(`http://localhost:3001/api/jikan/search?q=${encodeURIComponent(searchQuery)}&page=${currentPage}&limit=24`);
+
+        const url = activeTab === 'manga'
+          ? `http://localhost:3001/api/jikan/search/manga?q=${encodeURIComponent(searchQuery)}&page=${currentPage}&limit=24`
+          : `http://localhost:3001/api/jikan/search?q=${encodeURIComponent(searchQuery)}&page=${currentPage}&limit=24`;
+
+        const res = await fetch(url);
         const data = await res.json();
         if (data && data.data) {
           setSearchResults(data.data);
@@ -235,7 +240,7 @@ function App() {
     if (isSearching && searchQuery.trim()) {
       performSearch();
     }
-  }, [currentPage, isSearching, searchQuery]);
+  }, [currentPage, isSearching, searchQuery, activeTab]);
 
   const handleSearch = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -468,7 +473,7 @@ function App() {
       <main className="container mx-auto px-6 py-8">
         <div className="flex justify-between items-center mb-8">
           <h2 className="text-xl font-bold">
-            {activeTab === 'manga' ? 'Top Manga' : (isSearching ? `Search results for "${searchQuery}"` : 'Top Anime')}
+            {isSearching ? `Search results for "${searchQuery}"` : (activeTab === 'manga' ? 'Top Manga' : 'Top Anime')}
           </h2>
           {isSearching && activeTab === 'anime' && (
             <button onClick={clearSearch} className="text-sm text-gray-400 hover:text-white transition-colors flex items-center gap-1">
@@ -491,35 +496,53 @@ function App() {
           /* Manga View */
           <>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
-              {topManga.slice(0, (mangaPage === 5 ? 4 : 24)).map((manga, index) => (
-                <MangaCard key={manga.mal_id} manga={{ ...manga, rank: (mangaPage - 1) * 24 + index + 1 }} onClick={handleMangaClick} />
+              {(isSearching ? (searchResults as Manga[]) : topManga.slice(0, (mangaPage === 5 ? 4 : 24))).map((manga, index) => (
+                <MangaCard key={manga.mal_id} manga={{ ...manga, rank: isSearching ? manga.rank : (mangaPage - 1) * 24 + index + 1 }} onClick={handleMangaClick} />
               ))}
             </div>
 
-            {/* Manga Pagination UI */}
+            {/* Pagination UI */}
             <div className="flex justify-center items-center mt-12 mb-8 gap-3">
-              {mangaPage > 1 && (
+              {/* Logic for switching between Search pagination (currentPage) and Manga pagination (mangaPage) */}
+
+              {/* Back Buttons */}
+              {(isSearching ? currentPage : mangaPage) > 1 && (
                 <>
-                  <button onClick={() => setMangaPage(1)} className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-gray-400 hover:bg-white/10 transition-all font-bold text-xs">«</button>
-                  <button onClick={() => setMangaPage(prev => Math.max(1, prev - 1))} className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-gray-400 hover:bg-white/10 transition-all font-bold text-xs">‹</button>
+                  <button onClick={() => isSearching ? setCurrentPage(1) : setMangaPage(1)} className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-gray-400 hover:bg-white/10 transition-all font-bold text-xs">«</button>
+                  <button onClick={() => isSearching ? setCurrentPage(prev => Math.max(1, prev - 1)) : setMangaPage(prev => Math.max(1, prev - 1))} className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-gray-400 hover:bg-white/10 transition-all font-bold text-xs">‹</button>
                 </>
               )}
+
+              {/* Page Numbers */}
               {(() => {
                 const pages = [];
-                const maxPage = Math.min(mangaLastPage, 5);
-                let start = Math.max(1, mangaPage - 1);
+                const current = isSearching ? currentPage : mangaPage;
+                const last = isSearching ? lastVisiblePage : mangaLastPage;
+                const maxPage = isSearching ? last : Math.min(last, 5);
+
+                let start = Math.max(1, current - 1);
                 if (start + 3 > maxPage) start = Math.max(1, maxPage - 3);
-                for (let i = start; i <= Math.min(start + 3, maxPage); i++) pages.push(i);
+
+                for (let i = start; i <= Math.min(start + 3, maxPage); i++) {
+                  if (i > 0) pages.push(i);
+                }
+
                 return pages.map(pageNum => (
-                  <button key={pageNum} onClick={() => setMangaPage(pageNum)} className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold transition-all ${mangaPage === pageNum ? 'bg-[#ffb6d9] text-[#1a1c2c] shadow-lg shadow-pink-500/20' : 'bg-white/5 text-gray-400 hover:bg-white/10'}`}>
+                  <button
+                    key={pageNum}
+                    onClick={() => isSearching ? setCurrentPage(pageNum) : setMangaPage(pageNum)}
+                    className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold transition-all ${current === pageNum ? 'bg-[#ffb6d9] text-[#1a1c2c] shadow-lg shadow-pink-500/20' : 'bg-white/5 text-gray-400 hover:bg-white/10'}`}
+                  >
                     {pageNum}
                   </button>
                 ));
               })()}
-              {mangaPage < Math.min(mangaLastPage, 5) && (
+
+              {/* Forward Buttons */}
+              {(isSearching ? currentPage : mangaPage) < (isSearching ? lastVisiblePage : Math.min(mangaLastPage, 5)) && (
                 <>
-                  <button onClick={() => setMangaPage(prev => Math.min(5, prev + 1))} className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-gray-400 hover:bg-white/10 transition-all font-bold text-xs">›</button>
-                  <button onClick={() => setMangaPage(Math.min(mangaLastPage, 5))} className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-gray-400 hover:bg-white/10 transition-all font-bold text-xs">»</button>
+                  <button onClick={() => isSearching ? setCurrentPage(prev => Math.min(lastVisiblePage, prev + 1)) : setMangaPage(prev => Math.min(5, prev + 1))} className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-gray-400 hover:bg-white/10 transition-all font-bold text-xs">›</button>
+                  <button onClick={() => isSearching ? setCurrentPage(lastVisiblePage) : setMangaPage(Math.min(mangaLastPage, 5))} className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-gray-400 hover:bg-white/10 transition-all font-bold text-xs">»</button>
                 </>
               )}
             </div>
@@ -528,7 +551,7 @@ function App() {
           /* Anime View */
           <>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
-              {(isSearching ? searchResults : topAnime.slice(0, (currentPage === 5 ? 4 : 24))).map((anime, index) => (
+              {(isSearching ? (searchResults as Anime[]) : topAnime.slice(0, (currentPage === 5 ? 4 : 24))).map((anime, index) => (
                 <AnimeCard key={anime.mal_id} anime={{ ...anime, rank: isSearching ? anime.rank : ((currentPage - 1) * 24 + index + 1) }} onClick={handleAnimeClick} />
               ))}
             </div>
@@ -816,8 +839,8 @@ function App() {
                           key={chapter.id}
                           onClick={() => loadMangaChapter(chapter)}
                           className={`px-4 py-3 cursor-pointer hover:bg-white/5 transition-colors border-l-2 ${currentMangaChapter?.id === chapter.id
-                              ? 'bg-white/10 border-[#facc15]'
-                              : 'border-transparent'
+                            ? 'bg-white/10 border-[#facc15]'
+                            : 'border-transparent'
                             }`}
                         >
                           <div className="text-sm font-medium truncate">{chapter.title}</div>
