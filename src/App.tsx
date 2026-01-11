@@ -111,6 +111,8 @@ function App() {
 
   const [epLoading, setEpLoading] = useState(false);
   const [streamLoading, setStreamLoading] = useState(false);
+  const [episodeSearchQuery, setEpisodeSearchQuery] = useState('');
+  const [chapterSearchQuery, setChapterSearchQuery] = useState('');
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
@@ -451,6 +453,7 @@ function App() {
       hlsRef.current.destroy();
       hlsRef.current = null;
     }
+    setEpisodeSearchQuery('');
   };
 
   // Manga Reader Handlers
@@ -480,19 +483,14 @@ function App() {
           console.log('Search results:', results.map(r => `${r.source}:${r.title}`));
 
           let match;
-          // Strategy: If Manhwa, prefer Asura. Else prefer MangaKatana.
-          if (manga.type === 'Manhwa') {
-            console.log('Content is Manhwa, prioritizing AsuraScans...');
-            match = results.find(r => r.source === 'asura') || results[0];
-          } else {
-            console.log('Content is NOT Manhwa, prioritizing MangaKatana/Others...');
-            match = results.find(r => r.source === 'mangakatana') || results[0];
-          }
+          // Auto-select the best match (MangaKatana)
+          match = results[0];
+
 
           if (match) {
             mangaId = match.id;
             console.log(`Selected match: ${mangaId} (${match.source})`);
-            mangaIdCache.current.set(manga.mal_id, mangaId);
+            mangaIdCache.current.set(manga.mal_id, mangaId!);
           }
         } else {
           console.log('Manga not found on any scraper');
@@ -566,6 +564,7 @@ function App() {
     setMangaChapters([]);
     setCurrentMangaChapter(null);
     setChapterPages([]);
+    setChapterSearchQuery('');
   };
 
   return (
@@ -770,28 +769,50 @@ function App() {
 
               <div className="flex-1 flex overflow-hidden">
                 <div className="w-80 bg-[#111] border-r border-white/5 flex flex-col">
-                  <div className="p-4 border-b border-white/5 bg-[#161616]">
-                    <h3 className="font-semibold text-gray-400 text-sm uppercase tracking-wide">Episodes ({episodes.length})</h3>
+                  <div className="p-4 border-b border-white/5 bg-[#161616] flex items-center justify-between gap-4">
+                    <h3 className="font-semibold text-gray-400 text-xs uppercase tracking-wide whitespace-nowrap">Episodes ({episodes.length})</h3>
+                    <div className="relative flex-1 max-w-[140px]">
+                      <input
+                        type="text"
+                        placeholder="Number of Ep"
+                        value={episodeSearchQuery}
+                        onChange={(e) => setEpisodeSearchQuery(e.target.value)}
+                        className="w-full bg-black/20 border border-white/10 rounded px-2 py-1 text-[11px] text-white placeholder:text-gray-600 focus:outline-none focus:border-white/20 transition-colors"
+                      />
+                      <div className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-600 pointer-events-none">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-2.5 h-2.5">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+                        </svg>
+                      </div>
+                    </div>
                   </div>
                   <div className="flex-1 overflow-y-auto no-scrollbar">
                     {epLoading ? (
                       <div className="flex justify-center p-8"><div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-[#facc15]"></div></div>
                     ) : episodes.length > 0 ? (
                       <div className="space-y-1">
-                        {episodes.map((ep: Episode) => (
-                          <div
-                            key={ep.session}
-                            onClick={() => loadStream(ep)}
-                            onMouseEnter={() => prefetchStream(ep)}
-                            className={`p-4 cursor-pointer hover:bg-white/5 transition-colors border-l-2 ${currentEpisode?.session === ep.session ? 'bg-white/10 border-[#facc15]' : 'border-transparent'}`}
-                          >
-                            <div className="flex items-center justify-between font-mono text-sm text-gray-400">
-                              <span>EP {ep.episodeNumber}</span>
-                              <span className="text-xs text-gray-600">{ep.duration}</span>
+                        {episodes
+                          .filter(ep => {
+                            if (!episodeSearchQuery) return true;
+                            const query = episodeSearchQuery.toLowerCase();
+                            const numMatch = ep.episodeNumber.toString().includes(query);
+                            const titleMatch = ep.title?.toLowerCase().includes(query);
+                            return numMatch || titleMatch;
+                          })
+                          .map((ep: Episode) => (
+                            <div
+                              key={ep.session}
+                              onClick={() => loadStream(ep)}
+                              onMouseEnter={() => prefetchStream(ep)}
+                              className={`p-4 cursor-pointer hover:bg-white/5 transition-colors border-l-2 ${currentEpisode?.session === ep.session ? 'bg-white/10 border-[#facc15]' : 'border-transparent'}`}
+                            >
+                              <div className="flex items-center justify-between font-mono text-sm text-gray-400">
+                                <span>EP {ep.episodeNumber}</span>
+                                <span className="text-xs text-gray-600">{ep.duration}</span>
+                              </div>
+                              <div className="text-sm font-medium mt-1 truncate">{ep.title || `Episode ${ep.episodeNumber}`}</div>
                             </div>
-                            <div className="text-sm font-medium mt-1 truncate">{ep.title || `Episode ${ep.episodeNumber}`}</div>
-                          </div>
-                        ))}
+                          ))}
                       </div>
                     ) : <div className="p-8 text-center text-gray-500">No episodes found.</div>}
                   </div>
@@ -946,12 +967,26 @@ function App() {
             <div className="flex-1 flex overflow-hidden">
               {/* Chapter Sidebar */}
               <div className="w-64 bg-[#111] border-r border-white/5 flex flex-col">
-                <div className="p-4 border-b border-white/5 bg-[#161616] flex items-center justify-between">
+                <div className="p-4 border-b border-white/5 bg-[#161616] flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 text-gray-400">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4 text-gray-400">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
                     </svg>
-                    <h3 className="font-semibold text-white text-sm">Chapters</h3>
+                    <h3 className="font-semibold text-white text-xs whitespace-nowrap">Chapters</h3>
+                  </div>
+                  <div className="relative flex-1 max-w-[120px]">
+                    <input
+                      type="text"
+                      placeholder="Chapter..."
+                      value={chapterSearchQuery}
+                      onChange={(e) => setChapterSearchQuery(e.target.value)}
+                      className="w-full bg-black/20 border border-white/10 rounded px-2 py-1 text-[11px] text-white placeholder:text-gray-600 focus:outline-none focus:border-white/20 transition-colors"
+                    />
+                    <div className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-600 pointer-events-none">
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-2.5 h-2.5">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+                      </svg>
+                    </div>
                   </div>
                 </div>
                 <div className="flex-1 overflow-y-auto no-scrollbar">
@@ -961,18 +996,25 @@ function App() {
                     </div>
                   ) : mangaChapters.length > 0 ? (
                     <div className="space-y-0.5">
-                      {mangaChapters.map((chapter) => (
-                        <div
-                          key={chapter.id}
-                          onClick={() => loadMangaChapter(chapter)}
-                          className={`px-4 py-3 cursor-pointer hover:bg-white/5 transition-colors border-l-2 ${currentMangaChapter?.id === chapter.id
-                            ? 'bg-white/10 border-[#facc15]'
-                            : 'border-transparent'
-                            }`}
-                        >
-                          <div className="text-sm font-medium truncate">{chapter.title}</div>
-                        </div>
-                      ))}
+                      {mangaChapters
+                        .filter(chapter => {
+                          if (!chapterSearchQuery) return true;
+                          const query = chapterSearchQuery.toLowerCase();
+                          return chapter.title.toLowerCase().includes(query);
+                        })
+                        .map((chapter) => (
+                          <div
+                            key={chapter.id}
+                            onClick={() => loadMangaChapter(chapter)}
+                            onMouseEnter={() => prefetchChapter(chapter)}
+                            className={`px-4 py-3 cursor-pointer hover:bg-white/5 transition-colors border-l-2 ${currentMangaChapter?.id === chapter.id
+                              ? 'bg-white/10 border-[#facc15]'
+                              : 'border-transparent'
+                              }`}
+                          >
+                            <div className="text-sm font-medium truncate">{chapter.title}</div>
+                          </div>
+                        ))}
                     </div>
                   ) : (
                     <div className="p-8 text-center text-gray-500">No chapters found on MangaKatana.</div>
@@ -988,13 +1030,13 @@ function App() {
                     <p className="text-gray-400 animate-pulse">Loading pages...</p>
                   </div>
                 ) : chapterPages.length > 0 ? (
-                  <div className="flex flex-col items-center py-4 gap-1">
+                  <div className="flex flex-col items-center gap-0">
                     {chapterPages.map((page) => (
                       <img
                         key={page.pageNumber}
                         src={page.imageUrl}
                         alt={`Page ${page.pageNumber}`}
-                        className="transition-all duration-200"
+                        className="transition-all duration-200 block"
                         style={{ width: `${zoomLevel}%` }}
                         loading="lazy"
                       />
