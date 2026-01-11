@@ -1,73 +1,237 @@
-# React + TypeScript + Vite
+# Yorumi 🌌
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+> A modern, feature-rich platform for streaming anime and reading manga with a premium UI/UX experience.
 
-Currently, two official plugins are available:
+> [!IMPORTANT]
+> **Disclaimer**: This is a personal project built for educational purposes and fun only. It is not intended for commercial use or distribution.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+![Yorumi Banner](./.github/image.png)
 
-## React Compiler
+## 📸 Screenshots
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+<table>
+  <tr>
+    <td><img src="./.github/image-1.png" alt="Anime Streaming" /></td>
+    <td><img src="./.github/image-2.png" alt="Manga Reader" /></td>
+  </tr>
+  <tr>
+    <td><img src="./.github/image-3.png" alt="Search & Filter" /></td>
+    <td><img src="./.github/image.png" alt="Home View" /></td>
+  </tr>
+</table>
 
-## Expanding the ESLint configuration
+## ✨ Features
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+- 🎬 **Anime Streaming**: Seamless video playback with AnimePahe integration
+- 📚 **Manga Reader**: Optimized reading experience with MangaKatana scraper
+- 🔍 **Advanced Search**: Real-time search and filtering for episodes/chapters
+- 🎨 **Premium UI**: Dark-themed, glassmorphic design with smooth animations
+- ⚡ **Progressive Loading**: Smart pagination and data fetching for optimal performance
+- 🎯 **Episode/Chapter Jump**: Quick search by number for easy navigation
+- 📱 **Responsive Design**: Works beautifully across all device sizes
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+## 🏗️ Architecture
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```
+┌─────────────────────────────────────────────────────────────┐
+│                         Frontend (React)                     │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
+│  │   App.tsx    │  │  Components  │  │    Styles    │      │
+│  │              │  │              │  │  (Tailwind)  │      │
+│  └──────┬───────┘  └──────────────┘  └──────────────┘      │
+│         │                                                    │
+│         │ HTTP Requests (Axios)                             │
+└─────────┼────────────────────────────────────────────────────┘
+          │
+          ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    Backend (Express.js)                      │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
+│  │   Routes     │  │   Services   │  │   Scrapers   │      │
+│  │              │  │              │  │              │      │
+│  │ - /api/mal   │  │ - Anime      │  │ - AnimePahe  │      │
+│  │ - /api/manga │  │ - Manga      │  │ - MangaKatana│      │
+│  │ - /scraper   │  │ - Scraper    │  │ - MAL        │      │
+│  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘      │
+│         │                 │                  │               │
+│         └─────────────────┴──────────────────┘               │
+│                            │                                 │
+└────────────────────────────┼─────────────────────────────────┘
+                             │
+                             ▼
+                    ┌────────────────────┐
+                    │  External Sources  │
+                    │                    │
+                    │  - AnimePahe       │
+                    │  - MangaKatana     │
+                    │  - MyAnimeList     │
+                    └────────────────────┘
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+### Tech Stack
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+**Frontend**
+- React 18 (TypeScript)
+- Vite (Build Tool)
+- Tailwind CSS (Styling)
+- Axios (HTTP Client)
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+**Backend**
+- Node.js (TypeScript)
+- Express.js (Server Framework)
+- Puppeteer (Browser Automation)
+- Cheerio (HTML Parsing)
+- Axios (HTTP Requests)
+
+## 🚀 Getting Started
+
+### Prerequisites
+- Node.js (v18 or higher)
+- npm or yarn
+
+### Installation
+
+1. Clone the repository
+   ```bash
+   git clone https://github.com/davenarchives/yorumi.git
+   cd yorumi
+   ```
+
+2. Install frontend dependencies
+   ```bash
+   npm install
+   ```
+
+3. Install backend dependencies
+   ```bash
+   cd backend
+   npm install
+   cd ..
+   ```
+
+### Running the Application
+
+1. Start the backend server
+   ```bash
+   cd backend
+   npm run dev
+   ```
+   Backend will run on `http://localhost:3001`
+
+2. In a new terminal, start the frontend
+   ```bash
+   npm run dev
+   ```
+   Frontend will run on `http://localhost:5173`
+
+3. Open your browser and navigate to `http://localhost:5173`
+
+## 📁 Project Structure
+
 ```
+yorumi/
+├── backend/
+│   ├── src/
+│   │   ├── api/
+│   │   │   ├── mal/           # MyAnimeList routes
+│   │   │   └── scraper/       # Scraper routes & services
+│   │   ├── scraper/
+│   │   │   ├── animepahe.ts   # AnimePahe scraper
+│   │   │   ├── mangakatana.ts # MangaKatana scraper
+│   │   │   └── mal.ts         # MAL scraper
+│   │   └── index.ts           # Express server entry
+│   └── package.json
+├── src/
+│   ├── App.tsx                # Main React component
+│   ├── index.css              # Global styles
+│   └── main.tsx               # React entry point
+├── public/                    # Static assets
+├── README.md
+└── package.json
+```
+
+## 🔌 API Documentation
+
+### Anime Endpoints
+
+#### Search Anime
+```
+GET /api/mal/search?q={query}
+```
+
+#### Get Top Anime
+```
+GET /api/mal/top?limit={limit}
+```
+
+#### Get Anime Episodes
+```
+GET /api/scraper/episodes?session={session_id}
+```
+
+#### Get Stream Links
+```
+GET /api/scraper/stream?session={session_id}&episode={episode_id}
+```
+
+### Manga Endpoints
+
+#### Search Manga
+```
+GET /api/manga/search?q={query}
+```
+
+#### Get Manga Details
+```
+GET /api/manga/details/{manga_id}
+```
+
+#### Get Chapter List
+```
+GET /api/manga/chapters/{manga_id}
+```
+
+#### Get Chapter Pages
+```
+GET /api/manga/pages?url={chapter_url}
+```
+
+## 🤝 Contributing
+
+This is a personal project, but suggestions and feedback are welcome! Feel free to open an issue if you find bugs or have feature requests.
+
+## 📄 License
+
+This project is licensed under the MIT License - see below for details:
+
+```
+MIT License
+
+Copyright (c) 2026 Daven
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+## ⚠️ Legal Notice
+
+This project is for **educational purposes only**. The scrapers used in this project access publicly available data. Please respect the terms of service of the websites being scraped. The author is not responsible for any misuse of this software.
+
+---
+
+Made with ❤️ for the anime and manga community.
