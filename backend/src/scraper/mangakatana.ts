@@ -21,6 +21,7 @@ export interface MangaSearchResult {
     title: string;
     url: string;
     thumbnail: string;
+    source: 'mangakatana';
 }
 
 export interface MangaDetails {
@@ -33,6 +34,7 @@ export interface MangaDetails {
     synopsis: string;
     coverImage: string;
     url: string;
+    source: 'mangakatana';
 }
 
 export interface Chapter {
@@ -73,7 +75,7 @@ export async function searchManga(query: string): Promise<MangaSearchResult[]> {
             const id = url.replace(`${BASE_URL}/manga/`, '').replace(/\/$/, '');
 
             if (title && url) {
-                results.push({ id, title, url, thumbnail });
+                results.push({ id, title, url, thumbnail, source: 'mangakatana' });
             }
         });
 
@@ -111,6 +113,7 @@ export async function getMangaDetails(mangaId: string): Promise<MangaDetails> {
             synopsis,
             coverImage,
             url,
+            source: 'mangakatana',
         };
     } catch (error) {
         console.error('Error fetching manga details:', error);

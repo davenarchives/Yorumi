@@ -1,10 +1,10 @@
 import { Router, Request, Response } from 'express';
-import * as mangakatana from '../../scraper/mangakatana';
+import * as mangaService from './manga.service';
 
 const router = Router();
 
 /**
- * Search for manga
+ * Search for manga (Unified)
  * GET /api/manga/search?q=query
  */
 router.get('/search', async (req: Request, res: Response) => {
@@ -16,7 +16,7 @@ router.get('/search', async (req: Request, res: Response) => {
             return;
         }
 
-        const results = await mangakatana.searchManga(query);
+        const results = await mangaService.searchManga(query);
         res.json({ data: results });
     } catch (error) {
         console.error('Manga search error:', error);
@@ -25,7 +25,7 @@ router.get('/search', async (req: Request, res: Response) => {
 });
 
 /**
- * Get manga details
+ * Get manga details (Unified)
  * GET /api/manga/details/:mangaId
  */
 router.get('/details/:mangaId', async (req: Request, res: Response) => {
@@ -37,7 +37,7 @@ router.get('/details/:mangaId', async (req: Request, res: Response) => {
             return;
         }
 
-        const details = await mangakatana.getMangaDetails(mangaId);
+        const details = await mangaService.getMangaDetails(mangaId);
         res.json({ data: details });
     } catch (error) {
         console.error('Manga details error:', error);
@@ -46,7 +46,7 @@ router.get('/details/:mangaId', async (req: Request, res: Response) => {
 });
 
 /**
- * Get chapter list for a manga
+ * Get chapter list for a manga (Unified)
  * GET /api/manga/chapters/:mangaId
  */
 router.get('/chapters/:mangaId', async (req: Request, res: Response) => {
@@ -58,7 +58,7 @@ router.get('/chapters/:mangaId', async (req: Request, res: Response) => {
             return;
         }
 
-        const chapters = await mangakatana.getChapterList(mangaId);
+        const chapters = await mangaService.getChapterList(mangaId);
         res.json({ data: chapters });
     } catch (error) {
         console.error('Chapters list error:', error);
@@ -67,7 +67,7 @@ router.get('/chapters/:mangaId', async (req: Request, res: Response) => {
 });
 
 /**
- * Get pages for a chapter
+ * Get pages for a chapter (Unified)
  * GET /api/manga/pages?url=chapterUrl
  */
 router.get('/pages', async (req: Request, res: Response) => {
@@ -79,7 +79,7 @@ router.get('/pages', async (req: Request, res: Response) => {
             return;
         }
 
-        const pages = await mangakatana.getChapterPages(chapterUrl);
+        const pages = await mangaService.getChapterPages(chapterUrl);
         res.json({ data: pages });
     } catch (error) {
         console.error('Chapter pages error:', error);
