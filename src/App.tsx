@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import './App.css';
 
 // Hooks
@@ -27,7 +27,7 @@ import { scrollUtils } from './utils/scrollUtils';
 
 function App() {
   const [activeTab, setActiveTab] = useState<'anime' | 'manga'>('anime');
-  const [viewMode, setViewMode] = useState<'default' | 'trending' | 'seasonal'>('default');
+  // No need for separate viewMode state here, handled in useAnime
 
   // Custom hooks for all logic
   const anime = useAnime();
@@ -43,11 +43,36 @@ function App() {
     return () => scrollUtils.unlockScroll();
   }, [anime.showAnimeDetails, anime.showWatchModal, manga.showMangaDetails, manga.selectedManga]);
 
+  // Infinite Scroll Observer for Search
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!search.isSearching) return;
+
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting && search.searchPagination.has_next_page && !search.searchLoading) {
+        search.loadMore();
+      }
+    }, { threshold: 0.1, rootMargin: '100px' });
+
+    if (sentinelRef.current) {
+      observer.observe(sentinelRef.current);
+    }
+
+    return () => observer.disconnect();
+  }, [search.isSearching, search.searchPagination.has_next_page, search.searchLoading, search.loadMore]);
+
   // Clear search when switching tabs
   const handleTabChange = (tab: 'anime' | 'manga') => {
     search.clearSearch();
     setActiveTab(tab);
-    setViewMode('default');
+    if (tab === 'manga') {
+      // If switching to manga, we might want to reset anime view, but keep history? 
+      // For now let's just leave it or strictly close it if transparent navigation is desired.
+      // The user prompt didn't strictly specify cross-tab history behavior.
+      // But existing code had setViewMode('default').
+      anime.closeViewAll();
+    }
   };
 
   // Determine what content to display
@@ -55,13 +80,13 @@ function App() {
   const displayManga = search.isSearching ? (search.searchResults as typeof manga.topManga) : manga.topManga;
   const isLoading = activeTab === 'anime' ? anime.loading && !search.isSearching : manga.mangaLoading && !search.isSearching;
 
-  const showHero = activeTab === 'anime' && !isLoading && !search.isSearching && anime.currentPage === 1 && anime.spotlightAnime && anime.spotlightAnime.length > 0 && viewMode === 'default';
+  const showHero = activeTab === 'anime' && !isLoading && !search.isSearching && anime.currentPage === 1 && anime.spotlightAnime && anime.spotlightAnime.length > 0 && anime.viewMode === 'default';
 
   // Handle Logo Click - Reset to Home
   const handleLogoClick = () => {
     search.clearSearch();
     setActiveTab('anime');
-    setViewMode('default');
+    anime.closeViewAll();
     anime.changePage(1);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -88,15 +113,17 @@ function App() {
       )}
 
       {/* Main Content */}
-      <main className={`container mx-auto px-8 ${showHero ? 'py-8' : 'pt-24 pb-8'}`}>
+      <main className={`container mx-auto px-4 z-10 relative pb-20 ${showHero ? '' : 'pt-24'}`}>
         {/* Loading State */}
-        {isLoading ? (
+        {isLoading && activeTab === 'manga' ? ( // Adjusted isLoading check
           <LoadingSpinner size="lg" text={`Loading ${activeTab}...`} />
         ) : null}
-        {/* Anime Tab */}
-        {activeTab === 'anime' && !isLoading && (
+
+        {activeTab === 'anime' && (
           <>
-            {search.isSearching ? (
+            {isLoading && !search.isSearching ? (
+              <LoadingSpinner size="lg" text={`Loading ${activeTab}...`} />
+            ) : search.isSearching ? (
               /* Search Results - Grid View */
               <>
                 <h2 className="text-xl font-bold mb-6">Search Results for "{search.searchQuery}"</h2>
@@ -115,118 +142,30 @@ function App() {
                     No anime found matching "{search.searchQuery}"
                   </div>
                 )}
+                {/* Search Pagination */}
+                {search.searchResults.length > 0 && search.searchPagination.has_next_page && (
+                  <div ref={sentinelRef} className="h-24 flex justify-center items-center w-full">
+                    {search.searchLoading && <LoadingSpinner size="md" />}
+                  </div>
+                )}
               </>
-            ) : (
+            ) : anime.viewMode === 'trending' ? (
               <>
-                {/* View Mode: Trending */}
-                {viewMode === 'trending' ? (
-                  <>
-                    <div className="flex items-center gap-2 mb-6">
-                      <button
-                        onClick={() => setViewMode('default')}
-                        className="p-2 rounded-full bg-white/5 hover:bg-white/10 transition-colors"
-                      >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
-                      </button>
-                      <h2 className="text-xl font-bold border-l-4 border-yorumi-accent pl-3 text-white">Trending Now</h2>
-                    </div>
-                    {anime.viewAllLoading ? (
-                      <LoadingSpinner size="lg" text="Loading Trending..." />
-                    ) : (
-                      <>
-                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6 mb-8">
-                          {anime.viewAllAnime.map((item) => (
-                            <AnimeCard
-                              key={item.mal_id}
-                              anime={item}
-                              onClick={() => anime.handleAnimeClick(item)}
-                            />
-                          ))}
-                        </div>
-                        <Pagination
-                          currentPage={anime.viewAllPagination.current_page}
-                          lastPage={anime.viewAllPagination.last_visible_page}
-                          onPageChange={(page) => {
-                            window.scrollTo({ top: 0, behavior: 'smooth' });
-                            anime.fetchViewAll('trending', page);
-                          }}
-                          isLoading={anime.viewAllLoading}
-                        />
-                      </>
-                    )}
-                  </>
-                ) : viewMode === 'seasonal' ? (
-                  <>
-                    <div className="flex items-center gap-2 mb-6">
-                      <button
-                        onClick={() => setViewMode('default')}
-                        className="p-2 rounded-full bg-white/5 hover:bg-white/10 transition-colors"
-                      >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
-                      </button>
-                      <h2 className="text-xl font-bold border-l-4 border-yorumi-accent pl-3 text-white">Popular This Season</h2>
-                    </div>
-                    {anime.viewAllLoading ? (
-                      <LoadingSpinner size="lg" text="Loading Popular..." />
-                    ) : (
-                      <>
-                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6 mb-8">
-                          {anime.viewAllAnime.map((item) => (
-                            <AnimeCard
-                              key={item.mal_id}
-                              anime={item}
-                              onClick={() => anime.handleAnimeClick(item)}
-                            />
-                          ))}
-                        </div>
-                        <Pagination
-                          currentPage={anime.viewAllPagination.current_page}
-                          lastPage={anime.viewAllPagination.last_visible_page}
-                          onPageChange={(page) => {
-                            window.scrollTo({ top: 0, behavior: 'smooth' });
-                            anime.fetchViewAll('seasonal', page);
-                          }}
-                          isLoading={anime.viewAllLoading}
-                        />
-                      </>
-                    )}
-
-                  </>
+                <div className="flex items-center gap-2 mb-6">
+                  <button
+                    onClick={anime.closeViewAll}
+                    className="p-2 rounded-full bg-white/5 hover:bg-white/10 transition-colors"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+                  </button>
+                  <h2 className="text-xl font-bold border-l-4 border-yorumi-accent pl-3 text-white">Trending Now</h2>
+                </div>
+                {anime.viewAllLoading ? (
+                  <LoadingSpinner size="lg" text="Loading Trending..." />
                 ) : (
-                  // Default View
                   <>
-                    {/* Trending & Popular - Only on Page 1 */}
-                    {anime.currentPage === 1 && (
-                      <>
-                        {/* Trending Now Section */}
-                        <TrendingNow
-                          animeList={anime.trendingAnime}
-                          onAnimeClick={anime.handleAnimeClick}
-                          onViewAll={() => {
-                            setViewMode('trending');
-                            anime.fetchViewAll('trending', 1);
-                            window.scrollTo({ top: 0, behavior: 'smooth' });
-                          }}
-                        />
-
-                        {/* Popular This Season Section */}
-                        <PopularSeason
-                          animeList={anime.popularSeason}
-                          onAnimeClick={anime.handleAnimeClick}
-                          onViewAll={() => {
-                            setViewMode('seasonal');
-                            anime.fetchViewAll('seasonal', 1);
-                            window.scrollTo({ top: 0, behavior: 'smooth' });
-                          }}
-                        />
-                      </>
-                    )}
-
-                    {/* Main Content Grid (Top Anime) */}
-                    <h2 className="text-xl font-bold mb-6 border-l-4 border-yorumi-accent pl-3 text-white">All-Time Popular</h2>
-
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6 mb-8">
-                      {displayAnime.map((item) => (
+                      {anime.viewAllAnime.map((item) => (
                         <AnimeCard
                           key={item.mal_id}
                           anime={item}
@@ -234,23 +173,95 @@ function App() {
                         />
                       ))}
                     </div>
-
                     <Pagination
-                      currentPage={anime.currentPage}
-                      lastPage={anime.lastVisiblePage}
-                      onPageChange={(page) => {
-                        window.scrollTo({ top: 0, behavior: 'smooth' });
-                        anime.changePage(page);
-                      }}
-                      isLoading={anime.loading}
+                      currentPage={anime.viewAllPagination.current_page}
+                      lastPage={anime.viewAllPagination.last_visible_page}
+                      onPageChange={anime.changeViewAllPage}
                     />
                   </>
                 )}
               </>
+            ) : anime.viewMode === 'seasonal' ? (
+              <>
+                <div className="flex items-center gap-2 mb-6">
+                  <button
+                    onClick={anime.closeViewAll}
+                    className="p-2 rounded-full bg-white/5 hover:bg-white/10 transition-colors"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+                  </button>
+                  <h2 className="text-xl font-bold border-l-4 border-yorumi-accent pl-3 text-white">Popular This Season</h2>
+                </div>
+                {anime.viewAllLoading ? (
+                  <LoadingSpinner size="lg" text="Loading Popular..." />
+                ) : (
+                  <>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6 mb-8">
+                      {anime.viewAllAnime.map((item) => (
+                        <AnimeCard
+                          key={item.mal_id}
+                          anime={item}
+                          onClick={() => anime.handleAnimeClick(item)}
+                        />
+                      ))}
+                    </div>
+                    <Pagination
+                      currentPage={anime.viewAllPagination.current_page}
+                      lastPage={anime.viewAllPagination.last_visible_page}
+                      onPageChange={anime.changeViewAllPage}
+                    />
+                  </>
+                )}
+
+              </>
+            ) : (
+              // Default View
+              <>
+                {/* Trending & Popular - Only on Page 1 */}
+                {anime.currentPage === 1 && (
+                  <>
+                    {/* Trending Now Section */}
+                    <TrendingNow
+                      animeList={anime.trendingAnime}
+                      onAnimeClick={anime.handleAnimeClick}
+                      onViewAll={() => anime.openViewAll('trending')}
+                    />
+
+                    {/* Popular This Season Section */}
+                    <PopularSeason
+                      animeList={anime.popularSeason}
+                      onAnimeClick={anime.handleAnimeClick}
+                      onViewAll={() => anime.openViewAll('seasonal')}
+                    />
+                  </>
+                )}
+
+                {/* Main Content Grid (Top Anime) */}
+                <h2 className="text-xl font-bold mb-6 border-l-4 border-yorumi-accent pl-3 text-white">All-Time Popular</h2>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6 mb-8">
+                  {displayAnime.map((item) => (
+                    <AnimeCard
+                      key={item.mal_id}
+                      anime={item}
+                      onClick={() => anime.handleAnimeClick(item)}
+                    />
+                  ))}
+                </div>
+
+                <Pagination
+                  currentPage={anime.currentPage}
+                  lastPage={anime.lastVisiblePage}
+                  onPageChange={(page) => {
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                    anime.changePage(page);
+                  }}
+                  isLoading={anime.loading}
+                />
+              </>
             )}
           </>
         )}
-
 
         {/* Manga Tab */}
         {activeTab === 'manga' && !isLoading && (
@@ -283,6 +294,12 @@ function App() {
                 No manga found {search.isSearching && `matching "${search.searchQuery}"`}
               </div>
             )}
+            {/* Manga Infinite Scroll Sentinel */}
+            {search.isSearching && search.searchResults.length > 0 && search.searchPagination.has_next_page && (
+              <div ref={sentinelRef} className="h-24 flex justify-center items-center w-full">
+                {search.searchLoading && <LoadingSpinner size="md" />}
+              </div>
+            )}
           </>
         )}
 
@@ -294,6 +311,8 @@ function App() {
       <AnimeDetailsModal
         isOpen={anime.showAnimeDetails && !!anime.selectedAnime}
         anime={anime.selectedAnime!}
+        episodes={anime.episodes}
+        epLoading={anime.epLoading}
         onClose={anime.closeDetails}
         onWatchNow={anime.startWatching}
       />
