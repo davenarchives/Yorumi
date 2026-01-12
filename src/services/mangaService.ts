@@ -4,13 +4,13 @@ const API_BASE = 'http://localhost:3001/api';
 export const mangaService = {
     // Fetch top manga
     async getTopManga(page: number = 1) {
-        const res = await fetch(`${API_BASE}/mal/top/manga?page=${page}`);
+        const res = await fetch(`${API_BASE}/jikan/top/manga?page=${page}`);
         return res.json();
     },
 
     // Search manga
     async searchManga(query: string, page: number = 1) {
-        const res = await fetch(`${API_BASE}/mal/search/manga?q=${encodeURIComponent(query)}&page=${page}`);
+        const res = await fetch(`${API_BASE}/jikan/search/manga?q=${encodeURIComponent(query)}&page=${page}`);
         return res.json();
     },
 

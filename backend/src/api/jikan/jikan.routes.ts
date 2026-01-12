@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import * as malService from './mal.service';
+import * as jikanService from './jikan.service';
 
 const router = Router();
 
@@ -14,7 +14,7 @@ router.get('/search', async (req: Request, res: Response) => {
             return;
         }
 
-        const data = await malService.searchAnime(query, page, limit);
+        const data = await jikanService.searchAnime(query, page, limit);
         res.json(data);
     } catch (error) {
         res.status(500).json({ error: 'Internal Server Error' });
@@ -29,7 +29,7 @@ router.get('/anime/:id', async (req: Request, res: Response) => {
             return;
         }
 
-        const data = await malService.getAnimeById(id);
+        const data = await jikanService.getAnimeById(id);
         res.json(data);
     } catch (error) {
         res.status(500).json({ error: 'Internal Server Error' });
@@ -44,7 +44,7 @@ router.get('/manga/:id', async (req: Request, res: Response) => {
             return;
         }
 
-        const data = await malService.getMangaById(id);
+        const data = await jikanService.getMangaById(id);
         res.json(data);
     } catch (error) {
         res.status(500).json({ error: 'Internal Server Error' });
@@ -55,7 +55,7 @@ router.get('/top', async (req: Request, res: Response) => {
     try {
         const page = req.query.page ? parseInt(req.query.page as string) : 1;
         const limit = req.query.limit ? parseInt(req.query.limit as string) : 24;
-        const data = await malService.getTopAnime(page, limit);
+        const data = await jikanService.getTopAnime(page, limit);
         res.json(data);
     } catch (error) {
         res.status(500).json({ error: 'Internal Server Error' });
@@ -66,7 +66,7 @@ router.get('/top/manga', async (req: Request, res: Response) => {
     try {
         const page = req.query.page ? parseInt(req.query.page as string) : 1;
         const limit = req.query.limit ? parseInt(req.query.limit as string) : 24;
-        const data = await malService.getTopManga(page, limit);
+        const data = await jikanService.getTopManga(page, limit);
         res.json(data);
     } catch (error) {
         res.status(500).json({ error: 'Internal Server Error' });
@@ -84,7 +84,7 @@ router.get('/search/manga', async (req: Request, res: Response) => {
             return;
         }
 
-        const data = await malService.searchManga(query, page, limit);
+        const data = await jikanService.searchManga(query, page, limit);
         res.json(data);
     } catch (error) {
         res.status(500).json({ error: 'Internal Server Error' });
