@@ -44,7 +44,7 @@ export const mangaService = {
 
     // Search manga via AniList
     async searchManga(query: string, page: number = 1) {
-        const res = await fetch(`${API_BASE}/anilist/search/manga?q=${encodeURIComponent(query)}&page=${page}`);
+        const res = await fetch(`${API_BASE}/anilist/search/manga?q=${encodeURIComponent(query)}&page=${page}&limit=18`);
         const data = await res.json();
         return {
             data: data.media?.map(mapAnilistToManga) || [],
