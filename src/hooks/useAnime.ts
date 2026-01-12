@@ -31,7 +31,6 @@ export function useAnime() {
         current_page: 1,
         has_next_page: false
     });
-    const [viewAllType, setViewAllType] = useState<'trending' | 'seasonal' | null>(null);
 
 
 
@@ -144,10 +143,11 @@ export function useAnime() {
         fetchPopularSeason();
     }, []);
 
+    const [viewMode, setViewMode] = useState<'default' | 'trending' | 'seasonal'>('default');
+
     // View All Fetcher
     const fetchViewAll = async (type: 'trending' | 'seasonal', page: number) => {
         setViewAllLoading(true);
-        setViewAllType(type);
         try {
             let data;
             if (type === 'trending') {
@@ -169,6 +169,28 @@ export function useAnime() {
         }
     };
 
+    const openViewAll = (type: 'trending' | 'seasonal') => {
+        // Push state only if we are not already in that mode (to avoid double pushes if clicked multiple times, though UI hides it)
+        // Actually, we should push to ensure back works.
+        window.history.pushState({ modal: 'view_all', type }, '', `#view/${type}`);
+        setViewMode(type);
+        fetchViewAll(type, 1);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+
+    const closeViewAll = () => {
+        if (viewMode !== 'default') {
+            window.history.back();
+        }
+    };
+
+    const changeViewAllPage = (page: number) => {
+        if (viewMode !== 'default') {
+            fetchViewAll(viewMode, page);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+    };
+
     const handleAnimeClick = async (anime: Anime) => {
         setSelectedAnime(anime);
         setShowAnimeDetails(true);
@@ -182,26 +204,26 @@ export function useAnime() {
         } catch (err) {
             console.error('Failed to fetch anime details', err);
         }
+
+        // Start loading episodes in background for preview
+        preloadEpisodes(anime);
     };
 
-    const startWatching = async () => {
-        if (!selectedAnime) return;
-
-        setShowAnimeDetails(false);
-        setShowWatchModal(true);
+    // Preload episodes for details modal preview
+    const preloadEpisodes = async (anime: Anime) => {
         setEpLoading(true);
         setEpisodes([]);
         setScraperSession(null);
 
         try {
             const resolveScraperSession = async () => {
-                if (scraperSessionCache.current.has(selectedAnime.mal_id)) {
-                    return scraperSessionCache.current.get(selectedAnime.mal_id)!;
+                if (scraperSessionCache.current.has(anime.mal_id)) {
+                    return scraperSessionCache.current.get(anime.mal_id)!;
                 }
-                const searchData = await animeService.searchScraper(selectedAnime.title);
+                const searchData = await animeService.searchScraper(anime.title);
                 if (searchData?.length > 0) {
                     const session = searchData[0].session;
-                    scraperSessionCache.current.set(selectedAnime.mal_id, session);
+                    scraperSessionCache.current.set(anime.mal_id, session);
                     return session;
                 }
                 return null;
@@ -222,21 +244,61 @@ export function useAnime() {
                 }
             }
         } catch (e) {
-            console.error('Failed to load episodes', e);
+            console.error('Failed to preload episodes', e);
         } finally {
             setEpLoading(false);
         }
     };
 
-    const closeDetails = () => {
+    const startWatching = async () => {
+        if (!selectedAnime) return;
+
+        // Episodes are already preloaded from handleAnimeClick, just switch modals
         setShowAnimeDetails(false);
-        setSelectedAnime(null);
+        setShowWatchModal(true);
+
+        // If episodes aren't loaded yet (edge case), load them now
+        if (episodes.length === 0 && !epLoading && !scraperSession) {
+            preloadEpisodes(selectedAnime);
+        }
+    };
+
+    // Handle browser back button for modals and view all
+    useEffect(() => {
+        const onPopState = () => {
+            if (showWatchModal) {
+                setShowWatchModal(false);
+                setEpisodes([]);
+                setEpisodeSearchQuery('');
+            } else if (showAnimeDetails) {
+                setShowAnimeDetails(false);
+                setSelectedAnime(null);
+            } else if (viewMode !== 'default') {
+                setViewMode('default');
+                setViewAllAnime([]);
+            }
+        };
+
+        window.addEventListener('popstate', onPopState);
+        return () => window.removeEventListener('popstate', onPopState);
+    }, [showWatchModal, showAnimeDetails, viewMode]);
+
+    const closeDetails = () => {
+        if (showAnimeDetails) window.history.back();
     };
 
     const closeWatch = () => {
-        setShowWatchModal(false);
-        setEpisodes([]);
-        setEpisodeSearchQuery('');
+        if (showWatchModal) window.history.back();
+    };
+
+    const handleAnimeClickWithHistory = async (anime: Anime) => {
+        window.history.pushState({ modal: 'details', id: anime.mal_id }, '', `#anime/${anime.mal_id}`);
+        await handleAnimeClick(anime);
+    };
+
+    const startWatchingWithHistory = () => {
+        window.history.pushState({ modal: 'watch' }, '', `#watch/${selectedAnime?.mal_id}`);
+        startWatching();
     };
 
     const changePage = (page: number) => {
@@ -261,8 +323,8 @@ export function useAnime() {
 
         // Actions
         setEpisodeSearchQuery,
-        handleAnimeClick,
-        startWatching,
+        handleAnimeClick: handleAnimeClickWithHistory,
+        startWatching: startWatchingWithHistory,
         closeDetails,
         closeWatch,
         changePage,
@@ -276,6 +338,10 @@ export function useAnime() {
         viewAllAnime,
         viewAllLoading,
         viewAllPagination,
-        fetchViewAll
+        viewMode,
+        openViewAll,
+        closeViewAll,
+        changeViewAllPage
     };
 }
+
