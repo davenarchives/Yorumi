@@ -8,19 +8,14 @@ interface PaginationProps {
 export default function Pagination({ currentPage, lastPage, onPageChange, isLoading }: PaginationProps) {
     if (lastPage <= 1) return null;
 
-    // Helper to generate page numbers - Simple sliding window, no ellipses
+    // Helper to generate page numbers
     const getPageNumbers = () => {
+        // Range: Current - 2 to Current + 2
+        // Clamped by 1 and lastPage.
+        const start = Math.max(1, currentPage - 2);
+        const end = Math.min(lastPage, currentPage + 2);
+
         const pages = [];
-        const maxVisible = 5;
-
-        let start = Math.max(1, currentPage - 2);
-        let end = Math.min(lastPage, start + maxVisible - 1);
-
-        // Adjust start if we're near the end to maintain maxVisible items if possible
-        if (end === lastPage) {
-            start = Math.max(1, end - maxVisible + 1);
-        }
-
         for (let i = start; i <= end; i++) {
             pages.push(i);
         }
@@ -39,7 +34,7 @@ export default function Pagination({ currentPage, lastPage, onPageChange, isLoad
             <button
                 onClick={() => handlePageChange(1)}
                 disabled={currentPage === 1 || isLoading}
-                className="w-10 h-10 flex items-center justify-center rounded-full bg-[#2a2a3e] hover:bg-[#3a3a4e] disabled:opacity-30 disabled:cursor-not-allowed text-gray-300 transition-colors"
+                className="w-10 h-10 flex items-center justify-center rounded-full bg-[#2a2a3e] hover:bg-[#3a3a4e] disabled:opacity-30 disabled:cursor-not-allowed text-gray-300 transition-colors font-bold"
                 title="First Page"
             >
                 «
@@ -49,38 +44,32 @@ export default function Pagination({ currentPage, lastPage, onPageChange, isLoad
             <button
                 onClick={() => handlePageChange(currentPage - 1)}
                 disabled={currentPage === 1 || isLoading}
-                className="w-10 h-10 flex items-center justify-center rounded-full bg-[#2a2a3e] hover:bg-[#3a3a4e] disabled:opacity-30 disabled:cursor-not-allowed text-gray-300 transition-colors"
+                className="w-10 h-10 flex items-center justify-center rounded-full bg-[#2a2a3e] hover:bg-[#3a3a4e] disabled:opacity-30 disabled:cursor-not-allowed text-gray-300 transition-colors font-bold"
                 title="Previous Page"
             >
                 ‹
             </button>
 
             {/* Page Numbers */}
-            {getPageNumbers().map((page, index) => (
-                page === -1 ? (
-                    <span key={`ellipsis-${index}`} className="w-10 h-10 flex items-center justify-center text-gray-500">
-                        ...
-                    </span>
-                ) : (
-                    <button
-                        key={page}
-                        onClick={() => handlePageChange(page)}
-                        disabled={isLoading}
-                        className={`w-10 h-10 flex items-center justify-center rounded-full text-sm font-bold transition-all ${currentPage === page
-                            ? 'bg-[#ffbade] text-black shadow-lg shadow-[#ffbade]/20 scan-effect' // Active: Pink
-                            : 'bg-[#2a2a3e] text-gray-300 hover:bg-[#3a3a4e]'
-                            }`}
-                    >
-                        {page}
-                    </button>
-                )
+            {getPageNumbers().map((page) => (
+                <button
+                    key={page}
+                    onClick={() => handlePageChange(page)}
+                    disabled={isLoading}
+                    className={`w-10 h-10 flex items-center justify-center rounded-full text-sm font-bold transition-all ${currentPage === page
+                        ? 'bg-[#ffbade] text-black shadow-lg shadow-[#ffbade]/20 scan-effect' // Active: Pink
+                        : 'bg-[#2a2a3e] text-gray-300 hover:bg-[#3a3a4e]'
+                        }`}
+                >
+                    {page}
+                </button>
             ))}
 
             {/* Next Page */}
             <button
                 onClick={() => handlePageChange(currentPage + 1)}
                 disabled={currentPage === lastPage || isLoading}
-                className="w-10 h-10 flex items-center justify-center rounded-full bg-[#2a2a3e] hover:bg-[#3a3a4e] disabled:opacity-30 disabled:cursor-not-allowed text-gray-300 transition-colors"
+                className="w-10 h-10 flex items-center justify-center rounded-full bg-[#2a2a3e] hover:bg-[#3a3a4e] disabled:opacity-30 disabled:cursor-not-allowed text-gray-300 transition-colors font-bold"
                 title="Next Page"
             >
                 ›
@@ -90,7 +79,7 @@ export default function Pagination({ currentPage, lastPage, onPageChange, isLoad
             <button
                 onClick={() => handlePageChange(lastPage)}
                 disabled={currentPage === lastPage || isLoading}
-                className="w-10 h-10 flex items-center justify-center rounded-full bg-[#2a2a3e] hover:bg-[#3a3a4e] disabled:opacity-30 disabled:cursor-not-allowed text-gray-300 transition-colors"
+                className="w-10 h-10 flex items-center justify-center rounded-full bg-[#2a2a3e] hover:bg-[#3a3a4e] disabled:opacity-30 disabled:cursor-not-allowed text-gray-300 transition-colors font-bold"
                 title="Last Page"
             >
                 »
