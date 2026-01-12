@@ -1,4 +1,21 @@
-# Yorumi 🌌
+<div align="center">
+  <img src="./public/yorumi-icon.svg" alt="Yorumi" width="200" />
+
+  # Y O R U M I &nbsp; ヨルミ
+  
+  **A N I M E &nbsp; & &nbsp; M A N G A &nbsp; S T R E A M I N G**
+  
+  ---
+
+  <br>
+
+  <img src="https://img.shields.io/badge/REACT-20232A?style=for-the-badge&logo=react&logoColor=61DAFB" alt="React" />
+  <img src="https://img.shields.io/badge/TYPESCRIPT-3178C6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript" />
+  <img src="https://img.shields.io/badge/EXPRESS.JS-000000?style=for-the-badge&logo=express&logoColor=white" alt="Express" />
+  <img src="https://img.shields.io/badge/TAILWIND-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white" alt="Tailwind CSS" />
+</div>
+
+<br>
 
 > A modern, feature-rich platform for streaming anime and reading manga with a premium UI/UX experience.
 
