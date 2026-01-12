@@ -217,7 +217,7 @@ export const anilistService = {
                         lastPage
                         hasNextPage
                     }
-                    media(search: $search, type: ANIME, sort: SEARCH_MATCH) {
+                    media(search: $search, type: ANIME, sort: SEARCH_MATCH, isAdult: false) {
                         ${MEDIA_FIELDS}
                     }
                 }
@@ -230,7 +230,15 @@ export const anilistService = {
                 variables: { search, page, perPage }
             });
 
-            return response.data.data.Page;
+            const pageData = response.data.data.Page;
+            // Recalculate lastPage to ensure it matches the actual perPage limit
+            if (pageData.pageInfo && pageData.pageInfo.total) {
+                pageData.pageInfo.lastPage = Math.ceil(pageData.pageInfo.total / perPage);
+                // Also ensure hasNextPage is accurate
+                pageData.pageInfo.hasNextPage = page < pageData.pageInfo.lastPage;
+            }
+
+            return pageData;
         } catch (error) {
             console.error('Error searching AniList:', error);
             return { media: [], pageInfo: {} };
@@ -270,7 +278,7 @@ export const anilistService = {
     async getAnimeById(id: number) {
         const query = `
             query ($id: Int) {
-                Media(id: $id, type: ANIME) {
+                Media(idMal: $id, type: ANIME) {
                     ${MEDIA_FIELDS}
                     relations {
                         edges {
@@ -289,6 +297,27 @@ export const anilistService = {
                                 id
                                 title { romaji english }
                                 coverImage { large }
+                            }
+                        }
+                    }
+                    trailer {
+                        id
+                        site
+                        thumbnail
+                    }
+                    characters(sort: [ROLE, RELEVANCE, ID], perPage: 12) {
+                        edges {
+                            role
+                            node {
+                                id
+                                name { full }
+                                image { large }
+                            }
+                            voiceActors(language: JAPANESE, sort: [RELEVANCE, ID]) {
+                                id
+                                name { full }
+                                image { large }
+                                languageV2
                             }
                         }
                     }
@@ -312,7 +341,7 @@ export const anilistService = {
     async getMangaById(id: number) {
         const query = `
             query ($id: Int) {
-                Media(id: $id, type: MANGA) {
+                Media(idMal: $id, type: MANGA) {
                     ${MEDIA_FIELDS}
                 }
             }
