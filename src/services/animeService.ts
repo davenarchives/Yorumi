@@ -1,5 +1,5 @@
 // API Service for Anime operations - Using AniList
-const API_BASE = 'http://localhost:3001/api';
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
 // Helper to map AniList response to our Anime interface format
 const mapAnilistToAnime = (item: any) => {

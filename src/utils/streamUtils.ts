@@ -18,8 +18,9 @@ export const getStreamData = async (
     episode: Episode,
     scraperSession: string
 ): Promise<StreamLink[]> => {
+    const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
     const res = await fetch(
-        `http://localhost:3001/api/scraper/streams?anime_session=${scraperSession}&ep_session=${episode.session}`
+        `${API_BASE}/scraper/streams?anime_session=${scraperSession}&ep_session=${episode.session}`
     );
     const data = await res.json();
 
