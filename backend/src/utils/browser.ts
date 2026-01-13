@@ -26,6 +26,7 @@ export const getBrowserInstance = async (): Promise<Browser> => {
     } else {
         console.log('Launching Local Puppeteer...');
         // Dynamic import to avoid bundling puppeteer in production
+        // @ts-ignore
         const localPuppeteerModule = await import('puppeteer') as any;
         const localPuppeteer = localPuppeteerModule.default || localPuppeteerModule;
 
