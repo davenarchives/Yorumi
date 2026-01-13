@@ -8,10 +8,14 @@ export const getBrowserInstance = async (): Promise<Browser> => {
 
     if (isProduction) {
         console.log('Launching Serverless Chromium...');
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const chromium = require('@sparticuz/chromium');
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const puppeteer = require('puppeteer-core');
+
+        // Use dynamic imports to work in both ESM/CJS and avoiding explicit require
+        const chromiumModule = await import('@sparticuz/chromium') as any;
+        const puppeteerModule = await import('puppeteer-core') as any;
+
+        // Handle default exports depending on bundler/module type
+        const chromium = chromiumModule.default || chromiumModule;
+        const puppeteer = puppeteerModule.default || puppeteerModule;
 
         browser = await puppeteer.launch({
             args: chromium.args,
@@ -21,8 +25,10 @@ export const getBrowserInstance = async (): Promise<Browser> => {
         }) as unknown as Browser;
     } else {
         console.log('Launching Local Puppeteer...');
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const localPuppeteer = require('puppeteer');
+        // Dynamic import to avoid bundling puppeteer in production
+        const localPuppeteerModule = await import('puppeteer') as any;
+        const localPuppeteer = localPuppeteerModule.default || localPuppeteerModule;
+
         browser = await localPuppeteer.launch({
             headless: true,
             args: ['--no-sandbox', '--disable-setuid-sandbox']
@@ -31,4 +37,3 @@ export const getBrowserInstance = async (): Promise<Browser> => {
 
     return browser;
 };
-
