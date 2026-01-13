@@ -1,7 +1,10 @@
 export interface Anime {
     mal_id: number;
+    id?: number; // AniList ID
     title: string;
     title_japanese?: string;
+    title_english?: string;
+    synonyms?: string[];
     images: {
         jpg: {
             image_url: string;
@@ -30,6 +33,10 @@ export interface Anime {
     anilist_banner_image?: string;
     anilist_cover_image?: string;
     latestEpisode?: number; // For ongoing anime - the latest aired episode
+    nextAiringEpisode?: {
+        episode: number;
+        timeUntilAiring: number;
+    };
     characters?: {
         edges: {
             role: string;
@@ -50,6 +57,23 @@ export interface Anime {
         id: string; // Youtube ID
         site: string;
         thumbnail: string;
+    };
+    episodeMetadata?: {
+        title: string;
+        thumbnail: string;
+        url: string;
+        site: string;
+    }[];
+    relations?: {
+        edges: {
+            relationType: string;
+            node: {
+                id: number;
+                title: { romaji: string; english?: string; native?: string };
+                coverImage: { large: string };
+                format: string;
+            };
+        }[];
     };
 }
 

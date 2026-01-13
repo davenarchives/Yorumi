@@ -2,43 +2,66 @@
 const API_BASE = 'http://localhost:3001/api';
 
 // Helper to map AniList response to our Anime interface format
-const mapAnilistToAnime = (item: any) => ({
-    mal_id: item.idMal || item.id,
-    title: item.title?.english || item.title?.romaji || item.title?.native || 'Unknown',
-    title_japanese: item.title?.native,
-    images: {
-        jpg: {
-            image_url: item.coverImage?.large || '',
-            large_image_url: item.coverImage?.extraLarge || item.coverImage?.large || ''
-        }
-    },
-    synopsis: item.description?.replace(/<[^>]*>/g, '') || '', // Strip HTML tags
-    type: item.format,
-    episodes: item.episodes,
-    score: item.averageScore ? item.averageScore / 10 : 0,
-    status: item.status,
-    duration: item.duration ? `${item.duration} min` : undefined,
-    rating: item.isAdult ? 'R+ - Mild Nudity' : undefined,
-    genres: item.genres?.map((g: string) => ({ name: g, mal_id: 0 })) || [],
-    studios: item.studios?.nodes?.map((s: any) => ({ name: s.name, mal_id: 0 })) || [],
-    year: item.seasonYear || item.startDate?.year,
-    season: item.season?.toLowerCase(),
-    aired: {
-        from: item.startDate ? `${item.startDate.year}-${item.startDate.month}-${item.startDate.day}` : undefined,
-        to: item.endDate ? `${item.endDate.year}-${item.endDate.month}-${item.endDate.day}` : undefined,
-        string: item.startDate?.year ? `${item.season || ''} ${item.startDate.year}`.trim() : undefined
-    },
-    anilist_banner_image: item.bannerImage,
-    anilist_cover_image: item.coverImage?.extraLarge || item.coverImage?.large,
-    // For ongoing anime, latest episode = next airing episode - 1
-    latestEpisode: item.nextAiringEpisode ? item.nextAiringEpisode.episode - 1 : undefined,
-    characters: item.characters, // Pass through the characters object directly as logic is handled in component or matches structure
-    trailer: item.trailer ? {
-        id: item.trailer.id,
-        site: item.trailer.site,
-        thumbnail: item.trailer.thumbnail
-    } : undefined
-});
+const mapAnilistToAnime = (item: any) => {
+    // Debug metadata availability
+    if (!item.streamingEpisodes || item.streamingEpisodes.length === 0) {
+        console.warn('[AnimeService] No streaming episodes found for:', item.title?.english || item.id, item);
+    } else {
+        console.log('[AnimeService] Found streaming episodes for:', item.title?.english, item.streamingEpisodes.length);
+    }
+
+    return {
+        mal_id: item.idMal || item.id,
+        id: item.id,
+        title: item.title?.english || item.title?.romaji || item.title?.native || 'Unknown',
+        title_japanese: item.title?.native,
+        title_english: item.title?.english,
+        synonyms: item.synonyms || [],
+        images: {
+            jpg: {
+                image_url: item.coverImage?.large || '',
+                large_image_url: item.coverImage?.extraLarge || item.coverImage?.large || ''
+            }
+        },
+        synopsis: item.description?.replace(/<[^>]*>/g, '') || '', // Strip HTML tags
+        type: item.format,
+        episodes: item.episodes,
+        score: item.averageScore ? item.averageScore / 10 : 0,
+        status: item.status,
+        duration: item.duration ? `${item.duration} min` : undefined,
+        rating: item.isAdult ? 'R+ - Mild Nudity' : undefined,
+        genres: item.genres?.map((g: string) => ({ name: g, mal_id: 0 })) || [],
+        studios: item.studios?.nodes?.map((s: any) => ({ name: s.name, mal_id: 0 })) || [],
+        year: item.seasonYear || item.startDate?.year,
+        season: item.season?.toLowerCase(),
+        aired: {
+            from: item.startDate ? `${item.startDate.year}-${item.startDate.month}-${item.startDate.day}` : undefined,
+            to: item.endDate ? `${item.endDate.year}-${item.endDate.month}-${item.endDate.day}` : undefined,
+            string: item.startDate?.year ? `${item.season || ''} ${item.startDate.year}`.trim() : undefined
+        },
+        anilist_banner_image: item.bannerImage,
+        anilist_cover_image: item.coverImage?.extraLarge || item.coverImage?.large,
+        nextAiringEpisode: item.nextAiringEpisode ? {
+            episode: item.nextAiringEpisode.episode,
+            timeUntilAiring: item.nextAiringEpisode.timeUntilAiring ?? (item.nextAiringEpisode.airingAt ? item.nextAiringEpisode.airingAt - Math.floor(Date.now() / 1000) : 0)
+        } : undefined,
+        // For ongoing anime, latest episode = next airing episode - 1
+        latestEpisode: item.nextAiringEpisode ? item.nextAiringEpisode.episode - 1 : undefined,
+        characters: item.characters, // Pass through the characters object directly as logic is handled in component or matches structure
+        trailer: item.trailer ? {
+            id: item.trailer.id,
+            site: item.trailer.site,
+            thumbnail: item.trailer.thumbnail
+        } : undefined,
+        episodeMetadata: item.streamingEpisodes?.map((e: any) => ({
+            title: e.title,
+            thumbnail: e.thumbnail,
+            url: e.url,
+            site: e.site
+        })) || [],
+        relations: item.relations // Map relations
+    };
+};
 
 export const animeService = {
     // Fetch top anime from AniList
