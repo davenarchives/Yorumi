@@ -63,12 +63,35 @@ const mapAnilistToAnime = (item: any) => {
     };
 };
 
+// Simple in-memory cache
+const cache = new Map<string, { data: any, timestamp: number }>();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+const getCached = (key: string) => {
+    if (cache.has(key)) {
+        const entry = cache.get(key)!;
+        if (Date.now() - entry.timestamp < CACHE_TTL) {
+            return entry.data;
+        }
+        cache.delete(key);
+    }
+    return null;
+};
+
+const setCache = (key: string, data: any) => {
+    cache.set(key, { data, timestamp: Date.now() });
+};
+
 export const animeService = {
     // Fetch top anime from AniList
     async getTopAnime(page: number = 1) {
+        const cacheKey = `top-anime-${page}`;
+        const cached = getCached(cacheKey);
+        if (cached) return cached;
+
         const res = await fetch(`${API_BASE}/anilist/top?page=${page}&limit=18`);
         const data = await res.json();
-        return {
+        const result = {
             data: data.media?.map(mapAnilistToAnime) || [],
             pagination: {
                 last_visible_page: data.pageInfo?.lastPage || 1,
@@ -76,6 +99,9 @@ export const animeService = {
                 has_next_page: data.pageInfo?.hasNextPage || false
             }
         };
+
+        setCache(cacheKey, result);
+        return result;
     },
 
     // Search anime via AniList
@@ -108,9 +134,13 @@ export const animeService = {
 
     // Get popular this season from AniList
     async getPopularThisSeason(page: number = 1, limit: number = 10) {
+        const cacheKey = `popular-season-${page}-${limit}`;
+        const cached = getCached(cacheKey);
+        if (cached) return cached;
+
         const res = await fetch(`${API_BASE}/anilist/popular-this-season?page=${page}&limit=${limit}`);
         const data = await res.json();
-        return {
+        const result = {
             data: data.media?.map(mapAnilistToAnime) || [],
             pagination: {
                 last_visible_page: data.pageInfo?.lastPage || 1,
@@ -118,6 +148,8 @@ export const animeService = {
                 has_next_page: data.pageInfo?.hasNextPage || false
             }
         };
+        setCache(cacheKey, result);
+        return result;
     },
 
     // Get episodes from scraper
@@ -150,11 +182,15 @@ export const animeService = {
 
     // Get trending anime from AniList
     async getTrendingAnime(page: number = 1, limit: number = 10) {
+        const cacheKey = `trending-${page}-${limit}`;
+        const cached = getCached(cacheKey);
+        if (cached) return cached;
+
         const res = await fetch(`${API_BASE}/anilist/trending?page=${page}&limit=${limit}`);
         const data = await res.json(); // backend returns { media, pageInfo } structure for these endpoints?
         // Wait, backend anilist.service.ts returns response.data.data.Page which has fields 'media' and 'pageInfo'.
         // Frontend anilist.routes.ts sends back `data` which IS the Page object.
-        return {
+        const result = {
             data: data.media?.map(mapAnilistToAnime) || [],
             pagination: {
                 last_visible_page: data.pageInfo?.lastPage || 1,
@@ -162,5 +198,7 @@ export const animeService = {
                 has_next_page: data.pageInfo?.hasNextPage || false
             }
         };
+        setCache(cacheKey, result);
+        return result;
     },
 };

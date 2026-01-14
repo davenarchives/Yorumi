@@ -473,6 +473,17 @@ export function useAnime() {
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
+    // Prefetch page (Top Anime)
+    const prefetchPage = async (page: number) => {
+        if (page < 1 || page > lastVisiblePage) return;
+        try {
+            // Just calling getTopAnime will cache it
+            await animeService.getTopAnime(page);
+        } catch (e) {
+            console.error("Prefetch page error", e);
+        }
+    };
+
     return {
         // State
         topAnime,
@@ -518,7 +529,8 @@ export function useAnime() {
         removeFromHistory,
 
         // Prefetching
-        prefetchEpisodes
+        prefetchEpisodes,
+        prefetchPage
     };
 }
 

@@ -448,6 +448,7 @@ function App() {
                     anime.changePage(page);
                   }}
                   isLoading={anime.loading}
+                  onPrefetchPage={anime.prefetchPage}
                 />
               </>
             )}
