@@ -124,6 +124,8 @@ function App() {
     setActiveTab('anime');
     anime.closeAllModals();
     manga.closeAllModals();
+    anime.changePage(1); // Reset to first page
+    manga.changeMangaPage(1); // Reset to first page
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -152,6 +154,19 @@ function App() {
         onLogoClick={handleLogoClick}
       />
 
+      {/* Error Banner */}
+      {anime.error && (
+        <div className="bg-red-500/10 border border-red-500/50 text-red-500 px-4 py-3 rounded mx-4 mt-24 text-center">
+          <p>{anime.error}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="text-sm underline mt-1 hover:text-red-400"
+          >
+            Refresh Page
+          </button>
+        </div>
+      )}
+
       {/* Spotlight Hero - Full Width */}
       {activeTab === 'anime' && !isSearching && anime.viewMode === 'default' && anime.currentPage === 1 && (
         <SpotlightHero
@@ -176,8 +191,10 @@ function App() {
 
         {activeTab === 'anime' && (
           <>
-            {isLoading && !isSearching && displayAnime.length === 0 ? (
-              <LoadingSpinner size="lg" text={`Loading ${activeTab}...`} />
+            {isLoading && !isSearching ? (
+              <div className="flex items-center justify-center min-h-[60vh]">
+                <LoadingSpinner size="lg" text={`Loading ${activeTab}...`} />
+              </div>
             ) : isSearching ? (
               /* Search Results - Grid View */
               <>
@@ -428,17 +445,23 @@ function App() {
                 {/* Main Content Grid (Top Anime) */}
                 <h2 className="text-xl font-bold mb-6 border-l-4 border-yorumi-accent pl-3 text-white">All-Time Popular</h2>
 
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6 mb-8">
-                  {displayAnime.map((item) => (
-                    <AnimeCard
-                      key={item.mal_id}
-                      anime={item}
-                      onClick={() => handleAnimeSelection(item)}
-                      onWatchClick={() => handleWatchDirectly(item)}
-                      onMouseEnter={handleAnimeHover}
-                    />
-                  ))}
-                </div>
+                {displayAnime.length > 0 ? (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6 mb-8">
+                    {displayAnime.map((item) => (
+                      <AnimeCard
+                        key={item.mal_id}
+                        anime={item}
+                        onClick={() => handleAnimeSelection(item)}
+                        onWatchClick={() => handleWatchDirectly(item)}
+                        onMouseEnter={handleAnimeHover}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center text-gray-400 py-12">
+                    No popular anime found.
+                  </div>
+                )}
 
                 <Pagination
                   currentPage={anime.currentPage}
@@ -456,44 +479,52 @@ function App() {
         )}
 
         {/* Manga Tab */}
-        {activeTab === 'manga' && !isLoading && (
+        {activeTab === 'manga' && (
           <>
-            {isSearching && <h2 className="text-xl font-bold mb-6 pt-24">Search Results for "{searchQuery}"</h2>}
+            {isLoading && !isSearching ? (
+              <div className="flex items-center justify-center min-h-[60vh]">
+                <LoadingSpinner size="lg" text={`Loading ${activeTab}...`} />
+              </div>
+            ) : (
+              <>
+                {isSearching && <h2 className="text-xl font-bold mb-6 pt-24">Search Results for "{searchQuery}"</h2>}
 
-            <div className={`${isSearching ? '' : 'pt-24'}`}>
-              {displayManga.length > 0 ? (
-                <>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
-                    {displayManga.map((item) => (
-                      <MangaCard
-                        key={item.mal_id}
-                        manga={item}
-                        onClick={() => manga.handleMangaClick(item)}
-                      />
-                    ))}
-                  </div>
+                <div className={`${isSearching ? '' : 'pt-24'}`}>
+                  {displayManga.length > 0 ? (
+                    <>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
+                        {displayManga.map((item) => (
+                          <MangaCard
+                            key={item.mal_id}
+                            manga={item}
+                            onClick={() => manga.handleMangaClick(item)}
+                          />
+                        ))}
+                      </div>
 
-                  {!isSearching && (
-                    <Pagination
-                      currentPage={manga.mangaPage}
-                      lastPage={manga.mangaLastPage}
-                      onPageChange={manga.changeMangaPage}
-                      isLoading={manga.mangaLoading}
-                    />
+                      {!isSearching && (
+                        <Pagination
+                          currentPage={manga.mangaPage}
+                          lastPage={manga.mangaLastPage}
+                          onPageChange={manga.changeMangaPage}
+                          isLoading={manga.mangaLoading}
+                        />
+                      )}
+                    </>
+                  ) : (
+                    <div className="text-center text-gray-400 py-12">
+                      No manga found {isSearching && `matching "${searchQuery}"`}
+                    </div>
                   )}
-                </>
-              ) : (
-                <div className="text-center text-gray-400 py-12">
-                  No manga found {isSearching && `matching "${searchQuery}"`}
+                  {/* Manga Infinite Scroll Sentinel */}
+                  {isSearching && searchResults.length > 0 && searchPagination.has_next_page && (
+                    <div ref={sentinelRef} className="h-24 flex justify-center items-center w-full">
+                      {searchLoading && <LoadingSpinner size="md" />}
+                    </div>
+                  )}
                 </div>
-              )}
-              {/* Manga Infinite Scroll Sentinel */}
-              {isSearching && searchResults.length > 0 && searchPagination.has_next_page && (
-                <div ref={sentinelRef} className="h-24 flex justify-center items-center w-full">
-                  {searchLoading && <LoadingSpinner size="md" />}
-                </div>
-              )}
-            </div>
+              </>
+            )}
           </>
         )}
 

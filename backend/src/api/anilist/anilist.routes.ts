@@ -11,9 +11,13 @@ router.get('/top', async (req, res) => {
 
         const data = await anilistService.getTopAnime(page, perPage);
         res.json(data);
-    } catch (error) {
-        console.error('Error in top anime route:', error);
-        res.status(500).json({ error: 'Internal server error' });
+    } catch (error: any) {
+        console.error('Error in top anime route:', error.message);
+        if (error.response) {
+            res.status(error.response.status).json({ error: error.response.data });
+        } else {
+            res.status(500).json({ error: 'Internal server error' });
+        }
     }
 });
 

@@ -39,61 +39,75 @@ export function useAnime() {
     const scraperSessionCache = useRef(new Map<number, string>());
     const episodesCache = useRef(new Map<string, Episode[]>());
 
-    // Fetch top anime and spotlight
+    // Fetch Spotlight (Run Once)
+    useEffect(() => {
+        const fetchSpotlight = async () => {
+            if (spotlightAnime.length > 0) return;
+
+            try {
+                const { titles } = await animeService.getHiAnimeSpotlightTitles();
+                if (titles && titles.length > 0) {
+                    const resolvedAnime: Anime[] = [];
+                    const limitedTitles = titles.slice(0, 8);
+
+                    for (const title of limitedTitles) {
+                        try {
+                            const searchRes = await animeService.searchAnilist(title);
+                            if (searchRes && searchRes.length > 0) {
+                                const aniItem = searchRes[0];
+                                const mappedAnime: Anime = {
+                                    mal_id: aniItem.idMal || aniItem.id,
+                                    title: aniItem.title.english || aniItem.title.romaji || aniItem.title.native,
+                                    images: {
+                                        jpg: {
+                                            image_url: aniItem.coverImage.large,
+                                            large_image_url: aniItem.coverImage.extraLarge
+                                        }
+                                    },
+                                    synopsis: aniItem.description?.replace(/<[^>]*>/g, '') || '',
+                                    type: aniItem.format,
+                                    episodes: aniItem.episodes,
+                                    score: aniItem.averageScore ? aniItem.averageScore / 10 : 0,
+                                    status: aniItem.status,
+                                    duration: aniItem.duration ? `${aniItem.duration} min` : 'Unknown',
+                                    rating: 'Unknown',
+                                    genres: aniItem.genres?.map((g: string) => ({ name: g, mal_id: 0 })) || [],
+                                    anilist_banner_image: aniItem.bannerImage,
+                                    anilist_cover_image: aniItem.coverImage.extraLarge || aniItem.coverImage.large,
+                                    latestEpisode: aniItem.nextAiringEpisode ? aniItem.nextAiringEpisode.episode - 1 : undefined
+                                };
+                                resolvedAnime.push(mappedAnime);
+                            }
+                        } catch (e) {
+                            console.error(`Failed to resolve spotlight: ${title}`, e);
+                        }
+                    }
+                    setSpotlightAnime(resolvedAnime);
+                }
+            } catch (e) {
+                console.error("Failed to fetch HiAnime spotlight", e);
+            }
+        };
+
+        fetchSpotlight();
+    }, []); // Empty dependency array = run once
+
+    // Fetch top anime (Pagination)
     useEffect(() => {
         const fetchData = async () => {
             setLoading(true);
             try {
-                // 1. Fetch HiAnime spotlight titles and resolve via AniList
-                try {
-                    const { titles } = await animeService.getHiAnimeSpotlightTitles();
-                    if (titles && titles.length > 0) {
-                        const resolvedAnime: Anime[] = [];
-                        const limitedTitles = titles.slice(0, 8);
 
-                        for (const title of limitedTitles) {
-                            try {
-                                const searchRes = await animeService.searchAnilist(title);
-                                if (searchRes && searchRes.length > 0) {
-                                    const aniItem = searchRes[0];
-                                    const mappedAnime: Anime = {
-                                        mal_id: aniItem.idMal || aniItem.id,
-                                        title: aniItem.title.english || aniItem.title.romaji || aniItem.title.native,
-                                        images: {
-                                            jpg: {
-                                                image_url: aniItem.coverImage.large,
-                                                large_image_url: aniItem.coverImage.extraLarge
-                                            }
-                                        },
-                                        synopsis: aniItem.description?.replace(/<[^>]*>/g, '') || '',
-                                        type: aniItem.format,
-                                        episodes: aniItem.episodes,
-                                        score: aniItem.averageScore ? aniItem.averageScore / 10 : 0,
-                                        status: aniItem.status,
-                                        duration: aniItem.duration ? `${aniItem.duration} min` : 'Unknown',
-                                        rating: 'Unknown',
-                                        genres: aniItem.genres?.map((g: string) => ({ name: g, mal_id: 0 })) || [],
-                                        anilist_banner_image: aniItem.bannerImage,
-                                        anilist_cover_image: aniItem.coverImage.extraLarge || aniItem.coverImage.large,
-                                        latestEpisode: aniItem.nextAiringEpisode ? aniItem.nextAiringEpisode.episode - 1 : undefined
-                                    };
-                                    resolvedAnime.push(mappedAnime);
-                                }
-                            } catch (e) {
-                                console.error(`Failed to resolve spotlight: ${title}`, e);
-                            }
-                        }
-                        setSpotlightAnime(resolvedAnime);
-                    }
-                } catch (e) {
-                    console.error("Failed to fetch HiAnime spotlight", e);
-                }
 
                 // 2. Fetch Top Anime from AniList
+                console.log('[useAnime] Fetching top anime for page:', currentPage);
                 const data = await animeService.getTopAnime(currentPage);
+                console.log('[useAnime] Top Anime response:', data);
                 if (data?.data) {
                     setTopAnime(data.data);
                     setLastVisiblePage(data.pagination?.last_visible_page || 1);
+                } else {
+                    console.warn('[useAnime] No data returned for top anime');
                 }
             } catch (err) {
                 console.error("Failed to fetch anime", err);
@@ -469,6 +483,7 @@ export function useAnime() {
     };
 
     const changePage = (page: number) => {
+        setLoading(true);
         setCurrentPage(page);
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };
@@ -476,13 +491,16 @@ export function useAnime() {
     // Prefetch page (Top Anime)
     const prefetchPage = async (page: number) => {
         if (page < 1 || page > lastVisiblePage) return;
-        try {
-            // Just calling getTopAnime will cache it
-            await animeService.getTopAnime(page);
-        } catch (e) {
-            console.error("Prefetch page error", e);
-        }
+        // Just calling getTopAnime will cache it
+        await animeService.getTopAnime(page);
     };
+
+    // Auto-prefetch next page when loading finishes
+    useEffect(() => {
+        if (!loading && currentPage < lastVisiblePage) {
+            prefetchPage(currentPage + 1);
+        }
+    }, [loading, currentPage, lastVisiblePage]);
 
     return {
         // State
@@ -510,8 +528,8 @@ export function useAnime() {
         changePage,
         spotlightAnime,
         trendingAnime,
-        trendingLoading,
         popularSeason,
+        trendingLoading,
         popularSeasonLoading,
 
         // View All Exports

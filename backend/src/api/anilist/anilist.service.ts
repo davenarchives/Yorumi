@@ -180,7 +180,7 @@ export const anilistService = {
             return response.data.data.Page;
         } catch (error) {
             console.error('Error fetching top anime:', error);
-            return { media: [], pageInfo: {} };
+            throw error; // Propagate error to route handler
         }
     },
 

@@ -162,6 +162,7 @@ export function useManga() {
     const zoomOut = () => setZoomLevel(prev => Math.max(prev - 10, 30));
 
     const changeMangaPage = (page: number) => {
+        setMangaLoading(true);
         setMangaPage(page);
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };

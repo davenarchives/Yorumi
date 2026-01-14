@@ -82,33 +82,48 @@ const setCache = (key: string, data: any) => {
     cache.set(key, { data, timestamp: Date.now() });
 };
 
+// Track in-flight requests to prevent duplicates
+const inFlightRequests = new Map<string, Promise<any>>();
+
 export const animeService = {
-    // Fetch top anime from AniList
+    // Fetch top anime from AniList (Deduplicated)
     async getTopAnime(page: number = 1) {
         const cacheKey = `top-anime-${page}`;
         const cached = getCached(cacheKey);
         if (cached) return cached;
 
-        const res = await fetch(`${API_BASE}/anilist/top?page=${page}&limit=18`);
-
-        if (!res.ok) {
-            throw new Error(`Failed to fetch top anime: ${res.statusText}`);
+        // Check for in-flight request
+        if (inFlightRequests.has(cacheKey)) {
+            return inFlightRequests.get(cacheKey);
         }
 
-        const data = await res.json();
-        const result = {
-            data: data.media?.map(mapAnilistToAnime) || [],
-            pagination: {
-                last_visible_page: data.pageInfo?.lastPage || 1,
-                current_page: data.pageInfo?.currentPage || 1,
-                has_next_page: data.pageInfo?.hasNextPage || false
+        const fetchPromise = (async () => {
+            try {
+                const res = await fetch(`${API_BASE}/anilist/top?page=${page}&limit=18`);
+                if (!res.ok) {
+                    throw new Error(`Failed to fetch top anime: ${res.statusText}`);
+                }
+                const data = await res.json();
+                const result = {
+                    data: data.media?.map(mapAnilistToAnime) || [],
+                    pagination: {
+                        last_visible_page: data.pageInfo?.lastPage || 1,
+                        current_page: data.pageInfo?.currentPage || 1,
+                        has_next_page: data.pageInfo?.hasNextPage || false
+                    }
+                };
+
+                if (result.data.length > 0) {
+                    setCache(cacheKey, result);
+                }
+                return result;
+            } finally {
+                inFlightRequests.delete(cacheKey);
             }
-        };
+        })();
 
-        if (result.data.length > 0) {
-            setCache(cacheKey, result);
-        }
-        return result;
+        inFlightRequests.set(cacheKey, fetchPromise);
+        return fetchPromise;
     },
 
     // Search anime via AniList
@@ -139,34 +154,44 @@ export const animeService = {
         return res.json();
     },
 
-    // Get popular this season from AniList
+    // Get popular this season from AniList (Deduplicated)
     async getPopularThisSeason(page: number = 1, limit: number = 10) {
         const cacheKey = `popular-season-${page}-${limit}`;
         const cached = getCached(cacheKey);
         if (cached) return cached;
 
-        const res = await fetch(`${API_BASE}/anilist/popular-this-season?page=${page}&limit=${limit}`);
-
-        if (!res.ok) {
-            console.warn(`Failed to fetch popular season: ${res.statusText}`);
-            // Don't throw for widget sections, just return empty so UI doesn't crash completely
-            return { data: [], pagination: null };
+        if (inFlightRequests.has(cacheKey)) {
+            return inFlightRequests.get(cacheKey);
         }
 
-        const data = await res.json();
-        const result = {
-            data: data.media?.map(mapAnilistToAnime) || [],
-            pagination: {
-                last_visible_page: data.pageInfo?.lastPage || 1,
-                current_page: data.pageInfo?.currentPage || 1,
-                has_next_page: data.pageInfo?.hasNextPage || false
+        const fetchPromise = (async () => {
+            try {
+                const res = await fetch(`${API_BASE}/anilist/popular-this-season?page=${page}&limit=${limit}`);
+                if (!res.ok) {
+                    console.warn(`Failed to fetch popular season: ${res.statusText}`);
+                    return { data: [], pagination: null };
+                }
+                const data = await res.json();
+                const result = {
+                    data: data.media?.map(mapAnilistToAnime) || [],
+                    pagination: {
+                        last_visible_page: data.pageInfo?.lastPage || 1,
+                        current_page: data.pageInfo?.currentPage || 1,
+                        has_next_page: data.pageInfo?.hasNextPage || false
+                    }
+                };
+
+                if (result.data.length > 0) {
+                    setCache(cacheKey, result);
+                }
+                return result;
+            } finally {
+                inFlightRequests.delete(cacheKey);
             }
-        };
+        })();
 
-        if (result.data.length > 0) {
-            setCache(cacheKey, result);
-        }
-        return result;
+        inFlightRequests.set(cacheKey, fetchPromise);
+        return fetchPromise;
     },
 
     // Get episodes from scraper
@@ -197,34 +222,44 @@ export const animeService = {
         return res.json();
     },
 
-    // Get trending anime from AniList
+    // Get trending anime from AniList (Deduplicated)
     async getTrendingAnime(page: number = 1, limit: number = 10) {
         const cacheKey = `trending-${page}-${limit}`;
         const cached = getCached(cacheKey);
         if (cached) return cached;
 
-        const res = await fetch(`${API_BASE}/anilist/trending?page=${page}&limit=${limit}`);
-
-        if (!res.ok) {
-            console.warn(`Failed to fetch trending: ${res.statusText}`);
-            return { data: [], pagination: null };
+        if (inFlightRequests.has(cacheKey)) {
+            return inFlightRequests.get(cacheKey);
         }
 
-        const data = await res.json(); // backend returns { media, pageInfo } structure for these endpoints?
-        // Wait, backend anilist.service.ts returns response.data.data.Page which has fields 'media' and 'pageInfo'.
-        // Frontend anilist.routes.ts sends back `data` which IS the Page object.
-        const result = {
-            data: data.media?.map(mapAnilistToAnime) || [],
-            pagination: {
-                last_visible_page: data.pageInfo?.lastPage || 1,
-                current_page: data.pageInfo?.currentPage || 1,
-                has_next_page: data.pageInfo?.hasNextPage || false
+        const fetchPromise = (async () => {
+            try {
+                const res = await fetch(`${API_BASE}/anilist/trending?page=${page}&limit=${limit}`);
+                if (!res.ok) {
+                    console.warn(`Failed to fetch trending: ${res.statusText}`);
+                    return { data: [], pagination: null };
+                }
+
+                const data = await res.json();
+                const result = {
+                    data: data.media?.map(mapAnilistToAnime) || [],
+                    pagination: {
+                        last_visible_page: data.pageInfo?.lastPage || 1,
+                        current_page: data.pageInfo?.currentPage || 1,
+                        has_next_page: data.pageInfo?.hasNextPage || false
+                    }
+                };
+
+                if (result.data.length > 0) {
+                    setCache(cacheKey, result);
+                }
+                return result;
+            } finally {
+                inFlightRequests.delete(cacheKey);
             }
-        };
+        })();
 
-        if (result.data.length > 0) {
-            setCache(cacheKey, result);
-        }
-        return result;
+        inFlightRequests.set(cacheKey, fetchPromise);
+        return fetchPromise;
     },
 };
