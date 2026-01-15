@@ -209,28 +209,111 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
     // --- Helpers ---
 
     const resolveAndCacheEpisodes = async (anime: Anime): Promise<{ session: string | null, eps: Episode[] }> => {
-        // Shared logic from previous hook
         let session: string | null = null;
+
+        // Helper to normalize strings for comparison
+        const normalize = (str: string) => str.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+        // Helper to extract season number
+        const getSeason = (title: string) => {
+            const match = title.match(/season\s*(\d+)|(\d+)(st|nd|rd|th)\s*season/i);
+            return match ? parseInt(match[1] || match[2]) : 1;
+        };
+
+        // Helper to score closeness
+        const getScore = (candidate: any, target: Anime) => {
+            let score = 0;
+            const canTitle = candidate.title || '';
+            const tgtTitle = target.title || '';
+
+            // 1. Text Similarity (Simple includes check + length proximity)
+            if (normalize(canTitle).includes(normalize(tgtTitle)) || normalize(tgtTitle).includes(normalize(canTitle))) {
+                score += 10;
+            }
+
+            // 2. Season Matching
+            const targetSeason = getSeason(tgtTitle) || (target.season ? 1 : 1); // Default to 1 if not specified
+            const candidateSeason = getSeason(canTitle);
+
+            // Explicit Season Mismatch is a huge penalty
+            if (candidateSeason === targetSeason) {
+                score += 50; // Strong match for correct season
+            } else {
+                // Mismatch case
+                if (targetSeason > 1 && candidateSeason === 1 && !canTitle.toLowerCase().includes('season')) {
+                    // Target is Season 2+, candidate looks like implicit Season 1
+                    // Check for subtitle/year rescue
+                    let isYearMatch = false;
+                    if (candidate.year && target.year) {
+                        const yearDiff = Math.abs(parseInt(candidate.year) - target.year);
+                        if (yearDiff <= 1) isYearMatch = true;
+                    }
+
+                    if (isYearMatch) {
+                        score += 30; // Rescue! It's likely the correct season with a subtitle
+                    } else {
+                        score -= 50; // Penalty
+                    }
+                } else if (candidateSeason !== targetSeason) {
+                    // Explicit mismatch (e.g. Season 2 vs Season 3)
+                    score -= 50;
+                }
+            }
+
+            // 3. Year Matching
+            if (candidate.year && target.year) {
+                const yearDiff = Math.abs(parseInt(candidate.year) - target.year);
+                if (yearDiff <= 1) score += 5;
+                else if (yearDiff > 2) score -= 10; // Large gap implies different series/remake
+            }
+
+            // 4. Type Matching
+            if (candidate.type && target.type) {
+                if (candidate.type.toLowerCase() === target.type.toLowerCase()) score += 3;
+            }
+
+            return score;
+        };
+
         if (scraperSessionCache.current.has(anime.mal_id)) {
             session = scraperSessionCache.current.get(anime.mal_id)!;
         } else {
             const queries = new Set<string>();
             if (anime.title) queries.add(anime.title);
             if (anime.title_english) queries.add(anime.title_english);
-            if (anime.synonyms) anime.synonyms.forEach(s => queries.add(s));
-            const queryList = Array.from(queries).slice(0, 4);
+            // Limit synonyms to avoid too many requests
+            if (anime.synonyms) anime.synonyms.slice(0, 2).forEach(s => queries.add(s));
+
+            const queryList = Array.from(queries).slice(0, 3); // Max 3 queries
 
             try {
+                // Fetch all candidates from all queries
                 const results = await Promise.all(
                     queryList.map(q => animeService.searchScraper(q).then(res => res || []).catch(() => []))
                 );
-                const allCandidates = results.flat();
+
+                // Flatten and deduplicate by session ID
+                const allCandidates = Array.from(new Map(
+                    results.flat().map((c: any) => [c.session, c])
+                ).values());
 
                 if (allCandidates.length > 0) {
-                    // Simplified basic matching to keep file size down, relying on robust search service
-                    // Ideally re-implement the full scoring logic if needed
-                    session = allCandidates[0].session;
-                    if (session) scraperSessionCache.current.set(anime.mal_id, session);
+                    // Find Best Match
+                    let bestMatch = null;
+                    let maxScore = -100;
+
+                    for (const candidate of allCandidates) {
+                        const score = getScore(candidate, anime);
+                        if (score > maxScore) {
+                            maxScore = score;
+                            bestMatch = candidate;
+                        }
+                    }
+
+                    if (bestMatch && maxScore > 0) { // Threshold for acceptance
+                        session = bestMatch.session;
+                        scraperSessionCache.current.set(anime.mal_id, bestMatch.session);
+                    }
                 }
             } catch (e) {
                 console.error("Error resolving scraper session", e);

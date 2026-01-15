@@ -28,10 +28,7 @@ export default function HomePage() {
         navigate(`/watch/${item.mal_id}`, { state: { anime: item } });
     };
 
-    const handleAnimeHover = (item: Anime) => {
-        // Prefetching logic
-        anime.prefetchEpisodes(item);
-    };
+
 
     // Scroll to top on mount
     useEffect(() => {
@@ -154,7 +151,6 @@ export default function HomePage() {
                                             key={item.mal_id}
                                             anime={item}
                                             onClick={() => handleAnimeClick(item)}
-                                            onMouseEnter={() => handleAnimeHover(item)}
                                         />
                                     ))}
                                 </div>
@@ -188,7 +184,6 @@ export default function HomePage() {
                                             key={item.mal_id}
                                             anime={item}
                                             onClick={() => handleAnimeClick(item)}
-                                            onMouseEnter={() => handleAnimeHover(item)}
                                         />
                                     ))}
                                 </div>
@@ -222,7 +217,6 @@ export default function HomePage() {
                                             key={item.mal_id}
                                             anime={item}
                                             onClick={() => handleAnimeClick(item)}
-                                            onMouseEnter={() => handleAnimeHover(item)}
                                         />
                                     ))}
                                 </div>
@@ -289,7 +283,6 @@ export default function HomePage() {
                                     onAnimeClick={handleAnimeClick}
                                     onWatchClick={handleWatchClick}
                                     onViewAll={() => anime.openViewAll('trending')}
-                                    onMouseEnter={handleAnimeHover}
                                 />
 
                                 <PopularSeason
@@ -297,7 +290,6 @@ export default function HomePage() {
                                     onAnimeClick={handleAnimeClick}
                                     onWatchClick={handleWatchClick}
                                     onViewAll={() => anime.openViewAll('seasonal')}
-                                    onMouseEnter={handleAnimeHover}
                                 />
 
                                 {/* Top Anime Grid (Preview) */}
@@ -318,7 +310,6 @@ export default function HomePage() {
                                             anime={item}
                                             onClick={() => handleAnimeClick(item)}
                                             onWatchClick={() => handleWatchClick(item)}
-                                            onMouseEnter={() => handleAnimeHover(item)}
                                         />
                                     ))}
                                 </div>
