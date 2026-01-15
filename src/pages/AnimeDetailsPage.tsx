@@ -137,11 +137,11 @@ export default function AnimeDetailsPage() {
                 <div className="flex flex-col md:flex-row gap-8">
                     {/* Portrait Image */}
                     <div className="flex-shrink-0 mx-auto md:mx-0 w-64 md:w-72">
-                        <div className="rounded-xl overflow-hidden shadow-2xl shadow-black/50 ring-1 ring-white/10">
+                        <div className="rounded-xl overflow-hidden shadow-2xl shadow-black/50">
                             <img
                                 src={selectedAnime.images.jpg.large_image_url}
                                 alt={selectedAnime.title}
-                                className="w-full h-auto object-cover aspect-[2/3]"
+                                className="w-full h-full object-cover aspect-[2/3]"
                             />
                         </div>
                     </div>

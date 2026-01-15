@@ -237,6 +237,55 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
                 try {
                     const epData = await animeService.getEpisodes(session);
                     const newEpisodes = epData?.episodes || epData?.ep_details || (Array.isArray(epData) ? epData : []);
+
+                    // Enrich with metadata titles if available
+                    if (newEpisodes.length > 0) {
+                        // 1. Try AniList Metadata first (Fast, already in memory)
+                        if (anime.episodeMetadata?.length) {
+                            newEpisodes.forEach((ep: Episode) => {
+                                if (!ep.title || ep.title === 'Untitled' || !ep.title.trim()) {
+                                    const epNum = parseFloat(ep.episodeNumber);
+                                    if (!isNaN(epNum)) {
+                                        const meta = anime.episodeMetadata?.find(m => {
+                                            const match = m.title?.match(/Episode\s+(\d+)/i);
+                                            return match && parseFloat(match[1]) === epNum;
+                                        });
+                                        if (meta) {
+                                            const cleanMatch = meta.title.match(/Episode\s+\d+\s*[-:]?\s*(.*)/i);
+                                            if (cleanMatch && cleanMatch[1]) ep.title = cleanMatch[1];
+                                            else ep.title = meta.title;
+                                        }
+                                    }
+                                }
+                            });
+                        }
+
+                        // 2. Check if we still have untitled episodes and fallback to Jikan (Slower, network request)
+                        const hasUntitled = newEpisodes.some((ep: Episode) => !ep.title || ep.title === 'Untitled');
+                        if (hasUntitled) {
+                            try {
+                                // Only fetch if we have a MAL ID
+                                if (anime.mal_id) {
+                                    const jikanEps = await animeService.getJikanEpisodes(anime.mal_id);
+                                    if (jikanEps && jikanEps.length > 0) {
+                                        newEpisodes.forEach((ep: Episode) => {
+                                            if (!ep.title || ep.title === 'Untitled' || !ep.title.trim()) {
+                                                const epNum = parseFloat(ep.episodeNumber);
+                                                // Match against Jikan's 'episode_id' which typically is the episode number
+                                                const jikanEp = jikanEps.find((j: any) => j.episode_id === epNum);
+                                                if (jikanEp && jikanEp.title) {
+                                                    ep.title = jikanEp.title;
+                                                }
+                                            }
+                                        });
+                                    }
+                                }
+                            } catch (e) {
+                                console.error("Failed to fetch Jikan fallback", e);
+                            }
+                        }
+                    }
+
                     if (newEpisodes.length > 0) {
                         episodesCache.current.set(session, newEpisodes);
                         return { session, eps: newEpisodes };

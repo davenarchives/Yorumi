@@ -262,4 +262,16 @@ export const animeService = {
         inFlightRequests.set(cacheKey, fetchPromise);
         return fetchPromise;
     },
+
+    // Get Jikan episodes (Fallback)
+    async getJikanEpisodes(malId: number) {
+        try {
+            const res = await fetch(`${API_BASE}/jikan/episodes/${malId}`);
+            if (!res.ok) throw new Error('Failed to fetch Jikan episodes');
+            return res.json();
+        } catch (e) {
+            console.error(e);
+            return [];
+        }
+    }
 };
