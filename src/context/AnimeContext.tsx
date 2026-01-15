@@ -106,73 +106,80 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
     // --- Actions ---
 
     const fetchHomeData = async () => {
-        // Spotlight
-        if (spotlightAnime.length === 0) {
+        const fetchSpotlight = async () => {
+            if (spotlightAnime.length > 0) return;
             try {
                 const { titles } = await animeService.getHiAnimeSpotlightTitles();
                 if (titles && titles.length > 0) {
-                    const resolvedAnime: Anime[] = [];
                     const limitedTitles = titles.slice(0, 6);
-                    for (const title of limitedTitles) {
-                        try {
-                            const searchRes = await animeService.searchAnilist(title);
-                            if (searchRes && searchRes.length > 0) {
-                                const aniItem = searchRes[0];
-                                const mappedAnime: Anime = {
-                                    mal_id: aniItem.idMal || aniItem.id,
-                                    title: aniItem.title.english || aniItem.title.romaji || aniItem.title.native,
-                                    images: {
-                                        jpg: { image_url: aniItem.coverImage.large, large_image_url: aniItem.coverImage.extraLarge }
-                                    },
-                                    synopsis: aniItem.description?.replace(/<[^>]*>/g, '') || '',
-                                    type: aniItem.format,
-                                    episodes: aniItem.episodes,
-                                    score: aniItem.averageScore ? aniItem.averageScore / 10 : 0,
-                                    status: aniItem.status,
-                                    duration: aniItem.duration ? `${aniItem.duration} min` : 'Unknown',
-                                    rating: 'Unknown',
-                                    genres: aniItem.genres?.map((g: string) => ({ name: g, mal_id: 0 })) || [],
-                                    anilist_banner_image: aniItem.bannerImage,
-                                    anilist_cover_image: aniItem.coverImage.extraLarge || aniItem.coverImage.large,
-                                    latestEpisode: aniItem.nextAiringEpisode ? aniItem.nextAiringEpisode.episode - 1 : undefined
-                                };
-                                resolvedAnime.push(mappedAnime);
+
+                    // Parallelize the search for each title
+                    const results = await Promise.all(
+                        limitedTitles.map(async (title: string) => {
+                            try {
+                                const searchRes = await animeService.searchAnilist(title);
+                                if (searchRes && searchRes.length > 0) {
+                                    const aniItem = searchRes[0];
+                                    return {
+                                        mal_id: aniItem.idMal || aniItem.id,
+                                        title: aniItem.title.english || aniItem.title.romaji || aniItem.title.native,
+                                        images: {
+                                            jpg: { image_url: aniItem.coverImage.large, large_image_url: aniItem.coverImage.extraLarge }
+                                        },
+                                        synopsis: aniItem.description?.replace(/<[^>]*>/g, '') || '',
+                                        type: aniItem.format,
+                                        episodes: aniItem.episodes,
+                                        score: aniItem.averageScore ? aniItem.averageScore / 10 : 0,
+                                        status: aniItem.status,
+                                        duration: aniItem.duration ? `${aniItem.duration} min` : 'Unknown',
+                                        rating: 'Unknown',
+                                        genres: aniItem.genres?.map((g: string) => ({ name: g, mal_id: 0 })) || [],
+                                        anilist_banner_image: aniItem.bannerImage,
+                                        anilist_cover_image: aniItem.coverImage.extraLarge || aniItem.coverImage.large,
+                                        latestEpisode: aniItem.nextAiringEpisode ? aniItem.nextAiringEpisode.episode - 1 : undefined
+                                    } as Anime;
+                                }
+                            } catch (e) {
+                                return null;
                             }
-                        } catch (e) { }
-                    }
+                            return null;
+                        })
+                    );
+
+                    const resolvedAnime = results.filter((item): item is Anime => item !== null);
                     if (resolvedAnime.length > 0) setSpotlightAnime(resolvedAnime);
                 }
             } catch (e) {
                 console.error("Failed to fetch HiAnime spotlight", e);
             }
-        }
+        };
 
-
-        // 2. Fetch Top Anime
-        // 1. Top Anime (Handled by useEffect on currentPage now)
-        // Leaving logic here for initial load consistency if needed, but safer to let useEffect handle it so pagination works.
-        // Actually, let's remove it from here and rely on the new useEffect being mounted.
-
-        /* Removed explicit TopAnime fetch from here to rely on useEffect [currentPage] */
-
-        // 3. Fetch Trending & Seasonal (Once)
-        if (trendingAnime.length === 0) {
+        const fetchTrending = async () => {
+            if (trendingAnime.length > 0) return;
             setTrendingLoading(true);
             try {
                 const tData = await animeService.getTrendingAnime(1, 10);
                 if (tData?.data) setTrendingAnime(tData.data);
             } catch (e) { console.error(e); }
             finally { setTrendingLoading(false); }
-        }
+        };
 
-        if (popularSeason.length === 0) {
+        const fetchPopular = async () => {
+            if (popularSeason.length > 0) return;
             setPopularSeasonLoading(true);
             try {
                 const pData = await animeService.getPopularThisSeason(1, 10);
                 if (pData?.data) setPopularSeason(pData.data);
             } catch (e) { console.error(e); }
             finally { setPopularSeasonLoading(false); }
-        }
+        };
+
+        // Execute all fetches in parallel
+        await Promise.all([
+            fetchSpotlight(),
+            fetchTrending(),
+            fetchPopular()
+        ]);
     };
 
     // --- Pagination Effect ---
