@@ -304,10 +304,10 @@ export default function WatchPage() {
                     <div className="p-4">
                         {/* Title Info */}
                         <div className="mb-3">
-                            <h2 className="text-lg font-bold text-white mb-1">{animeData.title}</h2>
+                            <h2 className="text-lg font-bold text-white leading-tight">{animeData.title}</h2>
                             <div className="flex items-baseline gap-3">
-                                <p className="text-yellow-500 font-medium">Episode {epNum}</p>
-                                {displayTitle && <p className="text-gray-400 text-sm">{displayTitle}</p>}
+                                <p className="text-yellow-500 font-medium text-sm">Episode {epNum}</p>
+                                {displayTitle && <p className="text-gray-400 text-xs">{displayTitle}</p>}
                             </div>
                         </div>
 
