@@ -24,8 +24,9 @@ export default function HomePage() {
         navigate(`/anime/${item.mal_id}`, { state: { anime: item } });
     };
 
-    const handleWatchClick = (item: Anime) => {
-        navigate(`/watch/${item.mal_id}`, { state: { anime: item } });
+    const handleWatchClick = (item: Anime, episodeNumber?: number) => {
+        const url = episodeNumber ? `/watch/${item.mal_id}?ep=${episodeNumber}` : `/watch/${item.mal_id}`;
+        navigate(url, { state: { anime: item } });
     };
 
 
@@ -98,7 +99,7 @@ export default function HomePage() {
                                 <div
                                     key={item.mal_id}
                                     className="relative group cursor-pointer"
-                                    onClick={() => handleWatchClick({ mal_id: item.mal_id } as Anime)}
+                                    onClick={() => handleWatchClick({ mal_id: item.mal_id } as Anime, item.episodeNumber)}
                                 >
                                     <div className="relative aspect-video rounded-lg overflow-hidden mb-3 shadow-lg border border-white/5 transition-colors">
                                         <img
@@ -242,7 +243,7 @@ export default function HomePage() {
                                     <div
                                         key={item.mal_id}
                                         className="relative group h-full flex-[0_0_240px] sm:flex-[0_0_280px] md:flex-[0_0_320px]"
-                                        onClick={() => handleWatchClick({ mal_id: item.mal_id } as Anime)}
+                                        onClick={() => handleWatchClick({ mal_id: item.mal_id } as Anime, item.episodeNumber)}
                                     >
                                         {/* ... (Same carousel card content as App.tsx) ... */}
                                         <div className="relative aspect-video rounded-lg overflow-hidden mb-3 shadow-lg border border-white/5 transition-colors cursor-pointer">

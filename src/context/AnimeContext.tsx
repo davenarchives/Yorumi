@@ -407,6 +407,10 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
     // --- Actions ---
 
     const handleAnimeClick = async (anime: Anime) => {
+        // Reset previous anime's episodes and scraper session
+        setEpisodes([]);
+        setScraperSession(null);
+
         let currentAnime = anime;
 
         // Only set optimistic state if we have a valid anime object (with images)

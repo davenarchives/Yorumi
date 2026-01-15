@@ -24,8 +24,14 @@ export default function WatchPage() {
         showQualityMenu,
         setShowQualityMenu,
         handleQualityChange,
-        setAutoQuality
+        setAutoQuality,
+        clearStreams
     } = streamsHook;
+
+    // Clear previous anime's stream state when changing anime
+    useEffect(() => {
+        clearStreams();
+    }, [id]);
 
     const epNum = searchParams.get('ep') || '1';
 
