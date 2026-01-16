@@ -128,6 +128,7 @@ const MEDIA_FIELDS = `
         }
     }
     isAdult
+    countryOfOrigin
     nextAiringEpisode {
         episode
         airingAt

@@ -75,6 +75,7 @@ export interface Anime {
             };
         }[];
     };
+    countryOfOrigin?: string;
 }
 
 export interface Episode {
