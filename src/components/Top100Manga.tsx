@@ -54,9 +54,9 @@ const Top100Manga: React.FC<Top100MangaProps> = ({ onMangaClick, onViewAll }) =>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
                 {mangaList.slice(0, 12).map((manga, index) => (
                     <div
-                        key={manga.mal_id}
+                        key={manga.id || manga.mal_id}
                         className="select-none cursor-pointer group relative"
-                        onClick={() => onMangaClick(manga.mal_id.toString())}
+                        onClick={() => onMangaClick((manga.id || manga.mal_id).toString())}
                     >
                         {/* Image Container */}
                         <div className="relative aspect-[2/3] rounded-lg overflow-hidden mb-2 shadow-lg ring-0 outline-none">

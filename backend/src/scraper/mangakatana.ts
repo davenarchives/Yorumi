@@ -4,7 +4,7 @@ import { getBrowserInstance } from '../utils/browser';
 import { HTTPRequest } from 'puppeteer-core';
 
 const BASE_URL = 'https://mangakatana.com';
-const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36';
+const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
 const axiosInstance = axios.create({
     baseURL: BASE_URL,
@@ -297,21 +297,57 @@ export async function getChapterPages(chapterUrl: string): Promise<ChapterPage[]
 
 /**
  * Get hot updates from MangaKatana homepage
+ * Uses Puppeteer to bypass bot protection
  */
 export async function getHotUpdates(): Promise<HotUpdate[]> {
+    let browser = null;
     try {
-        const response = await axiosInstance.get('/');
-        const $ = cheerio.load(response.data);
+        console.log('Fetching hot updates from MangaKatana via Puppeteer...');
+        browser = await getBrowserInstance();
+        const page = await browser.newPage();
+
+        // Set a realistic user agent
+        await page.setUserAgent(USER_AGENT);
+
+        // Block images/css/fonts/media to speed up loading
+        await page.setRequestInterception(true);
+        page.on('request', (req: HTTPRequest) => {
+            if (['image', 'stylesheet', 'font', 'media'].includes(req.resourceType())) {
+                req.abort();
+            } else {
+                req.continue();
+            }
+        });
+
+        // Navigate to the homepage
+        await page.goto(BASE_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
+
+        // Wait for potential Cloudflare challenge or content load
+        try {
+            await page.waitForSelector('#hot_update', { timeout: 10000 });
+        } catch (e) {
+            console.warn('Timeout waiting for #hot_update, trying fallback...');
+            try {
+                await page.waitForSelector('.widget-hot-update', { timeout: 5000 });
+            } catch (e2) {
+                console.warn('Timeout waiting for fallback widget...');
+            }
+        }
+
+        const content = await page.content();
+        const $ = cheerio.load(content);
         const updates: HotUpdate[] = [];
 
         // Strategy: Look for the specific "Hot Updates" section. 
         // MK usually has #hot_update
 
         let container = $('#hot_update');
+        console.log('Found container #hot_update:', container.length);
 
         if (container.length === 0) {
             // Fallback: look for typical "item" grid if id changed
             container = $('.widget-hot-update');
+            console.log('Found container .widget-hot-update:', container.length);
         }
 
         container.find('.item').each((_, element) => {
@@ -344,10 +380,14 @@ export async function getHotUpdates(): Promise<HotUpdate[]> {
             }
         });
 
-        // Limit to reasonable number (e.g., 10-15)
+        console.log(`Found ${updates.length} hot updates.`);
         return updates.slice(0, 15);
     } catch (error) {
         console.error('Error fetching hot updates:', error);
         return [];
+    } finally {
+        if (browser) {
+            await browser.close();
+        }
     }
 }

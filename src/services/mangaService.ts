@@ -4,6 +4,7 @@ const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 // Helper to map AniList response to our Manga interface format
 const mapAnilistToManga = (item: any) => ({
     mal_id: item.idMal || item.id,
+    id: item.id,
     title: item.title?.english || item.title?.romaji || item.title?.native || 'Unknown',
     title_english: item.title?.english,
     title_romaji: item.title?.romaji,
@@ -149,7 +150,8 @@ export const mangaService = {
 
             if (!scraperData) return null;
 
-            // 1. Attempt to resolve to AniList for rich metadata
+            // 1. Attempt to resolve to AniList for rich metadata - DISABLED to prevent mismatches
+            /*
             try {
                 // Remove some common scraper noise from title if needed, or just use as is
                 const searchRes = await this.searchManga(scraperData.title);
@@ -165,6 +167,7 @@ export const mangaService = {
             } catch (err) {
                 console.warn('Failed to resolve scraper manga to AniList:', err);
             }
+            */
 
             // 2. Fallback: Return mapped scraper data
             return {

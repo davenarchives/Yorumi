@@ -1,4 +1,5 @@
 export interface Manga {
+    id?: number; // AniList ID
     mal_id: number | string;
     title: string;
     title_english?: string; // For fallback search

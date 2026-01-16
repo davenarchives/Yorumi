@@ -53,9 +53,35 @@ export async function getChapterPages(url: string) {
     return mangakatana.getChapterPages(url);
 }
 
+// Simple in-memory cache for Hot Updates
+let hotUpdatesCache: any[] | null = null;
+let hotUpdatesCacheTime = 0;
+const CACHE_DURATION = 15 * 60 * 1000; // 15 minutes
+
 export async function getHotUpdates() {
-    const updates = await mangakatana.getHotUpdates();
-    return updates.map(u => ({ ...u, id: `mk:${u.id}` }));
+    const now = Date.now();
+    if (hotUpdatesCache && (now - hotUpdatesCacheTime < CACHE_DURATION)) {
+        console.log('Serving Hot Updates from cache');
+        return hotUpdatesCache;
+    }
+
+    try {
+        const updates = await mangakatana.getHotUpdates();
+        const mappedUpdates = updates.map(u => ({ ...u, id: `mk:${u.id}` }));
+
+        // Update cache
+        if (mappedUpdates.length > 0) {
+            hotUpdatesCache = mappedUpdates;
+            hotUpdatesCacheTime = now;
+        }
+
+        return mappedUpdates;
+    } catch (error) {
+        console.error('Failed to update hot updates cache', error);
+        // Return stale cache if available
+        if (hotUpdatesCache) return hotUpdatesCache;
+        return [];
+    }
 }
 
 /**

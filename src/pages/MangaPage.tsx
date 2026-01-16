@@ -29,7 +29,7 @@ export default function MangaPage() {
     };
 
     const handleMangaClick = (item: Manga) => {
-        navigate(`/manga/${item.mal_id}`);
+        navigate(`/manga/${item.id || item.mal_id}`);
     };
 
     // Get the title for View All based on viewMode
@@ -65,7 +65,7 @@ export default function MangaPage() {
                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
                             {manga.viewAllManga.map((item) => (
                                 <MangaCard
-                                    key={item.mal_id}
+                                    key={item.id || item.mal_id}
                                     manga={item}
                                     onClick={() => handleMangaClick(item)}
                                 />

@@ -148,7 +148,7 @@ const MangaSpotlight: React.FC<MangaSpotlightProps> = ({ onMangaClick }) => {
             <div className="absolute inset-0 overflow-hidden" ref={emblaRef}>
                 <div className="flex h-full touch-pan-y">
                     {mangas.map((manga, index) => (
-                        <div key={manga.mal_id || index} className="relative min-w-full h-full flex-[0_0_100%]">
+                        <div key={manga.id || manga.mal_id || index} className="relative min-w-full h-full flex-[0_0_100%]">
                             {/* Background Image (Blurred) */}
                             <div className="absolute inset-0 z-0 select-none overflow-hidden">
                                 <div
@@ -213,7 +213,7 @@ const MangaSpotlight: React.FC<MangaSpotlightProps> = ({ onMangaClick }) => {
 
                                         <div className="flex gap-4">
                                             <button
-                                                onClick={() => onMangaClick(manga.mal_id.toString())}
+                                                onClick={() => onMangaClick((manga.id || manga.mal_id).toString())}
                                                 className="bg-yorumi-accent text-yorumi-bg px-8 py-3.5 rounded-full font-bold hover:bg-white transition-all duration-300 transform hover:scale-105 flex items-center gap-3 shadow-[0_0_20px_rgba(253,200,73,0.3)] hover:shadow-[0_0_30px_rgba(253,200,73,0.6)]"
                                             >
                                                 <div className="bg-yorumi-bg text-white rounded-full p-1.5 -ml-2">
@@ -222,7 +222,7 @@ const MangaSpotlight: React.FC<MangaSpotlightProps> = ({ onMangaClick }) => {
                                                 Read Now
                                             </button>
                                             <button
-                                                onClick={() => onMangaClick(manga.mal_id.toString())}
+                                                onClick={() => onMangaClick((manga.id || manga.mal_id).toString())}
                                                 className="bg-white/10 backdrop-blur-md border border-white/20 text-white px-8 py-3.5 rounded-full font-bold hover:bg-white/20 transition-all duration-300 flex items-center gap-2"
                                             >
                                                 Detail <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>

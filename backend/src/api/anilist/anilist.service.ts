@@ -588,6 +588,7 @@ export const anilistService = {
     },
 
     async getMangaById(id: number) {
+        console.log('getMangaById called with:', id);
         const query = `
             query ($id: Int) {
                 Media(id: $id, type: MANGA) {
