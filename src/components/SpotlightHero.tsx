@@ -73,11 +73,11 @@ const SpotlightHero: React.FC<SpotlightHeroProps> = ({ animeList, onAnimeClick, 
                                 {/* Background Image */}
                                 <div className="absolute inset-0 z-0 select-none">
                                     <div
-                                        className="absolute inset-0 bg-no-repeat bg-cover bg-center"
+                                        className="absolute right-0 top-0 w-full md:w-[60%] h-full bg-no-repeat bg-cover bg-center"
                                         style={{
                                             backgroundImage: `url(${landscapeImage})`,
-                                            maskImage: 'linear-gradient(to right, transparent 0%, transparent 5%, black 60%)',
-                                            WebkitMaskImage: 'linear-gradient(to right, transparent 0%, transparent 5%, black 60%)'
+                                            maskImage: 'linear-gradient(90deg, transparent 0%, black 20%, black 100%)',
+                                            WebkitMaskImage: 'linear-gradient(90deg, transparent 0%, black 20%, black 100%)'
                                         }}
                                     />
                                     {/* Overlay */}

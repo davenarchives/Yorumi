@@ -28,9 +28,51 @@ const mapAnilistToManga = (item: any) => ({
 });
 
 export const mangaService = {
-    // Fetch top manga from AniList
+    // Fetch top manga from AniList (sorted by SCORE)
     async getTopManga(page: number = 1) {
         const res = await fetch(`${API_BASE}/anilist/top/manga?page=${page}`);
+        const data = await res.json();
+        return {
+            data: data.media?.map(mapAnilistToManga) || [],
+            pagination: {
+                last_visible_page: data.pageInfo?.lastPage || 1,
+                current_page: data.pageInfo?.currentPage || 1,
+                has_next_page: data.pageInfo?.hasNextPage || false
+            }
+        };
+    },
+
+    // Fetch trending manga from AniList (sorted by TRENDING)
+    async getTrendingManga(page: number = 1) {
+        const res = await fetch(`${API_BASE}/anilist/trending/manga?page=${page}`);
+        const data = await res.json();
+        return {
+            data: data.media?.map(mapAnilistToManga) || [],
+            pagination: {
+                last_visible_page: data.pageInfo?.lastPage || 1,
+                current_page: data.pageInfo?.currentPage || 1,
+                has_next_page: data.pageInfo?.hasNextPage || false
+            }
+        };
+    },
+
+    // Fetch all-time popular manga from AniList (sorted by POPULARITY)
+    async getPopularManga(page: number = 1) {
+        const res = await fetch(`${API_BASE}/anilist/popular/manga?page=${page}`);
+        const data = await res.json();
+        return {
+            data: data.media?.map(mapAnilistToManga) || [],
+            pagination: {
+                last_visible_page: data.pageInfo?.lastPage || 1,
+                current_page: data.pageInfo?.currentPage || 1,
+                has_next_page: data.pageInfo?.hasNextPage || false
+            }
+        };
+    },
+
+    // Fetch popular manhwa from AniList
+    async getPopularManhwa(page: number = 1) {
+        const res = await fetch(`${API_BASE}/anilist/top/manhwa?page=${page}`);
         const data = await res.json();
         return {
             data: data.media?.map(mapAnilistToManga) || [],

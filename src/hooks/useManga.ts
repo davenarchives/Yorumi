@@ -1,6 +1,8 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import type { Manga, MangaChapter, MangaPage } from '../types/manga';
 import { mangaService } from '../services/mangaService';
+
+export type MangaViewMode = 'default' | 'popular_manhwa' | 'all_time_popular' | 'top_100';
 
 export function useManga() {
     const [topManga, setTopManga] = useState<Manga[]>([]);
@@ -18,19 +20,44 @@ export function useManga() {
     const [chapterSearchQuery, setChapterSearchQuery] = useState('');
     const [zoomLevel, setZoomLevel] = useState(60);
 
-    const mangaIdCache = useRef(new Map<number, string>());
+    // View All state
+    const [viewMode, setViewMode] = useState<MangaViewMode>('default');
+    const [viewAllManga, setViewAllManga] = useState<Manga[]>([]);
+    const [viewAllLoading, setViewAllLoading] = useState(false);
+    const [viewAllPagination, setViewAllPagination] = useState({ currentPage: 1, lastPage: 1 });
+
+    const mangaIdCache = useRef(new Map<number | string, string>());
     const mangaChaptersCache = useRef(new Map<string, MangaChapter[]>());
     const chapterPagesCache = useRef(new Map<string, Promise<MangaPage[]>>());
 
-    // Fetch top manga
+    // Fetch manga (Hot Updates for grid)
     useEffect(() => {
-        const fetchTopManga = async () => {
+        const fetchManga = async () => {
             setMangaLoading(true);
             try {
-                const data = await mangaService.getTopManga(mangaPage);
+                // Fetch Hot Updates instead of generic Top Manga
+                const data = await mangaService.getHotUpdates();
                 if (data?.data) {
-                    setTopManga(data.data);
-                    setMangaLastPage(data.pagination?.last_visible_page || 1);
+                    // Map Hot Updates to Manga interface
+                    const hotUpdates = data.data.slice(0, 8).map((update: any) => ({
+                        mal_id: update.id, // String ID from scraper
+                        title: update.title,
+                        images: {
+                            jpg: {
+                                image_url: update.thumbnail,
+                                large_image_url: update.thumbnail
+                            }
+                        },
+                        score: 0, // Not available in simple update
+                        type: 'Manga',
+                        status: 'Publishing',
+                        chapters: parseInt(update.chapter) || 0,
+                        volumes: null,
+                        synopsis: 'Hot Update from MangaKatana',
+                    } as Manga));
+
+                    setTopManga(hotUpdates);
+                    setMangaLastPage(1); // One page for now
                 }
             } catch (err) {
                 console.error('Error fetching manga:', err);
@@ -38,8 +65,54 @@ export function useManga() {
                 setMangaLoading(false);
             }
         };
-        fetchTopManga();
+        fetchManga();
     }, [mangaPage]);
+
+    // View All fetch function
+    const fetchViewAll = useCallback(async (type: MangaViewMode, page: number) => {
+        setViewAllLoading(true);
+        try {
+            let result;
+            switch (type) {
+                case 'popular_manhwa':
+                    result = await mangaService.getPopularManhwa(page);
+                    break;
+                case 'all_time_popular':
+                    result = await mangaService.getPopularManga(page);
+                    break;
+                case 'top_100':
+                    result = await mangaService.getTopManga(page);
+                    break;
+                default:
+                    return;
+            }
+            setViewAllManga(result.data);
+            setViewAllPagination({
+                currentPage: result.pagination.current_page,
+                lastPage: result.pagination.last_visible_page
+            });
+        } catch (err) {
+            console.error('Error fetching view all manga:', err);
+        } finally {
+            setViewAllLoading(false);
+        }
+    }, []);
+
+    const openViewAll = useCallback((type: MangaViewMode) => {
+        setViewMode(type);
+        fetchViewAll(type, 1);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }, [fetchViewAll]);
+
+    const closeViewAll = useCallback(() => {
+        setViewMode('default');
+        setViewAllManga([]);
+    }, []);
+
+    const changeViewAllPage = useCallback((page: number) => {
+        fetchViewAll(viewMode, page);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }, [fetchViewAll, viewMode]);
 
     const handleMangaClick = async (manga: Manga) => {
         setSelectedManga(manga);
@@ -51,22 +124,34 @@ export function useManga() {
 
         try {
             let mangakatanaId: string | null = null;
-            // Search scraper for chapters using title
-            const searchData = await mangaService.searchMangaScraper(manga.title);
-            if (searchData.data && searchData.data.length > 0) {
-                const firstResult = searchData.data[0];
-                mangakatanaId = firstResult.id;
-                mangaIdCache.current.set(manga.mal_id, firstResult.id);
 
-                if (mangakatanaId) {
-                    if (mangaChaptersCache.current.has(mangakatanaId)) {
-                        setMangaChapters(mangaChaptersCache.current.get(mangakatanaId)!);
-                    } else {
-                        const chaptersData = await mangaService.getChapters(mangakatanaId);
-                        if (chaptersData?.chapters) {
-                            mangaChaptersCache.current.set(mangakatanaId, chaptersData.chapters);
-                            setMangaChapters(chaptersData.chapters);
-                        }
+            // Optimization: If ID is string, assume it's already a scraper ID (Hot Update)
+            if (typeof manga.mal_id === 'string') {
+                mangakatanaId = manga.mal_id;
+                mangaIdCache.current.set(manga.mal_id, mangakatanaId);
+            } else if (mangaIdCache.current.has(manga.mal_id)) {
+                // Check cache first
+                mangakatanaId = mangaIdCache.current.get(manga.mal_id)!;
+            }
+
+            if (!mangakatanaId) {
+                // Search scraper for chapters using title
+                const searchData = await mangaService.searchMangaScraper(manga.title);
+                if (searchData.data && searchData.data.length > 0) {
+                    const firstResult = searchData.data[0];
+                    mangakatanaId = firstResult.id;
+                    mangaIdCache.current.set(manga.mal_id, firstResult.id);
+                }
+            }
+
+            if (mangakatanaId) {
+                if (mangaChaptersCache.current.has(mangakatanaId)) {
+                    setMangaChapters(mangaChaptersCache.current.get(mangakatanaId)!);
+                } else {
+                    const chaptersData = await mangaService.getChapters(mangakatanaId);
+                    if (chaptersData?.chapters) {
+                        mangaChaptersCache.current.set(mangakatanaId, chaptersData.chapters);
+                        setMangaChapters(chaptersData.chapters);
                     }
                 }
             }
@@ -182,6 +267,11 @@ export function useManga() {
         mangaLoading,
         mangaPage,
         mangaLastPage,
+        // View All state
+        viewMode,
+        viewAllManga,
+        viewAllLoading,
+        viewAllPagination,
 
         // Actions
         setChapterSearchQuery,
@@ -194,5 +284,9 @@ export function useManga() {
         zoomIn,
         zoomOut,
         changeMangaPage,
+        // View All actions
+        openViewAll,
+        closeViewAll,
+        changeViewAllPage,
     };
 }

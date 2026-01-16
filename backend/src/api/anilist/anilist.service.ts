@@ -194,7 +194,7 @@ export const anilistService = {
                         lastPage
                         hasNextPage
                     }
-                    media(type: MANGA, sort: POPULARITY_DESC) {
+                    media(type: MANGA, sort: SCORE_DESC) {
                         ${MEDIA_FIELDS}
                     }
                 }
@@ -209,6 +209,93 @@ export const anilistService = {
             return response.data.data.Page;
         } catch (error) {
             console.error('Error fetching top manga:', error);
+            return { media: [], pageInfo: {} };
+        }
+    },
+
+    async getPopularManga(page: number = 1, perPage: number = 24) {
+        const query = `
+            query ($page: Int, $perPage: Int) {
+                Page(page: $page, perPage: $perPage) {
+                    pageInfo {
+                        total
+                        currentPage
+                        lastPage
+                        hasNextPage
+                    }
+                    media(type: MANGA, sort: POPULARITY_DESC) {
+                        ${MEDIA_FIELDS}
+                    }
+                }
+            }
+        `;
+
+        try {
+            const response = await axios.post(ANILIST_API_URL, {
+                query,
+                variables: { page, perPage }
+            });
+            return response.data.data.Page;
+        } catch (error) {
+            console.error('Error fetching popular manga:', error);
+            return { media: [], pageInfo: {} };
+        }
+    },
+
+    async getTrendingManga(page: number = 1, perPage: number = 10) {
+        const query = `
+            query ($page: Int, $perPage: Int) {
+                Page(page: $page, perPage: $perPage) {
+                    pageInfo {
+                        total
+                        currentPage
+                        lastPage
+                        hasNextPage
+                    }
+                    media(type: MANGA, sort: TRENDING_DESC) {
+                        ${MEDIA_FIELDS}
+                    }
+                }
+            }
+        `;
+
+        try {
+            const response = await axios.post(ANILIST_API_URL, {
+                query,
+                variables: { page, perPage }
+            });
+            return response.data.data.Page;
+        } catch (error) {
+            console.error('Error fetching trending manga:', error);
+            return { media: [], pageInfo: {} };
+        }
+    },
+
+    async getPopularManhwa(page: number = 1, perPage: number = 24) {
+        const query = `
+            query ($page: Int, $perPage: Int) {
+                Page(page: $page, perPage: $perPage) {
+                    pageInfo {
+                        total
+                        currentPage
+                        lastPage
+                        hasNextPage
+                    }
+                    media(type: MANGA, countryOfOrigin: "KR", sort: POPULARITY_DESC) {
+                        ${MEDIA_FIELDS}
+                    }
+                }
+            }
+        `;
+
+        try {
+            const response = await axios.post(ANILIST_API_URL, {
+                query,
+                variables: { page, perPage }
+            });
+            return response.data.data.Page;
+        } catch (error) {
+            console.error('Error fetching popular manhwa:', error);
             return { media: [], pageInfo: {} };
         }
     },

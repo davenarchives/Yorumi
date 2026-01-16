@@ -21,7 +21,7 @@ router.get('/top', async (req, res) => {
     }
 });
 
-// Get top/popular manga
+// Get top/popular manga (by SCORE)
 router.get('/top/manga', async (req, res) => {
     try {
         const page = req.query.page ? parseInt(req.query.page as string) : 1;
@@ -31,6 +31,34 @@ router.get('/top/manga', async (req, res) => {
         res.json(data);
     } catch (error) {
         console.error('Error in top manga route:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// Get all-time popular manga (by POPULARITY)
+router.get('/popular/manga', async (req, res) => {
+    try {
+        const page = req.query.page ? parseInt(req.query.page as string) : 1;
+        const perPage = req.query.limit ? parseInt(req.query.limit as string) : 24;
+
+        const data = await anilistService.getPopularManga(page, perPage);
+        res.json(data);
+    } catch (error) {
+        console.error('Error in popular manga route:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// Get popular manhwa
+router.get('/top/manhwa', async (req, res) => {
+    try {
+        const page = req.query.page ? parseInt(req.query.page as string) : 1;
+        const perPage = req.query.limit ? parseInt(req.query.limit as string) : 24;
+
+        const data = await anilistService.getPopularManhwa(page, perPage);
+        res.json(data);
+    } catch (error) {
+        console.error('Error in top manhwa route:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -45,6 +73,19 @@ router.get('/trending', async (req, res) => {
         res.json(data);
     } catch (error) {
         res.status(500).json({ error: 'Failed to fetch trending anime' });
+    }
+});
+
+// Get trending manga
+router.get('/trending/manga', async (req, res) => {
+    try {
+        const page = req.query.page ? parseInt(req.query.page as string) : 1;
+        const perPage = req.query.limit ? parseInt(req.query.limit as string) : 10;
+
+        const data = await anilistService.getTrendingManga(page, perPage);
+        res.json(data);
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to fetch trending manga' });
     }
 });
 

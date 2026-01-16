@@ -1,8 +1,13 @@
-import MangaCard from '../components/MangaCard';
-import Pagination from '../components/Pagination';
+import { ArrowLeft } from 'lucide-react';
 import LoadingSpinner from '../components/LoadingSpinner';
 import MangaSpotlight from '../components/MangaSpotlight';
+import PopularManhwa from '../components/PopularManhwa';
+import AllTimePopularManga from '../components/AllTimePopularManga';
+import Top100Manga from '../components/Top100Manga';
+import MangaCard from '../components/MangaCard';
+import Pagination from '../components/Pagination';
 import { useManga } from '../hooks/useManga';
+import type { Manga } from '../types/manga';
 
 export default function MangaPage() {
     const manga = useManga();
@@ -15,37 +20,48 @@ export default function MangaPage() {
         );
     }
 
-    // TODO: Create ReaderPage and MangaDetailsPage
-    const handleMangaClick = (item: any) => {
-        // navigate(`/manga/${item.mal_id}`);
-        // For now, since we haven't refactored MangaDetails fully, we might leave this as a TODO
-        // or just let the old modal logic stay if we imported the modal?
-        // But the goal is "No Modals".
-        console.log('Manga clicked', item);
-        alert('Manga details page coming soon!');
-    };
-
     const handleSpotlightClick = (mangaId: string) => {
-        // Handle click from spotlight (which provides MK ID)
-        // Since we don't have full manga object, we might redirect to a generic reader or details 
-        // using the ID. For now, matching the behavior of grid items is tricky because they use MAL ID.
-        // But our Hot Updates give us MK ID directly.
-
-        console.log('Spotlight clicked', mangaId);
+        console.log('Manga clicked', mangaId);
         alert(`Manga details page coming soon! (ID: ${mangaId})`);
     };
 
-    return (
-        <div className="min-h-screen pb-20">
-            {/* Spotlight Hero Section */}
-            <MangaSpotlight onMangaClick={handleSpotlightClick} />
+    const handleMangaClick = (item: Manga) => {
+        console.log('Manga clicked', item);
+        alert(`Manga details page coming soon! (ID: ${item.mal_id})`);
+    };
 
-            <div className="container mx-auto px-4 z-10 relative pt-8">
-                <h2 className="text-xl font-bold mb-6 text-white border-l-4 border-yorumi-main pl-3">Top Manga</h2>
-                {manga.topManga.length > 0 ? (
+    // Get the title for View All based on viewMode
+    const getViewAllTitle = () => {
+        switch (manga.viewMode) {
+            case 'popular_manhwa': return 'Popular Manhwa';
+            case 'all_time_popular': return 'All Time Popular';
+            case 'top_100': return 'Top 100 Manga';
+            default: return '';
+        }
+    };
+
+    // View All Mode - Shows full grid with pagination
+    if (manga.viewMode !== 'default') {
+        return (
+            <div className="pt-24 pb-12 px-8 min-h-screen">
+                <div className="flex items-center gap-4 mb-8">
+                    <button
+                        onClick={manga.closeViewAll}
+                        className="p-2 rounded-full bg-white/5 hover:bg-white/10 transition-colors"
+                    >
+                        <ArrowLeft className="w-5 h-5 text-white" />
+                    </button>
+                    <h2 className="text-2xl font-black text-white tracking-wide uppercase">{getViewAllTitle()}</h2>
+                </div>
+
+                {manga.viewAllLoading ? (
+                    <div className="flex items-center justify-center py-20">
+                        <LoadingSpinner size="lg" text="Loading..." />
+                    </div>
+                ) : (
                     <>
                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
-                            {manga.topManga.map((item) => (
+                            {manga.viewAllManga.map((item) => (
                                 <MangaCard
                                     key={item.mal_id}
                                     manga={item}
@@ -55,18 +71,40 @@ export default function MangaPage() {
                         </div>
 
                         <Pagination
-                            currentPage={manga.mangaPage}
-                            lastPage={manga.mangaLastPage}
-                            onPageChange={manga.changeMangaPage}
-                            isLoading={manga.mangaLoading}
+                            currentPage={manga.viewAllPagination.currentPage}
+                            lastPage={manga.viewAllPagination.lastPage}
+                            onPageChange={manga.changeViewAllPage}
+                            isLoading={manga.viewAllLoading}
                         />
                     </>
-                ) : (
-                    <div className="text-center text-gray-400 py-12">
-                        No manga found.
-                    </div>
                 )}
             </div>
+        );
+    }
+
+    // Default Mode - Shows carousels
+    return (
+        <div className="min-h-screen pb-20">
+            {/* Spotlight Hero Section */}
+            <MangaSpotlight onMangaClick={handleSpotlightClick} />
+
+            {/* Popular Manhwa Carousel */}
+            <PopularManhwa
+                onMangaClick={handleSpotlightClick}
+                onViewAll={() => manga.openViewAll('popular_manhwa')}
+            />
+
+            {/* All Time Popular Manga Carousel */}
+            <AllTimePopularManga
+                onMangaClick={handleSpotlightClick}
+                onViewAll={() => manga.openViewAll('all_time_popular')}
+            />
+
+            {/* Top 100 Manga Carousel (replaces Manga Catalog grid) */}
+            <Top100Manga
+                onMangaClick={handleSpotlightClick}
+                onViewAll={() => manga.openViewAll('top_100')}
+            />
         </div>
     );
 }

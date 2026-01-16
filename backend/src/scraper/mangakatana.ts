@@ -324,7 +324,7 @@ export async function getHotUpdates(): Promise<HotUpdate[]> {
 
             // Image
             const imgEl = $el.find('.wrap_img img');
-            const thumbnail = imgEl.attr('src') || imgEl.attr('data-src') || '';
+            const thumbnail = imgEl.attr('data-src') || imgEl.attr('src') || '';
 
             // Title
             const titleEl = $el.find('.title a');
