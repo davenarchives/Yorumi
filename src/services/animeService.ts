@@ -277,11 +277,44 @@ export const animeService = {
         return res.json();
     },
 
-    // Get random anime
+    // Get random anime (Client-side pool for speed)
     async getRandomAnime() {
-        const res = await fetch(`${API_BASE}/anilist/random`);
-        if (!res.ok) throw new Error('Failed to fetch random anime');
-        return res.json();
+        // If queue is empty or running low, trigger a refill if not already happening
+        if (randomAnimeQueue.length === 0) {
+            if (!refillPromise) {
+                refillPromise = (async () => {
+                    try {
+                        const res = await fetch(`${API_BASE}/anilist/random`);
+                        if (!res.ok) throw new Error('Failed to fetch random anime batch');
+                        const batch = await res.json();
+
+                        // Shuffle the batch
+                        for (let i = batch.length - 1; i > 0; i--) {
+                            const j = Math.floor(Math.random() * (i + 1));
+                            [batch[i], batch[j]] = [batch[j], batch[i]];
+                        }
+
+                        randomAnimeQueue.push(...batch);
+                    } catch (error) {
+                        console.error('Error replenishing random queue:', error);
+                        // Fallback if fetch fails
+                        randomAnimeQueue.push({ id: Math.floor(Math.random() * 50000) + 1 });
+                    } finally {
+                        refillPromise = null;
+                    }
+                })();
+            }
+
+            // Wait for the refill to complete
+            await refillPromise;
+        }
+
+        return randomAnimeQueue.pop() || { id: 1 };
     },
 
 };
+
+// Queue to store random anime IDs locally
+const randomAnimeQueue: { id: number }[] = [];
+// Singleton promise to prevent parallel refill requests (race condition fix)
+let refillPromise: Promise<void> | null = null;
