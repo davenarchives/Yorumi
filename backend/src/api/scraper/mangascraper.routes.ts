@@ -101,4 +101,18 @@ router.get('/hot-updates', async (req: Request, res: Response) => {
     }
 });
 
+/**
+ * Get Enriched Spotlight (AniList + MangaKatana Chapters)
+ * GET /api/manga/spotlight
+ */
+router.get('/spotlight', async (req: Request, res: Response) => {
+    try {
+        const spotlight = await mangaService.getEnrichedSpotlight();
+        res.json({ data: spotlight });
+    } catch (error) {
+        console.error('Spotlight error:', error);
+        res.status(500).json({ error: 'Failed to fetch spotlight' });
+    }
+});
+
 export default router;
