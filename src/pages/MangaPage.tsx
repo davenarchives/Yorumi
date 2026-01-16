@@ -43,7 +43,7 @@ export default function MangaPage() {
     // View All Mode - Shows full grid with pagination
     if (manga.viewMode !== 'default') {
         return (
-            <div className="pt-24 pb-12 px-8 min-h-screen">
+            <div className="container mx-auto px-4 pt-24 pb-12 min-h-screen">
                 <div className="flex items-center gap-4 mb-8">
                     <button
                         onClick={manga.closeViewAll}
