@@ -100,11 +100,10 @@ const MangaSpotlight: React.FC<MangaSpotlightProps> = ({ onMangaClick }) => {
     useEffect(() => {
         const fetchTrendingManga = async () => {
             try {
-                // Use getTrendingManga for trending data (TRENDING_DESC)
-                const { data } = await mangaService.getTrendingManga(1);
+                // Use enriched spotlight data (AniList + MangaKatana chapters)
+                const { data } = await mangaService.getEnrichedSpotlight();
                 if (data) {
-                    // Take top 8 for spotlight
-                    setMangas(data.slice(0, 8));
+                    setMangas(data);
                 }
             } catch (err) {
                 console.error('Failed to fetch trending manga for spotlight', err);
@@ -186,13 +185,25 @@ const MangaSpotlight: React.FC<MangaSpotlightProps> = ({ onMangaClick }) => {
                                                 {manga.score.toFixed(1)}
                                             </span>
 
-                                            <span className="flex items-center gap-1.5 bg-white/10 px-3 py-1.5 rounded-lg backdrop-blur-sm">
-                                                <span className={`w-2 h-2 rounded-full ${manga.status === 'Publishing' ? 'bg-green-500' : 'bg-gray-500'}`}></span>
-                                                {manga.chapters ? `${manga.chapters} Chapters` : manga.status}
-                                            </span>
+                                            {(manga.chapters || manga.volumes) ? (
+                                                <span className="bg-[#22c55e] text-white px-2.5 py-1 rounded text-xs font-bold flex items-center gap-1">
+                                                    <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M19 4H5a2 2 0 00-2 2v12a2 2 0 002 2h14a2 2 0 002-2V6a2 2 0 00-2-2zm-8 7H9.5v-.5h-2v3h2V13H11v2H6V9h5v2zm7 0h-1.5v-.5h-2v3h2V13H18v2h-5V9h5v2z" /></svg>
+                                                    {manga.chapters || manga.volumes}
+                                                </span>
+                                            ) : (
+                                                <span className="flex items-center gap-1.5 bg-white/10 px-3 py-1.5 rounded-lg backdrop-blur-sm">
+                                                    <span className={`w-2 h-2 rounded-full ${manga.status === 'RELEASING' || manga.status === 'Publishing' ? 'bg-green-500' : 'bg-gray-500'}`}></span>
+                                                    {manga.status === 'RELEASING' ? 'Releasing' : manga.status}
+                                                </span>
+                                            )}
 
-                                            <span className="bg-yorumi-accent/20 text-yorumi-accent px-3 py-1.5 rounded-lg text-xs font-bold border border-yorumi-accent/50">
-                                                {manga.type || 'Manga'}
+                                            <span className="bg-yorumi-accent/20 text-yorumi-accent px-3 py-1.5 rounded-lg text-xs font-bold border border-yorumi-accent/50 uppercase">
+                                                {manga.countryOfOrigin === 'KR'
+                                                    ? 'Manhwa'
+                                                    : manga.countryOfOrigin === 'CN'
+                                                        ? 'Manhua'
+                                                        : (manga.type || 'Manga')
+                                                }
                                             </span>
                                         </div>
 
