@@ -57,13 +57,13 @@ export default function Navbar({
         try {
             const result = await animeService.getRandomAnime();
             if (result && result.id) {
-                navigate(`/anime/${result.id}`);
+                navigate(`/anime/${result.id}`, { state: { fromRandom: true } });
             }
         } catch (error) {
             console.error('Failed to get random anime:', error);
             // Fallback to random ID
             const randomId = Math.floor(Math.random() * 50000) + 1;
-            navigate(`/anime/${randomId}`);
+            navigate(`/anime/${randomId}`, { state: { fromRandom: true } });
         } finally {
             setIsLoadingRandom(false);
         }
@@ -98,7 +98,7 @@ export default function Navbar({
                         placeholder="Search..."
                         value={searchQuery}
                         onChange={(e) => onSearchChange(e.target.value)}
-                        className={`w-full bg-[#1c1c1c] border border-transparent focus:border-white/10 rounded-md py-2 pl-10 text-sm text-white placeholder:text-gray-500 focus:outline-none focus:bg-[#252525] transition-all ${searchQuery ? 'pr-20' : 'pr-10'}`}
+                        className={`w-full h-9 bg-[#1c1c1c] border border-transparent focus:border-white/10 rounded-md pl-10 text-sm text-white placeholder:text-gray-500 focus:outline-none focus:bg-[#252525] transition-all ${searchQuery ? 'pr-20' : 'pr-10'}`}
                     />
                     <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
                         {searchQuery && (
@@ -123,38 +123,40 @@ export default function Navbar({
                     </div>
                 </form>
 
-                {/* Anime/Manga Toggle - Original Style */}
-                <div className="flex items-center bg-[#1c1c1c] rounded-lg p-1">
+                {/* Toggle & Random Controls Container */}
+                <div className="flex items-center gap-6">
+                    {/* ANI | MAN Toggle */}
+                    <div className="flex items-center rounded bg-[#1c1c1c] overflow-hidden border border-transparent hover:border-white/10 transition-colors">
+                        <button
+                            onClick={() => { onClearSearch(); onTabChange('anime'); }}
+                            className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-wider transition-all duration-300 ${activeTab === 'anime'
+                                ? 'bg-yorumi-accent text-[#0a0a0a]'
+                                : 'text-gray-500 hover:text-white'
+                                }`}
+                        >
+                            ANI
+                        </button>
+                        <button
+                            onClick={() => onTabChange('manga')}
+                            className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-wider transition-all duration-300 ${activeTab === 'manga'
+                                ? 'bg-yorumi-main text-white'
+                                : 'text-gray-500 hover:text-white'
+                                }`}
+                        >
+                            MAN
+                        </button>
+                    </div>
+
+                    {/* Random Button */}
                     <button
-                        onClick={() => { onClearSearch(); onTabChange('anime'); }}
-                        className={`px-6 py-1.5 rounded-md text-sm font-bold uppercase transition-all duration-300 ${activeTab === 'anime'
-                            ? 'bg-yorumi-accent text-yorumi-bg shadow-lg shadow-yorumi-accent/20'
-                            : 'text-gray-400 hover:text-white'
-                            }`}
+                        onClick={handleRandomAnime}
+                        disabled={isLoadingRandom}
+                        className="group flex items-center justify-center p-2 text-gray-500 hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="Random Anime"
                     >
-                        Anime
-                    </button>
-                    <button
-                        onClick={() => onTabChange('manga')}
-                        className={`px-6 py-1.5 rounded-md text-sm font-bold uppercase transition-all duration-300 ${activeTab === 'manga'
-                            ? 'bg-yorumi-main text-white shadow-lg shadow-yorumi-main/30'
-                            : 'text-gray-400 hover:text-white'
-                            }`}
-                    >
-                        Manga
+                        <Shuffle className={`w-5 h-5 group-hover:text-yorumi-accent transition-all duration-300 ${isLoadingRandom ? 'animate-spin' : 'group-hover:rotate-180'}`} />
                     </button>
                 </div>
-
-                {/* Randomize Button */}
-                <button
-                    onClick={handleRandomAnime}
-                    disabled={isLoadingRandom}
-                    className="flex items-center gap-2 px-4 py-1.5 rounded-md bg-white/5 hover:bg-yorumi-accent hover:text-[#0a0a0a] text-gray-400 transition-all duration-300 text-sm font-bold uppercase disabled:opacity-50 disabled:cursor-not-allowed group"
-                    title="Random Anime"
-                >
-                    <Shuffle className={`w-4 h-4 ${isLoadingRandom ? 'animate-spin' : 'group-hover:rotate-180 transition-transform duration-500'}`} />
-                    {isLoadingRandom ? 'Loading...' : 'Randomize'}
-                </button>
             </div>
 
             {/* RIGHT: Login */}
