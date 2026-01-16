@@ -4,7 +4,6 @@ import { getBrowserInstance } from '../utils/browser';
 
 const BASE_URL = 'https://animepahe.si';
 const API_URL = 'https://animepahe.si/api';
-const DDOS_WAIT = 10000; // 10 seconds for DDoS-Guard
 
 export interface AnimeSearchResult {
     id: string;
@@ -121,6 +120,17 @@ export class AnimePaheScraper {
         try {
             const apiUrl = `${API_URL}?m=release&id=${animeSessionId}&sort=episode_asc&page=${pageNum}`;
             console.log(`Fetching episodes: ${apiUrl}`);
+
+            // Optimize: Block heavy resources
+            await page.setRequestInterception(true);
+            page.on('request', (req) => {
+                const resourceType = req.resourceType();
+                if (['image', 'stylesheet', 'font', 'media'].includes(resourceType)) {
+                    req.abort();
+                } else {
+                    req.continue();
+                }
+            });
 
             // Direct navigation
             await page.goto(apiUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });

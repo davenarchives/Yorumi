@@ -144,7 +144,13 @@ export default function WatchPage() {
         );
     }
 
-    if (!selectedAnime) return <LoadingSpinner />;
+    if (!selectedAnime) {
+        return (
+            <div className="flex flex-col items-center justify-center w-full h-screen bg-[#0a0a0a] text-white pt-[72px]">
+                <LoadingSpinner />
+            </div>
+        );
+    }
 
     // Use any cast to avoid type errors with mismatched interface if needed
     // Use any cast to avoid type errors with mismatched interface if needed
@@ -264,7 +270,7 @@ export default function WatchPage() {
                                                         </span>
                                                         {isCurrent && (
                                                             <span className="w-8 h-8 rounded-full bg-yellow-500 flex items-center justify-center">
-                                                                <svg className="w-4 h-4 text-black ml-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
+                                                                <svg className="w-4 h-4 text-black" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
                                                             </span>
                                                         )}
                                                     </div>

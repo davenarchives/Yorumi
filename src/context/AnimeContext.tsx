@@ -410,6 +410,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
         // Reset previous anime's episodes and scraper session
         setEpisodes([]);
         setScraperSession(null);
+        setError(null);
 
         let currentAnime = anime;
 
@@ -429,6 +430,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
             }
         } catch (err) {
             console.error('Failed to fetch details', err);
+            setError('Failed to load anime details');
         } finally {
             setDetailsLoading(false); // Stop loading regardless of success
         }
