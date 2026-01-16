@@ -24,7 +24,8 @@ const mapAnilistToManga = (item: any) => ({
         from: item.startDate ? `${item.startDate.year}-${item.startDate.month}-${item.startDate.day}` : undefined,
         to: item.endDate ? `${item.endDate.year}-${item.endDate.month}-${item.endDate.day}` : undefined,
         string: item.startDate?.year ? `${item.startDate.year}` : undefined
-    }
+    },
+    countryOfOrigin: item.countryOfOrigin
 });
 
 export const mangaService = {
@@ -116,9 +117,16 @@ export const mangaService = {
         return res.json();
     },
 
-    // Get Hot Updates from MangaKatana
     async getHotUpdates() {
         const res = await fetch(`${API_BASE}/manga/hot-updates`);
         return res.json();
+    },
+
+    async getEnrichedSpotlight() {
+        const res = await fetch(`${API_BASE}/manga/spotlight`);
+        const data = await res.json();
+        return {
+            data: data.data?.map(mapAnilistToManga) || []
+        };
     },
 };
