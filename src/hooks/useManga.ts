@@ -221,46 +221,119 @@ export function useManga() {
 
                         const searchData = await mangaService.searchMangaScraper(normalizedTitle);
 
-                        if (searchData.data) {
+                        if (searchData.data && searchData.data.length > 0) {
                             console.log(`[useManga] Search "${normalizedTitle}" returned ${searchData.data.length} results`);
 
-                            if (searchData.data.length > 0) {
-                                // Simple matching: check if result title matches our search
-                                for (const result of searchData.data) {
-                                    const resultTitle = (result.title || '').toLowerCase();
-                                    const normalizedSearch = normalizedTitle.toLowerCase();
-                                    const searchWords = extractWords(normalizedTitle);
+                            const candidates = searchData.data;
 
-                                    // Check if at least 1 key word matches
-                                    const matchingWords = searchWords.filter(w => resultTitle.includes(w));
+                            // Parse chapter counts and sort candidates by chapter count (Desc)
+                            const sortedCandidates = candidates.map((c: any) => {
+                                let count = 0;
+                                if (c.latestChapter) {
+                                    const match = c.latestChapter.match(/(\d+[\.]?\d*)/);
+                                    if (match) count = parseFloat(match[1]);
+                                }
+                                return { ...c, chapterCount: count };
+                            }).sort((a: any, b: any) => b.chapterCount - a.chapterCount);
 
-                                    // Also check if the result title contains most of the search query or vice versa
-                                    const directMatch = resultTitle.includes(normalizedSearch.substring(0, 15)) ||
-                                        normalizedSearch.includes(resultTitle.substring(0, 15));
+                            console.log(`[useManga] Checking ${sortedCandidates.length} candidates for query: "${normalizedTitle}"`);
+                            sortedCandidates.forEach((c: any) => console.log(` - Candidate: "${c.title}" (Ch: ${c.chapterCount}, ID: ${c.id})`));
 
-                                    // REVERSE SYNONYM MATCH: Check if the result title matches ANY of our known synonyms
-                                    // This handles cases where search "Title A" returns "Title B", and "Title B" is a known synonym
-                                    const isSynonymMatch = uniqueTitles.some(t => {
-                                        const synthNorm = t.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, '').trim();
-                                        // Skip short synonyms to avoid false positives
-                                        if (synthNorm.length < 2) return false;
+                            // 0. EXCLUSION FILTER: Remove "Novel" unless query asks for it
+                            const queryHasNovel = normalizedTitle.toLowerCase().includes('novel');
+                            const filteredCandidates = sortedCandidates.filter((c: any) => {
+                                const t = (c.title || '').toLowerCase();
+                                if (!queryHasNovel && t.includes('novel')) return false;
+                                return true;
+                            });
 
-                                        const resNorm = resultTitle.replace(/[^\p{L}\p{N}\s]/gu, '');
-                                        // Check if result contains the synonym or vice versa
-                                        return resNorm.includes(synthNorm) || synthNorm.includes(resNorm);
-                                    });
+                            if (filteredCandidates.length === 0) continue;
 
-                                    // Accept match if: 
-                                    // 1. 2+ words match
-                                    // 2. 1 word + direct match
-                                    // 3. Direct substring match
-                                    // 4. Matches one of our known synonyms
-                                    if (matchingWords.length >= 2 || (matchingWords.length >= 1 && directMatch) || directMatch || isSynonymMatch) {
+                            // PASS 0: GLOBAL SYNONYM MATCH (Highest Priority)
+                            // Check if candidate matches ANY of our known titles/synonyms, not just the search query
+                            const synonymMatch = filteredCandidates.find((c: any) => {
+                                const cTitle = (c.title || '').toLowerCase()
+                                    .replace(/['\u2019]s\b/gi, '')
+                                    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+                                    .replace(/\s+/g, ' ')
+                                    .trim();
+
+                                // Check against ALL uniqueTitles
+                                return uniqueTitles.some(knownTitle => {
+                                    const kTitle = knownTitle.toLowerCase()
+                                        .replace(/['\u2019]s\b/gi, '')
+                                        .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+                                        .replace(/\s+/g, ' ')
+                                        .trim();
+                                    return cTitle === kTitle || cTitle.startsWith(kTitle) || kTitle.startsWith(cTitle);
+                                });
+                            });
+
+                            if (synonymMatch) {
+                                bestMatch = { id: synonymMatch.id, title: synonymMatch.title };
+                                console.log(`[useManga] Found SYNONYM match: ${bestMatch.title}`);
+                                break;
+                            }
+
+                            // PASS 1: EXACT MATCH (Normalization insensitive)
+                            const exactMatch = filteredCandidates.find((c: any) => {
+                                const t = (c.title || '').toLowerCase()
+                                    .replace(/['\u2019]s\b/gi, '') // Normalize possessives
+                                    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+                                    .replace(/\s+/g, ' ')
+                                    .trim();
+                                return t === normalizedTitle.toLowerCase();
+                            });
+
+                            if (exactMatch) {
+                                bestMatch = { id: exactMatch.id, title: exactMatch.title };
+                                console.log(`[useManga] Found EXACT match: ${bestMatch.title}`);
+                                break;
+                            }
+
+                            // PASS 2: STRONG CONTAINMENT (Query is full prefix or clearly contained)
+                            // e.g. Query: "Solo Leveling" -> Match: "Solo Leveling (Manhwa)"
+                            const containmentMatch = filteredCandidates.find((c: any) => {
+                                const t = (c.title || '').toLowerCase();
+                                const q = normalizedTitle.toLowerCase();
+                                // Check if title starts with query (very strong signal)
+                                return t.startsWith(q);
+                            });
+
+                            if (containmentMatch) {
+                                bestMatch = { id: containmentMatch.id, title: containmentMatch.title };
+                                console.log(`[useManga] Found CONTAINMENT match: ${bestMatch.title}`);
+                                break;
+                            }
+
+                            // PASS 3: FUZZY WORD MATCH (Fallback)
+                            // Require a high percentage of word overlap
+                            for (const result of filteredCandidates) {
+                                const resultTitle = (result.title || '').toLowerCase();
+                                const searchWords = extractWords(normalizedTitle);
+                                const resultWords = extractWords(resultTitle);
+
+                                if (searchWords.length === 0) continue;
+
+                                const matchingWords = searchWords.filter(w => resultTitle.includes(w));
+                                const matchRatio = matchingWords.length / searchWords.length;
+
+                                // If query is short (1-2 words), require 100% match of those words
+                                // If query is long, require at least 70%
+                                const threshold = searchWords.length <= 2 ? 1.0 : 0.7;
+
+                                if (matchRatio >= threshold && resultWords.length > 0) {
+                                    // Reverse check: don't match if result has WAY more words (prevent generic matches)
+                                    // e.g. "Bleach" shouldn't match "Clorox Bleach 1000 Year War Arc" (silly example, but you get it)
+                                    if (resultWords.length < searchWords.length * 2.5) {
                                         bestMatch = { id: result.id, title: result.title };
+                                        console.log(`[useManga] Found FUZZY match: ${bestMatch.title} (${Math.round(matchRatio * 100)}%)`);
                                         break;
                                     }
                                 }
                             }
+
+                            if (bestMatch) break;
                         }
                     } catch (e) {
                         // Ignore search errors for individual titles

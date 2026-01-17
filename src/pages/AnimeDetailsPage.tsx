@@ -117,7 +117,7 @@ export default function AnimeDetailsPage() {
     return (
         <div className="min-h-screen bg-[#0a0a0a] pb-20 fade-in animate-in duration-300">
             {/* Banner Section */}
-            <div className="relative h-[50vh] w-full">
+            <div className="relative h-[40vh] md:h-[50vh] w-full">
                 <div className="absolute inset-0">
                     <img
                         src={bannerImage}
@@ -136,29 +136,29 @@ export default function AnimeDetailsPage() {
                             navigate(-1);
                         }
                     }}
-                    className="absolute top-24 left-6 z-50 p-3 bg-black/50 hover:bg-white/20 rounded-full backdrop-blur-sm transition-colors text-white"
+                    className="absolute top-20 md:top-24 left-4 md:left-6 z-50 p-3 bg-black/50 hover:bg-white/20 rounded-full backdrop-blur-sm transition-colors text-white"
                 >
                     <ArrowLeft className="w-6 h-6" />
                 </button>
             </div>
 
             {/* Content Section */}
-            <div className="container mx-auto px-6 -mt-32 relative z-10">
-                <div className="flex flex-col md:flex-row gap-8">
+            <div className="container mx-auto px-4 md:px-6 -mt-24 md:-mt-32 relative z-10">
+                <div className="flex flex-col md:flex-row gap-6 md:gap-8">
                     {/* Portrait Image */}
-                    <div className="flex-shrink-0 mx-auto md:mx-0 w-64 md:w-72">
-                        <div className="rounded-xl overflow-hidden shadow-2xl shadow-black/50">
+                    <div className="flex-shrink-0 mx-auto md:mx-0 w-48 sm:w-64 md:w-72">
+                        <div className="rounded-xl overflow-hidden shadow-2xl shadow-black/50 aspect-[2/3]">
                             <img
                                 src={selectedAnime.images.jpg.large_image_url}
                                 alt={selectedAnime.title}
-                                className="w-full h-full object-cover aspect-[2/3]"
+                                className="w-full h-full object-cover"
                             />
                         </div>
                     </div>
 
                     {/* Details */}
-                    <div className="flex-1 pt-4 md:pt-8 text-center md:text-left space-y-4">
-                        <h1 className="text-3xl md:text-4xl lg:text-5xl font-black text-white leading-tight">
+                    <div className="flex-1 pt-2 md:pt-8 text-center md:text-left space-y-4">
+                        <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-black text-white leading-tight">
                             {selectedAnime.title}
                         </h1>
 

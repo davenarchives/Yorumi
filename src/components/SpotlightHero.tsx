@@ -86,20 +86,20 @@ const SpotlightHero: React.FC<SpotlightHeroProps> = ({ animeList, onAnimeClick, 
                                 </div>
 
                                 {/* Content */}
-                                <div className="absolute inset-0 flex items-center px-8 md:px-14 pt-32 md:pt-48 pb-8 md:pb-14 z-10 pointer-events-none">
-                                    <div className="w-full md:w-2/3 lg:w-1/2 pointer-events-auto pr-4 select-text">
-                                        <div className="text-[#d886ff] font-bold tracking-wider text-base mb-3 select-none">
+                                <div className="absolute inset-0 flex items-center px-4 md:px-14 pt-20 md:pt-48 pb-20 md:pb-14 z-10 pointer-events-none">
+                                    <div className="w-full md:w-2/3 lg:w-1/2 pointer-events-auto pr-0 md:pr-4 select-text flex flex-col justify-center h-full">
+                                        <div className="text-[#d886ff] font-bold tracking-wider text-sm md:text-base mb-2 md:mb-3 select-none">
                                             #{index + 1} Spotlight
                                         </div>
                                         {/* Dynamic font size based on title length to ensure it fits and isn't truncated */}
                                         <h1 className={`${anime.title.length > 50 ? 'text-xl md:text-2xl lg:text-3xl' :
                                             anime.title.length > 30 ? 'text-2xl md:text-3xl lg:text-4xl' :
-                                                'text-2xl md:text-4xl lg:text-5xl'
-                                            } font-black text-white mb-4 leading-[1.1] drop-shadow-lg select-none`}>
+                                                'text-3xl md:text-4xl lg:text-5xl'
+                                            } font-black text-white mb-3 md:mb-4 leading-[1.1] drop-shadow-lg select-none line-clamp-2 md:line-clamp-3`}>
                                             {anime.title}
                                         </h1>
 
-                                        <div className="flex items-center flex-wrap gap-5 text-sm text-white mb-8 font-medium select-none">
+                                        <div className="flex items-center flex-wrap gap-x-4 gap-y-2 text-xs md:text-sm text-white mb-4 md:mb-8 font-medium select-none">
                                             <span className="flex items-center gap-1.5">
                                                 <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
                                                 {anime.type || 'TV'}
@@ -132,38 +132,31 @@ const SpotlightHero: React.FC<SpotlightHeroProps> = ({ animeList, onAnimeClick, 
                                                         {anime.score.toFixed(1)}
                                                     </span>
                                                 )}
-
-                                                {/* Age Rating (e.g. R-17+) - Optional but nice to have if available */}
-                                                {anime.rating && anime.rating !== 'Unknown' && (
-                                                    <span className="bg-white/10 text-gray-300 border border-white/10 px-2 py-0.5 rounded-[4px] text-xs font-medium ml-1">
-                                                        {anime.rating.split(' ')[0]}
-                                                    </span>
-                                                )}
                                             </div>
                                         </div>
 
-                                        <p className="text-gray-300 mb-10 line-clamp-3 text-base leading-relaxed max-w-xl pr-12 select-none">
+                                        <p className="text-gray-300 mb-6 md:mb-10 line-clamp-3 md:line-clamp-4 text-sm md:text-base leading-relaxed max-w-xl pr-0 md:pr-12 select-none">
                                             {anime.synopsis || "No synopsis available."}
                                         </p>
-                                    </div>
 
-                                    {/* Buttons - Absolute Positioned for consistency */}
-                                    <div className="absolute bottom-12 left-8 md:left-14 flex gap-4 pointer-events-auto z-20">
-                                        <button
-                                            onClick={() => onWatchClick(anime)}
-                                            className="bg-yorumi-accent text-yorumi-bg px-8 py-3.5 rounded-full font-bold hover:bg-white transition-all duration-300 transform hover:scale-105 flex items-center gap-3 shadow-[0_0_20px_rgba(253,200,73,0.3)] hover:shadow-[0_0_30px_rgba(253,200,73,0.6)]"
-                                        >
-                                            <div className="bg-yorumi-bg text-white rounded-full p-1.5 -ml-2">
-                                                <svg className="w-3 h-3 ml-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
-                                            </div>
-                                            Watch Now
-                                        </button>
-                                        <button
-                                            onClick={() => onAnimeClick(anime)}
-                                            className="bg-white/10 backdrop-blur-md border border-white/20 text-white px-8 py-3.5 rounded-full font-bold hover:bg-white/20 transition-all duration-300 flex items-center gap-2"
-                                        >
-                                            Detail <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
-                                        </button>
+                                        {/* Buttons - In flow */}
+                                        <div className="flex gap-4 pointer-events-auto z-20">
+                                            <button
+                                                onClick={() => onWatchClick(anime)}
+                                                className="bg-yorumi-accent text-yorumi-bg px-6 md:px-8 py-3 md:py-3.5 rounded-full font-bold hover:bg-white transition-all duration-300 transform hover:scale-105 flex items-center gap-3 shadow-[0_0_20px_rgba(253,200,73,0.3)] hover:shadow-[0_0_30px_rgba(253,200,73,0.6)] text-sm md:text-base"
+                                            >
+                                                <div className="bg-yorumi-bg text-white rounded-full p-1.5 -ml-2">
+                                                    <svg className="w-3 h-3 ml-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
+                                                </div>
+                                                Watch Now
+                                            </button>
+                                            <button
+                                                onClick={() => onAnimeClick(anime)}
+                                                className="bg-white/10 backdrop-blur-md border border-white/20 text-white px-6 md:px-8 py-3 md:py-3.5 rounded-full font-bold hover:bg-white/20 transition-all duration-300 flex items-center gap-2 text-sm md:text-base"
+                                            >
+                                                Detail <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                             </div>

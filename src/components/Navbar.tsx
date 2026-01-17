@@ -29,6 +29,8 @@ export default function Navbar({
     const [isScrolled, setIsScrolled] = useState(false);
     const [isLoadingRandom, setIsLoadingRandom] = useState(false);
 
+    const [showMobileSearch, setShowMobileSearch] = useState(false);
+
     // Handle scroll for transparent navbar
     useEffect(() => {
         const handleScroll = () => {
@@ -44,12 +46,19 @@ export default function Navbar({
             if ((e.key === '/' || (e.ctrlKey && e.key === 'k')) && document.activeElement !== searchInputRef.current) {
                 e.preventDefault();
                 searchInputRef.current?.focus();
+                // If on mobile and search is hidden, show it
+                if (window.innerWidth < 768) {
+                    setShowMobileSearch(true);
+                }
+            }
+            if (e.key === 'Escape' && showMobileSearch) {
+                setShowMobileSearch(false);
             }
         };
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, []);
+    }, [showMobileSearch]);
 
     // Random handler
     const handleRandom = async () => {
@@ -78,107 +87,174 @@ export default function Navbar({
     };
 
     return (
-        <nav className={`fixed top-0 left-0 right-0 z-[100] flex items-center justify-between px-8 transition-colors duration-500 ${isScrolled ? 'bg-[#0a0a0a]/95 backdrop-blur-md border-b border-white/5 py-3' : 'bg-gradient-to-b from-black via-black/60 to-transparent border-transparent py-4'
+        <nav className={`fixed top-0 left-0 right-0 z-[100] transition-all duration-500 ${isScrolled ? 'bg-[#0a0a0a]/95 backdrop-blur-md border-b border-white/5 py-3' : 'bg-gradient-to-b from-black via-black/60 to-transparent border-transparent py-4'
             }`}>
-            {/* LEFT: Logo + Search + Toggle + Random */}
-            <div className="flex items-center gap-6">
-                {/* Logo */}
-                <div
-                    onClick={onLogoClick || onClearSearch}
-                    className="flex items-center cursor-pointer hover:opacity-90 transition-opacity select-none shrink-0"
-                    role="button"
-                    tabIndex={0}
-                >
-                    <span className="text-2xl font-black text-white tracking-tighter">YORU</span>
-                    <span className="text-2xl font-black text-yorumi-accent tracking-tighter">MI</span>
+            <div className="px-4 md:px-8 flex items-center justify-between">
+                {/* LEFT: Logo + Search + Toggle + Random */}
+                <div className="flex items-center gap-4 md:gap-6">
+                    {/* Logo */}
+                    <div
+                        onClick={onLogoClick || onClearSearch}
+                        className="flex items-center cursor-pointer hover:opacity-90 transition-opacity select-none shrink-0"
+                        role="button"
+                        tabIndex={0}
+                    >
+                        <span className="text-xl md:text-2xl font-black text-white tracking-tighter">YORU</span>
+                        <span className="text-xl md:text-2xl font-black text-yorumi-accent tracking-tighter">MI</span>
+                    </div>
+
+                    {/* Search Bar (Desktop) */}
+                    <form onSubmit={onSearchSubmit} className="relative group w-full max-w-xs hidden md:block">
+                        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-white transition-colors">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+                            </svg>
+                        </div>
+                        <input
+                            ref={searchInputRef}
+                            type="text"
+                            placeholder="Search..."
+                            value={searchQuery}
+                            onChange={(e) => onSearchChange(e.target.value)}
+                            className={`w-full h-9 bg-[#1c1c1c] border border-transparent focus:border-white/10 rounded-md pl-10 text-sm text-white placeholder:text-gray-500 focus:outline-none focus:bg-[#252525] transition-all ${searchQuery ? 'pr-20' : 'pr-10'}`}
+                        />
+                        <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                            {searchQuery && (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        onClearSearch();
+                                        searchInputRef.current?.focus();
+                                    }}
+                                    className="text-gray-500 hover:text-white transition-colors p-1"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                                        <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                                    </svg>
+                                </button>
+                            )}
+                            <div className="pointer-events-none flex items-center">
+                                <span className="bg-white/10 text-gray-400 text-xs px-1.5 py-0.5 rounded border border-white/10 font-mono leading-none flex items-center justify-center">
+                                    /
+                                </span>
+                            </div>
+                        </div>
+                    </form>
+
+                    {/* Toggle & Random Controls Container */}
+                    <div className="hidden md:flex items-center gap-6">
+                        {/* ANI | MAN Toggle */}
+                        <div className="flex items-center rounded bg-[#1c1c1c] overflow-hidden border border-transparent hover:border-white/10 transition-colors">
+                            <button
+                                onClick={() => { onClearSearch(); onTabChange('anime'); }}
+                                className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-wider transition-all duration-300 ${activeTab === 'anime'
+                                    ? 'bg-yorumi-accent text-[#0a0a0a]'
+                                    : 'text-gray-500 hover:text-white'
+                                    }`}
+                            >
+                                ANI
+                            </button>
+                            <button
+                                onClick={() => onTabChange('manga')}
+                                className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-wider transition-all duration-300 ${activeTab === 'manga'
+                                    ? 'bg-yorumi-main text-white'
+                                    : 'text-gray-500 hover:text-white'
+                                    }`}
+                            >
+                                MAN
+                            </button>
+                        </div>
+
+                        {/* Random Button */}
+                        <button
+                            onClick={handleRandom}
+                            disabled={isLoadingRandom}
+                            className="group flex items-center justify-center p-2 text-gray-500 hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            title="Random Anime"
+                        >
+                            <Shuffle className={`w-5 h-5 group-hover:text-yorumi-accent transition-all duration-300 ${isLoadingRandom ? 'animate-spin' : 'group-hover:rotate-180'}`} />
+                        </button>
+                    </div>
                 </div>
 
-                {/* Search Bar */}
-                <form onSubmit={onSearchSubmit} className="relative group w-full max-w-xs hidden md:block">
-                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-white transition-colors">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
-                        </svg>
-                    </div>
-                    <input
-                        ref={searchInputRef}
-                        type="text"
-                        placeholder="Search..."
-                        value={searchQuery}
-                        onChange={(e) => onSearchChange(e.target.value)}
-                        className={`w-full h-9 bg-[#1c1c1c] border border-transparent focus:border-white/10 rounded-md pl-10 text-sm text-white placeholder:text-gray-500 focus:outline-none focus:bg-[#252525] transition-all ${searchQuery ? 'pr-20' : 'pr-10'}`}
-                    />
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
-                        {searchQuery && (
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    onClearSearch();
-                                    searchInputRef.current?.focus();
-                                }}
-                                className="text-gray-500 hover:text-white transition-colors p-1"
-                            >
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                                    <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-                                </svg>
-                            </button>
-                        )}
-                        <div className="pointer-events-none flex items-center">
-                            <span className="bg-white/10 text-gray-400 text-xs px-1.5 py-0.5 rounded border border-white/10 font-mono leading-none flex items-center justify-center">
-                                /
-                            </span>
-                        </div>
-                    </div>
-                </form>
-
-                {/* Toggle & Random Controls Container */}
-                <div className="flex items-center gap-6">
-                    {/* ANI | MAN Toggle */}
-                    <div className="flex items-center rounded bg-[#1c1c1c] overflow-hidden border border-transparent hover:border-white/10 transition-colors">
-                        <button
-                            onClick={() => { onClearSearch(); onTabChange('anime'); }}
-                            className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-wider transition-all duration-300 ${activeTab === 'anime'
-                                ? 'bg-yorumi-accent text-[#0a0a0a]'
-                                : 'text-gray-500 hover:text-white'
-                                }`}
-                        >
-                            ANI
-                        </button>
-                        <button
-                            onClick={() => onTabChange('manga')}
-                            className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-wider transition-all duration-300 ${activeTab === 'manga'
-                                ? 'bg-yorumi-main text-white'
-                                : 'text-gray-500 hover:text-white'
-                                }`}
-                        >
-                            MAN
-                        </button>
-                    </div>
-
-                    {/* Random Button */}
+                {/* RIGHT: Login + Mobile Controls */}
+                <div className="flex items-center justify-end gap-2 md:gap-4 shrink-0">
+                    {/* Mobile Search Icon */}
                     <button
-                        onClick={handleRandom}
-                        disabled={isLoadingRandom}
-                        className="group flex items-center justify-center p-2 text-gray-500 hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        title="Random Anime"
+                        onClick={() => setShowMobileSearch(!showMobileSearch)}
+                        className="md:hidden text-white p-2 hover:bg-white/10 rounded-full transition-colors"
                     >
-                        <Shuffle className={`w-5 h-5 group-hover:text-yorumi-accent transition-all duration-300 ${isLoadingRandom ? 'animate-spin' : 'group-hover:rotate-180'}`} />
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+                            {showMobileSearch ? (
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                            ) : (
+                                <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+                            )}
+                        </svg>
+                    </button>
+
+                    <button className="bg-white/10 hover:bg-white/20 text-white border border-white/5 font-bold uppercase text-[10px] md:text-xs tracking-wider px-4 md:px-6 py-2 md:py-2.5 rounded transition-colors">
+                        Login
                     </button>
                 </div>
             </div>
 
-            {/* RIGHT: Login */}
-            <div className="flex items-center justify-end gap-4 shrink-0">
-                {/* Mobile Search Icon (only visible on small screens) */}
-                <button className="md:hidden text-white p-2">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
-                    </svg>
-                </button>
+            {/* Mobile Search Bar & Controls Overlay */}
+            <div className={`
+                md:hidden overflow-hidden transition-all duration-300 ease-in-out
+                ${showMobileSearch ? 'max-h-40 opacity-100 border-t border-white/5 bg-[#0a0a0a]/95 backdrop-blur-md' : 'max-h-0 opacity-0'}
+            `}>
+                <div className="p-4 space-y-4">
+                    <form onSubmit={(e) => { onSearchSubmit(e); setShowMobileSearch(false); }} className="relative group w-full">
+                        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+                            </svg>
+                        </div>
+                        <input
+                            type="text"
+                            placeholder="Search..."
+                            value={searchQuery}
+                            onChange={(e) => onSearchChange(e.target.value)}
+                            className="w-full h-10 bg-[#1c1c1c] border border-transparent focus:border-white/10 rounded-md pl-10 text-sm text-white placeholder:text-gray-500 focus:outline-none focus:bg-[#252525] transition-all"
+                            autoFocus={showMobileSearch}
+                        />
+                    </form>
 
-                <button className="bg-white/10 hover:bg-white/20 text-white border border-white/5 font-bold uppercase text-xs tracking-wider px-6 py-2.5 rounded transition-colors">
-                    Login
-                </button>
+                    <div className="flex items-center justify-between">
+                        {/* Mobile ANI | MAN Toggle */}
+                        <div className="flex items-center rounded bg-[#1c1c1c] overflow-hidden border border-transparent">
+                            <button
+                                onClick={() => { onClearSearch(); onTabChange('anime'); setShowMobileSearch(false); }}
+                                className={`px-4 py-2 text-xs font-black uppercase tracking-wider transition-all ${activeTab === 'anime'
+                                    ? 'bg-yorumi-accent text-[#0a0a0a]'
+                                    : 'text-gray-500'
+                                    }`}
+                            >
+                                Anime
+                            </button>
+                            <button
+                                onClick={() => { onTabChange('manga'); setShowMobileSearch(false); }}
+                                className={`px-4 py-2 text-xs font-black uppercase tracking-wider transition-all ${activeTab === 'manga'
+                                    ? 'bg-yorumi-main text-white'
+                                    : 'text-gray-500'
+                                    }`}
+                            >
+                                Manga
+                            </button>
+                        </div>
+
+                        {/* Mobile Random Button */}
+                        <button
+                            onClick={() => { handleRandom(); setShowMobileSearch(false); }}
+                            disabled={isLoadingRandom}
+                            className="flex items-center gap-2 px-3 py-1.5 text-xs font-bold text-gray-400 hover:text-white bg-[#1c1c1c] rounded border border-transparent hover:border-white/10 transition-all"
+                        >
+                            <Shuffle className={`w-3.5 h-3.5 ${isLoadingRandom ? 'animate-spin' : ''}`} />
+                            Random
+                        </button>
+                    </div>
+                </div>
             </div>
         </nav>
     );

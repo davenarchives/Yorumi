@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
     ZoomIn,
@@ -51,6 +51,31 @@ export default function MangaReaderModal({
 }: MangaReaderModalProps) {
     const [viewMode, setViewMode] = useState<'list' | 'grid'>('grid');
     const [showDetails, setShowDetails] = useState(true);
+    const [showChapters, setShowChapters] = useState(false); // Mobile toggle for chapters
+
+    // Handle initial responsive state
+    useEffect(() => {
+        const handleResize = () => {
+            if (window.innerWidth < 768) {
+                setShowDetails(false);
+                setShowChapters(false);
+            } else {
+                // Optional: Reset to defaults on desktop? 
+                // Better to leave user state alone if they resized, 
+                // or force open if that's the intended desktop UX.
+                // For now, let's just ensure we don't end up with weird states on mount.
+            }
+        };
+
+        // Run once on mount (if open)
+        if (isOpen && window.innerWidth < 768) {
+            setShowDetails(false);
+            setShowChapters(false);
+        }
+
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, [isOpen]);
 
     if (!isOpen) return null;
 
@@ -72,21 +97,30 @@ export default function MangaReaderModal({
                             className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors"
                         >
                             <ChevronLeft className="w-5 h-5" />
-                            <span className="text-sm font-medium">Back</span>
+                            <span className="text-sm font-medium hidden md:inline">Back</span>
                         </button>
-                        <h1 className="text-lg font-bold text-white tracking-wide truncate max-w-md hidden md:block">
+
+                        {/* Mobile Chapter Toggle */}
+                        <button
+                            onClick={() => setShowChapters(!showChapters)}
+                            className="md:hidden p-2 text-gray-300 hover:text-white bg-white/5 rounded-lg border border-white/5"
+                        >
+                            <LayoutList className="w-4 h-4" />
+                        </button>
+
+                        <h1 className="text-sm md:text-lg font-bold text-white tracking-wide truncate max-w-[150px] md:max-w-md">
                             {manga.title}
-                            {currentChapter && <span className="text-gray-500 font-normal ml-2">/ {currentChapter.title}</span>}
+                            {currentChapter && <span className="text-gray-500 font-normal ml-2 hidden sm:inline">/ {currentChapter.title}</span>}
                         </h1>
                     </div>
 
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2 md:gap-4">
                         {/* Zoom Controls */}
-                        <div className="flex items-center gap-2 bg-white/5 rounded-lg p-1 border border-white/10">
+                        <div className="flex items-center gap-1 md:gap-2 bg-white/5 rounded-lg p-1 border border-white/10">
                             <button onClick={onZoomOut} className="p-1.5 hover:bg-white/10 rounded text-gray-300 hover:text-white">
                                 <ZoomOut className="w-4 h-4" />
                             </button>
-                            <span className="text-xs font-mono w-10 text-center text-gray-400">{zoomLevel}%</span>
+                            <span className="text-[10px] md:text-xs font-mono w-8 md:w-10 text-center text-gray-400">{zoomLevel}%</span>
                             <button onClick={onZoomIn} className="p-1.5 hover:bg-white/10 rounded text-gray-300 hover:text-white">
                                 <ZoomIn className="w-4 h-4" />
                             </button>
@@ -103,11 +137,28 @@ export default function MangaReaderModal({
                     </div>
                 </header>
 
-                {/* 2. Main Layout (3 Columns) */}
-                <div className="flex-1 flex min-h-0 relative">
+                {/* 2. Main Layout */}
+                <div className="flex-1 flex min-h-0 relative overflow-hidden">
+
+                    {/* Mobile Backdrop for Sidebars */}
+                    {(showChapters || showDetails) && (
+                        <div
+                            className="absolute inset-0 bg-black/80 backdrop-blur-sm z-30 md:hidden"
+                            onClick={() => {
+                                setShowChapters(false);
+                                setShowDetails(false);
+                            }}
+                        />
+                    )}
 
                     {/* COLUMN 1: Chapter List (Left Sidebar) */}
-                    <aside className="w-[350px] shrink-0 flex flex-col h-full border-r border-white/10 bg-black/20 overflow-hidden">
+                    <aside className={`
+                        absolute md:static inset-y-0 left-0 z-40
+                        w-[280px] md:w-[350px] shrink-0 flex flex-col h-full 
+                        bg-[#111] md:bg-black/20 border-r border-white/10 
+                        transition-transform duration-300 ease-in-out
+                        ${showChapters ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+                    `}>
                         <div className="p-4 border-b border-white/5">
                             <div className="flex items-center justify-between mb-3">
                                 <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-2">
@@ -159,7 +210,10 @@ export default function MangaReaderModal({
                                         return (
                                             <button
                                                 key={`${chapter.id}-${index}`}
-                                                onClick={() => onLoadChapter(chapter)}
+                                                onClick={() => {
+                                                    onLoadChapter(chapter);
+                                                    setShowChapters(false); // Close mobile menu on select
+                                                }}
                                                 onMouseEnter={() => onPrefetchChapter(chapter)}
                                                 className={`
                                                     group relative transition-all duration-200
@@ -254,102 +308,131 @@ export default function MangaReaderModal({
                     </div>
 
                     {/* COLUMN 3: Details (Right Sidebar) */}
-                    {showDetails && (
-                        <aside className="w-[350px] shrink-0 h-full overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:'none'] bg-black/20">
-                            <div className="p-6 flex flex-col gap-6">
-                                {/* Poster */}
-                                <Link
-                                    to={`/manga/${manga.id || manga.mal_id}`}
-                                    onClick={onClose}
-                                    className="block aspect-[2/3] w-full rounded-xl overflow-hidden shadow-2xl border border-white/5 relative group cursor-pointer"
-                                >
-                                    <img
-                                        src={manga.images.jpg.large_image_url}
-                                        alt={manga.title}
-                                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
-                                    />
-                                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
+                    <aside className={`
+                        absolute md:static inset-y-0 right-0 z-40
+                        w-[300px] md:w-[350px] shrink-0 h-full overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:'none'] 
+                        bg-[#111] md:bg-black/20 md:border-l border-l border-white/10
+                        transition-transform duration-300 ease-in-out
+                        ${showDetails ? 'translate-x-0' : 'translate-x-full md:hidden'}
+                    `}>
+                        {/* Note: desktop behavior for Details: 
+                           Start hidden on mobile? 
+                           The previous code had {showDetails && <aside>}. 
+                           Here I use CSS translate for mobile, but for desktop?
+                           Logic: 
+                           - Mobile: always off-canvas. showDetails toggles translation.
+                           - Desktop: if showDetails is true, it renders statically? 
+                           The className logic above:
+                             md:translate-x-0 (Always shown if rendered?)
+                             md:hidden xl:block ... wait this logic is getting complex with mixed CSS/State.
+                             
+                           Let's revert to "Conditional Rendering for Desktop content flow" but "Absolute for Mobile".
+                           Actually, cleanest is:
+                           ALWAYS Render.
+                           Mobile: off-canvas (translate).
+                           Desktop: Flow.
+                           Toggle: Affects both?
+                           
+                           If showDetails is FALSE:
+                             Mobile: Translate out.
+                             Desktop: Hidden (display: none via class?)
+                             
+                           Let's adjust className:
+                           ${showDetails ? 'translate-x-0 md:flex' : 'translate-x-full md:hidden'}
+                        */}
+                        <div className="p-6 flex flex-col gap-6">
+                            {/* Poster */}
+                            <Link
+                                to={`/manga/${manga.id || manga.mal_id}`}
+                                onClick={onClose}
+                                className="block aspect-[2/3] w-full rounded-xl overflow-hidden shadow-2xl border border-white/5 relative group cursor-pointer"
+                            >
+                                <img
+                                    src={manga.images.jpg.large_image_url}
+                                    alt={manga.title}
+                                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                                />
+                                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
 
-                                    {/* Hover Overlay */}
-                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                        <span className="bg-yorumi-accent text-black font-bold px-4 py-2 rounded-full transform translate-y-4 group-hover:translate-y-0 transition-all duration-300">
-                                            View Details
+                                {/* Hover Overlay */}
+                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                    <span className="bg-yorumi-accent text-black font-bold px-4 py-2 rounded-full transform translate-y-4 group-hover:translate-y-0 transition-all duration-300">
+                                        View Details
+                                    </span>
+                                </div>
+
+                                <div className="absolute bottom-4 left-4 right-4">
+                                    <div className="flex flex-wrap gap-2 mb-2">
+                                        <span className="px-2 py-0.5 bg-yorumi-accent text-black text-xs font-bold rounded">
+                                            ★ {manga.score}
+                                        </span>
+                                        <span className={`px-2 py-0.5 text-white text-xs font-bold rounded ${manga.countryOfOrigin === 'KR' ? 'bg-blue-600' :
+                                            manga.countryOfOrigin === 'CN' ? 'bg-red-600' : 'bg-white/20'
+                                            }`}>
+                                            {manga.countryOfOrigin === 'KR' ? 'Manhwa' : manga.countryOfOrigin === 'CN' ? 'Manhua' : 'Manga'}
                                         </span>
                                     </div>
+                                </div>
+                            </Link>
 
-                                    <div className="absolute bottom-4 left-4 right-4">
-                                        <div className="flex flex-wrap gap-2 mb-2">
-                                            <span className="px-2 py-0.5 bg-yorumi-accent text-black text-xs font-bold rounded">
-                                                ★ {manga.score}
-                                            </span>
-                                            <span className={`px-2 py-0.5 text-white text-xs font-bold rounded ${manga.countryOfOrigin === 'KR' ? 'bg-blue-600' :
-                                                manga.countryOfOrigin === 'CN' ? 'bg-red-600' : 'bg-white/20'
-                                                }`}>
-                                                {manga.countryOfOrigin === 'KR' ? 'Manhwa' : manga.countryOfOrigin === 'CN' ? 'Manhua' : 'Manga'}
-                                            </span>
-                                        </div>
+                            {/* Info */}
+                            <div className="space-y-6">
+                                <div>
+                                    <Link
+                                        to={`/manga/${manga.id || manga.mal_id}`}
+                                        onClick={onClose}
+                                        className="hover:text-yorumi-accent transition-colors block"
+                                    >
+                                        <h2 className="text-xl font-bold leading-tight text-white mb-2">
+                                            {manga.title}
+                                        </h2>
+                                    </Link>
+                                    <p className="text-sm text-gray-500 font-medium">
+                                        {manga.type} • {manga.status}
+                                    </p>
+                                </div>
+
+                                {/* Grid Stats */}
+                                <div className="grid grid-cols-2 gap-4 text-sm bg-white/5 p-4 rounded-xl border border-white/5">
+                                    <div className="flex flex-col gap-1">
+                                        <span className="text-gray-500 text-xs uppercase font-bold tracking-wider flex items-center gap-1">
+                                            <Calendar className="w-3 h-3" /> Published
+                                        </span>
+                                        <span className="text-gray-200 font-medium">
+                                            {manga.published?.string || 'Unknown'}
+                                        </span>
                                     </div>
-                                </Link>
-
-                                {/* Info */}
-                                <div className="space-y-6">
-                                    <div>
-                                        <Link
-                                            to={`/manga/${manga.id || manga.mal_id}`}
-                                            onClick={onClose}
-                                            className="hover:text-yorumi-accent transition-colors block"
-                                        >
-                                            <h2 className="text-xl font-bold leading-tight text-white mb-2">
-                                                {manga.title}
-                                            </h2>
-                                        </Link>
-                                        <p className="text-sm text-gray-500 font-medium">
-                                            {manga.type} • {manga.status}
-                                        </p>
-                                    </div>
-
-                                    {/* Grid Stats */}
-                                    <div className="grid grid-cols-2 gap-4 text-sm bg-white/5 p-4 rounded-xl border border-white/5">
-                                        <div className="flex flex-col gap-1">
-                                            <span className="text-gray-500 text-xs uppercase font-bold tracking-wider flex items-center gap-1">
-                                                <Calendar className="w-3 h-3" /> Published
-                                            </span>
-                                            <span className="text-gray-200 font-medium">
-                                                {manga.published?.string || 'Unknown'}
-                                            </span>
-                                        </div>
-                                        <div className="flex flex-col gap-1">
-                                            <span className="text-gray-500 text-xs uppercase font-bold tracking-wider flex items-center gap-1">
-                                                <PenTool className="w-3 h-3" /> Authors
-                                            </span>
-                                            <span className="text-gray-200 font-medium line-clamp-1">
-                                                {manga.authors?.[0]?.name || 'Unknown'}
-                                            </span>
-                                        </div>
-                                    </div>
-
-                                    {/* Genres */}
-                                    <div>
-                                        <span className="text-gray-500 text-xs uppercase font-bold tracking-wider mb-2 block">Genres</span>
-                                        <div className="flex flex-wrap gap-2">
-                                            {manga.genres?.map(g => (
-                                                <span key={g.mal_id} className="px-2.5 py-1 bg-white/5 hover:bg-white/10 border border-white/5 rounded text-xs text-gray-300 transition-colors cursor-default">
-                                                    {g.name}
-                                                </span>
-                                            ))}
-                                        </div>
-                                    </div>
-
-                                    <div className="pt-4 border-t border-white/10">
-                                        <span className="text-gray-500 text-xs uppercase font-bold tracking-wider mb-2 block">Synopsis</span>
-                                        <p className="text-sm text-gray-400 leading-relaxed">
-                                            {manga.synopsis}
-                                        </p>
+                                    <div className="flex flex-col gap-1">
+                                        <span className="text-gray-500 text-xs uppercase font-bold tracking-wider flex items-center gap-1">
+                                            <PenTool className="w-3 h-3" /> Authors
+                                        </span>
+                                        <span className="text-gray-200 font-medium line-clamp-1">
+                                            {manga.authors?.[0]?.name || 'Unknown'}
+                                        </span>
                                     </div>
                                 </div>
+
+                                {/* Genres */}
+                                <div>
+                                    <span className="text-gray-500 text-xs uppercase font-bold tracking-wider mb-2 block">Genres</span>
+                                    <div className="flex flex-wrap gap-2">
+                                        {manga.genres?.map(g => (
+                                            <span key={g.mal_id} className="px-2.5 py-1 bg-white/5 hover:bg-white/10 border border-white/5 rounded text-xs text-gray-300 transition-colors cursor-default">
+                                                {g.name}
+                                            </span>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div className="pt-4 border-t border-white/10">
+                                    <span className="text-gray-500 text-xs uppercase font-bold tracking-wider mb-2 block">Synopsis</span>
+                                    <p className="text-sm text-gray-400 leading-relaxed">
+                                        {manga.synopsis}
+                                    </p>
+                                </div>
                             </div>
-                        </aside>
-                    )}
+                        </div>
+                    </aside>
                 </div>
             </div >
         </div >

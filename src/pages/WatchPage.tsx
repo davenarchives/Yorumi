@@ -176,10 +176,10 @@ export default function WatchPage() {
             </header>
 
             {/* 2. Main Layout (3 Columns) */}
-            <div className="flex-1 flex min-h-0 relative">
+            <div className="flex-1 flex flex-col md:flex-row min-h-0 relative overflow-y-auto md:overflow-hidden">
 
-                {/* COLUMN 1: Episode List (Left Sidebar) - ALWAYS VISIBLE */}
-                <aside className="w-[350px] shrink-0 flex flex-col h-full border-r border-white/10 bg-black/20 overflow-hidden">
+                {/* COLUMN 1: Episode List (Left Sidebar) */}
+                <aside className="w-full md:w-[350px] shrink-0 flex flex-col h-[500px] md:h-full border-r border-white/10 bg-black/20 overflow-hidden order-2 md:order-1">
                     <div className="p-4 border-b border-white/5">
                         <div className="flex items-center justify-between mb-3">
                             <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-2">
@@ -292,9 +292,9 @@ export default function WatchPage() {
                 </aside>
 
                 {/* COLUMN 2: Player (Center) */}
-                <div className="flex-1 min-w-0 relative bg-black flex flex-col">
+                <div className="flex-1 min-w-0 relative bg-black flex flex-col order-1 md:order-2">
                     {/* Video Player Container */}
-                    <div className={`relative w-full ${isExpanded ? 'flex-1 min-h-0' : 'aspect-video shrink-0'} bg-black group transition-all duration-300`}>
+                    <div className={`relative w-full ${isExpanded ? 'flex-1 min-h-[300px]' : 'aspect-video shrink-0'} bg-black group transition-all duration-300`}>
                         {streamLoading ? (
                             <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 z-20">
                                 <LoadingSpinner />
@@ -390,7 +390,7 @@ export default function WatchPage() {
 
                                 <button
                                     onClick={toggleExpand}
-                                    className="h-10 px-4 rounded-lg bg-transparent hover:bg-white/10 border border-white/10 text-gray-300 hover:text-white font-medium flex items-center gap-2 transition-colors"
+                                    className="hidden md:flex h-10 px-4 rounded-lg bg-transparent hover:bg-white/10 border border-white/10 text-gray-300 hover:text-white font-medium items-center gap-2 transition-colors"
                                 >
                                     {isExpanded ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
                                     {isExpanded ? 'Collapse' : 'Expand'}
@@ -400,9 +400,9 @@ export default function WatchPage() {
                     </div>
                 </div>
 
-                {/* COLUMN 3: Anime Details (Right Sidebar) - HIDDEN if isExpanded */}
+                {/* COLUMN 3: Anime Details (Right Sidebar) */}
                 {!isExpanded && (
-                    <aside className="w-[350px] shrink-0 h-full overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:'none'] border-l border-white/10 bg-black/20">
+                    <aside className="w-full md:w-[350px] shrink-0 h-auto md:h-full overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:'none'] border-t md:border-t-0 md:border-l border-white/10 bg-black/20 order-3 md:order-3">
                         <div className="p-6 flex flex-col gap-6">
                             {/* Poster - Clickable */}
                             <div
