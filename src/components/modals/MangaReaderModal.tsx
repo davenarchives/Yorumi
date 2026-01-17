@@ -217,7 +217,7 @@ export default function MangaReaderModal({
                                             key={`${page.pageNumber}-${index}`}
                                             src={page.imageUrl}
                                             alt={`Page ${page.pageNumber}`}
-                                            className="transition-all duration-200 block shadow-2xl mb-1"
+                                            className="transition-all duration-200 block shadow-2xl"
                                             style={{ width: `${zoomLevel}%`, maxWidth: '100%' }}
                                             loading="lazy"
                                         />
