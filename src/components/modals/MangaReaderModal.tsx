@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
     ZoomIn,
     ZoomOut,
@@ -257,13 +258,25 @@ export default function MangaReaderModal({
                         <aside className="w-[350px] shrink-0 h-full overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:'none'] bg-black/20">
                             <div className="p-6 flex flex-col gap-6">
                                 {/* Poster */}
-                                <div className="aspect-[2/3] w-full rounded-xl overflow-hidden shadow-2xl border border-white/5 relative group">
+                                <Link
+                                    to={`/manga/${manga.id || manga.mal_id}`}
+                                    onClick={onClose}
+                                    className="block aspect-[2/3] w-full rounded-xl overflow-hidden shadow-2xl border border-white/5 relative group cursor-pointer"
+                                >
                                     <img
                                         src={manga.images.jpg.large_image_url}
                                         alt={manga.title}
-                                        className="w-full h-full object-cover"
+                                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
                                     />
                                     <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
+
+                                    {/* Hover Overlay */}
+                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                        <span className="bg-yorumi-accent text-black font-bold px-4 py-2 rounded-full transform translate-y-4 group-hover:translate-y-0 transition-all duration-300">
+                                            View Details
+                                        </span>
+                                    </div>
+
                                     <div className="absolute bottom-4 left-4 right-4">
                                         <div className="flex flex-wrap gap-2 mb-2">
                                             <span className="px-2 py-0.5 bg-yorumi-accent text-black text-xs font-bold rounded">
@@ -276,14 +289,20 @@ export default function MangaReaderModal({
                                             </span>
                                         </div>
                                     </div>
-                                </div>
+                                </Link>
 
                                 {/* Info */}
                                 <div className="space-y-6">
                                     <div>
-                                        <h2 className="text-xl font-bold leading-tight text-white mb-2">
-                                            {manga.title}
-                                        </h2>
+                                        <Link
+                                            to={`/manga/${manga.id || manga.mal_id}`}
+                                            onClick={onClose}
+                                            className="hover:text-yorumi-accent transition-colors block"
+                                        >
+                                            <h2 className="text-xl font-bold leading-tight text-white mb-2">
+                                                {manga.title}
+                                            </h2>
+                                        </Link>
                                         <p className="text-sm text-gray-500 font-medium">
                                             {manga.type} • {manga.status}
                                         </p>
