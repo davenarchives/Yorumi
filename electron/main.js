@@ -43,7 +43,9 @@ function startBackend() {
         return;
     }
 
-    const backendPath = path.join(process.resourcesPath, 'backend/dist/index.js');
+    // In ASAR, __dirname is .../resources/app.asar/electron
+    // Backend is at .../resources/app.asar/backend/dist/index.js
+    const backendPath = path.join(__dirname, '../backend/dist/index.js');
 
     console.log('Starting Backend form:', backendPath);
 

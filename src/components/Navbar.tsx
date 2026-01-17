@@ -182,7 +182,7 @@ export default function Navbar({
                     {/* Mobile Search Icon */}
                     <button
                         onClick={() => setShowMobileSearch(!showMobileSearch)}
-                        className="md:hidden text-white p-2 hover:bg-white/10 rounded-full transition-colors"
+                        className="md:hidden text-white p-2 md:hover:bg-white/10 active:bg-white/10 rounded-full transition-colors outline-none focus:outline-none"
                     >
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
                             {showMobileSearch ? (
