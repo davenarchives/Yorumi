@@ -149,18 +149,18 @@ const MangaSpotlight: React.FC<MangaSpotlightProps> = ({ onMangaClick }) => {
                 <div className="flex h-full touch-pan-y">
                     {mangas.map((manga, index) => (
                         <div key={manga.id || manga.mal_id || index} className="relative min-w-full h-full flex-[0_0_100%]">
-                            {/* Background Image (Blurred) */}
+                            {/* Background Image */}
                             <div className="absolute inset-0 z-0 select-none overflow-hidden">
                                 <div
-                                    className="absolute inset-0 bg-no-repeat bg-cover bg-center blur-2xl scale-110 opacity-60"
+                                    className="absolute inset-0 bg-no-repeat bg-cover bg-center md:blur-2xl md:scale-110 md:opacity-60"
                                     style={{
                                         backgroundImage: `url(${manga.images.jpg.large_image_url})`,
                                     }}
                                 />
-                                <div className="absolute inset-0 bg-black/40" />
+                                <div className="absolute inset-0 bg-black/60 md:bg-black/40" />
                                 {/* Gradient Overlay */}
-                                <div className="absolute inset-0 bg-gradient-to-r from-[#0a0a0a] via-[#0a0a0a]/80 to-transparent" />
-                                <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0a] via-transparent to-transparent" />
+                                <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#0a0a0a]/60 to-[#0a0a0a]" />
+                                <div className="absolute inset-0 bg-gradient-to-r from-[#0a0a0a] via-[#0a0a0a]/80 to-transparent pointer-events-none" />
                             </div>
 
                             {/* Content */}
@@ -169,8 +169,16 @@ const MangaSpotlight: React.FC<MangaSpotlightProps> = ({ onMangaClick }) => {
 
                                     {/* Text Info (Left) */}
                                     <div className="flex-1 pointer-events-auto max-w-2xl">
-                                        <div className="text-[#d886ff] font-bold tracking-wider text-base mb-3 uppercase select-none">
-                                            #{index + 1} Trending
+                                        <div className="text-[#d886ff] font-bold tracking-wider text-base mb-3 uppercase select-none flex items-center gap-3">
+                                            <div className="md:hidden h-24 w-16 rounded-md overflow-hidden shadow-lg shadow-black/50 border border-white/10 flex-shrink-0 relative">
+                                                <img
+                                                    src={manga.images.jpg.large_image_url}
+                                                    alt={manga.title}
+                                                    className="w-full h-full object-cover"
+                                                />
+                                                <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+                                            </div>
+                                            <span>#{index + 1} Trending</span>
                                         </div>
                                         <h1 className={`${manga.title.length > 50 ? 'text-xl md:text-2xl lg:text-3xl' :
                                             manga.title.length > 30 ? 'text-2xl md:text-3xl lg:text-4xl' :

@@ -1,28 +1,26 @@
-# Yorumi v2.0-rc1: Mobile Revolution & Enhanced Engine
+# Yorumi Desktop: The Native Experience
 
-### 📱 Mobile Experience Overhaul
-The UI has been completely re-engineered for mobile devices, offering a seamless native-like experience.
-- **Spotlight Hero 2.0:** Now fully responsive with a dedicated **Cover Art** display on mobile, ensuring main characters are visible even when background banners are cropped. Includes optimized typography and spacing.
-- **Adaptive Layouts:** Action buttons (*Read Now, Add to List*) now align **side-by-side** on mobile for easier thumb access.
-- **Smart Navigation:** New mobile-optimized navbar with a dedicated search overlay and collapsible menus.
-- **Readability Improvements:** Adjusted font sizes and container widths across Anime & Manga details pages for better readability on small screens.
+**Tag:** `v2.0.0-desktop`
+**Target:** `main`
 
-### 📚 Manga Reader 2.0 (Mobile)
-A totally revamped reading experience for mobile users.
-- **Focus Mode:** Sidebars (Chapter List & Details) now auto-collapse on mobile to maximize reading space.
-- **Accessible Controls:** Added a floating toggle button for easy access to chapters without leaving the immersive view.
-- **Touch-Optimized:** Improved touch targets for navigation and zooming.
+## 🎉 Introducing Yorumi Desktop for Windows
+Experience Yorumi as a native desktop application! No more running terminal commands or managing separate servers.
 
-### ⚡ Enhanced Content Engine
-We've significantly improved the matching algorithm to ensure you always get the right content.
-- **Prioritized Content Matching:** Fixed issues with series like *"Solo Leveling"* by prioritizing entries with higher chapter counts (e.g., Manhwa vs Novel).
-- **Global Synonym Search:** The search engine now intelligently matches alternative titles (e.g., searching *"Teenage Mercenary"* correctly identifies and loads *"Mercenary Enrollment"*).
+### 🖥️ Desktop Features
+- **One-Click Launch:** Simply run `Yorumi.exe` to start.
+- **Bundled Engine:** The Express backend and Puppeteer scrapers are fully integrated into the app.
+- **Performance:** Optimized for desktop usage with the same premium glassmorphic UI you love.
 
-### 🐛 Bug Fixes
-- Fixed layout shift on mobile search close.
-- Resolved vertical stacking issues on Details page buttons.
-- Optimized image loading for banner backgrounds.
+### � Mobile & UI Enhancements (Included)
+- **Spotlight Hero:** New responsive design with dedicated mobile cover art support.
+- **Manga Reader:** Immersive reading mode with auto-hiding sidebars on smaller screens.
+- **Content Engine:** Smarter matching for titles like *"Solo Leveling"* and global synonym support.
 
 ---
 
-> *This update focuses on making Yorumi the best platform for consuming content on the go.*
+### 📥 Installation Instructions
+1.  Download the **`Yorumi-Windows-Portable.zip`** from the Assets below.
+2.  Extract the zip file to a location of your choice.
+3.  Open the folder and run **`Yorumi.exe`**.
+
+> *Note: This is a portable release. No installation required.*

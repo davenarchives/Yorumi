@@ -89,13 +89,6 @@ const SpotlightHero: React.FC<SpotlightHeroProps> = ({ animeList, onAnimeClick, 
                                 <div className="absolute inset-0 flex items-center px-4 md:px-14 pt-20 md:pt-48 pb-20 md:pb-14 z-10 pointer-events-none">
                                     <div className="w-full md:w-2/3 lg:w-1/2 pointer-events-auto pr-0 md:pr-4 select-text flex flex-col justify-center h-full">
                                         <div className="text-[#d886ff] font-bold tracking-wider text-sm md:text-base mb-2 md:mb-3 select-none flex items-center gap-3">
-                                            <div className="md:hidden h-24 w-16 rounded-md overflow-hidden shadow-lg shadow-black/50 border border-white/10 flex-shrink-0">
-                                                <img
-                                                    src={anime.images?.jpg?.large_image_url || anime.images?.jpg?.image_url}
-                                                    alt={anime.title}
-                                                    className="w-full h-full object-cover"
-                                                />
-                                            </div>
                                             #{index + 1} Spotlight
                                         </div>
                                         {/* Dynamic font size based on title length to ensure it fits and isn't truncated */}
