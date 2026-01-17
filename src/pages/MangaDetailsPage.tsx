@@ -206,7 +206,7 @@ export default function MangaDetailsPage() {
                         </div>
 
                         {/* Actions */}
-                        <div className="flex flex-col sm:flex-row items-center justify-center md:justify-start gap-4 py-2">
+                        <div className="flex flex-row items-center justify-center md:justify-start gap-4 py-2">
                             <button
                                 onClick={() => {
                                     // Start reading first chapter

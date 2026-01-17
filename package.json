@@ -2,12 +2,44 @@
   "name": "yorumi",
   "private": true,
   "version": "0.0.0",
+  "main": "electron/main.js",
+  "homepage": "./",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "electron:dev": "concurrently -k \"npm run dev\" \"npm run dev --prefix backend\" \"wait-on tcp:5173 && cross-env NODE_ENV=development electron .\"",
+    "electron:build": "npm run build && cd backend && npm run build && cd .. && electron-builder",
+    "dist": "cross-env CSC_IDENTITY_AUTO_DISCOVERY=false npm run build && cd backend && npm run build && cd .. && electron-builder --dir"
+  },
+  "build": {
+    "appId": "com.yorumi.app",
+    "productName": "Yorumi",
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "backend/dist/**/*",
+      "backend/package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "backend/dist",
+        "to": "backend/dist"
+      },
+      {
+        "from": "backend/node_modules",
+        "to": "backend/node_modules"
+      }
+    ],
+    "win": {
+      "target": "dir",
+      "icon": "public/Yorumi.png"
+    }
   },
   "dependencies": {
     "@sparticuz/chromium": "^143.0.4",
@@ -32,6 +64,10 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",
     "autoprefixer": "^10.4.16",
+    "concurrently": "^8.2.2",
+    "cross-env": "^7.0.3",
+    "electron": "^28.1.0",
+    "electron-builder": "^24.13.3",
     "eslint": "^9.39.1",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",
@@ -40,7 +76,8 @@
     "tailwindcss": "^3.4.17",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.46.4",
-    "vite": "npm:rolldown-vite@7.2.5"
+    "vite": "npm:rolldown-vite@7.2.5",
+    "wait-on": "^7.2.0"
   },
   "overrides": {
     "vite": "npm:rolldown-vite@7.2.5"

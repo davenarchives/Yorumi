@@ -179,7 +179,7 @@ export default function AnimeDetailsPage() {
                         </div>
 
                         {/* Actions */}
-                        <div className="flex flex-col sm:flex-row items-center justify-center md:justify-start gap-4 py-2">
+                        <div className="flex flex-row items-center justify-center md:justify-start gap-4 py-2">
                             <button
                                 onClick={() => navigate(`/watch/${id}`)}
                                 className="h-12 px-8 bg-[#facc15] hover:bg-[#ffe066] text-black text-lg font-bold rounded-full transition-transform active:scale-95 flex items-center gap-3 shadow-lg shadow-yellow-500/20"

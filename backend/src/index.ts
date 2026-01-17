@@ -24,7 +24,7 @@ app.get('/', (req, res) => {
     res.send('Yorumi Backend is running');
 });
 
-if (process.env.NODE_ENV !== 'production') {
+if (process.env.NODE_ENV !== 'production' || process.env.IS_ELECTRON) {
     app.listen(port, () => {
         console.log(`Server is running on http://localhost:${port}`);
     });
