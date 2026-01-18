@@ -746,5 +746,34 @@ export const anilistService = {
             console.error('Error fetching anime by genre:', error);
             return { media: [], pageInfo: {} };
         }
+    },
+
+    async getMangaByGenre(genre: string, page: number = 1, perPage: number = 24) {
+        const query = `
+            query ($genre: String, $page: Int, $perPage: Int) {
+                Page(page: $page, perPage: $perPage) {
+                    pageInfo {
+                        total
+                        currentPage
+                        lastPage
+                        hasNextPage
+                    }
+                    media(type: MANGA, genre: $genre, sort: POPULARITY_DESC) {
+                        ${MEDIA_FIELDS}
+                    }
+                }
+            }
+        `;
+
+        try {
+            const response = await axios.post(ANILIST_API_URL, {
+                query,
+                variables: { genre, page, perPage }
+            });
+            return response.data.data.Page;
+        } catch (error) {
+            console.error('Error fetching manga by genre:', error);
+            return { media: [], pageInfo: {} };
+        }
     }
 };

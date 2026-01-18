@@ -547,9 +547,27 @@ export function useManga() {
                 const data = await mangaService.getScraperMangaDetails(String(id));
                 if (data) {
                     setSelectedManga(data);
-                    // 2. Fetch Chapters directly (we essentially have the ID)
-                    // We can reuse handleMangaClick, it handles string IDs optimization
-                    await handleMangaClick(data);
+
+                    // 2. Fetch Chapters directly using the known scraper ID
+                    // Skip handleMangaClick's complex search - we already have the ID
+                    const scraperId = String(id).startsWith('mk:') ? String(id).replace('mk:', '') : String(id);
+                    setMangaChaptersLoading(true);
+
+                    try {
+                        if (mangaChaptersCache.current.has(scraperId)) {
+                            setMangaChapters(mangaChaptersCache.current.get(scraperId)!);
+                        } else {
+                            const chaptersData = await mangaService.getChapters(scraperId);
+                            if (chaptersData?.chapters) {
+                                mangaChaptersCache.current.set(scraperId, chaptersData.chapters);
+                                setMangaChapters(chaptersData.chapters);
+                            }
+                        }
+                    } catch (chapErr) {
+                        console.error('Failed to fetch chapters for scraper ID:', chapErr);
+                    } finally {
+                        setMangaChaptersLoading(false);
+                    }
                 }
             }
         } catch (err) {

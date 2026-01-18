@@ -263,6 +263,21 @@ router.get('/genre/:name', async (req, res) => {
     }
 });
 
+// Get manga by genre
+router.get('/manga/genre/:name', async (req, res) => {
+    try {
+        const genre = req.params.name;
+        const page = req.query.page ? parseInt(req.query.page as string) : 1;
+        const perPage = req.query.limit ? parseInt(req.query.limit as string) : 24;
+
+        const data = await anilistService.getMangaByGenre(genre, page, perPage);
+        res.json(data);
+    } catch (error) {
+        console.error('Error in manga genre route:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 // Get random anime
 router.get('/random', async (req, res) => {
     try {

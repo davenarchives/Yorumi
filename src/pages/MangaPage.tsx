@@ -113,11 +113,7 @@ export default function MangaPage() {
 
                 {/* Genres (Right - 1/3) */}
                 <div>
-                    {/* We can reuse the Genres component but we need to ensure it links to manga genres if distinct? 
-                         Actually existing Genres component links to /genre/:name which is generic. 
-                         If we want Manga specific genres, we might need a distinct route or filter. 
-                         But for now, reusing the existing component is fine. */}
-                    <Genres onGenreClick={(genre) => console.log('Genre clicked:', genre)} />
+                    <Genres onGenreClick={(genre) => navigate(`/manga/genre/${encodeURIComponent(genre)}`)} />
                 </div>
             </div>
         </div>
