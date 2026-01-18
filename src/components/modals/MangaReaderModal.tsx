@@ -91,6 +91,27 @@ export default function MangaReaderModal({
         setPageIndex(0);
     }, [currentChapter?.id]);
 
+    // Preload adjacent pages for smooth navigation
+    useEffect(() => {
+        if (readingMode !== 'page' || pages.length === 0) return;
+
+        // Preload next 3 pages
+        const pagesToPreload = [1, 2, 3];
+        pagesToPreload.forEach(offset => {
+            const targetIndex = pageIndex + offset;
+            if (targetIndex < pages.length && pages[targetIndex]?.imageUrl) {
+                const img = new Image();
+                img.src = pages[targetIndex].imageUrl;
+            }
+        });
+
+        // Also preload previous page if available
+        if (pageIndex > 0 && pages[pageIndex - 1]?.imageUrl) {
+            const img = new Image();
+            img.src = pages[pageIndex - 1].imageUrl;
+        }
+    }, [pageIndex, pages, readingMode]);
+
     // Handle initial responsive state
     useEffect(() => {
         const handleResize = () => {
