@@ -37,6 +37,13 @@ export function useStreams(scraperSession: string | null) {
                 videoRef.current.src = currentStream.directUrl;
             }
         }
+
+        return () => {
+            if (hlsRef.current) {
+                hlsRef.current.destroy();
+                hlsRef.current = null;
+            }
+        };
     }, [currentStream, playerMode]);
 
     const ensureStreamData = (episode: Episode): Promise<StreamLink[]> => {
