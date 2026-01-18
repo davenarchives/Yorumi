@@ -100,14 +100,14 @@ export default function HomePage() {
                         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
                             {anime.continueWatchingList.map((item) => (
                                 <div
-                                    key={item.mal_id}
+                                    key={item.animeId}
                                     className="relative group cursor-pointer"
-                                    onClick={() => handleWatchClick({ mal_id: item.mal_id } as Anime, item.episodeNumber)}
+                                    onClick={() => handleWatchClick({ mal_id: parseInt(item.animeId) } as Anime, item.episodeNumber)}
                                 >
                                     <div className="relative aspect-video rounded-lg overflow-hidden mb-3 shadow-lg border border-white/5 transition-colors">
                                         <img
-                                            src={item.image}
-                                            alt={item.title}
+                                            src={item.animeImage}
+                                            alt={item.animeTitle}
                                             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                                         />
                                         <div className="absolute inset-0 bg-black/40 group-hover:bg-black/20 transition-colors flex items-center justify-center">
@@ -123,7 +123,7 @@ export default function HomePage() {
                                     </div>
                                     <div className="px-1">
                                         <h4 className="text-sm font-bold text-gray-200 truncate group-hover:text-yorumi-accent transition-colors">
-                                            {item.title}
+                                            {item.animeTitle}
                                         </h4>
                                         <p className="text-xs text-gray-500 truncate mt-0.5">
                                             {item.episodeTitle || `Episode ${item.episodeNumber}`}
@@ -253,15 +253,15 @@ export default function HomePage() {
                             >
                                 {anime.continueWatchingList.map((item) => (
                                     <div
-                                        key={item.mal_id}
+                                        key={item.animeId}
                                         className="relative group h-full flex-[0_0_240px] sm:flex-[0_0_280px] md:flex-[0_0_320px]"
-                                        onClick={() => handleWatchClick({ mal_id: item.mal_id } as Anime, item.episodeNumber)}
+                                        onClick={() => handleWatchClick({ mal_id: parseInt(item.animeId) } as Anime, item.episodeNumber)}
                                     >
                                         {/* ... (Same carousel card content as App.tsx) ... */}
                                         <div className="relative aspect-video rounded-lg overflow-hidden mb-3 shadow-lg border border-white/5 transition-colors cursor-pointer">
                                             <img
-                                                src={item.image}
-                                                alt={item.title}
+                                                src={item.animeImage}
+                                                alt={item.animeTitle}
                                                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                                             />
                                             <div className="absolute inset-0 bg-black/40 group-hover:bg-black/20 transition-colors flex items-center justify-center">
@@ -277,7 +277,7 @@ export default function HomePage() {
                                         </div>
                                         <div className="px-1">
                                             <h4 className="text-sm font-bold text-gray-200 truncate group-hover:text-yorumi-accent transition-colors">
-                                                {item.title}
+                                                {item.animeTitle}
                                             </h4>
                                             <p className="text-xs text-gray-500 truncate mt-0.5">
                                                 {item.episodeTitle || `Episode ${item.episodeNumber}`}
