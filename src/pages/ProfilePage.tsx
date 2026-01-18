@@ -46,17 +46,17 @@ export default function ProfilePage() {
 
                 {/* Greeting Content */}
                 <div className="relative z-10 flex flex-col items-center mt-4 md:mt-10 px-4 text-center">
-                    <h1 className="text-5xl md:text-8xl font-black text-white tracking-tight mb-4 drop-shadow-2xl">
+                    <h1 className="text-4xl md:text-8xl font-black text-white tracking-tight mb-4 drop-shadow-2xl">
                         Hi, <span className="text-yorumi-accent">{user.displayName?.split(' ')[0] || 'User'}</span>
                     </h1>
-                    <p className="text-gray-200 text-xl md:text-2xl font-medium drop-shadow-lg">
+                    <p className="text-gray-200 text-lg md:text-2xl font-medium drop-shadow-lg">
                         Welcome back to your personal hub
                     </p>
                 </div>
 
                 {/* Navigation Tabs - Positioned at bottom of hero */}
                 <div className="absolute bottom-0 w-full flex justify-center z-20">
-                    <div className="flex flex-wrap justify-center gap-8 md:gap-16 border-b border-white/10 w-full max-w-5xl px-4 md:px-8 mx-4">
+                    <div className="flex flex-nowrap overflow-x-auto justify-start md:justify-center gap-6 md:gap-16 border-b border-white/10 w-full max-w-5xl px-4 md:px-8 mx-4 no-scrollbar pb-0.5">
                         <TabButton
                             active={activeTab === 'profile'}
                             onClick={() => handleTabChange('profile')}
@@ -108,7 +108,7 @@ export default function ProfilePage() {
 const TabButton = ({ active, onClick, icon, label }: { active: boolean; onClick: () => void; icon: React.ReactNode; label: string }) => (
     <button
         onClick={onClick}
-        className={`flex items-center gap-3 pb-4 text-base md:text-lg font-bold transition-all duration-300 border-b-2 outline-none ${active
+        className={`flex items-center gap-2 md:gap-3 pb-3 md:pb-4 text-sm md:text-lg font-bold transition-all duration-300 border-b-2 outline-none whitespace-nowrap shrink-0 ${active
             ? 'text-yorumi-accent border-yorumi-accent'
             : 'text-gray-400 border-transparent hover:text-white hover:border-white/20'
             }`}
