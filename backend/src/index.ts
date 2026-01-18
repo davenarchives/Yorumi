@@ -59,6 +59,49 @@ app.post('/api/mapping/identify', async (req, res) => {
     }
 });
 
+// Serve avatars
+import path from 'path';
+import fs from 'fs';
+
+const avatarsDir = path.join(__dirname, '../avatars');
+app.use('/avatars', express.static(avatarsDir));
+
+// Helper to get all files recursively
+const getFilesRecursively = (dir: string): string[] => {
+    let results: string[] = [];
+    const list = fs.readdirSync(dir);
+    list.forEach((file) => {
+        const filePath = path.join(dir, file);
+        const stat = fs.statSync(filePath);
+        if (stat && stat.isDirectory()) {
+            results = results.concat(getFilesRecursively(filePath));
+        } else {
+            // Only add image files
+            if (/\.(png|jpg|jpeg|gif|webp)$/i.test(file)) {
+                results.push(path.relative(avatarsDir, filePath).replace(/\\/g, '/'));
+            }
+        }
+    });
+    return results;
+};
+
+app.get('/api/avatars/random', (req, res) => {
+    try {
+        const files = getFilesRecursively(avatarsDir);
+        if (files.length === 0) {
+            return res.status(404).json({ message: 'No avatars found' });
+        }
+        const randomFile = files[Math.floor(Math.random() * files.length)];
+        const protocol = req.protocol;
+        const host = req.get('host');
+        const fullUrl = `${protocol}://${host}/avatars/${randomFile}`;
+        res.json({ url: fullUrl });
+    } catch (error) {
+        console.error('Error getting random avatar:', error);
+        res.status(500).json({ message: 'Failed to get random avatar' });
+    }
+});
+
 
 app.get('/', (req, res) => {
     res.send('Yorumi Backend is running');
