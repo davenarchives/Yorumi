@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Play, Plus, Check } from 'lucide-react';
 import { useAnime } from '../hooks/useAnime'; // We might reuse this for episode prefetching
+import { storage } from '../utils/storage';
 import LoadingSpinner from '../components/LoadingSpinner';
 import AnimeCard from '../components/AnimeCard';
 import type { Anime, Episode } from '../types/anime';
@@ -80,6 +81,29 @@ export default function AnimeDetailsPage() {
 
     const { selectedAnime, episodes, epLoading, detailsLoading, error } = animeHook;
     const [activeTab, setActiveTab] = useState<'summary' | 'relations'>('summary');
+    const [inList, setInList] = useState(false);
+
+    useEffect(() => {
+        if (selectedAnime) {
+            setInList(storage.isInWatchList(selectedAnime.mal_id.toString()));
+        }
+    }, [selectedAnime]);
+
+    const handleToggleList = () => {
+        if (!selectedAnime) return;
+        const animeId = selectedAnime.mal_id.toString();
+        if (inList) {
+            storage.removeFromWatchList(animeId);
+            setInList(false);
+        } else {
+            storage.addToWatchList({
+                id: animeId,
+                title: selectedAnime.title,
+                image: selectedAnime.images.jpg.large_image_url
+            });
+            setInList(true);
+        }
+    };
 
     if (error) {
         return (
@@ -187,10 +211,27 @@ export default function AnimeDetailsPage() {
                                 onClick={() => navigate(`/watch/${id}`)}
                                 className="h-12 px-8 bg-[#facc15] hover:bg-[#ffe066] text-black text-lg font-bold rounded-full transition-transform active:scale-95 flex items-center gap-3 shadow-lg shadow-yellow-500/20"
                             >
+                                <Play className="w-5 h-5 fill-current" />
                                 Watch Now
                             </button>
-                            <button className="h-12 px-8 bg-white/10 hover:bg-white/20 text-white text-lg font-bold rounded-full transition-colors border border-white/10">
-                                Add to List
+                            <button
+                                onClick={handleToggleList}
+                                className={`h-12 px-8 text-lg font-bold rounded-full transition-all border flex items-center gap-2 ${inList
+                                    ? 'bg-yorumi-accent text-black border-yorumi-accent hover:bg-yorumi-accent/90'
+                                    : 'bg-white/10 hover:bg-white/20 text-white border-white/10'
+                                    }`}
+                            >
+                                {inList ? (
+                                    <>
+                                        <Check className="w-5 h-5" />
+                                        In List
+                                    </>
+                                ) : (
+                                    <>
+                                        <Plus className="w-5 h-5" />
+                                        Add to List
+                                    </>
+                                )}
                             </button>
                         </div>
 
