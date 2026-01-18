@@ -1,7 +1,8 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Check, Plus } from 'lucide-react';
 import { useManga } from '../hooks/useManga';
+import { storage } from '../utils/storage';
 import LoadingSpinner from '../components/LoadingSpinner';
 import MangaCard from '../components/MangaCard';
 import MangaReaderModal from '../components/modals/MangaReaderModal';
@@ -220,8 +221,37 @@ export default function MangaDetailsPage() {
                             >
                                 {mangaChaptersLoading ? 'Loading Chapters...' : 'Read Now'}
                             </button>
-                            <button className="h-12 px-8 bg-white/10 hover:bg-white/20 text-white text-lg font-bold rounded-full transition-colors border border-white/10">
-                                Add to List
+                            <button
+                                onClick={() => {
+                                    if (storage.isInReadList(selectedManga.mal_id.toString())) {
+                                        storage.removeFromReadList(selectedManga.mal_id.toString());
+                                        // Force list update (hacky, ideally use context/event)
+                                        navigate('.', { replace: true });
+                                    } else {
+                                        storage.addToReadList({
+                                            id: selectedManga.mal_id.toString(),
+                                            title: selectedManga.title,
+                                            image: selectedManga.images.jpg.large_image_url
+                                        });
+                                        navigate('.', { replace: true });
+                                    }
+                                }}
+                                className={`h-12 px-8 text-lg font-bold rounded-full transition-colors border flex items-center gap-2 ${storage.isInReadList(selectedManga.mal_id.toString())
+                                        ? 'bg-yorumi-accent text-black border-yorumi-accent'
+                                        : 'bg-white/10 hover:bg-white/20 text-white border-white/10'
+                                    }`}
+                            >
+                                {storage.isInReadList(selectedManga.mal_id.toString()) ? (
+                                    <>
+                                        <Check className="w-5 h-5" />
+                                        In List
+                                    </>
+                                ) : (
+                                    <>
+                                        <Plus className="w-5 h-5" />
+                                        Add to List
+                                    </>
+                                )}
                             </button>
                         </div>
 
