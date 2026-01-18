@@ -67,11 +67,41 @@ export async function getChapterList(id: string) {
     return chapters.map(c => ({ ...c, id: `mk:${c.id}` }));
 }
 
+// In-memory cache for chapter pages (30 minute TTL)
+const pagesCache = new Map<string, { data: any[], timestamp: number }>();
+const PAGES_CACHE_TTL = 30 * 60 * 1000; // 30 minutes
+
 /**
- * Get pages
+ * Get pages with caching
  */
 export async function getChapterPages(url: string) {
-    return mangakatana.getChapterPages(url);
+    const now = Date.now();
+
+    // Check cache first
+    const cached = pagesCache.get(url);
+    if (cached && (now - cached.timestamp) < PAGES_CACHE_TTL) {
+        console.log(`[Cache] Chapter pages hit: ${url.slice(-30)}`);
+        return cached.data;
+    }
+
+    console.log(`[Fetch] Getting chapter pages: ${url.slice(-30)}`);
+    const pages = await mangakatana.getChapterPages(url);
+
+    // Cache successful results
+    if (pages && pages.length > 0) {
+        pagesCache.set(url, { data: pages, timestamp: now });
+
+        // Clean old entries if cache is too large
+        if (pagesCache.size > 100) {
+            for (const [key, val] of pagesCache.entries()) {
+                if (now - val.timestamp > PAGES_CACHE_TTL) {
+                    pagesCache.delete(key);
+                }
+            }
+        }
+    }
+
+    return pages;
 }
 
 // Simple in-memory cache for Hot Updates

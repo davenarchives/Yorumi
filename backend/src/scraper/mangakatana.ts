@@ -226,34 +226,42 @@ export async function getChapterPages(chapterUrl: string): Promise<ChapterPage[]
     // First try fast regex extraction (no browser needed)
     try {
         console.log(`[Fast] Fetching ${chapterUrl}...`);
-        const response = await axiosInstance.get(chapterUrl);
+        // Use direct axios call like the working test script to avoid instance issues
+        const response = await axios.get(chapterUrl, {
+            headers: {
+                'User-Agent': USER_AGENT
+            },
+            timeout: 10000
+        });
         const html = response.data;
 
         // Look for JavaScript array containing image URLs
-        // MangaKatana typically stores images in a variable like: var thzq = ['url1', 'url2', ...]
-        const patterns = [
-            /var\s+(thzq|ytaw|htnc)\s*=\s*\[([\s\S]*?)\];/,
-            /var\s+\w+\s*=\s*\[(['"](https?:\/\/[^'"]+['"],?\s*)+)\]/,
-        ];
+        // MangaKatana stores images in variables like: var thzq = ['url1', 'url2', ...]
+        // The array can span multiple lines and contain many URLs
 
-        for (const pattern of patterns) {
+        // First, try to find common variable names with their full array content
+        const varNames = ['thzq', 'ytaw', 'htnc'];
+        for (const varName of varNames) {
+            const pattern = new RegExp(`var\\s+${varName}\\s*=\\s*\\[([\\s\\S]*?)\\];`, 'm');
             const match = html.match(pattern);
-            if (match) {
-                // Extract URLs from the array string
-                const arrayContent = match[2] || match[1];
-                const urlMatches = arrayContent.match(/['"]([^'"]+)['"]/g);
-                if (urlMatches && urlMatches.length > 0) {
-                    const urls = urlMatches
-                        .map((u: string) => u.replace(/['"]/g, ''))
-                        .filter((u: string) => u.includes('http') || u.startsWith('//'));
-
-                    if (urls.length > 0) {
-                        console.log(`[Fast] Found ${urls.length} pages via regex`);
-                        return urls.map((url: string, index: number) => ({
-                            pageNumber: index + 1,
-                            imageUrl: url.startsWith('//') ? `https:${url}` : url
-                        }));
+            if (match && match[1]) {
+                // Extract all URLs from the array content
+                const arrayContent = match[1];
+                const urlPattern = /['"]([^'"]+)['"]/g;
+                const urls: string[] = [];
+                let urlMatch;
+                while ((urlMatch = urlPattern.exec(arrayContent)) !== null) {
+                    const url = urlMatch[1];
+                    if (url.includes('http') || url.startsWith('//')) {
+                        urls.push(url.startsWith('//') ? `https:${url}` : url);
                     }
+                }
+                if (urls.length > 0) {
+                    console.log(`[Fast] Found ${urls.length} pages via regex (${varName})`);
+                    return urls.map((url, index) => ({
+                        pageNumber: index + 1,
+                        imageUrl: url
+                    }));
                 }
             }
         }
