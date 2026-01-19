@@ -20,6 +20,9 @@ app.use('/api/scraper', scraperRoutes);
 app.use('/api/manga', mangaScraperRoutes);
 app.use('/api/hianime', hianimeRoutes);
 
+import userRoutes from './api/user/user.routes';
+app.use('/api/user', userRoutes);
+
 import { mappingService } from './api/mapping/mapping.service';
 import { getAniListId } from './api/mapping/mapper';
 

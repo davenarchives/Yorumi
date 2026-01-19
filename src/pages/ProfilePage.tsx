@@ -118,9 +118,13 @@ const TabButton = ({ active, onClick, icon, label }: { active: boolean; onClick:
     </button>
 );
 
+// Add component import
+import AvatarSelectionModal from '../components/modals/AvatarSelectionModal';
+
 const ProfileTab = ({ user, avatar }: { user: any, avatar: string | null }) => {
-    const { updateName } = useAuth();
+    const { updateName, updateAvatar } = useAuth();
     const [isEditing, setIsEditing] = useState(false);
+    const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
     const [newName, setNewName] = useState(user.displayName || '');
     const [loading, setLoading] = useState(false);
 
@@ -140,22 +144,42 @@ const ProfileTab = ({ user, avatar }: { user: any, avatar: string | null }) => {
         }
     };
 
+    const handleAvatarSelect = async (path: string) => {
+        await updateAvatar(path);
+        setIsAvatarModalOpen(false);
+    };
+
     return (
-        <div className="bg-[#1c1c1c] rounded-2xl p-8 border border-white/5 max-w-2xl mx-auto">
+        <div className="bg-[#1c1c1c] rounded-2xl p-6 md:p-8 border border-white/5 max-w-2xl mx-auto">
             <h2 className="text-2xl font-bold mb-6 flex items-center gap-3">
                 <User className="w-6 h-6 text-yorumi-accent" />
                 Profile Details
             </h2>
 
             <div className="flex flex-col md:flex-row items-center gap-8">
-                <div className="w-32 h-32 rounded-full overflow-hidden border-4 border-yorumi-accent shadow-xl shrink-0 bg-yorumi-main">
-                    {avatar ? (
-                        <img src={avatar} alt="Profile" className="w-full h-full object-cover" />
-                    ) : (
-                        <div className="w-full h-full flex items-center justify-center text-white font-bold text-4xl">
-                            {user.displayName?.charAt(0).toUpperCase()}
+                <div className="relative group">
+                    <div className="w-32 h-32 rounded-full overflow-hidden border-4 border-yorumi-accent shadow-xl shrink-0 bg-yorumi-main cursor-pointer"
+                        onClick={() => setIsAvatarModalOpen(true)}>
+                        {avatar ? (
+                            <img src={avatar} alt="Profile" className="w-full h-full object-cover" />
+                        ) : (
+                            <div className="w-full h-full flex items-center justify-center text-white font-bold text-4xl">
+                                {user.displayName?.charAt(0).toUpperCase()}
+                            </div>
+                        )}
+
+                        {/* Edit Overlay */}
+                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-full">
+                            <Pencil className="w-8 h-8 text-white" />
                         </div>
-                    )}
+                    </div>
+                    {/* Camera Icon Badge */}
+                    <button
+                        onClick={() => setIsAvatarModalOpen(true)}
+                        className="absolute bottom-0 right-0 p-2 bg-[#d886ff] rounded-full text-black shadow-lg hover:bg-[#c06ae0] transition-colors border-2 border-[#1c1c1c]"
+                    >
+                        <Pencil className="w-4 h-4" />
+                    </button>
                 </div>
 
                 <div className="space-y-6 w-full">
@@ -219,6 +243,13 @@ const ProfileTab = ({ user, avatar }: { user: any, avatar: string | null }) => {
                     </div>
                 </div>
             </div>
+
+            <AvatarSelectionModal
+                isOpen={isAvatarModalOpen}
+                onClose={() => setIsAvatarModalOpen(false)}
+                currentAvatar={avatar}
+                onSelectAvatar={handleAvatarSelect}
+            />
         </div>
     );
 };

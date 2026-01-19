@@ -6,4 +6,16 @@ export default defineConfig({
   base: '/',
   envDir: './backend',
   plugins: [react()],
+  server: {
+    proxy: {
+      '/avatars': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+      },
+      '/api': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+      }
+    }
+  }
 })

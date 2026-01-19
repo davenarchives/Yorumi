@@ -206,30 +206,30 @@ export default function AnimeDetailsPage() {
                         </div>
 
                         {/* Actions */}
-                        <div className="flex flex-row items-center justify-center md:justify-start gap-4 py-2">
+                        <div className="flex flex-row items-center justify-center md:justify-start gap-3 md:gap-4 py-2 w-full md:w-auto px-4 md:px-0">
                             <button
                                 onClick={() => navigate(`/watch/${id}`)}
-                                className="h-12 px-8 bg-[#facc15] hover:bg-[#ffe066] text-black text-lg font-bold rounded-full transition-transform active:scale-95 flex items-center gap-3 shadow-lg shadow-yellow-500/20"
+                                className="h-10 md:h-12 px-4 md:px-8 bg-[#facc15] hover:bg-[#ffe066] text-black text-base md:text-lg font-bold rounded-full transition-transform active:scale-95 flex items-center justify-center gap-2 md:gap-3 shadow-lg shadow-yellow-500/20 flex-1 md:flex-none"
                             >
-                                <Play className="w-5 h-5 fill-current" />
-                                Watch Now
+                                <Play className="w-4 h-4 md:w-5 md:h-5 fill-current" />
+                                <span className="whitespace-nowrap">Watch Now</span>
                             </button>
                             <button
                                 onClick={handleToggleList}
-                                className={`h-12 px-8 text-lg font-bold rounded-full transition-all border flex items-center gap-2 ${inList
+                                className={`h-10 md:h-12 px-4 md:px-8 text-base md:text-lg font-bold rounded-full transition-all border flex items-center justify-center gap-2 flex-1 md:flex-none ${inList
                                     ? 'bg-yorumi-accent text-black border-yorumi-accent hover:bg-yorumi-accent/90'
                                     : 'bg-white/10 hover:bg-white/20 text-white border-white/10'
                                     }`}
                             >
                                 {inList ? (
                                     <>
-                                        <Check className="w-5 h-5" />
-                                        In List
+                                        <Check className="w-4 h-4 md:w-5 md:h-5" />
+                                        <span className="whitespace-nowrap">In List</span>
                                     </>
                                 ) : (
                                     <>
-                                        <Plus className="w-5 h-5" />
-                                        Add to List
+                                        <Plus className="w-4 h-4 md:w-5 md:h-5" />
+                                        <span className="whitespace-nowrap">Add to List</span>
                                     </>
                                 )}
                             </button>
