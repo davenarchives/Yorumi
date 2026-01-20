@@ -328,6 +328,23 @@ export default function Navbar({
                             className="w-full h-10 bg-[#1c1c1c] border border-transparent focus:border-white/10 rounded-md pl-10 text-sm text-white placeholder:text-gray-500 focus:outline-none focus:bg-[#252525] transition-all"
                             autoFocus={showMobileSearch}
                         />
+
+                        {/* Mobile Search Dropdown */}
+                        <SearchDropdown
+                            isVisible={!!searchQuery && (searchResults.length > 0 || isSearching)}
+                            results={searchResults}
+                            isLoading={isSearching}
+                            onSelect={(item) => {
+                                navigate(item.url);
+                                onClearSearch();
+                                setShowMobileSearch(false);
+                            }}
+                            onViewAll={() => {
+                                onSearchSubmit({ preventDefault: () => { } } as React.FormEvent);
+                                onSearchChange('');
+                                setShowMobileSearch(false);
+                            }}
+                        />
                     </form>
 
                     <div className="flex items-center justify-between">
