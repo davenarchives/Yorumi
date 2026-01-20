@@ -4,6 +4,7 @@ import { Shuffle, User as UserIcon, History, Heart, LogOut, BookOpen } from 'luc
 import { animeService } from '../services/animeService';
 import { mangaService } from '../services/mangaService';
 import { useAuth } from '../context/AuthContext';
+import SearchDropdown from './SearchDropdown';
 
 interface NavbarProps {
     activeTab: 'anime' | 'manga';
@@ -13,6 +14,8 @@ interface NavbarProps {
     onSearchSubmit: (e: React.FormEvent) => void;
     onClearSearch: () => void;
     onLogoClick?: () => void;
+    searchResults?: any[]; // Using any[] for now, will refine
+    isSearching?: boolean;
 }
 
 export default function Navbar({
@@ -23,6 +26,8 @@ export default function Navbar({
     onSearchSubmit,
     onClearSearch,
     onLogoClick,
+    searchResults = [],
+    isSearching = false,
 }: NavbarProps) {
     const searchInputRef = useRef<HTMLInputElement>(null);
     const navigate = useNavigate();
@@ -104,43 +109,59 @@ export default function Navbar({
                         <span className="text-xl md:text-2xl font-black text-yorumi-accent tracking-tighter">MI</span>
                     </div>
 
-                    {/* Search Bar (Desktop) */}
-                    <form onSubmit={onSearchSubmit} className="relative group w-full max-w-xs hidden md:block">
-                        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-white transition-colors">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
-                            </svg>
-                        </div>
-                        <input
-                            ref={searchInputRef}
-                            type="text"
-                            placeholder="Search..."
-                            value={searchQuery}
-                            onChange={(e) => onSearchChange(e.target.value)}
-                            className={`w-full h-9 bg-[#1c1c1c] border border-transparent focus:border-white/10 rounded-md pl-10 text-sm text-white placeholder:text-gray-500 focus:outline-none focus:bg-[#252525] transition-all ${searchQuery ? 'pr-20' : 'pr-10'}`}
-                        />
-                        <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
-                            {searchQuery && (
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        onClearSearch();
-                                        searchInputRef.current?.focus();
-                                    }}
-                                    className="text-gray-500 hover:text-white transition-colors p-1"
-                                >
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                                        <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-                                    </svg>
-                                </button>
-                            )}
-                            <div className="pointer-events-none flex items-center">
-                                <span className="bg-white/10 text-gray-400 text-xs px-1.5 py-0.5 rounded border border-white/10 font-mono leading-none flex items-center justify-center">
-                                    /
-                                </span>
+                    <div className="relative group w-full max-w-xs hidden md:block">
+                        <form onSubmit={onSearchSubmit} className="relative w-full">
+                            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-white transition-colors">
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+                                </svg>
                             </div>
-                        </div>
-                    </form>
+                            <input
+                                ref={searchInputRef}
+                                type="text"
+                                placeholder="Search..."
+                                value={searchQuery}
+                                onChange={(e) => onSearchChange(e.target.value)}
+                                className={`w-full h-9 bg-[#1c1c1c] border border-transparent focus:border-white/10 rounded-md pl-10 text-sm text-white placeholder:text-gray-500 focus:outline-none focus:bg-[#252525] transition-all ${searchQuery ? 'pr-20' : 'pr-10'}`}
+                            />
+                            <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                                {searchQuery && (
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            onClearSearch();
+                                            searchInputRef.current?.focus();
+                                        }}
+                                        className="text-gray-500 hover:text-white transition-colors p-1"
+                                    >
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                                            <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                                        </svg>
+                                    </button>
+                                )}
+                                <div className="pointer-events-none flex items-center">
+                                    <span className="bg-white/10 text-gray-400 text-xs px-1.5 py-0.5 rounded border border-white/10 font-mono leading-none flex items-center justify-center">
+                                        /
+                                    </span>
+                                </div>
+                            </div>
+                        </form>
+
+                        {/* Search Dropdown */}
+                        <SearchDropdown
+                            isVisible={!!searchQuery && (searchResults.length > 0 || isSearching)}
+                            results={searchResults}
+                            isLoading={isSearching}
+                            onSelect={(item) => {
+                                navigate(item.url);
+                                onClearSearch();
+                            }}
+                            onViewAll={() => {
+                                onSearchSubmit({ preventDefault: () => { } } as React.FormEvent);
+                                onSearchChange('');
+                            }}
+                        />
+                    </div>
 
                     {/* Toggle & Random Controls Container */}
                     <div className="hidden md:flex items-center gap-6">
