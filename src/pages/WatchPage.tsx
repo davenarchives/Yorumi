@@ -12,7 +12,7 @@ export default function WatchPage() {
     const navigate = useNavigate();
 
     const animeHook = useAnime();
-    const { selectedAnime, episodes, epLoading, scraperSession, error, saveProgress } = animeHook;
+    const { selectedAnime, episodes, epLoading, scraperSession, error, saveProgress, watchedEpisodes, markEpisodeComplete } = animeHook;
     const streamsHook = useStreams(scraperSession);
     const {
         currentStream,
@@ -93,6 +93,7 @@ export default function WatchPage() {
     useEffect(() => {
         if (selectedAnime && currentEpisode) {
             saveProgress(selectedAnime, currentEpisode);
+            markEpisodeComplete(parseFloat(currentEpisode.episodeNumber));
         }
     }, [selectedAnime, currentEpisode]);
 
@@ -266,6 +267,7 @@ export default function WatchPage() {
                             <div className={viewMode === 'grid' ? "grid grid-cols-5 gap-2 p-3" : "flex flex-col"}>
                                 {filteredEpisodes.map((ep) => {
                                     const isCurrent = ep.episodeNumber == epNum;
+                                    const isWatched = watchedEpisodes.has(parseFloat(ep.episodeNumber));
                                     const cleanTitle = ep.title && ep.title.trim().toLowerCase() !== 'untitled' ? ep.title : null;
                                     const displayTitle = cleanTitle || `Episode ${ep.episodeNumber}`;
 
@@ -277,8 +279,8 @@ export default function WatchPage() {
                                             className={`
                                                 group relative transition-all duration-200
                                                 ${viewMode === 'grid'
-                                                    ? `aspect-square rounded-md flex items-center justify-center border ${isCurrent ? 'bg-yellow-500 text-black border-yellow-500 font-bold' : 'bg-white/5 border-white/5 hover:bg-white/10 text-gray-400 hover:text-white'}`
-                                                    : `w-full px-5 py-3 text-left border-l-4 flex flex-col justify-center ${isCurrent ? 'border-yellow-500 bg-white/10' : 'border-transparent hover:bg-white/5'}`
+                                                    ? `aspect-square rounded-md flex items-center justify-center border ${isCurrent ? 'bg-yellow-500 text-black border-yellow-500 font-bold' : isWatched ? 'bg-white/5 text-gray-600 border-white/10 opacity-50' : 'bg-white/10 border-white/5 hover:bg-white/20 text-gray-400 hover:text-white'}`
+                                                    : `w-full px-5 py-3 text-left flex flex-col justify-center ${isCurrent ? 'bg-white/10' : isWatched ? 'opacity-50' : 'hover:bg-white/5'}`
                                                 }
                                             `}
                                         >
@@ -287,7 +289,7 @@ export default function WatchPage() {
                                             ) : (
                                                 <>
                                                     <div className="flex items-center justify-between w-full mb-0.5">
-                                                        <span className={`text-sm font-bold ${isCurrent ? 'text-yellow-500' : 'text-gray-400 group-hover:text-white'}`}>
+                                                        <span className={`text-sm font-bold ${isCurrent ? 'text-yellow-500' : isWatched ? 'text-gray-600' : 'text-gray-400 group-hover:text-white'}`}>
                                                             EP {ep.episodeNumber}
                                                         </span>
                                                         {isCurrent && (
