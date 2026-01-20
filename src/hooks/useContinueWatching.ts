@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { doc, setDoc, onSnapshot, collection, query, orderBy, limit } from 'firebase/firestore';
+import { doc, setDoc, deleteDoc, onSnapshot, collection, query, orderBy, limit } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { useAuth } from '../context/AuthContext';
 import type { Anime, Episode } from '../types/anime';
@@ -54,10 +54,15 @@ export function useContinueWatching() {
         }
     }, [user]);
 
-    const removeFromHistory = useCallback(async () => {
-        // Implementation for removing would go here (deleteDoc)
-        // Leaving properly typed stub for now as storage version had it.
-    }, []);
+    const removeFromHistory = useCallback(async (malId: number) => {
+        if (!user) return;
+
+        try {
+            await deleteDoc(doc(db, 'users', user.uid, 'continueWatching', malId.toString()));
+        } catch (error) {
+            console.error("Failed to remove from history:", error);
+        }
+    }, [user]);
 
     return {
         continueWatchingList,

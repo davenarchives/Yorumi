@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { useEffect } from 'react';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, X } from 'lucide-react';
 import AnimeCard from '../components/AnimeCard';
 import Pagination from '../components/Pagination';
 import LoadingSpinner from '../components/LoadingSpinner';
@@ -274,6 +274,17 @@ export default function HomePage() {
                                             <div className="absolute top-2 left-2 bg-black/60 backdrop-blur text-white text-[10px] font-bold px-1.5 py-0.5 rounded border border-white/10">
                                                 EP {item.episodeNumber}
                                             </div>
+                                            {/* Remove Button */}
+                                            <button
+                                                className="absolute top-2 right-2 p-1.5 rounded-full bg-black/60 backdrop-blur hover:bg-red-500/80 text-white/80 hover:text-white transition-all opacity-0 group-hover:opacity-100 z-10"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    anime.removeFromHistory(parseInt(item.animeId));
+                                                }}
+                                                title="Remove from history"
+                                            >
+                                                <X className="w-3.5 h-3.5" />
+                                            </button>
                                         </div>
                                         <div className="px-1">
                                             <h4 className="text-sm font-bold text-gray-200 truncate group-hover:text-yorumi-accent transition-colors">
