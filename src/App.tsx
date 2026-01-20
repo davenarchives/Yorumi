@@ -32,7 +32,7 @@ function App() {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchQuery, setSearchQuery] = useState('');
-  const debouncedSearchTerm = useDebounce(searchQuery, 500);
+  const debouncedSearchTerm = useDebounce(searchQuery, 100);
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const { closeViewAll } = useAnime();
