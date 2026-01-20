@@ -8,7 +8,7 @@ import AnimeCard from '../components/AnimeCard';
 import type { Anime, Episode } from '../types/anime';
 
 // Episode Grid (reused from Modal)
-const EpisodeList = ({ episodes, onEpisodeClick }: { episodes: Episode[], onEpisodeClick: (ep: Episode) => void }) => {
+const EpisodeList = ({ episodes, watchedEpisodes, onEpisodeClick }: { episodes: Episode[], watchedEpisodes: Set<number>, onEpisodeClick: (ep: Episode) => void }) => {
     const ITEMS_PER_PAGE = 30;
     const [page, setPage] = useState(1);
     const totalPages = Math.ceil(episodes.length / ITEMS_PER_PAGE);
@@ -21,11 +21,14 @@ const EpisodeList = ({ episodes, onEpisodeClick }: { episodes: Episode[], onEpis
                 {currentEpisodes.map((ep) => {
                     const cleanTitle = ep.title && ep.title.trim().toLowerCase() !== 'untitled' ? ep.title : null;
                     const displayTitle = cleanTitle || `Episode ${ep.episodeNumber}`;
+                    const isWatched = watchedEpisodes.has(parseFloat(ep.episodeNumber));
                     return (
                         <button
                             key={ep.session || ep.episodeNumber}
                             onClick={() => onEpisodeClick(ep)}
-                            className="aspect-square flex items-center justify-center rounded transition-all duration-200 relative group bg-white/10 hover:bg-yorumi-accent hover:text-black hover:scale-105 hover:shadow-lg hover:shadow-yorumi-accent/20 text-gray-300 cursor-pointer border border-white/5 hover:border-yorumi-accent"
+                            className={`aspect-square flex items-center justify-center rounded transition-all duration-200 relative group 
+                                ${isWatched ? 'bg-white/5 text-gray-600 opacity-50' : 'bg-white/10 text-gray-300 hover:bg-yorumi-accent hover:text-black'} 
+                                hover:scale-105 hover:shadow-lg hover:shadow-yorumi-accent/20 cursor-pointer border border-white/5 hover:border-yorumi-accent`}
                             title={displayTitle}
                         >
                             <span className="text-sm font-bold">{ep.episodeNumber}</span>
@@ -79,7 +82,7 @@ export default function AnimeDetailsPage() {
         }
     }, [id, location.state]);
 
-    const { selectedAnime, episodes, epLoading, detailsLoading, error } = animeHook;
+    const { selectedAnime, episodes, epLoading, detailsLoading, error, watchedEpisodes } = animeHook;
     const { isInWatchList, addToWatchList, removeFromWatchList } = useWatchList();
     const [activeTab, setActiveTab] = useState<'summary' | 'relations'>('summary');
 
@@ -270,6 +273,7 @@ export default function AnimeDetailsPage() {
                                         ) : episodes.length > 0 ? (
                                             <EpisodeList
                                                 episodes={episodes}
+                                                watchedEpisodes={watchedEpisodes}
                                                 onEpisodeClick={(ep) => navigate(`/watch/${id}?ep=${ep.episodeNumber}`)}
                                             />
                                         ) : (
