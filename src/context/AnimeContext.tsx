@@ -392,10 +392,38 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
             if (data?.data) {
                 currentAnime = data.data;
                 setSelectedAnime(currentAnime);
+            } else {
+                // FALLBACK: Try to find by title if ID lookup failed (likely MAL ID vs AniList ID mismatch)
+                let found = false;
+                if (anime.title) {
+                    try {
+                        console.log('ID lookup failed, attempting fallback search for:', anime.title);
+                        const search = await animeService.searchAnime(anime.title, 1);
+                        if (search?.data && search.data.length > 0) {
+                            // Use first match
+                            currentAnime = search.data[0];
+                            setSelectedAnime(currentAnime);
+                            found = true;
+                        }
+                    } catch (e) {
+                        console.error('Fallback search failed', e);
+                    }
+                }
+
+                if (!found) {
+                    // If we don't have partial data (images) to show, and fetch failed, it's a hard error
+                    if (!anime.images) {
+                        throw new Error('Anime not found');
+                    }
+                }
             }
         } catch (err) {
             console.error('Failed to fetch details', err);
             setError('Failed to load anime details');
+            // If we failed to load details and have no fallback (like from deep link), verify selectedAnime is null
+            if (!anime.images && !selectedAnime) {
+                // Double ensure error is visible if we are stuck
+            }
         } finally {
             setDetailsLoading(false); // Stop loading regardless of success
         }
