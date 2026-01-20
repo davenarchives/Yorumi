@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import type { Manga, MangaChapter, MangaPage } from '../types/manga';
 import { mangaService } from '../services/mangaService';
 import { token_set_ratio } from 'fuzzball';
+import { storage } from '../utils/storage';
 
 export type MangaViewMode = 'default' | 'popular_manhwa' | 'all_time_popular' | 'top_100';
 
@@ -20,6 +21,7 @@ export function useManga() {
     const [mangaPagesLoading, setMangaPagesLoading] = useState(false);
     const [chapterSearchQuery, setChapterSearchQuery] = useState('');
     const [zoomLevel, setZoomLevel] = useState(() => window.innerWidth < 768 ? 100 : 60);
+    const [readChapters, setReadChapters] = useState<Set<string>>(new Set());
 
     // View All state
     const [viewMode, setViewMode] = useState<MangaViewMode>('default');
@@ -69,6 +71,16 @@ export function useManga() {
         };
         fetchManga();
     }, [mangaPage]);
+
+    // Load Read History
+    useEffect(() => {
+        if (selectedManga) {
+            const history = storage.getReadChapters(String(selectedManga.mal_id));
+            setReadChapters(new Set(history));
+        } else {
+            setReadChapters(new Set());
+        }
+    }, [selectedManga]);
 
     // View All fetch function
     const fetchViewAll = useCallback(async (type: MangaViewMode, page: number) => {
@@ -399,6 +411,13 @@ export function useManga() {
 
         setCurrentMangaChapter(chapter);
         setMangaPagesLoading(true);
+
+        // Mark Chapter as Read
+        if (selectedManga) {
+            storage.markChapterAsRead(String(selectedManga.mal_id), chapter.id);
+            setReadChapters(prev => new Set(prev).add(chapter.id));
+        }
+
         // Clear previous pages immediately to show loading state for the new chapter
         setChapterPages([]);
 
@@ -630,6 +649,7 @@ export function useManga() {
         mangaLoading,
         mangaPage,
         mangaLastPage,
+        readChapters, // New State
         // View All state
         viewMode,
         viewAllManga,
