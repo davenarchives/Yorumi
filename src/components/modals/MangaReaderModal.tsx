@@ -31,6 +31,7 @@ interface MangaReaderModalProps {
     onPrefetchChapter: (chapter: MangaChapter) => void;
     onZoomIn: () => void;
     onZoomOut: () => void;
+    readChapters?: Set<string>;
 }
 
 export default function MangaReaderModal({
@@ -49,6 +50,7 @@ export default function MangaReaderModal({
     onPrefetchChapter,
     onZoomIn,
     onZoomOut,
+    readChapters = new Set()
 }: MangaReaderModalProps) {
     const [viewMode, setViewMode] = useState<'list' | 'grid'>('grid');
     const [showDetails, setShowDetails] = useState(false);
@@ -354,6 +356,8 @@ export default function MangaReaderModal({
                                         const mainLabel = displayNum ? viewMode === 'grid' ? displayNum : `Chapter ${displayNum}` : chapter.title;
                                         const subLabel = !displayNum ? '' : cleanTitle;
 
+                                        const isRead = readChapters.has(chapter.id);
+
                                         return (
                                             <button
                                                 key={`${chapter.id}-${index}`}
@@ -365,8 +369,8 @@ export default function MangaReaderModal({
                                                 className={`
                                                     group relative transition-all duration-200
                                                     ${viewMode === 'grid'
-                                                        ? `aspect-square rounded-md flex items-center justify-center border overflow-hidden ${isCurrent ? 'bg-yorumi-accent text-black border-yorumi-accent font-bold' : 'bg-white/5 border-white/5 hover:bg-white/10 text-gray-400 hover:text-white'}`
-                                                        : `w-full px-5 py-3 text-left border-l-2 flex flex-col justify-center ${isCurrent ? 'border-yorumi-accent bg-white/5' : 'border-transparent hover:bg-white/5'}`
+                                                        ? `aspect-square rounded-md flex items-center justify-center border overflow-hidden ${isCurrent ? 'bg-yorumi-accent text-black border-yorumi-accent font-bold' : isRead ? 'bg-white/5 text-gray-600 border-white/10 opacity-50' : 'bg-white/5 border-white/5 hover:bg-white/10 text-gray-400 hover:text-white'}`
+                                                        : `w-full px-5 py-3 text-left flex flex-col justify-center ${isCurrent ? 'bg-white/5' : isRead ? 'opacity-50' : 'hover:bg-white/5'}`
                                                     }
                                                 `}
                                                 title={chapter.title}
@@ -376,7 +380,7 @@ export default function MangaReaderModal({
                                                 ) : (
                                                     <>
                                                         <div className="flex items-center justify-between w-full mb-0.5">
-                                                            <span className={`text-sm font-bold ${isCurrent ? 'text-yorumi-accent' : 'text-gray-400 group-hover:text-white'}`}>
+                                                            <span className={`text-sm font-bold ${isCurrent ? 'text-yorumi-accent' : isRead ? 'text-gray-600' : 'text-gray-400 group-hover:text-white'}`}>
                                                                 {mainLabel}
                                                             </span>
                                                             {isCurrent && (
