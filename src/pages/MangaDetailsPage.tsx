@@ -11,9 +11,11 @@ import type { MangaChapter } from '../types/manga';
 // Chapter Grid for Details Page
 const ChapterList = ({
     chapters,
+    readChapters,
     onChapterClick
 }: {
     chapters: MangaChapter[],
+    readChapters: Set<string>,
     onChapterClick: (ch: MangaChapter) => void
 }) => {
     // Determine reasonable pagination
@@ -34,11 +36,14 @@ const ChapterList = ({
                     const match = ch.title.match(/Chapter\s+(\d+[\.]?\d*)/i);
                     const displayNum = match ? match[1] : ch.title.replace('Chapter', '').trim();
 
+                    const isRead = readChapters.has(ch.id);
                     return (
                         <button
                             key={`chapter-${ch.id}-${index}`}
                             onClick={() => onChapterClick(ch)}
-                            className="aspect-square flex items-center justify-center rounded transition-all duration-200 relative group bg-white/10 hover:bg-yorumi-accent hover:text-black hover:scale-105 hover:shadow-lg hover:shadow-yorumi-accent/20 text-gray-300 cursor-pointer border border-white/5 hover:border-yorumi-accent overflow-hidden"
+                            className={`aspect-square flex items-center justify-center rounded transition-all duration-200 relative group 
+                                ${isRead ? 'bg-white/5 text-gray-600 opacity-50' : 'bg-white/10 text-gray-300 hover:bg-yorumi-accent hover:text-black'}
+                                hover:scale-105 hover:shadow-lg hover:shadow-yorumi-accent/20 cursor-pointer border border-white/5 hover:border-yorumi-accent overflow-hidden`}
                             title={ch.title}
                         >
                             <span className="text-xs text-center font-bold line-clamp-4 px-1 break-words leading-tight">{displayNum}</span>
@@ -92,7 +97,8 @@ export default function MangaDetailsPage() {
         prefetchChapter,
         closeMangaReader,
         zoomIn,
-        zoomOut
+        zoomOut,
+        readChapters
     } = useManga();
 
     const { isInReadList, addToReadList, removeFromReadList } = useReadList();
@@ -350,6 +356,7 @@ export default function MangaDetailsPage() {
                                     ) : mangaChapters.length > 0 ? (
                                         <ChapterList
                                             chapters={mangaChapters}
+                                            readChapters={readChapters}
                                             onChapterClick={loadMangaChapter}
                                         />
                                     ) : (
@@ -425,6 +432,7 @@ export default function MangaDetailsPage() {
                 onPrefetchChapter={prefetchChapter}
                 onZoomIn={zoomIn}
                 onZoomOut={zoomOut}
+                readChapters={readChapters}
             />
         </div>
     );
