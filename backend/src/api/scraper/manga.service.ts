@@ -162,8 +162,42 @@ export async function getHotUpdates() {
 export async function getEnrichedSpotlight() {
     try {
         // 1. Get Base Trending from AniList
-        const trending = await anilistService.getTrendingManga(1, 10);
-        const topManga = trending.media || [];
+        let topManga: any[] = [];
+        try {
+            const trending = await anilistService.getTrendingManga(1, 10);
+            topManga = trending.media || [];
+        } catch (e) {
+            console.warn('AniList trending fetch failed, trying fallback...');
+        }
+
+        // FALLBACK: If AniList fails (empty array), use MangaKatana Hot Updates
+        if (topManga.length === 0) {
+            console.log('Using Hot Updates as Spotlight Fallback');
+            const hotUpdates = await getHotUpdates();
+
+            // Map Hot Updates to look like AniList Media objects
+            const fallbackManga = hotUpdates.slice(0, 10).map((update: any) => ({
+                id: update.id, // String ID (mk:...)
+                title: {
+                    english: update.title,
+                    romaji: update.title,
+                    native: update.title
+                },
+                description: `Latest chapter: ${update.chapter}. (Source: MangaKatana)`,
+                coverImage: {
+                    extraLarge: update.thumbnail,
+                    large: update.thumbnail
+                },
+                format: 'MANGA',
+                chapters: parseFloat(update.chapter) || 0,
+                status: 'RELEASING',
+                averageScore: 0,
+                genres: ['Manga'],
+                countryOfOrigin: 'JP'
+            }));
+
+            return fallbackManga;
+        }
 
         // 2. Enrich with MangaKatana Chapters in parallel
         // We limit to top 8 to match UI
