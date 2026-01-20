@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useParams, useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import { ArrowLeft, LayoutList, LayoutGrid, RotateCw, Maximize, Minimize, Settings, Search, ChevronLeft, ChevronRight, ChevronDown } from 'lucide-react';
 import { useAnime } from '../hooks/useAnime';
@@ -43,6 +43,14 @@ export default function WatchPage() {
     const [selectedRange, setSelectedRange] = useState<string>('1-100');
     const [showRangeMenu, setShowRangeMenu] = useState(false);
 
+    // Auto-scroll to active episode
+    const activeEpRef = useRef<HTMLButtonElement>(null);
+    useEffect(() => {
+        if (activeEpRef.current) {
+            activeEpRef.current.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }
+    }, [epNum, viewMode]);
+
     // Persist AutoPlay
     useEffect(() => {
         localStorage.setItem('yorumi_autoplay', String(autoPlay));
@@ -51,18 +59,31 @@ export default function WatchPage() {
     // 1. Fetch Anime & Episodes on Mount
     const location = useLocation();
     useEffect(() => {
+        // Prevent re-fetching if we already have the correct anime loaded
+        // This is crucial because setSearchParams clears location.state, which can cause 
+        // a fall-back to ID-only fetch that fails if the ID is missing from the provider (e.g. Frieren S2 mismatch)
+        if (selectedAnime && (String(selectedAnime.id) === String(id) || String(selectedAnime.mal_id) === String(id))) {
+            return;
+        }
+
         if (location.state?.anime) {
             animeHook.handleAnimeClick(location.state.anime);
         } else if (id) {
-            animeHook.handleAnimeClick({ mal_id: parseInt(id) } as Anime);
+            const ids = isNaN(Number(id)) ? id : parseInt(id);
+            animeHook.handleAnimeClick({ mal_id: ids } as Anime);
         }
-    }, [id, location.state]);
+    }, [id, location.state, selectedAnime]);
 
+    // 2. Auto-load Episode when episodes are ready
     // 2. Auto-load Episode when episodes are ready
     useEffect(() => {
         if (episodes.length > 0 && !currentStream && !streamLoading) {
             const targetEp = episodes.find(e => e.episodeNumber == epNum) || episodes[0];
             if (targetEp) {
+                // Fix highlight: Update URL if we defaulted to a different episode (e.g. requested 1, but Frieren S2 starts at 29)
+                if (String(targetEp.episodeNumber) !== epNum) {
+                    setSearchParams({ ep: String(targetEp.episodeNumber) }, { replace: true });
+                }
                 streamsHook.loadStream(targetEp);
             }
         }
@@ -251,12 +272,13 @@ export default function WatchPage() {
                                     return (
                                         <button
                                             key={ep.episodeNumber}
+                                            ref={isCurrent ? activeEpRef : null}
                                             onClick={() => handleEpisodeClick(ep)}
                                             className={`
                                                 group relative transition-all duration-200
                                                 ${viewMode === 'grid'
                                                     ? `aspect-square rounded-md flex items-center justify-center border ${isCurrent ? 'bg-yellow-500 text-black border-yellow-500 font-bold' : 'bg-white/5 border-white/5 hover:bg-white/10 text-gray-400 hover:text-white'}`
-                                                    : `w-full px-5 py-3 text-left border-l-2 flex flex-col justify-center ${isCurrent ? 'border-yellow-500 bg-white/5' : 'border-transparent hover:bg-white/5'}`
+                                                    : `w-full px-5 py-3 text-left border-l-4 flex flex-col justify-center ${isCurrent ? 'border-yellow-500 bg-white/10' : 'border-transparent hover:bg-white/5'}`
                                                 }
                                             `}
                                         >
