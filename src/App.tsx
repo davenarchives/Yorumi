@@ -130,6 +130,8 @@ function App() {
     e.preventDefault();
     if (!searchQuery.trim()) return;
     navigate(`/search?q=${encodeURIComponent(searchQuery)}&type=${activeTab}`);
+    setSearchQuery('');
+    setSearchResults([]);
   };
 
   const handleLogoClick = () => {
