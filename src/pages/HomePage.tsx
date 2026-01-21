@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { useEffect } from 'react';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
 import { useAnime } from '../hooks/useAnime';
+import { slugify } from '../utils/slugify';
 import type { Anime } from '../types/anime';
 
 // Feature Components
@@ -20,11 +21,15 @@ export default function HomePage() {
     // Navigation Handlers
     const handleAnimeClick = (item: Anime) => {
         const animeId = item.id || item.mal_id;
-        navigate(`/anime/${animeId}`, { state: { anime: item } });
+        navigate(`/anime/details/${animeId}`, { state: { anime: item } });
     };
 
     const handleWatchClick = (item: Anime, episodeNumber?: number) => {
-        const url = episodeNumber ? `/watch/${item.mal_id}?ep=${episodeNumber}` : `/watch/${item.mal_id}`;
+        const title = slugify(item.title || item.title_english || 'anime');
+        const id = item.mal_id || item.id;
+        const url = episodeNumber
+            ? `/anime/watch/${title}/${id}?ep=${episodeNumber}`
+            : `/anime/watch/${title}/${id}`;
         navigate(url, { state: { anime: item } });
     };
 
