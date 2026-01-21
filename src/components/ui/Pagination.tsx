@@ -71,7 +71,7 @@ export default function Pagination({ currentPage, lastPage, onPageChange, isLoad
                 onMouseEnter={() => handleMouseEnter(1)}
                 onMouseLeave={handleMouseLeave}
                 disabled={currentPage === 1 || isLoading}
-                className="hidden sm:flex w-8 h-8 sm:w-10 sm:h-10 items-center justify-center rounded-full bg-[#2a2a3e] hover:bg-[#3a3a4e] disabled:opacity-30 disabled:cursor-not-allowed text-gray-300 transition-colors font-bold text-xs sm:text-sm"
+                className="hidden sm:flex w-8 h-8 sm:w-10 sm:h-10 items-center justify-center rounded-full bg-[#2a2a3e] hover:bg-[#3a3a4e] disabled:opacity-30 disabled:cursor-not-allowed text-gray-300 transition-colors font-bold text-xs sm:text-sm flex-shrink-0 aspect-square"
                 title="First Page"
             >
                 «
@@ -83,7 +83,7 @@ export default function Pagination({ currentPage, lastPage, onPageChange, isLoad
                 onMouseEnter={() => handleMouseEnter(currentPage - 1)}
                 onMouseLeave={handleMouseLeave}
                 disabled={currentPage === 1 || isLoading}
-                className="w-8 h-8 sm:w-10 sm:h-10 flex items-center justify-center rounded-full bg-[#2a2a3e] hover:bg-[#3a3a4e] disabled:opacity-30 disabled:cursor-not-allowed text-gray-300 transition-colors font-bold text-xs sm:text-sm"
+                className="w-8 h-8 sm:w-10 sm:h-10 flex items-center justify-center rounded-full bg-[#2a2a3e] hover:bg-[#3a3a4e] disabled:opacity-30 disabled:cursor-not-allowed text-gray-300 transition-colors font-bold text-xs sm:text-sm flex-shrink-0 aspect-square"
                 title="Previous Page"
             >
                 ‹
@@ -97,7 +97,7 @@ export default function Pagination({ currentPage, lastPage, onPageChange, isLoad
                     onMouseEnter={() => handleMouseEnter(page)}
                     onMouseLeave={handleMouseLeave}
                     disabled={isLoading}
-                    className={`w-8 h-8 sm:w-10 sm:h-10 flex items-center justify-center rounded-full text-xs sm:text-sm font-bold transition-all 
+                    className={`w-8 h-8 sm:w-10 sm:h-10 flex items-center justify-center rounded-full text-xs sm:text-sm font-bold transition-all flex-shrink-0 aspect-square
                         ${Math.abs(currentPage - page) > 1 ? 'hidden sm:flex' : 'flex'}
                         ${currentPage === page
                             ? 'bg-[#ffbade] text-black shadow-lg shadow-[#ffbade]/20 scan-effect' // Active: Pink
@@ -114,7 +114,7 @@ export default function Pagination({ currentPage, lastPage, onPageChange, isLoad
                 onMouseEnter={() => handleMouseEnter(currentPage + 1)}
                 onMouseLeave={handleMouseLeave}
                 disabled={currentPage === lastPage || isLoading}
-                className="w-8 h-8 sm:w-10 sm:h-10 flex items-center justify-center rounded-full bg-[#2a2a3e] hover:bg-[#3a3a4e] disabled:opacity-30 disabled:cursor-not-allowed text-gray-300 transition-colors font-bold text-xs sm:text-sm"
+                className="w-8 h-8 sm:w-10 sm:h-10 flex items-center justify-center rounded-full bg-[#2a2a3e] hover:bg-[#3a3a4e] disabled:opacity-30 disabled:cursor-not-allowed text-gray-300 transition-colors font-bold text-xs sm:text-sm flex-shrink-0 aspect-square"
                 title="Next Page"
             >
                 ›
@@ -126,9 +126,10 @@ export default function Pagination({ currentPage, lastPage, onPageChange, isLoad
                 onMouseEnter={() => handleMouseEnter(lastPage)}
                 onMouseLeave={handleMouseLeave}
                 disabled={currentPage === lastPage || isLoading}
-                className="hidden sm:flex w-8 h-8 sm:w-10 sm:h-10 items-center justify-center rounded-full bg-[#2a2a3e] hover:bg-[#3a3a4e] disabled:opacity-30 disabled:cursor-not-allowed text-gray-300 transition-colors font-bold text-xs sm:text-sm"
+                className="hidden sm:flex w-8 h-8 sm:w-10 sm:h-10 items-center justify-center rounded-full bg-[#2a2a3e] hover:bg-[#3a3a4e] disabled:opacity-30 disabled:cursor-not-allowed text-gray-300 transition-colors font-bold text-xs sm:text-sm flex-shrink-0 aspect-square"
                 title="Last Page"
             >
+
                 »
             </button>
         </div>
