@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, Play } from 'lucide-react';
-import { animeService } from '../services/animeService';
+import { animeService } from '../../../services/animeService';
 
 interface ScheduleItem {
     id: number;
@@ -111,8 +111,8 @@ export default function EstimatedSchedule({ onAnimeClick }: EstimatedSchedulePro
                             key={day.offset}
                             onClick={() => setSelectedDayOffset(day.offset)}
                             className={`flex-1 min-w-[70px] py-2 px-3 rounded-lg text-center transition-all ${selectedDayOffset === day.offset
-                                    ? 'bg-[#ff6b9d] text-white'
-                                    : 'bg-[#2a2a4a] text-gray-400 hover:bg-[#3a3a5a]'
+                                ? 'bg-[#ff6b9d] text-white'
+                                : 'bg-[#2a2a4a] text-gray-400 hover:bg-[#3a3a5a]'
                                 }`}
                         >
                             <div className="text-sm font-bold">{day.name}</div>

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import useEmblaCarousel from 'embla-carousel-react';
 import Autoplay from 'embla-carousel-autoplay';
-import type { Anime } from '../types/anime';
+import type { Anime } from '../../../types/anime';
 
 interface SpotlightHeroProps {
     animeList: Anime[];

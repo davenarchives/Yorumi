@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { animeService } from '../services/animeService';
+import { animeService } from '../../../services/animeService';
 
 interface Genre {
     name: string;

@@ -1,5 +1,5 @@
 import React from 'react';
-import type { Anime } from '../types/anime';
+import type { Anime } from '../../../types/anime';
 
 interface AnimeCardProps {
     anime: Anime;
