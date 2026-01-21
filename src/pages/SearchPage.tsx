@@ -50,7 +50,7 @@ export default function SearchPage() {
                             <AnimeCard
                                 key={item.mal_id}
                                 anime={item}
-                                onClick={() => navigate(`/anime/${item.mal_id}`, { state: { anime: item } })}
+                                onClick={() => navigate(`/anime/details/${item.mal_id}`, { state: { anime: item } })}
                             />
                         ))
                     ) : (
@@ -58,7 +58,7 @@ export default function SearchPage() {
                             <MangaCard
                                 key={item.id || item.mal_id}
                                 manga={item}
-                                onClick={() => navigate(`/manga/${item.id || item.mal_id}`, { state: { manga: item } })}
+                                onClick={() => navigate(`/manga/details/${item.id || item.mal_id}`, { state: { manga: item } })}
                             />
                         ))
                     )}
