@@ -23,7 +23,6 @@ export default function MangaReaderPage() {
         fetchMangaDetails,
         loadMangaChapter,
         prefetchChapter,
-        closeMangaReader,
         zoomIn,
         zoomOut,
         readChapters
@@ -69,8 +68,8 @@ export default function MangaReaderPage() {
     };
 
     // Handle close - go back to details
+    // Don't call closeMangaReader() as it uses history.back() which conflicts with navigate()
     const handleClose = () => {
-        closeMangaReader();
         if (id) {
             navigate(`/manga/details/${id}`);
         } else {
