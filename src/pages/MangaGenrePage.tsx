@@ -66,7 +66,7 @@ export default function MangaGenrePage() {
     }, [genreName, currentPage]);
 
     const handleMangaClick = (item: Manga) => {
-        navigate(`/manga/${item.mal_id}`, { state: { manga: item } });
+        navigate(`/manga/details/${item.mal_id}`, { state: { manga: item } });
     };
 
     return (
