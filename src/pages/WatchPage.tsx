@@ -10,7 +10,7 @@ import PlayerControls from '../features/player/components/PlayerControls';
 import AnimeDetailsSidebar from '../features/anime/components/AnimeDetailsSidebar';
 
 export default function WatchPage() {
-    const { id } = useParams<{ id: string }>();
+    const { id } = useParams<{ title: string; id: string }>();
 
     const {
         anime,
