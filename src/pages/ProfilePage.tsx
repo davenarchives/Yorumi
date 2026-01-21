@@ -7,6 +7,7 @@ import { useContinueWatching } from '../hooks/useContinueWatching';
 import { useContinueReading } from '../hooks/useContinueReading';
 import { useWatchList } from '../hooks/useWatchList';
 import { useReadList } from '../hooks/useReadList';
+import { slugify } from '../utils/slugify';
 
 type TabType = 'profile' | 'continue-watching' | 'watchlist' | 'continue-reading' | 'readlist';
 
@@ -279,7 +280,10 @@ const ContinueWatchingTab = () => {
                 {history.map((item) => (
                     <div
                         key={item.animeId}
-                        onClick={() => navigate(`/watch/${item.animeId}?episode=${item.episodeId}`)}
+                        onClick={() => {
+                            const title = slugify(item.animeTitle || 'anime');
+                            navigate(`/anime/watch/${title}/${item.animeId}?ep=${item.episodeNumber}`);
+                        }}
                         className="aspect-video bg-[#1c1c1c] rounded-xl border border-white/5 flex flex-col items-center justify-center group cursor-pointer hover:border-yorumi-accent/50 transition-colors relative overflow-hidden"
                     >
                         {item.animeImage ? (
@@ -355,8 +359,11 @@ const WatchListTab = () => {
                         <AnimeCard
                             key={item.id}
                             anime={animeData}
-                            onClick={() => navigate(`/anime/${item.id}`)}
-                            onWatchClick={() => navigate(`/watch/${item.id}`)}
+                            onClick={() => navigate(`/anime/details/${item.id}`)}
+                            onWatchClick={() => {
+                                const title = slugify(item.title || 'anime');
+                                navigate(`/anime/watch/${title}/${item.id}`);
+                            }}
                             inList={true}
                             onToggleList={() => removeFromWatchList(item.id)}
                         />
@@ -387,7 +394,10 @@ const ContinueReadingTab = () => {
                 {history.map((item) => (
                     <div
                         key={item.mangaId}
-                        onClick={() => navigate(`/manga/${item.mangaId}`, { state: { chapterId: item.chapterId } })}
+                        onClick={() => {
+                            const title = slugify(item.mangaTitle || 'manga');
+                            navigate(`/manga/read/${title}/${item.mangaId}/c${item.chapterNumber}`);
+                        }}
                         className="aspect-video bg-[#1c1c1c] rounded-xl border border-white/5 flex flex-col items-center justify-center group cursor-pointer hover:border-yorumi-accent/50 transition-colors relative overflow-hidden"
                     >
                         {item.mangaImage ? (
@@ -459,8 +469,8 @@ const ReadListTab = () => {
                         <MangaCard
                             key={item.id}
                             manga={mangaData}
-                            onClick={() => navigate(`/manga/${item.id}`)}
-                            onReadClick={() => navigate(`/manga/${item.id}`)}
+                            onClick={() => navigate(`/manga/details/${item.id}`)}
+                            onReadClick={() => navigate(`/manga/details/${item.id}`)}
                             inList={true}
                             onToggleList={() => removeFromReadList(item.id)}
                         />
