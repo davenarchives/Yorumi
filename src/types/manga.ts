@@ -28,6 +28,33 @@ export interface Manga {
     countryOfOrigin?: string;
     synonyms?: string[];
     scraper_id?: string;
+    characters?: {
+        edges: {
+            role: string;
+            node: {
+                id: number;
+                name: { full: string };
+                image: { large: string };
+            };
+            voiceActors: { // Optional for Manga
+                id: number;
+                name: { full: string };
+                image: { large: string };
+                languageV2: string;
+            }[];
+        }[];
+    };
+    relations?: {
+        edges: {
+            relationType: string;
+            node: {
+                id: number;
+                title: { romaji: string; english?: string; native?: string };
+                coverImage: { large: string };
+                format: string;
+            };
+        }[];
+    };
 }
 
 export interface MangaChapter {

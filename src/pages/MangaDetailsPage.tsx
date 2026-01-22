@@ -7,6 +7,7 @@ import { slugify } from '../utils/slugify';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
 import MangaCard from '../features/manga/components/MangaCard';
 import type { MangaChapter } from '../types/manga';
+import DetailsCharacters from '../features/anime/components/details/DetailsCharacters';
 
 // Chapter Grid for Details Page
 const ChapterList = ({
@@ -366,25 +367,12 @@ export default function MangaDetailsPage() {
                                 </div>
 
                                 {/* Characters Section (if available) */}
-                                {(selectedManga as any).characters?.edges?.length > 0 && (
-                                    <div className="py-6 border-t border-white/10 mt-6">
-                                        <h3 className="text-xl font-bold text-white mb-4">Characters</h3>
-                                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                                            {(selectedManga as any).characters.edges.slice(0, 8).map((char: any, i: number) => (
-                                                <div key={i} className="flex items-center gap-3 bg-white/5 p-2 rounded-lg">
-                                                    <img
-                                                        src={char.node.image?.large}
-                                                        alt={char.node.name?.full}
-                                                        className="w-12 h-12 rounded object-cover"
-                                                    />
-                                                    <div>
-                                                        <p className="text-sm font-bold text-gray-200 line-clamp-1">{char.node.name?.full}</p>
-                                                        <p className="text-xs text-gray-500 uppercase">{char.role}</p>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
+                                {/* Characters Section */}
+                                {selectedManga.characters && (
+                                    <DetailsCharacters
+                                        characters={selectedManga.characters as any}
+                                        title="Characters"
+                                    />
                                 )}
                             </>
                         )}

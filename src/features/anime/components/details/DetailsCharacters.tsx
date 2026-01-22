@@ -2,17 +2,18 @@ import type { Anime } from '../../../../types/anime';
 
 interface DetailsCharactersProps {
     characters: Anime['characters'];
+    title?: string;
 }
 
-export default function DetailsCharacters({ characters }: DetailsCharactersProps) {
+export default function DetailsCharacters({ characters, title = "Characters & Voice Actors" }: DetailsCharactersProps) {
     if (!characters || characters.edges.length === 0) return null;
 
     return (
         <div className="py-6 border-t border-white/10 mt-6">
-            <h3 className="text-xl font-bold text-white mb-4">Characters & Voice Actors</h3>
+            <h3 className="text-xl font-bold text-white mb-4">{title}</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {characters.edges.slice(0, 9).map((char, idx) => {
-                    const va = char.voiceActors.find(v => v.languageV2 === 'Japanese') || char.voiceActors[0];
+                    const va = char.voiceActors?.find(v => v.languageV2 === 'Japanese') || char.voiceActors?.[0];
                     return (
                         <div key={idx} className="flex bg-[#1a1a1a] rounded-lg overflow-hidden border border-white/5 hover:bg-[#252525] transition-colors">
                             {/* Character */}

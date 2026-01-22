@@ -30,7 +30,9 @@ const mapAnilistToManga = (item: any) => ({
         string: item.startDate?.year ? `${item.startDate.year}` : undefined
     },
     countryOfOrigin: item.countryOfOrigin,
-    synonyms: item.synonyms || []
+    synonyms: item.synonyms || [],
+    characters: item.characters,
+    relations: item.relations
 });
 
 export const mangaService = {
