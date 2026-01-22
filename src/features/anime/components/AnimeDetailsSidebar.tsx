@@ -11,7 +11,7 @@ export default function AnimeDetailsSidebar({ anime, currentId }: AnimeDetailsSi
     const handleNavigate = () => {
         // Use currentId from params or fall back to anime id
         const targetId = currentId || anime.id || anime.mal_id;
-        navigate(`/anime/${targetId}`);
+        navigate(`/anime/details/${targetId}`);
     };
 
     return (
