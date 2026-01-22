@@ -28,5 +28,16 @@ export const mappingService = {
             console.error('Error saving mapping to Redis:', error);
             return false;
         }
+    },
+
+    deleteMapping: async (anilistId: string) => {
+        try {
+            await redis.del(KEY_PREFIX + anilistId);
+            console.log(`Deleted mapping for AniList ID: ${anilistId}`);
+            return true;
+        } catch (error) {
+            console.error('Error deleting mapping from Redis:', error);
+            return false;
+        }
     }
 };

@@ -49,6 +49,15 @@ app.post('/api/mapping', async (req, res) => {
     }
 });
 
+app.delete('/api/mapping/:id', async (req, res) => {
+    const success = await mappingService.deleteMapping(req.params.id);
+    if (success) {
+        res.json({ success: true, deleted: req.params.id });
+    } else {
+        res.status(500).json({ message: 'Failed to delete mapping' });
+    }
+});
+
 app.post('/api/mapping/identify', async (req, res) => {
     const { slug, title } = req.body;
     if (!slug || !title) {
