@@ -15,6 +15,7 @@
   <img src="https://img.shields.io/badge/EXPRESS.JS-000000?style=for-the-badge&logo=express&logoColor=white" alt="Express" />
   <img src="https://img.shields.io/badge/REDIS-DC382D?style=for-the-badge&logo=redis&logoColor=white" alt="Redis" />
   <img src="https://img.shields.io/badge/FIREBASE-FFCA28?style=for-the-badge&logo=firebase&logoColor=white" alt="Firebase" />
+  <img src="https://img.shields.io/badge/FANART.TV-3B5998?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cGF0aCBkPSJNOCA0TDEwIDhMOCAxMkw2IDhaIiBmaWxsPSJ3aGl0ZSIvPjwvc3ZnPg==&logoColor=white" alt="Fanart.tv" />
 </div>
 
 <br>
@@ -128,6 +129,7 @@ graph TD
     
     subgraph External [External Services]
         AniList[AniList API]
+        Fanart[Fanart.tv API]
         Sources[AnimePahe / MangaKatana]
         Firebase[Firebase Auth & DB]
     end
@@ -136,6 +138,7 @@ graph TD
     Client -- Auth --> Firebase
     
     API -- GraphQL --> AniList
+    API -- REST --> Fanart
     API -- Caching --> Cache
     API -- Scraping --> Scraper
     
@@ -162,7 +165,13 @@ graph TD
     - **Puppeteer Core**: Headless browser automation for dynamic sites.
     - **Cheerio**: Lightweight HTML parsing for static content.
     - **Fuzzball**: Fuzzy logic string matching for reliable search results.
-- **API Clients**: GraphQL Request (for AniList), Axios.
+- **API Clients**: 
+    - GraphQL Request (for AniList)
+    - Axios (for Fanart.tv and HTTP requests)
+- **External APIs**:
+    - **Fanart.tv**: Anime title logo artwork
+    - **AniList**: Anime/manga metadata
+    - **Fribb/anime-lists**: AniList to TVDB ID mapping
 
 #### **DevOps & Tools**
 - **Linting**: ESLint, Prettier
