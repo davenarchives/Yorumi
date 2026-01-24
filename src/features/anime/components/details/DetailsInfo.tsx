@@ -1,5 +1,6 @@
 import { Play, Plus, Check } from 'lucide-react';
 import type { Anime } from '../../../../types/anime';
+import AnimeLogoImage from '../../../../components/anime/AnimeLogoImage';
 
 interface DetailsInfoProps {
     anime: Anime;
@@ -35,9 +36,12 @@ export default function DetailsInfo({ anime, episodesCount, inList, onWatch, onT
 
             {/* Details */}
             <div className="flex-1 pt-2 md:pt-8 text-center md:text-left space-y-4">
-                <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-black text-white leading-tight">
-                    {anime.title}
-                </h1>
+                <AnimeLogoImage
+                    anilistId={anime.id || anime.mal_id}
+                    title={anime.title}
+                    className="mx-auto md:mx-0"
+                    size="large"
+                />
 
                 {/* Badges ... (rest same) ... */}
                 <div className="flex flex-wrap items-center justify-center md:justify-start gap-2 text-sm">
