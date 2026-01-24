@@ -3,6 +3,7 @@ import type { Anime, Episode } from '../types/anime';
 import { animeService } from '../services/animeService';
 import { useContinueWatching } from '../hooks/useContinueWatching';
 import { storage } from '../utils/storage';
+import { preloadLogos } from '../components/anime/AnimeLogoImage';
 
 interface AnimeContextType {
     // State
@@ -119,6 +120,9 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
                 const { data } = await animeService.getHiAnimeSpotlight();
                 if (data && data.length > 0) {
                     setSpotlightAnime(data);
+                    // Preload logos for spotlight anime in background
+                    const spotlightIds = data.map((a: Anime) => a.id || a.mal_id).filter(Boolean);
+                    preloadLogos(spotlightIds);
                 }
             } catch (e) {
                 console.error("Failed to fetch HiAnime spotlight", e);
@@ -130,7 +134,12 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
             setTrendingLoading(true);
             try {
                 const tData = await animeService.getTrendingAnime(1, 10);
-                if (tData?.data) setTrendingAnime(tData.data);
+                if (tData?.data) {
+                    setTrendingAnime(tData.data);
+                    // Preload logos for trending anime in background
+                    const trendingIds = tData.data.map((a: Anime) => a.id || a.mal_id).filter(Boolean);
+                    preloadLogos(trendingIds);
+                }
             } catch (e) { console.error(e); }
             finally { setTrendingLoading(false); }
         };

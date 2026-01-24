@@ -190,3 +190,53 @@ export async function getAnimeLogo(anilistId: number): Promise<{
         cached: tvdbCached && logoCached
     };
 }
+
+/**
+ * Warmup the anime database cache on server startup
+ * This reduces first-request latency significantly
+ */
+export async function warmupAnimeDatabase(): Promise<void> {
+    console.log('[Fanart] Pre-warming anime database...');
+    try {
+        const response = await axios.get(
+            'https://raw.githubusercontent.com/Fribb/anime-lists/master/anime-list-mini.json',
+            { timeout: 30000 }
+        );
+
+        if (response.data && Array.isArray(response.data)) {
+            animeDatabaseCache = response.data;
+            databaseLastFetched = Date.now();
+            console.log(`[Fanart] ✓ Anime database warmed up with ${animeDatabaseCache.length} entries`);
+        } else {
+            console.warn('[Fanart] ✗ Failed to warm up database: invalid format');
+        }
+    } catch (error) {
+        console.warn('[Fanart] ✗ Failed to warm up database:', error);
+    }
+}
+
+/**
+ * Batch fetch logos for multiple AniList IDs
+ * Processes in parallel with rate limiting to avoid overwhelming Fanart.tv
+ */
+export async function batchGetAnimeLogos(anilistIds: number[]): Promise<Map<number, { logo: string | null; source: 'fanart' | 'fallback'; cached: boolean }>> {
+    const results = new Map<number, { logo: string | null; source: 'fanart' | 'fallback'; cached: boolean }>();
+
+    // Process in batches of 5 to avoid rate limiting
+    const batchSize = 5;
+    for (let i = 0; i < anilistIds.length; i += batchSize) {
+        const batch = anilistIds.slice(i, i + batchSize);
+        const batchResults = await Promise.all(
+            batch.map(async (id) => {
+                const result = await getAnimeLogo(id);
+                return { id, result };
+            })
+        );
+
+        for (const { id, result } of batchResults) {
+            results.set(id, result);
+        }
+    }
+
+    return results;
+}

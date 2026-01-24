@@ -121,12 +121,14 @@ app.get('/', (req, res) => {
 });
 
 import { warmSpotlightCache } from './api/scraper/manga.service';
+import { warmupAnimeDatabase } from './api/logo/fanart.service';
 
 if (process.env.NODE_ENV !== 'production' || process.env.IS_ELECTRON) {
     app.listen(port, () => {
         console.log(`Server is running on http://localhost:${port}`);
         // Pre-warm caches
         warmSpotlightCache();
+        warmupAnimeDatabase();
     });
 }
 
