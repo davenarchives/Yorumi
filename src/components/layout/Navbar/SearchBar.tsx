@@ -42,12 +42,15 @@ const SearchBar = forwardRef<HTMLInputElement, SearchBarProps>(({
                     autoFocus={autoFocus}
                     className={`w-full h-9 bg-[#1c1c1c] border border-transparent focus:border-white/10 rounded-md pl-10 text-sm text-white placeholder:text-gray-500 focus:outline-none focus:bg-[#252525] transition-all ${searchQuery ? 'pr-20' : 'pr-10'}`}
                 />
-                <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2 z-10">
                     {searchQuery && (
                         <button
                             type="button"
-                            onClick={onClearSearch}
-                            className="text-gray-500 hover:text-white transition-colors p-1"
+                            onMouseDown={(e) => {
+                                e.preventDefault();
+                                onClearSearch();
+                            }}
+                            className="text-gray-500 hover:text-white transition-colors p-1 cursor-pointer"
                         >
                             <X className="h-4 w-4" />
                         </button>

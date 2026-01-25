@@ -53,10 +53,10 @@ export default function Navbar({
 
     // Trigger parent search when debounced value changes
     useEffect(() => {
-        if (debouncedSearchQuery !== searchQuery) {
+        if (debouncedSearchQuery === localSearchQuery && debouncedSearchQuery !== searchQuery) {
             onSearchChange(debouncedSearchQuery);
         }
-    }, [debouncedSearchQuery, onSearchChange, searchQuery]);
+    }, [debouncedSearchQuery, localSearchQuery, onSearchChange, searchQuery]);
 
     // Handle scroll for transparent navbar
     useEffect(() => {
@@ -123,6 +123,7 @@ export default function Navbar({
     };
 
     const handleClearAndFocus = () => {
+        setLocalSearchQuery('');
         onClearSearch();
         searchInputRef.current?.focus();
     };
