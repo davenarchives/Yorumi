@@ -43,8 +43,8 @@ const ChapterList = ({
                             key={`chapter-${ch.id}-${index}`}
                             onClick={() => onChapterClick(ch)}
                             className={`aspect-square flex items-center justify-center rounded transition-all duration-200 relative group 
-                                ${isRead ? 'bg-white/5 text-gray-600 opacity-50' : 'bg-white/10 text-gray-300 hover:bg-yorumi-accent hover:text-black'}
-                                hover:scale-105 hover:shadow-lg hover:shadow-yorumi-accent/20 cursor-pointer border border-white/5 hover:border-yorumi-accent overflow-hidden`}
+                                ${isRead ? 'bg-white/5 text-gray-600 opacity-50' : 'bg-white/10 text-gray-300 hover:bg-yorumi-manga hover:text-white'}
+                                hover:scale-105 hover:shadow-lg hover:shadow-yorumi-manga/20 cursor-pointer border border-white/5 hover:border-yorumi-manga overflow-hidden`}
                             title={ch.title}
                         >
                             <span className="text-xs text-center font-bold line-clamp-4 px-1 break-words leading-tight">{displayNum}</span>
@@ -61,7 +61,7 @@ const ChapterList = ({
                                 key={p}
                                 onClick={() => setPage(p)}
                                 className={`w-8 h-8 rounded-full flex items-center justify-center text-sm transition-colors flex-shrink-0
-                                    ${page === p ? 'bg-yorumi-500 text-white' : 'bg-white/10 text-gray-400 hover:bg-white/20'}`}
+                                    ${page === p ? 'bg-yorumi-manga text-white' : 'bg-white/10 text-gray-400 hover:bg-white/20'}`}
                             >
                                 {p}
                             </button>
@@ -106,13 +106,23 @@ export default function MangaDetailsPage() {
 
     // Auto-open reader if navigated from "Continue Reading"
     useEffect(() => {
-        if (location.state?.chapterId && mangaChapters.length > 0) {
-            const targetChapter = mangaChapters.find(c => c.id === location.state.chapterId);
-            if (targetChapter) {
-                // Small delay to ensure modal transition works
-                setTimeout(() => {
-                    loadMangaChapter(targetChapter);
-                }, 100);
+        if (mangaChapters.length > 0) {
+            if (location.state?.chapterId) {
+                const targetChapter = mangaChapters.find(c => c.id === location.state.chapterId);
+                if (targetChapter) {
+                    setTimeout(() => {
+                        loadMangaChapter(targetChapter);
+                    }, 100);
+                }
+            } else if (location.state?.autoRead) {
+                // Auto-read: Start from the first chapter (oldest)
+                const firstChapter = mangaChapters[mangaChapters.length - 1];
+                if (firstChapter) {
+                    setTimeout(() => {
+                        // We use handleChapterClick to ensure URL update + load
+                        handleChapterClick(firstChapter);
+                    }, 100);
+                }
             }
         }
     }, [location.state, mangaChapters, loadMangaChapter]);
@@ -257,7 +267,7 @@ export default function MangaDetailsPage() {
                                     }
                                 }}
                                 disabled={mangaChaptersLoading}
-                                className="h-12 px-8 bg-[#facc15] hover:bg-[#ffe066] disabled:opacity-50 disabled:cursor-not-allowed text-black text-lg font-bold rounded-full transition-transform active:scale-95 flex items-center gap-3 shadow-lg shadow-yellow-500/20"
+                                className="h-12 px-8 bg-yorumi-manga hover:bg-yorumi-manga/90 disabled:opacity-50 disabled:cursor-not-allowed text-white text-lg font-bold rounded-full transition-transform active:scale-95 flex items-center gap-3 shadow-lg shadow-yorumi-manga/20"
                             >
                                 {mangaChaptersLoading ? 'Loading Chapters...' : 'Read Now'}
                             </button>
@@ -284,7 +294,7 @@ export default function MangaDetailsPage() {
                                     }
                                 }}
                                 className={`h-12 px-8 text-lg font-bold rounded-full transition-colors border flex items-center gap-2 ${isInReadList(selectedManga.mal_id.toString())
-                                    ? 'bg-yorumi-accent text-black border-yorumi-accent'
+                                    ? 'bg-yorumi-manga text-white border-yorumi-manga'
                                     : 'bg-white/10 hover:bg-white/20 text-white border-white/10'
                                     }`}
                             >
@@ -309,14 +319,14 @@ export default function MangaDetailsPage() {
                                 className={`pb-3 text-lg font-bold transition-colors relative ${activeTab === 'summary' ? 'text-white' : 'text-gray-500 hover:text-white'}`}
                             >
                                 Summary
-                                {activeTab === 'summary' && <div className="absolute bottom-0 inset-x-0 h-0.5 bg-pink-500" />}
+                                {activeTab === 'summary' && <div className="absolute bottom-0 inset-x-0 h-0.5 bg-yorumi-manga" />}
                             </button>
                             <button
                                 onClick={() => setActiveTab('relations')}
                                 className={`pb-3 text-lg font-bold transition-colors relative ${activeTab === 'relations' ? 'text-white' : 'text-gray-500 hover:text-white'}`}
                             >
                                 Relations
-                                {activeTab === 'relations' && <div className="absolute bottom-0 inset-x-0 h-0.5 bg-pink-500" />}
+                                {activeTab === 'relations' && <div className="absolute bottom-0 inset-x-0 h-0.5 bg-yorumi-manga" />}
                             </button>
                         </div>
 

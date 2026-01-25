@@ -8,10 +8,11 @@ module.exports = {
         extend: {
             colors: {
                 yorumi: {
-                    main: '#351A5E',  // Background/Primary Gradient
-                    accent: '#FDC849', // Moon/Stars/Buttons
-                    bg: '#150F26',    // Cat Body/Dark Background
-                    text: '#Eaeaea',
+                    main: '#00A3FF',  // vibrant Blue
+                    accent: '#3DB4F2', // Light Sky Blue (Anime)
+                    manga: '#c084fc',  // Light Purple (Manga)
+                    bg: '#0a0a0a',    // Deep Dark (Neutral)
+                    text: '#ffffff',
                 }
             },
             keyframes: {

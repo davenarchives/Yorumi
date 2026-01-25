@@ -81,7 +81,7 @@ export default function MangaGenrePage() {
                         <ArrowLeft className="w-5 h-5 text-white" />
                     </button>
                     <h1 className="text-2xl font-black text-white tracking-wide">
-                        <span className="text-yorumi-accent">{genreName}</span> Manga
+                        <span className="text-yorumi-manga">{genreName}</span> Manga
                     </h1>
                 </div>
 

@@ -47,7 +47,7 @@ export default function LatestMangaUpdates({ onMangaClick }: LatestMangaUpdatesP
         return (
             <div className="bg-[#1a1a2e] rounded-xl p-6 h-full min-h-[400px]">
                 <div className="flex items-center justify-center h-full">
-                    <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-[#ff6b9d]"></div>
+                    <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-yorumi-manga"></div>
                 </div>
             </div>
         );
@@ -57,13 +57,13 @@ export default function LatestMangaUpdates({ onMangaClick }: LatestMangaUpdatesP
         return (
             <div className="bg-[#1a1a2e] rounded-xl p-6">
                 <div className="flex items-center justify-between mb-6">
-                    <h2 className="text-xl font-bold text-[#ff6b9d] uppercase tracking-wide">Latest Updates</h2>
+                    <h2 className="text-xl font-bold text-yorumi-manga uppercase tracking-wide">Latest Updates</h2>
                 </div>
                 <div className="flex flex-col items-center justify-center py-8 text-gray-400">
                     <p className="mb-4">{error}</p>
                     <button
                         onClick={fetchUpdates}
-                        className="px-4 py-2 bg-[#ff6b9d] text-white rounded-lg hover:bg-[#ff6b9d]/80 transition-colors"
+                        className="px-4 py-2 bg-yorumi-manga text-white rounded-lg hover:bg-yorumi-manga/80 transition-colors"
                     >
                         Retry
                     </button>
@@ -76,13 +76,13 @@ export default function LatestMangaUpdates({ onMangaClick }: LatestMangaUpdatesP
         return (
             <div className="bg-[#1a1a2e] rounded-xl p-6">
                 <div className="flex items-center justify-between mb-6">
-                    <h2 className="text-xl font-bold text-[#ff6b9d] uppercase tracking-wide">Latest Updates</h2>
+                    <h2 className="text-xl font-bold text-yorumi-manga uppercase tracking-wide">Latest Updates</h2>
                 </div>
                 <div className="flex flex-col items-center justify-center py-8 text-gray-400">
                     <p className="mb-4">No updates available</p>
                     <button
                         onClick={fetchUpdates}
-                        className="px-4 py-2 bg-[#ff6b9d]/20 text-[#ff6b9d] rounded-lg hover:bg-[#ff6b9d]/30 transition-colors"
+                        className="px-4 py-2 bg-yorumi-manga/20 text-yorumi-manga rounded-lg hover:bg-yorumi-manga/30 transition-colors"
                     >
                         Refresh
                     </button>
@@ -94,7 +94,7 @@ export default function LatestMangaUpdates({ onMangaClick }: LatestMangaUpdatesP
     return (
         <div className="bg-[#1a1a2e] rounded-xl p-6">
             <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-bold text-[#ff6b9d] uppercase tracking-wide">Latest Updates</h2>
+                <h2 className="text-xl font-bold text-yorumi-manga uppercase tracking-wide">Latest Updates</h2>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -116,7 +116,7 @@ export default function LatestMangaUpdates({ onMangaClick }: LatestMangaUpdatesP
 
                         {/* Info */}
                         <div className="flex flex-col justify-center min-w-0">
-                            <h3 className="text-sm font-bold text-white leading-tight mb-1 truncate group-hover:text-yorumi-accent transition-colors">
+                            <h3 className="text-sm font-bold text-white leading-tight mb-1 truncate group-hover:text-yorumi-manga transition-colors">
                                 {manga.title}
                             </h3>
                             <div className="flex items-center gap-2 mb-2">

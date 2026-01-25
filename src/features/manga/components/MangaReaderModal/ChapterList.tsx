@@ -108,7 +108,7 @@ export default function ChapterList({
                                     className={`
                                         group relative transition-all duration-200
                                         ${viewMode === 'grid'
-                                            ? `aspect-square rounded-md flex items-center justify-center border overflow-hidden ${isCurrent ? 'bg-yorumi-accent text-black border-yorumi-accent font-bold' : isRead ? 'bg-white/5 text-gray-600 border-white/10 opacity-50' : 'bg-white/5 border-white/5 hover:bg-white/10 text-gray-400 hover:text-white'}`
+                                            ? `aspect-square rounded-md flex items-center justify-center border overflow-hidden ${isCurrent ? 'bg-yorumi-manga text-white border-yorumi-manga font-bold' : isRead ? 'bg-white/5 text-gray-600 border-white/10 opacity-50' : 'bg-white/5 border-white/5 hover:bg-white/10 text-gray-400 hover:text-white'}`
                                             : `w-full px-5 py-3 text-left flex flex-col justify-center ${isCurrent ? 'bg-white/5' : isRead ? 'opacity-50' : 'hover:bg-white/5'}`
                                         }
                                     `}
@@ -119,12 +119,12 @@ export default function ChapterList({
                                     ) : (
                                         <>
                                             <div className="flex items-center justify-between w-full mb-0.5">
-                                                <span className={`text-sm font-bold ${isCurrent ? 'text-yorumi-accent' : isRead ? 'text-gray-600' : 'text-gray-400 group-hover:text-white'}`}>
+                                                <span className={`text-sm font-bold ${isCurrent ? 'text-yorumi-manga' : isRead ? 'text-gray-600' : 'text-gray-400 group-hover:text-white'}`}>
                                                     {mainLabel}
                                                 </span>
                                                 {isCurrent && (
-                                                    <span className="w-5 h-5 rounded-full bg-yorumi-accent flex items-center justify-center">
-                                                        <svg className="w-3 h-3 text-black" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
+                                                    <span className="w-5 h-5 rounded-full bg-yorumi-manga flex items-center justify-center">
+                                                        <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
                                                     </span>
                                                 )}
                                             </div>

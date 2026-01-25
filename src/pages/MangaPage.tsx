@@ -20,8 +20,8 @@ export default function MangaPage() {
 
 
 
-    const handleSpotlightClick = (mangaId: string) => {
-        navigate(`/manga/details/${mangaId}`);
+    const handleSpotlightClick = (mangaId: string, autoRead?: boolean) => {
+        navigate(`/manga/details/${mangaId}`, { state: { autoRead } });
     };
 
     const handleMangaClick = (item: Manga) => {
@@ -115,7 +115,7 @@ export default function MangaPage() {
 
                 {/* Genres (Right - 1/3) */}
                 <div>
-                    <Genres onGenreClick={(genre) => navigate(`/manga/genre/${encodeURIComponent(genre)}`)} />
+                    <Genres onGenreClick={(genre) => navigate(`/manga/genre/${encodeURIComponent(genre)}`)} theme="manga" />
                 </div>
             </div>
         </div>

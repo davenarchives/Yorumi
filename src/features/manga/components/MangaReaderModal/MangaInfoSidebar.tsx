@@ -40,17 +40,17 @@ export default function MangaInfoSidebar({
 
                     {/* Hover Overlay */}
                     <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                        <span className="bg-yorumi-accent text-black font-bold px-4 py-2 rounded-full transform translate-y-4 group-hover:translate-y-0 transition-all duration-300">
+                        <span className="bg-yorumi-manga text-white font-bold px-4 py-2 rounded-full transform translate-y-4 group-hover:translate-y-0 transition-all duration-300">
                             View Details
                         </span>
                     </div>
 
                     <div className="absolute bottom-4 left-4 right-4">
                         <div className="flex flex-wrap gap-2 mb-2">
-                            <span className="px-2 py-0.5 bg-yorumi-accent text-black text-xs font-bold rounded">
+                            <span className="px-2 py-0.5 bg-yorumi-manga text-white text-xs font-bold rounded">
                                 ★ {manga.score}
                             </span>
-                            <span className={`px-2 py-0.5 text-white text-xs font-bold rounded ${manga.countryOfOrigin === 'KR' ? 'bg-blue-600' :
+                            <span className={`px-2 py-0.5 text-white text-xs font-bold rounded ${manga.countryOfOrigin === 'KR' ? 'bg-yorumi-manga' :
                                 manga.countryOfOrigin === 'CN' ? 'bg-red-600' : 'bg-white/20'
                                 }`}>
                                 {manga.countryOfOrigin === 'KR' ? 'Manhwa' : manga.countryOfOrigin === 'CN' ? 'Manhua' : 'Manga'}
@@ -65,7 +65,7 @@ export default function MangaInfoSidebar({
                         <Link
                             to={`/manga/${manga.id || manga.mal_id}`}
                             onClick={onClose}
-                            className="hover:text-yorumi-accent transition-colors block"
+                            className="hover:text-yorumi-manga transition-colors block"
                         >
                             <h2 className="text-xl font-bold leading-tight text-white mb-2">
                                 {manga.title}

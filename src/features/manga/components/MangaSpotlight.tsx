@@ -5,7 +5,7 @@ import { mangaService } from '../../../services/mangaService';
 import type { Manga } from '../../../types/manga';
 
 interface MangaSpotlightProps {
-    onMangaClick: (mangaId: string) => void;
+    onMangaClick: (mangaId: string, autoRead?: boolean) => void;
 }
 
 // 3D Tilt Component for Spotlight Cover
@@ -169,7 +169,7 @@ const MangaSpotlight: React.FC<MangaSpotlightProps> = ({ onMangaClick }) => {
 
                                     {/* Text Info (Left) */}
                                     <div className="flex-1 pointer-events-auto max-w-2xl">
-                                        <div className="text-[#d886ff] font-bold tracking-wider text-base mb-3 uppercase select-none flex items-center gap-3">
+                                        <div className="text-yorumi-manga font-bold tracking-wider text-base mb-3 uppercase select-none flex items-center gap-3">
                                             <div className="md:hidden h-24 w-16 rounded-md overflow-hidden shadow-lg shadow-black/50 border border-white/10 flex-shrink-0 relative">
                                                 <img
                                                     src={manga.images.jpg.large_image_url}
@@ -205,7 +205,7 @@ const MangaSpotlight: React.FC<MangaSpotlightProps> = ({ onMangaClick }) => {
                                                 </span>
                                             )}
 
-                                            <span className="bg-yorumi-accent/20 text-yorumi-accent px-3 py-1.5 rounded-lg text-xs font-bold border border-yorumi-accent/50 uppercase">
+                                            <span className="bg-yorumi-manga/20 text-yorumi-manga px-3 py-1.5 rounded-lg text-xs font-bold border border-yorumi-manga/50 uppercase">
                                                 {manga.countryOfOrigin === 'KR'
                                                     ? 'Manhwa'
                                                     : manga.countryOfOrigin === 'CN'
@@ -221,8 +221,8 @@ const MangaSpotlight: React.FC<MangaSpotlightProps> = ({ onMangaClick }) => {
 
                                         <div className="flex gap-4">
                                             <button
-                                                onClick={() => onMangaClick((manga.id || manga.mal_id).toString())}
-                                                className="bg-yorumi-accent text-yorumi-bg px-6 md:px-8 py-3 md:py-3.5 rounded-full font-bold hover:bg-white transition-all duration-300 transform hover:scale-105 flex items-center gap-3 shadow-[0_0_20px_rgba(253,200,73,0.3)] hover:shadow-[0_0_30px_rgba(253,200,73,0.6)] text-sm md:text-base"
+                                                onClick={() => onMangaClick((manga.id || manga.mal_id).toString(), true)}
+                                                className="bg-yorumi-manga text-white px-6 md:px-8 py-3 md:py-3.5 rounded-full font-bold hover:bg-white hover:text-yorumi-bg transition-all duration-300 transform hover:scale-105 flex items-center gap-3 shadow-[0_0_20px_rgba(192,132,252,0.3)] hover:shadow-[0_0_30px_rgba(192,132,252,0.6)] text-sm md:text-base"
                                             >
                                                 <div className="bg-yorumi-bg text-white rounded-full p-1.5 -ml-2">
                                                     <svg className="w-3 h-3 ml-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
@@ -253,14 +253,14 @@ const MangaSpotlight: React.FC<MangaSpotlightProps> = ({ onMangaClick }) => {
             <div className="absolute bottom-8 right-8 z-20 hidden md:flex gap-2">
                 <button
                     onClick={handlePrev}
-                    className="p-2 bg-black/60 hover:bg-yorumi-accent hover:text-yorumi-bg text-white rounded-lg border border-white/10 transition-all backdrop-blur-md"
+                    className="p-2 bg-black/60 hover:bg-yorumi-manga hover:text-white text-white rounded-lg border border-white/10 transition-all backdrop-blur-md"
                     aria-label="Previous Slide"
                 >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
                 </button>
                 <button
                     onClick={handleNext}
-                    className="p-2 bg-black/60 hover:bg-yorumi-accent hover:text-yorumi-bg text-white rounded-lg border border-white/10 transition-all backdrop-blur-md"
+                    className="p-2 bg-black/60 hover:bg-yorumi-manga hover:text-white text-white rounded-lg border border-white/10 transition-all backdrop-blur-md"
                     aria-label="Next Slide"
                 >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
@@ -273,7 +273,7 @@ const MangaSpotlight: React.FC<MangaSpotlightProps> = ({ onMangaClick }) => {
                     <button
                         key={idx}
                         onClick={() => scrollTo(idx)}
-                        className={`w-2 h-2 rounded-full transition-all duration-300 ${idx === selectedIndex ? 'bg-yorumi-accent md:w-6 h-6 md:h-2' : 'bg-white/30 hover:bg-white/50'
+                        className={`w-2 h-2 rounded-full transition-all duration-300 ${idx === selectedIndex ? 'bg-yorumi-manga md:w-6 h-6 md:h-2' : 'bg-white/30 hover:bg-white/50'
                             }`}
                         aria-label={`Go to slide ${idx + 1}`}
                     />

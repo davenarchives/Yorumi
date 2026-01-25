@@ -130,7 +130,7 @@ export default function ReaderHeader({
                 {/* Toggle Details */}
                 <button
                     onClick={onToggleDetails}
-                    className={`p-2 rounded-lg transition-colors ${showDetails ? 'bg-yorumi-accent text-black' : 'bg-white/10 text-white hover:bg-white/20'}`}
+                    className={`p-2 rounded-lg transition-colors ${showDetails ? 'bg-yorumi-manga text-white' : 'bg-white/10 text-white hover:bg-white/20'}`}
                     title="Toggle Details"
                 >
                     <Info className="w-5 h-5" />

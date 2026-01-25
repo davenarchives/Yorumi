@@ -98,7 +98,7 @@ export default function PageViewer({
                                 {nextChapter && (
                                     <button
                                         onClick={() => onLoadChapter(nextChapter)}
-                                        className="flex-1 px-3 md:px-8 py-3 md:py-4 bg-yorumi-accent text-black text-sm md:text-base font-bold rounded-full hover:scale-105 transition-transform shadow-lg shadow-yorumi-accent/20 flex items-center justify-center gap-1 md:gap-2"
+                                        className="flex-1 px-3 md:px-8 py-3 md:py-4 bg-yorumi-manga text-white text-sm md:text-base font-bold rounded-full hover:scale-105 transition-transform shadow-lg shadow-yorumi-manga/20 flex items-center justify-center gap-1 md:gap-2"
                                     >
                                         <span className="truncate">Next Chapter</span>
                                         <svg className="w-4 h-4 md:w-5 md:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
