@@ -58,7 +58,6 @@ export default function AnimeGridPage({
                             currentPage={pagination.current_page}
                             lastPage={pagination.last_visible_page}
                             onPageChange={onPageChange}
-                            isLoading={isLoading}
                         />
                     )}
                 </>
