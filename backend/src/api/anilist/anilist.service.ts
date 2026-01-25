@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { redis } from '../mapping/mapper';
 
 const ANILIST_API_URL = 'https://graphql.anilist.co';
 
@@ -728,6 +729,19 @@ export const anilistService = {
     },
 
     async searchAnime(search: string, page: number = 1, perPage: number = 24) {
+        const cacheKey = `search:anime:${search.toLowerCase().trim()}:${page}:${perPage}`;
+
+        // 1. Check Cache
+        try {
+            const cachedResult = await redis.get(cacheKey);
+            if (cachedResult) {
+                console.log(`⚡ Cache Hit (Search): ${search}`);
+                return cachedResult;
+            }
+        } catch (error) {
+            console.error('Redis Error (Get):', error);
+        }
+
         const query = `
             query ($search: String, $page: Int, $perPage: Int) {
                 Page(page: $page, perPage: $perPage) {
@@ -750,18 +764,19 @@ export const anilistService = {
                 variables: { search, page, perPage }
             });
 
-            const pageData = response.data.data.Page;
-            // Recalculate lastPage to ensure it matches the actual perPage limit
-            if (pageData.pageInfo && pageData.pageInfo.total) {
-                pageData.pageInfo.lastPage = Math.ceil(pageData.pageInfo.total / perPage);
-                // Also ensure hasNextPage is accurate
-                pageData.pageInfo.hasNextPage = page < pageData.pageInfo.lastPage;
+            const data = response.data.data.Page;
+
+            // 2. Set Cache (24 hours)
+            try {
+                await redis.set(cacheKey, data, { ex: 86400 });
+            } catch (error) {
+                console.error('Redis Error (Set):', error);
             }
 
-            return pageData;
+            return data;
         } catch (error) {
-            console.error('Error searching AniList:', error);
-            return { media: [], pageInfo: {} };
+            console.error('Error searching anime:', error);
+            throw error;
         }
     },
 

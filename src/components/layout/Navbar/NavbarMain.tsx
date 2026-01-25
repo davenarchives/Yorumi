@@ -8,6 +8,7 @@ import SearchBar from './SearchBar';
 import NavToggle from './NavToggle';
 import UserMenu from './UserMenu';
 import RandomButton from './RandomButton';
+import { useDebounce } from '../../../hooks/useDebounce';
 
 interface NavbarProps {
     activeTab: 'anime' | 'manga';
@@ -40,6 +41,22 @@ export default function Navbar({
     const [isScrolled, setIsScrolled] = useState(false);
     const [isLoadingRandom, setIsLoadingRandom] = useState(false);
     const [showMobileSearch, setShowMobileSearch] = useState(false);
+
+    // Debounce Logic
+    const [localSearchQuery, setLocalSearchQuery] = useState(searchQuery);
+    const debouncedSearchQuery = useDebounce(localSearchQuery, 500);
+
+    // Sync local state when prop changes (e.g. clear button from parent)
+    useEffect(() => {
+        setLocalSearchQuery(searchQuery);
+    }, [searchQuery]);
+
+    // Trigger parent search when debounced value changes
+    useEffect(() => {
+        if (debouncedSearchQuery !== searchQuery) {
+            onSearchChange(debouncedSearchQuery);
+        }
+    }, [debouncedSearchQuery, onSearchChange, searchQuery]);
 
     // Handle scroll for transparent navbar
     useEffect(() => {
@@ -135,10 +152,10 @@ export default function Navbar({
                     <div className="hidden md:block max-w-xs w-full">
                         <SearchBar
                             ref={searchInputRef}
-                            searchQuery={searchQuery}
+                            searchQuery={localSearchQuery}
                             searchResults={searchResults}
                             isSearching={isSearching}
-                            onSearchChange={onSearchChange}
+                            onSearchChange={setLocalSearchQuery}
                             onSearchSubmit={onSearchSubmit}
                             onClearSearch={handleClearAndFocus}
                             onResultSelect={handleResultSelect}
@@ -191,10 +208,10 @@ export default function Navbar({
             `}>
                 <div className="p-4 space-y-4">
                     <SearchBar
-                        searchQuery={searchQuery}
+                        searchQuery={localSearchQuery}
                         searchResults={searchResults}
                         isSearching={isSearching}
-                        onSearchChange={onSearchChange}
+                        onSearchChange={setLocalSearchQuery}
                         onSearchSubmit={(e) => { onSearchSubmit(e); setShowMobileSearch(false); }}
                         onClearSearch={onClearSearch}
                         onResultSelect={handleMobileResultSelect}
