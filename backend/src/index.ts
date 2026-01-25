@@ -11,26 +11,6 @@ import logoRoutes from './api/logo/logo.routes';
 const app = express();
 const port = process.env.PORT || 3001;
 
-// Background Jobs
-const hianimeScraper = new HiAnimeScraper();
-
-const runBackgroundJobs = async () => {
-    // 1. Warm Spotlight Cache
-    console.log('🔥 Warming Spotlight Cache...');
-    hianimeScraper.getEnrichedSpotlight()
-        .then(() => console.log('✅ Spotlight Cache Warm'))
-        .catch(err => console.error('❌ Failed to warm spotlight cache:', err));
-};
-
-// Start jobs immediately
-runBackgroundJobs();
-
-// Refresh Spotlight every 12 hours
-setInterval(() => {
-    console.log('⏰ Running Scheduled Spotlight Update...');
-    hianimeScraper.getEnrichedSpotlight();
-}, 12 * 60 * 60 * 1000);
-
 // Middleware
 app.use(cors());
 app.use(express.json());
@@ -145,12 +125,48 @@ import { warmSpotlightCache } from './api/scraper/manga.service';
 import { warmupAnimeDatabase } from './api/logo/fanart.service';
 
 if (process.env.NODE_ENV !== 'production' || process.env.IS_ELECTRON) {
-    app.listen(port, () => {
-        console.log(`Server is running on http://localhost:${port}`);
-        // Pre-warm caches
-        warmSpotlightCache();
-        warmupAnimeDatabase();
-    });
+    const startServer = async () => {
+        console.log('🚀 Starting Yorumi Backend Server...');
+
+        // Pre-warm caches with timeout protection
+        const hianimeScraper = new HiAnimeScraper();
+
+        try {
+            console.log('🔥 Warming anime spotlight cache...');
+            await Promise.race([
+                hianimeScraper.getEnrichedSpotlight(),
+                new Promise((_, reject) =>
+                    setTimeout(() => reject(new Error('Cache warming timeout')), 10000)
+                )
+            ]);
+            console.log('✅ Spotlight cache warmed successfully');
+        } catch (error) {
+            console.warn('⚠️ Spotlight cache warming failed or timed out:', error);
+            console.warn('⚠️ Server will continue, cache will be populated on first request');
+        }
+
+        // Warm other caches
+        try {
+            await warmSpotlightCache();
+            await warmupAnimeDatabase();
+        } catch (error) {
+            console.warn('⚠️ Other cache warming failed:', error);
+        }
+
+        // Start listening
+        app.listen(port, () => {
+            console.log(`✅ Server is running on http://localhost:${port}`);
+        });
+
+        // Schedule periodic spotlight refresh every 12 hours
+        setInterval(() => {
+            console.log('⏰ Running scheduled spotlight refresh...');
+            hianimeScraper.getEnrichedSpotlight()
+                .catch(err => console.error('❌ Scheduled spotlight refresh failed:', err));
+        }, 12 * 60 * 60 * 1000);
+    };
+
+    startServer();
 }
 
 export default app;

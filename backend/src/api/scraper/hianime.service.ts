@@ -3,6 +3,10 @@ import * as cheerio from 'cheerio';
 import { redis } from '../mapping/mapper';
 import { anilistService } from '../anilist/anilist.service';
 
+// In-memory cache as fallback when Redis is cold/slow
+let inMemorySpotlightCache: any = null;
+let isRefreshing = false;
+
 export class HiAnimeScraper {
     private readonly BASE_URL = 'https://hianime.to';
 
@@ -64,18 +68,51 @@ export class HiAnimeScraper {
     async getEnrichedSpotlight(): Promise<any> {
         const cacheKey = 'spotlight:hianime:enriched';
 
-        // 1. Try Cache
+        // 1. Try Redis Cache
         try {
             const cached = await redis.get(cacheKey);
             if (cached) {
-                // Return cached data but don't log "Hit" here to avoid spamming logs from cron jobs
+                // Update in-memory cache with Redis data
+                inMemorySpotlightCache = cached;
                 return cached;
             }
         } catch (e) {
             console.error('Redis Error (Get Spotlight):', e);
         }
 
-        console.log('🐢 Cache Miss (Spotlight): Fetching fresh data...');
+        // 2. If Redis cache miss, check in-memory cache
+        if (inMemorySpotlightCache) {
+            console.log('📦 Returning stale spotlight from in-memory cache');
+
+            // Trigger background refresh if not already running
+            if (!isRefreshing) {
+                console.log('🔄 Triggering background spotlight refresh...');
+                this.refreshSpotlightInBackground(cacheKey);
+            }
+
+            return inMemorySpotlightCache;
+        }
+
+        // 3. No cache available - fetch fresh data (blocking only on first ever request)
+        console.log('🐢 No cache available. Fetching fresh spotlight data (this may take a while)...');
+        return this.fetchAndCacheSpotlight(cacheKey);
+    }
+
+    private async refreshSpotlightInBackground(cacheKey: string): Promise<void> {
+        if (isRefreshing) return;
+
+        isRefreshing = true;
+        try {
+            await this.fetchAndCacheSpotlight(cacheKey);
+            console.log('✅ Background spotlight refresh complete');
+        } catch (error) {
+            console.error('❌ Background spotlight refresh failed:', error);
+        } finally {
+            isRefreshing = false;
+        }
+    }
+
+    private async fetchAndCacheSpotlight(cacheKey: string): Promise<any> {
         const spotlightItems = await this.getSpotlightAnime();
         const enrichedItems = [];
 
@@ -103,11 +140,15 @@ export class HiAnimeScraper {
 
         const result = { spotlight: enrichedItems };
 
-        // 3. Save to Cache (12 hours = 43200 seconds)
+        // Update both caches
         if (enrichedItems.length > 0) {
+            // Update in-memory cache immediately
+            inMemorySpotlightCache = result;
+
+            // Save to Redis (12 hours = 43200 seconds)
             try {
                 await redis.set(cacheKey, result, { ex: 43200 });
-                console.log('💾 Spotlight Cache Updated (12h TTL)');
+                console.log('💾 Spotlight Cache Updated (Redis + In-Memory, 12h TTL)');
             } catch (e) {
                 console.error('Redis Error (Set Spotlight):', e);
             }

@@ -115,11 +115,47 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
     const fetchHomeData = async () => {
         const fetchSpotlight = async () => {
             if (spotlightAnime.length > 0) return;
+
+            // Try to load from localStorage for instant display
+            const SPOTLIGHT_CACHE_KEY = 'yorumi_spotlight_cache';
+            const SPOTLIGHT_CACHE_TIME_KEY = 'yorumi_spotlight_cache_time';
+            const CACHE_MAX_AGE = 12 * 60 * 60 * 1000; // 12 hours
+
             try {
-                // Use the new service that fetches enriched data from backend
+                const cachedData = localStorage.getItem(SPOTLIGHT_CACHE_KEY);
+                const cacheTime = localStorage.getItem(SPOTLIGHT_CACHE_TIME_KEY);
+
+                if (cachedData && cacheTime) {
+                    const age = Date.now() - parseInt(cacheTime);
+                    if (age < CACHE_MAX_AGE) {
+                        const parsed = JSON.parse(cachedData);
+                        if (parsed && parsed.length > 0) {
+                            console.log('📦 Loaded spotlight from localStorage cache');
+                            setSpotlightAnime(parsed);
+                            // Preload logos for cached spotlight anime
+                            const spotlightIds = parsed.map((a: Anime) => a.id || a.mal_id).filter(Boolean);
+                            preloadLogos(spotlightIds);
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error('Failed to load spotlight from localStorage:', e);
+            }
+
+            // Fetch fresh data in background
+            try {
                 const { data } = await animeService.getHiAnimeSpotlight();
                 if (data && data.length > 0) {
                     setSpotlightAnime(data);
+
+                    // Update localStorage cache
+                    try {
+                        localStorage.setItem(SPOTLIGHT_CACHE_KEY, JSON.stringify(data));
+                        localStorage.setItem(SPOTLIGHT_CACHE_TIME_KEY, Date.now().toString());
+                    } catch (e) {
+                        console.error('Failed to save spotlight to localStorage:', e);
+                    }
+
                     // Preload logos for spotlight anime in background
                     const spotlightIds = data.map((a: Anime) => a.id || a.mal_id).filter(Boolean);
                     preloadLogos(spotlightIds);
