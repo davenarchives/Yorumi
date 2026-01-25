@@ -5,10 +5,31 @@ import scraperRoutes from './api/scraper/scraper.routes';
 import mangaScraperRoutes from './api/scraper/mangascraper.routes';
 import anilistRoutes from './api/anilist/anilist.routes';
 import hianimeRoutes from './api/scraper/hianime.routes';
+import { HiAnimeScraper } from './api/scraper/hianime.service';
 import logoRoutes from './api/logo/logo.routes';
 
 const app = express();
 const port = process.env.PORT || 3001;
+
+// Background Jobs
+const hianimeScraper = new HiAnimeScraper();
+
+const runBackgroundJobs = async () => {
+    // 1. Warm Spotlight Cache
+    console.log('🔥 Warming Spotlight Cache...');
+    hianimeScraper.getEnrichedSpotlight()
+        .then(() => console.log('✅ Spotlight Cache Warm'))
+        .catch(err => console.error('❌ Failed to warm spotlight cache:', err));
+};
+
+// Start jobs immediately
+runBackgroundJobs();
+
+// Refresh Spotlight every 12 hours
+setInterval(() => {
+    console.log('⏰ Running Scheduled Spotlight Update...');
+    hianimeScraper.getEnrichedSpotlight();
+}, 12 * 60 * 60 * 1000);
 
 // Middleware
 app.use(cors());

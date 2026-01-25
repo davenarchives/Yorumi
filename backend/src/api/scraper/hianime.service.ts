@@ -1,5 +1,7 @@
 import axios from 'axios';
 import * as cheerio from 'cheerio';
+import { redis } from '../mapping/mapper';
+import { anilistService } from '../anilist/anilist.service';
 
 export class HiAnimeScraper {
     private readonly BASE_URL = 'https://hianime.to';
@@ -56,6 +58,61 @@ export class HiAnimeScraper {
             console.error('Error scraping HiAnime spotlight:', error);
             return [];
         }
+    }
+
+    async getEnrichedSpotlight(): Promise<any> {
+        const cacheKey = 'spotlight:hianime:enriched';
+
+        // 1. Try Cache
+        try {
+            const cached = await redis.get(cacheKey);
+            if (cached) {
+                // Return cached data but don't log "Hit" here to avoid spamming logs from cron jobs
+                return cached;
+            }
+        } catch (e) {
+            console.error('Redis Error (Get Spotlight):', e);
+        }
+
+        console.log('🐢 Cache Miss (Spotlight): Fetching fresh data...');
+        const spotlightItems = await this.getSpotlightAnime();
+        const enrichedItems = [];
+
+        // Enrich with AniList data (sequentially to respect rate limits)
+        for (const item of spotlightItems) {
+            try {
+                // Search AniList by title
+                const searchResult = await anilistService.searchAnime(item.title, 1, 1);
+                const anilistMedia = searchResult?.media?.[0];
+
+                if (anilistMedia) {
+                    enrichedItems.push({
+                        ...item,
+                        id: anilistMedia.id,         // AniList ID
+                        mal_id: anilistMedia.idMal,  // MAL ID (used for routing)
+                        anilist: anilistMedia        // Full AniList object if needed
+                    });
+                } else {
+                    console.warn(`Could not find AniList match for: ${item.title}`);
+                }
+            } catch (err) {
+                console.error(`Failed to enrich item: ${item.title}`, err);
+            }
+        }
+
+        const result = { spotlight: enrichedItems };
+
+        // 3. Save to Cache (12 hours = 43200 seconds)
+        if (enrichedItems.length > 0) {
+            try {
+                await redis.set(cacheKey, result, { ex: 43200 });
+                console.log('💾 Spotlight Cache Updated (12h TTL)');
+            } catch (e) {
+                console.error('Redis Error (Set Spotlight):', e);
+            }
+        }
+
+        return result;
     }
 
     async getAZList(letter: string, page: number = 1): Promise<any> {
