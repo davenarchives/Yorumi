@@ -257,6 +257,242 @@ export const anilistService = {
         }
     },
 
+    async getMangaAZList(letter: string, page: number = 1, perPage: number = 18) {
+        const isAll = letter.toLowerCase() === 'all' || !letter;
+        const isSpecial = letter === '#' || letter === '0-9';
+
+        // If "All" or Special chars, start from page 1
+        if (isAll || isSpecial) {
+            const query = `
+                query ($page: Int, $perPage: Int) {
+                    Page(page: $page, perPage: $perPage) {
+                        pageInfo { total currentPage lastPage hasNextPage }
+                        media(type: MANGA, sort: TITLE_ROMAJI, isAdult: false) {
+                            ${MEDIA_FIELDS}
+                        }
+                    }
+                }
+            `;
+            try {
+                const response = await rateLimitedRequest(query, { page, perPage });
+                return response.data.Page;
+            } catch (error) {
+                console.error('Error fetching Manga All/#:', error);
+                return { media: [], pageInfo: {} };
+            }
+        }
+
+        // For Letters A-Z: Find the start page
+        const startPage = await this.findStartPage(letter);
+        if (startPage === -1) return { media: [], pageInfo: {} };
+
+        // Calculate target page
+        // If user wants page 1, we fetch startPage.
+        // page 2 -> startPage + 1
+        const targetPage = startPage + (page - 1);
+
+        const query = `
+            query ($page: Int, $perPage: Int) {
+                Page(page: $page, perPage: $perPage) {
+                    pageInfo { total currentPage lastPage hasNextPage }
+                    media(type: MANGA, sort: TITLE_ROMAJI, isAdult: false) {
+                        ${MEDIA_FIELDS}
+                    }
+                }
+            }
+        `;
+
+        try {
+            const response = await rateLimitedRequest(query, { page: targetPage, perPage });
+            const pageData = response.data.Page;
+
+            // Filter strictly by letter
+            // But wait, if we filter, the page size shrinks.
+            // Paging might be inconsistent if we just drop items.
+            // Client expects 18 items. If we return 5, it assumes end of list?
+            // To do this properly, we might need to fetch more and buffer?
+            // For now, returning filtered list is better than wrong list.
+
+            const filteredMedia = pageData.media.filter((m: any) => {
+                const title = m.title.romaji || m.title.english || '';
+                return title.toUpperCase().startsWith(letter.toUpperCase());
+            });
+
+            // If we filtered out everything but there ARE items for this letter (just on prev/next pages?)
+            // Our binary search finds the FIRST page containing the letter (or close to it).
+            // So title >= letter.
+
+            // Should accurate hasNextPage
+            // If the last item on this page starts with Letter, there is likely a next page.
+            // If the last item starts with Next Letter, then no next page for THIS letter.
+
+            const lastItem = pageData.media[pageData.media.length - 1];
+            const lastTitle = lastItem?.title?.romaji || '';
+            const hasMoreOfLetter = lastTitle.toUpperCase().startsWith(letter.toUpperCase());
+
+            return {
+                media: filteredMedia,
+                pageInfo: {
+                    ...pageData.pageInfo,
+                    hasNextPage: hasMoreOfLetter && pageData.pageInfo.hasNextPage
+                }
+            };
+        } catch (error) {
+            console.error('Error fetching Manga A-Z:', error);
+            return { media: [], pageInfo: {} };
+        }
+    },
+
+    async getAnimeAZList(letter: string, page: number = 1, perPage: number = 18) {
+        const isAll = letter.toLowerCase() === 'all' || !letter;
+        const isSpecial = letter === '#' || letter === '0-9';
+
+        if (isAll || isSpecial) {
+            const query = `
+                query ($page: Int, $perPage: Int) {
+                    Page(page: $page, perPage: $perPage) {
+                        pageInfo { total currentPage lastPage hasNextPage }
+                        media(type: ANIME, sort: TITLE_ROMAJI, isAdult: false) {
+                            ${MEDIA_FIELDS}
+                        }
+                    }
+                }
+            `;
+            try {
+                const response = await rateLimitedRequest(query, { page, perPage });
+                return response.data.Page;
+            } catch (error) {
+                console.error('Error fetching Anime All/#:', error);
+                return { media: [], pageInfo: {} };
+            }
+        }
+
+        const startPage = await this.findStartPage(letter, 'ANIME');
+        if (startPage === -1) return { media: [], pageInfo: {} };
+
+        const targetPage = startPage + (page - 1);
+        const query = `
+            query ($page: Int, $perPage: Int) {
+                Page(page: $page, perPage: $perPage) {
+                    pageInfo { total currentPage lastPage hasNextPage }
+                    media(type: ANIME, sort: TITLE_ROMAJI, isAdult: false) {
+                        ${MEDIA_FIELDS}
+                    }
+                }
+            }
+        `;
+
+        try {
+            const response = await rateLimitedRequest(query, { page: targetPage, perPage });
+            const pageData = response.data.Page;
+
+            const filteredMedia = pageData.media.filter((m: any) => {
+                const title = m.title.romaji || m.title.english || '';
+                return title.toUpperCase().startsWith(letter.toUpperCase());
+            });
+
+            const lastItem = pageData.media[pageData.media.length - 1];
+            const lastTitle = lastItem?.title?.romaji || '';
+            const hasMoreOfLetter = lastTitle.toUpperCase().startsWith(letter.toUpperCase());
+
+            return {
+                media: filteredMedia,
+                pageInfo: {
+                    ...pageData.pageInfo,
+                    hasNextPage: hasMoreOfLetter && pageData.pageInfo.hasNextPage
+                }
+            };
+        } catch (error) {
+            console.error('Error fetching Anime A-Z:', error);
+            return { media: [], pageInfo: {} };
+        }
+    },
+
+    // Cache for start pages: 'A' -> 150
+    async findStartPage(letter: string, type: 'ANIME' | 'MANGA' = 'MANGA'): Promise<number> {
+        const cacheKey = `start_page_${type}_${letter}`;
+        const cached = getFromCache(cacheKey);
+        if (cached !== null) return cached;
+
+        console.log(`[Indexer] Finding start page for "${letter}"...`);
+
+        // Binary Search
+        // We need an upper bound. 3000 is safe estimate for now, or fetch page 1 to get lastPage.
+        // Let's first fetch page 1 to get metadata
+        let min = 1;
+        let max = 5000; // refined from probe?
+
+        try {
+            // Get real max
+            const query = `query { Page(page: 1, perPage: 1) { pageInfo { lastPage } } }`;
+            const res = await rateLimitedRequest(query, {});
+            max = res.data.Page.pageInfo.lastPage;
+        } catch (e) { console.error("Indexer init failed", e); return 1; }
+
+        let startPage = -1;
+
+        while (min <= max) {
+            const mid = Math.floor((min + max) / 2);
+
+            // Check title at mid
+            const query = `
+                query ($page: Int) {
+                    Page(page: $page, perPage: 1) {
+                        media(type: ${type}, sort: TITLE_ROMAJI, isAdult: false) {
+                            title { romaji }
+                        }
+                    }
+                }
+            `;
+
+            try {
+                const res = await rateLimitedRequest(query, { page: mid });
+                const media = res.data.Page.media[0];
+                if (!media) { max = mid - 1; continue; }
+
+                const title = (media.title.romaji || '').toUpperCase();
+                // We want first page where title >= letter
+
+                // Compare
+                // title "Aaron" vs "B" -> "Aaron" < "B" -> too early -> min = mid + 1
+                // title "Cathy" vs "B" -> "Cathy" > "B" -> too late (potentially) -> max = mid - 1, but save as candidate
+
+                // We want the insertion point.
+                // Actually, just simple string compare.
+
+                // Special case: First char comparison
+                const firstChar = title.charAt(0);
+
+                if (title < letter.toUpperCase()) {
+                    // Too early
+                    min = mid + 1;
+                } else {
+                    // Title >= Letter
+                    // This could be the start page, or a page after the start.
+                    startPage = mid;
+                    max = mid - 1;
+                }
+
+                // Optimization: If exact match of first char?
+                // No, "Aaron" starts with A, "Az" starts with A.
+                // If we are looking for "B". "Az" < "B".
+                // If we are looking for "A". "Az" >= "A". 
+                // Wait. "Az" > "A". 
+                // If title is "Az", and we want "A". Correct.
+
+            } catch (e) {
+                console.error(`Error probing page ${mid}:`, e);
+                // Assume temporary error, break or retry?
+                // Return fallback 1
+                return 1;
+            }
+        }
+
+        console.log(`[Indexer] Found start page for ${letter}: ${startPage}`);
+        setCache(cacheKey, startPage, 24 * 60 * 60 * 1000); // Cache 24h
+        return startPage;
+    },
+
     async getTopAnime(page: number = 1, perPage: number = 24) {
         const cacheKey = getCacheKey('top_anime', page, perPage);
         const cached = getFromCache(cacheKey);
@@ -382,6 +618,30 @@ export const anilistService = {
         } catch (error) {
             console.error('Error fetching trending manga:', error);
             return { media: [], pageInfo: {} };
+        }
+    },
+
+    async getMediaDetails(id: number) {
+        const cacheKey = getCacheKey('media_details', id);
+        const cached = getFromCache(cacheKey);
+        if (cached) return cached;
+
+        const query = `
+            query ($id: Int) {
+                Media(id: $id) {
+                    ${MEDIA_FIELDS}
+                }
+            }
+        `;
+
+        try {
+            const response = await rateLimitedRequest(query, { id });
+            const result = response.data.Media;
+            setCache(cacheKey, result, CACHE_TTL.details);
+            return result;
+        } catch (error) {
+            console.error('Error fetching media details:', error);
+            return null;
         }
     },
 

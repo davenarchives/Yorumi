@@ -72,7 +72,6 @@ export default function MangaPage() {
                             currentPage={manga.viewAllPagination.currentPage}
                             lastPage={manga.viewAllPagination.lastPage}
                             onPageChange={manga.changeViewAllPage}
-                            isLoading={manga.viewAllLoading}
                         />
                     </>
                 )}

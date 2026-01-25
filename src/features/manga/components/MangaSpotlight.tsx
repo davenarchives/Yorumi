@@ -3,6 +3,7 @@ import useEmblaCarousel from 'embla-carousel-react';
 import Autoplay from 'embla-carousel-autoplay';
 import { mangaService } from '../../../services/mangaService';
 import type { Manga } from '../../../types/manga';
+import AnimeLogoImage from '../../../components/anime/AnimeLogoImage';
 
 interface MangaSpotlightProps {
     onMangaClick: (mangaId: string, autoRead?: boolean) => void;
@@ -180,14 +181,19 @@ const MangaSpotlight: React.FC<MangaSpotlightProps> = ({ onMangaClick }) => {
                                             </div>
                                             <span>#{index + 1} Trending</span>
                                         </div>
-                                        <h1 className={`${manga.title.length > 50 ? 'text-xl md:text-2xl lg:text-3xl' :
-                                            manga.title.length > 30 ? 'text-2xl md:text-3xl lg:text-4xl' :
-                                                'text-2xl md:text-4xl lg:text-5xl'
-                                            } font-black text-white mb-4 leading-[1.1] drop-shadow-lg select-none line-clamp-2`}>
-                                            {manga.title}
-                                        </h1>
+                                        <div className={`${manga.title.length > 50 ? 'max-h-12 md:max-h-16' :
+                                            manga.title.length > 30 ? 'max-h-16 md:max-h-20' :
+                                                'max-h-20 md:max-h-24'
+                                            } mb-8 md:mb-12 flex items-start overflow-visible`}>
+                                            <AnimeLogoImage
+                                                anilistId={parseInt((manga.id || manga.mal_id || '0').toString())}
+                                                title={manga.title}
+                                                className="drop-shadow-2xl max-h-full origin-left object-contain"
+                                                size="medium"
+                                            />
+                                        </div>
 
-                                        <div className="flex items-center flex-wrap gap-4 text-sm text-white mb-6 font-medium select-none">
+                                        <div className="flex items-center flex-wrap gap-4 text-sm text-white mb-4 md:mb-6 font-medium select-none">
                                             <span className="flex items-center gap-1.5 bg-white/10 px-3 py-1.5 rounded-lg backdrop-blur-sm">
                                                 <svg className="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" /></svg>
                                                 {manga.score.toFixed(1)}

@@ -78,6 +78,7 @@ export interface Anime {
         }[];
     };
     countryOfOrigin?: string;
+    scraperId?: string; // ID from HiAnime/Scraper if not matched to AniList
 }
 
 export interface Episode {

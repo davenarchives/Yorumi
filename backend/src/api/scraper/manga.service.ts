@@ -47,13 +47,59 @@ export async function searchManga(query: string) {
  * Get details
  */
 export async function getMangaDetails(id: string) {
+    // Check if ID is likely AniList (numeric) vs Scraper (string with letters/hyphens)
+    // MK IDs usually "some-manga.12345" or "some-manga".
+    // AniList ID is purely numeric "123456".
+    const isAniListId = /^\d+$/.test(id);
+
+    if (isAniListId) {
+        console.log(`[getMangaDetails] Treating "${id}" as AniList ID`);
+        const anilistData = await anilistService.getMediaDetails(parseInt(id));
+        if (!anilistData) throw new Error('AniList media not found');
+
+        // Resolve chapters from MangaKatana by title
+        let chapters: any[] = [];
+        try {
+            const title = anilistData.title.english || anilistData.title.romaji;
+            console.log(`[getMangaDetails] Searching chapters for "${title}"...`);
+            const searchResults = await mangakatana.searchManga(title);
+
+            // Simple fuzzy match: Find first result where title includes keyword?
+            // Or just take first result?
+            // Let's refine: filtering.
+            const match = searchResults.find(r =>
+                r.title.toLowerCase().includes(title.toLowerCase()) ||
+                title.toLowerCase().includes(r.title.toLowerCase())
+            );
+
+            if (match) {
+                console.log(`[getMangaDetails] Found match: ${match.title} (${match.id})`);
+                chapters = await mangakatana.getChapterList(match.id);
+            } else {
+                console.warn(`[getMangaDetails] No chapter match found for ${title}`);
+            }
+        } catch (e) {
+            console.error('[getMangaDetails] Chapter resolution failed:', e);
+        }
+
+        // Map AniList data to MangaDetails format
+        return {
+            id: id, // Keep original ID
+            title: anilistData.title.romaji || anilistData.title.english,
+            altNames: anilistData.synonyms || [],
+            author: anilistData.staff?.edges?.find((e: any) => e.role === 'Story & Art')?.node?.name?.full || '',
+            status: anilistData.status,
+            genres: anilistData.genres || [],
+            synopsis: anilistData.description || '',
+            coverImage: anilistData.coverImage?.extraLarge || anilistData.coverImage?.large,
+            url: anilistData.siteUrl,
+            source: 'anilist',
+            chapters: chapters.map(c => ({ ...c, id: `mk:${c.id}` })) // Namespace chapter IDs if needed
+        };
+    }
+
     // Strip prefix if present
     const realId = id.startsWith('mk:') ? id.replace('mk:', '') : id;
-
-    // Fallback for legacy or if user tries to load an old asura ID (will fail or default to MK?)
-    // If ID starts with asura:, we can't really load it from MK with that ID. 
-    // We'll just assume everything is MK.
-
     const details = await mangakatana.getMangaDetails(realId);
     return { ...details, id: `mk:${details.id}` };
 }
