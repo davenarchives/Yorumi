@@ -454,7 +454,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
                 currentAnime = data.data;
                 // If we got a hybrid result with scraperId, ensure state has it
                 if (detailsId && String(detailsId).startsWith('s:')) {
-                    if (data.data.scraperId) currentAnime.scraperId = data.data.scraperId;
+                    if ((data.data as any).scraperId) currentAnime.scraperId = (data.data as any).scraperId;
                 }
                 setSelectedAnime(currentAnime);
             } else {
