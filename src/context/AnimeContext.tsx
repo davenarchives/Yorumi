@@ -437,10 +437,25 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
         setDetailsLoading(true); // Start loading details
 
         try {
-            const detailsId = anime.id || anime.mal_id;
+            let detailsId: string | number | undefined = anime.id || anime.mal_id;
+
+            // Handle Scraper-only item (Hybrid Mode)
+            // If we have a scraperId but no valid mapped ID yet, try to fetch details using the scraper ID directly
+            // The backend /anime/:id route now supports "s:scraperId" to do hybrid resolution.
+            if (anime.scraperId && (!detailsId || detailsId === 0)) {
+                console.log('Fetching details using scraper ID:', anime.scraperId);
+                detailsId = `s:${anime.scraperId}`;
+            }
+
+            if (!detailsId) throw new Error('Could not identify anime ID');
+
             const data = await animeService.getAnimeDetails(detailsId);
             if (data?.data) {
                 currentAnime = data.data;
+                // If we got a hybrid result with scraperId, ensure state has it
+                if (detailsId && String(detailsId).startsWith('s:')) {
+                    if (data.data.scraperId) currentAnime.scraperId = data.data.scraperId;
+                }
                 setSelectedAnime(currentAnime);
             } else {
                 // FALLBACK: Try to find by title if ID lookup failed (likely MAL ID vs AniList ID mismatch)
