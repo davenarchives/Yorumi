@@ -10,73 +10,7 @@ interface SpotlightHeroProps {
     onWatchClick: (anime: Anime) => void;
 }
 
-// 3D Tilt Component for Spotlight Cover
-const SpotlightCover: React.FC<{ thumbnail: string; title: string }> = ({ thumbnail, title }) => {
-    const cardRef = React.useRef<HTMLDivElement>(null);
-    const [rotation, setRotation] = React.useState({ x: 0, y: 0 });
-    const [glare, setGlare] = React.useState({ x: 50, y: 50, opacity: 0 });
-    const [isHovered, setIsHovered] = React.useState(false);
 
-    const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-        if (!cardRef.current) return;
-        const rect = cardRef.current.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
-        const centerX = rect.width / 2;
-        const centerY = rect.height / 2;
-
-        const rotateX = ((y - centerY) / centerY) * -10;
-        const rotateY = ((x - centerX) / centerX) * 10;
-
-        setRotation({ x: rotateX, y: rotateY });
-        setGlare({
-            x: (x / rect.width) * 100,
-            y: (y / rect.height) * 100,
-            opacity: 1
-        });
-    };
-
-    const handleMouseLeave = () => {
-        setRotation({ x: 0, y: 0 });
-        setGlare(prev => ({ ...prev, opacity: 0 }));
-        setIsHovered(false);
-    };
-
-    return (
-        <div
-            ref={cardRef}
-            className={`hidden md:block w-56 lg:w-64 shrink-0 rounded-xl relative perspective-1000 transition-transform duration-500 ease-out ${isHovered ? 'rotate-0' : 'rotate-3'}`}
-            style={{ perspective: '1000px' }}
-            onMouseEnter={(e) => {
-                setIsHovered(true);
-                handleMouseMove(e);
-            }}
-            onMouseLeave={handleMouseLeave}
-            onMouseMove={handleMouseMove}
-        >
-            <div
-                className="w-full aspect-[2/3] rounded-xl overflow-hidden shadow-[0_0_40px_rgba(0,0,0,0.6)] border border-white/10 transition-all duration-75 ease-out relative bg-[#0a0a0a]"
-                style={{
-                    transform: `rotateX(${rotation.x}deg) rotateY(${rotation.y}deg) scale3d(${isHovered ? 1.02 : 1}, ${isHovered ? 1.02 : 1}, 1)`,
-                    transformStyle: 'preserve-3d',
-                }}
-            >
-                <div
-                    className="absolute inset-0 z-30 pointer-events-none mix-blend-overlay transition-opacity duration-300"
-                    style={{
-                        background: `radial-gradient(circle at ${glare.x}% ${glare.y}%, rgba(255,255,255,0.4) 0%, transparent 80%)`,
-                        opacity: glare.opacity
-                    }}
-                />
-                <img
-                    src={thumbnail}
-                    alt={title}
-                    className="w-full h-full object-cover"
-                />
-            </div>
-        </div>
-    );
-};
 
 const SpotlightHero: React.FC<SpotlightHeroProps> = ({ animeList, onAnimeClick, onWatchClick }) => {
     // Embla Carousel hook with Autoplay
@@ -236,10 +170,6 @@ const SpotlightHero: React.FC<SpotlightHeroProps> = ({ animeList, onAnimeClick, 
                                             </div>
                                         </div>
 
-                                        {/* Right Column: Cover Image */}
-                                        <div className="ml-auto lg:mr-8 xl:mr-16 hidden md:block z-20 pointer-events-auto">
-                                            <SpotlightCover thumbnail={portraitImage} title={anime.title} />
-                                        </div>
                                     </div>
                                 </div>
                             </div>

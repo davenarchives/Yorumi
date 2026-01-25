@@ -11,6 +11,7 @@ import MangaPage from './pages/MangaPage';
 import GenrePage from './pages/GenrePage';
 import MangaGenrePage from './pages/MangaGenrePage';
 import ProfilePage from './pages/ProfilePage';
+import Footer from './components/layout/Footer';
 import { useAnime } from './hooks/useAnime';
 import { animeService } from './services/animeService';
 import { mangaService } from './services/mangaService';
@@ -186,6 +187,8 @@ function App() {
 
       {/* Scroll to Top Button */}
       <ScrollToTop activeTab={activeTab as 'anime' | 'manga'} />
+
+      <Footer />
     </div>
   );
 }

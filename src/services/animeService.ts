@@ -144,12 +144,64 @@ export const animeService = {
         };
     },
 
+    // Get A-Z List from HiAnime Scraper
+    async getAZList(letter: string, page: number = 1) {
+        const res = await fetch(`${API_BASE}/hianime/az-list/${encodeURIComponent(letter)}?page=${page}`);
+        const data = await res.json();
+
+        return {
+            data: data.data?.map((item: any) => ({
+                mal_id: 0,
+                id: 0,
+                scraperId: item.id,
+                title: item.title,
+                images: {
+                    jpg: {
+                        image_url: item.poster,
+                        large_image_url: item.poster
+                    }
+                },
+                type: item.type,
+                type_display: item.type,
+                score: 0,
+                status: 'Unknown',
+                episodes: null,
+                duration: null,
+                rating: null,
+                genres: [],
+                synopsis: '',
+                season: null,
+                year: null,
+                aired: { string: '' },
+                studios: [],
+                members: 0,
+                rank: 0,
+                popularity: 0,
+                favorites: 0,
+                source: 'Scraper',
+                is_scraped: true
+            })) || [],
+            pagination: data.pagination
+        };
+    },
+
     // Get anime details from AniList
-    async getAnimeDetails(id: number) {
+    async getAnimeDetails(id: number | string) {
         const res = await fetch(`${API_BASE}/anilist/anime/${id}`);
         const data = await res.json();
         if (!data || data.error) return { data: null };
         return { data: mapAnilistToAnime(data) };
+    },
+
+    // Identify AniList ID from Scraper Slug/Title
+    async identifyAnime(slug: string, title: string) {
+        const res = await fetch(`${API_BASE}/mapping/identify`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ slug, title })
+        });
+        if (!res.ok) return null;
+        return res.json();
     },
 
     // Search anime on scraper (HiAnime)

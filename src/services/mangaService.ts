@@ -106,6 +106,20 @@ export const mangaService = {
         };
     },
 
+    // Get A-Z List for Manga via Backend (AniList)
+    async getAZList(letter: string, page: number = 1) {
+        const res = await fetch(`${API_BASE}/anilist/manga/az-list/${encodeURIComponent(letter)}?page=${page}`);
+        const data = await res.json();
+        return {
+            data: data.media?.map(mapAnilistToManga) || [],
+            pagination: {
+                last_visible_page: data.pageInfo?.lastPage || 1,
+                current_page: data.pageInfo?.currentPage || 1,
+                has_next_page: data.pageInfo?.hasNextPage || false
+            }
+        };
+    },
+
     // Get manga details by ID
     async getMangaDetails(id: number | string) {
         try {

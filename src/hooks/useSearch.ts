@@ -4,7 +4,7 @@ import type { Manga } from '../types/manga';
 import { animeService } from '../services/animeService';
 import { mangaService } from '../services/mangaService';
 
-export function useSearch(activeTab: 'anime' | 'manga', onSearchStart?: () => void) {
+export function useSearch(activeTab: 'anime' | 'manga', onSearchStart?: () => void, isAZList: boolean = false) {
     const [searchQuery, setSearchQuery] = useState('');
     const [searchResults, setSearchResults] = useState<(Anime | Manga)[]>([]);
     const [isSearching, setIsSearching] = useState(false);
@@ -22,9 +22,20 @@ export function useSearch(activeTab: 'anime' | 'manga', onSearchStart?: () => vo
         try {
             let newData: any;
             if (activeTab === 'anime') {
-                newData = await animeService.searchAnime(query, page);
+                if (isAZList) {
+                    // Handle empty query as 'All' for AZ list
+                    const target = query || 'All';
+                    newData = await animeService.getAZList(target, page);
+                } else {
+                    newData = await animeService.searchAnime(query, page);
+                }
             } else {
-                newData = await mangaService.searchManga(query, page);
+                if (isAZList) {
+                    const target = query || 'All';
+                    newData = await mangaService.getAZList(target, page);
+                } else {
+                    newData = await mangaService.searchManga(query, page);
+                }
             }
 
             if (isLoadMore) {
