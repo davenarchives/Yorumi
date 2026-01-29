@@ -114,29 +114,35 @@ export class HiAnimeScraper {
 
     private async fetchAndCacheSpotlight(cacheKey: string): Promise<any> {
         const spotlightItems = await this.getSpotlightAnime();
-        const enrichedItems = [];
 
-        // Enrich with AniList data (sequentially to respect rate limits)
-        for (const item of spotlightItems) {
+        // Enrich with AniList data in parallel for faster loading
+        // AniList has generous rate limits (~90 requests/minute), so parallel is fine for ~10 items
+        const enrichmentPromises = spotlightItems.map(async (item) => {
             try {
-                // Search AniList by title
                 const searchResult = await anilistService.searchAnime(item.title, 1, 1);
                 const anilistMedia = searchResult?.media?.[0];
 
                 if (anilistMedia) {
-                    enrichedItems.push({
+                    return {
                         ...item,
                         id: anilistMedia.id,         // AniList ID
                         mal_id: anilistMedia.idMal,  // MAL ID (used for routing)
                         anilist: anilistMedia        // Full AniList object if needed
-                    });
+                    };
                 } else {
                     console.warn(`Could not find AniList match for: ${item.title}`);
+                    return null;
                 }
             } catch (err) {
                 console.error(`Failed to enrich item: ${item.title}`, err);
+                return null;
             }
-        }
+        });
+
+        const results = await Promise.allSettled(enrichmentPromises);
+        const enrichedItems = results
+            .filter((r): r is PromiseFulfilledResult<any> => r.status === 'fulfilled' && r.value !== null)
+            .map(r => r.value);
 
         const result = { spotlight: enrichedItems };
 
