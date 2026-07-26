@@ -12,10 +12,10 @@ const upstreamCookieJar = new Map<string, string>();
 let spotlightMemCache: { spotlight: any[] } | null = null;
 let latestUpdatesMemCache: { latestEpisodes: any[] } | null = null;
 const newReleasesMemCache = new Map<string, { data: any[]; pagination: any }>();
-const SPOTLIGHT_REDIS_KEY = 'anilist:native-spotlight:enriched:v1';
+const SPOTLIGHT_REDIS_KEY = 'anilist:native-spotlight:enriched:v2';
 const LATEST_HOME_LIMIT = 10;
-const LATEST_REDIS_KEY = 'allmanga:latest-updates:cards:v1';
-const NEW_RELEASES_REDIS_PREFIX = 'allmanga:new-releases:cards:v1';
+const LATEST_REDIS_KEY = 'allmanga:latest-updates:cards:v2';
+const NEW_RELEASES_REDIS_PREFIX = 'allmanga:new-releases:cards:v2';
 const CACHE_TTL_SECONDS = 300; // 5 min fresh window
 
 const buildAnimeKaiFallbackItems = (items: any[]) => {
@@ -39,7 +39,7 @@ const enrichAnimeKaiItems = async (items: any[]) => {
 
             return {
                 ...item,
-                id: tmdbMedia?.tmdbId || 0,
+                id: item?.id || 0,
                 mal_id: tmdbMedia?.tmdbId || 0,
                 tmdb: tmdbMedia || null,
             };
@@ -1015,41 +1015,79 @@ router.get('/proxy', async (req, res) => {
         }
 
         if (!isM3u8) {
-            // Only buffer for PNG-magic check when the CDN claims it's an image or binary blob.
-            // Real video files (mp4, webm, etc.) must be piped for streaming/range-request support.
+            // Only buffer for PNG-magic check when explicitly requested (maskCheck=1)
+            // Real video files must be piped for streaming/range-request support.
+            const maskCheck = String(req.query.maskCheck || '').trim() === '1';
             const isExplicitVideo = /\.(mp4|webm|mkv|avi|mov)(?:[?#]|$)/i.test(targetUrl);
-            const mightBeMasked = !isExplicitVideo && (contentType.startsWith('image/') || contentType === 'application/octet-stream' || contentType === '');
+            const mightBeMasked = maskCheck || (!isExplicitVideo && (contentType.startsWith('image/') || contentType === 'application/octet-stream' || contentType === 'text/plain' || contentType === ''));
 
             if (mightBeMasked) {
-                // Buffer to check for PNG-masked MPEG-TS (used by AniNeko/vivibebe CDN)
-                const rawBuf = await streamToBuffer(response.data);
-                let outBuf: Buffer = rawBuf;
-                let outContentType = normalizedContentType;
+                const { Transform } = require('stream');
+                let foundSync = false;
+                let buffer = Buffer.alloc(0);
 
-                // PNG magic: 89 50 4E 47 — scan for MPEG-TS sync byte 0x47 repeating at 188-byte intervals
-                if (rawBuf.length > 8 && rawBuf[0] === 0x89 && rawBuf[1] === 0x50 && rawBuf[2] === 0x4E && rawBuf[3] === 0x47) {
-                    let syncIdx = -1;
-                    const limit = Math.min(rawBuf.length - 376, 10000);
-                    for (let i = 0; i < limit; i++) {
-                        if (rawBuf[i] === 0x47 && rawBuf[i + 188] === 0x47 && rawBuf[i + 376] === 0x47) {
-                            syncIdx = i;
-                            break;
+                const demaskStream = new Transform({
+                    transform(chunk: Buffer, _encoding: string, callback: () => void) {
+                        if (foundSync) {
+                            this.push(chunk);
+                            return callback();
                         }
+
+                        buffer = Buffer.concat([buffer, chunk]);
+
+                        // Wait until we have enough bytes to check for PNG magic
+                        if (buffer.length < 8) {
+                            return callback();
+                        }
+
+                        // Check for PNG magic bytes: 0x89 0x50 0x4E 0x47
+                        const isPngMasked = buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47;
+
+                        if (isPngMasked) {
+                            // It is PNG masked. Search for the first valid MPEG-TS sync byte sequence
+                            let syncIdx = -1;
+                            const limit = Math.min(buffer.length - 376, buffer.length);
+                            for (let i = 0; i < limit; i++) {
+                                if (buffer[i] === 0x47 && buffer[i + 188] === 0x47 && buffer[i + 376] === 0x47) {
+                                    syncIdx = i;
+                                    break;
+                                }
+                            }
+                            
+                            if (syncIdx !== -1) {
+                                foundSync = true;
+                                this.push(buffer.slice(syncIdx));
+                                buffer = Buffer.alloc(0);
+                            } else if (buffer.length > 100000) {
+                                // Give up if not found within 100KB, push intact to avoid hanging
+                                foundSync = true;
+                                this.push(buffer);
+                                buffer = Buffer.alloc(0);
+                            }
+                        } else {
+                            // Not PNG masked. Push intact (preserves ID3 tags for standard streams)
+                            foundSync = true;
+                            this.push(buffer);
+                            buffer = Buffer.alloc(0);
+                        }
+                        
+                        callback();
+                    },
+                    flush(callback: () => void) {
+                        if (!foundSync && buffer.length > 0) {
+                            this.push(buffer);
+                        }
+                        callback();
                     }
-                    if (syncIdx !== -1) {
-                        outBuf = rawBuf.slice(syncIdx);
-                        outContentType = 'video/mp2t';
-                    }
-                }
+                });
 
                 res.status(response.status);
-                res.set('Content-Type', outContentType);
+                res.set('Content-Type', 'video/mp2t');
                 res.set('Access-Control-Allow-Origin', '*');
                 res.set('Access-Control-Expose-Headers', 'Content-Length, Content-Range, Accept-Ranges');
-                if (response.headers['content-range']) res.set('Content-Range', response.headers['content-range']);
-                if (response.headers['accept-ranges']) res.set('Accept-Ranges', response.headers['accept-ranges']);
-                res.set('Content-Length', String(outBuf.length));
-                return res.send(outBuf);
+                // Remove Content-Length because we are stripping the mask which changes the length
+                req.on('close', () => { response.data?.destroy?.(); });
+                return response.data.pipe(demaskStream).pipe(res);
             }
 
             // Real video/audio stream — pipe directly for streaming + range-request support.
@@ -1097,6 +1135,8 @@ router.get('/proxy', async (req, res) => {
                 lower.endsWith('.fmp4') ||
                 lower.endsWith('.jpg') ||
                 lower.endsWith('.jpeg') ||
+                lower.endsWith('.png') ||
+                lower.endsWith('.webp') ||
                 lower.startsWith('/p/') ||
                 lower.startsWith('/hls/')
             );
@@ -1136,7 +1176,7 @@ router.get('/proxy', async (req, res) => {
                         const absoluteUri = uri.startsWith('http')
                             ? uri
                             : (uri.startsWith('/') ? `${urlObj.origin}${uri}` : `${basePath}${uri}`);
-                        return `URI="${getPublicBase(req)}/api/scraper/proxy?url=${encodeURIComponent(absoluteUri)}&referer=${encodeURIComponent(nextReferer)}${nextCookie ? `&cookie=${encodeURIComponent(nextCookie)}` : ''}${proxyMediaSegments ? '&proxyMedia=1' : ''}"`;
+                        return `URI="${getPublicBase(req)}/api/scraper/proxy?url=${encodeURIComponent(absoluteUri)}&referer=${encodeURIComponent(nextReferer)}${nextCookie ? `&cookie=${encodeURIComponent(nextCookie)}` : ''}${proxyMediaSegments ? '&proxyMedia=1' : ''}${req.query.maskCheck === '1' ? '&maskCheck=1' : ''}${requestedAudio ? `&audio=${encodeURIComponent(requestedAudio)}` : ''}"`;
                     });
                 }
 
@@ -1146,7 +1186,7 @@ router.get('/proxy', async (req, res) => {
                     ? trimmed
                     : (trimmed.startsWith('/') ? `${urlObj.origin}${trimmed}` : `${basePath}${trimmed}`);
 
-                const proxySuffix = `&referer=${encodeURIComponent(nextReferer)}${nextCookie ? `&cookie=${encodeURIComponent(nextCookie)}` : ''}${proxyMediaSegments ? '&proxyMedia=1' : ''}`;
+                const proxySuffix = `&referer=${encodeURIComponent(nextReferer)}${nextCookie ? `&cookie=${encodeURIComponent(nextCookie)}` : ''}${proxyMediaSegments ? '&proxyMedia=1' : ''}${req.query.maskCheck === '1' ? '&maskCheck=1' : ''}${requestedAudio ? `&audio=${encodeURIComponent(requestedAudio)}` : ''}`;
 
                 if (proxyMediaSegments) {
                     // Always proxy all segments when proxyMedia=1 (needed for PNG-masked TS like AniNeko).

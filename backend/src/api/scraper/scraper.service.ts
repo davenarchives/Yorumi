@@ -525,46 +525,110 @@ class ScraperService {
         const provider = String(options?.provider || 'auto').trim().toLowerCase() || 'auto';
 
         // ── Custom Video Sources (video-sources.ts) ─────────────────────────
-        if (provider === 'vidsrc' || provider === 'anineko') {
+        if (provider === 'vidsrc' || provider === 'vidking' || provider === 'anineko' || provider === 'videasy' || provider === 'reanime') {
             const title = String(options?.title || this.queryFromSessionSlug(animeSession)).trim();
             const tmdbTarget = await tmdbService.resolveMediaTarget({ 
                 title, 
                 titles: options?.titles, 
                 year: options?.year, 
                 format: options?.format 
-            });
+            }).catch(() => null);
 
-            if (tmdbTarget) {
-                const anilistId = parseInt(animeSession, 10);
-                const episodeNumber = Number(options?.episodeNumber || this.parseEpisodeNumber(epSession)) || 1;
-                // Dynamically import to avoid circular dependency
-                const { animeVideoSources } = require('../anime/video-sources');
-                // Pass anilistId if available, fallback to tmdbId just in case (though video-sources expects anilistId for metadata)
-                const targetId = isNaN(anilistId) ? tmdbTarget.tmdbId : anilistId;
-                const streamResponse = await animeVideoSources.getStream(targetId, episodeNumber, provider, { title, tmdbId: tmdbTarget.tmdbId });
+            const anilistId = parseInt(animeSession, 10);
+            const episodeNumber = Number(options?.episodeNumber || this.parseEpisodeNumber(epSession)) || 1;
+            const { animeVideoSources } = require('../anime/video-sources');
+            const targetId = !isNaN(anilistId) ? anilistId : (tmdbTarget?.tmdbId || 0);
+            const streamResponse = await animeVideoSources.getStream(targetId, episodeNumber, provider, { title, tmdbId: tmdbTarget?.tmdbId });
+            
+            if (streamResponse?.m3u8) {
+                const isHls = /\.m3u8?(?:[?#]|$)/i.test(streamResponse.m3u8);
+                const referer = streamResponse.referer || '';
+                const actualSource = String(streamResponse.source || provider).trim().toLowerCase();
+                // AniNeko needs proxy with maskCheck for PNG-masked .ts chunks.
+                // ReAnime streams go direct to browser — fetch.flixcloud.cc blocks server-side
+                // requests (Cloudflare WAF) but works with Electron's real Chrome TLS fingerprint.
+                let proxyMedia = '';
+                if (actualSource === 'anineko') proxyMedia = '&proxyMedia=1&maskCheck=1';
                 
-                if (streamResponse?.m3u8) {
-                    const isHls = /\.m3u8?(?:[?#]|$)/i.test(streamResponse.m3u8);
-                    const referer = streamResponse.referer || '';
-                    const actualSource = String(streamResponse.source || provider).trim().toLowerCase();
-                    
-                    let finalUrl = streamResponse.m3u8;
-                    if (actualSource !== 'vidsrc' && finalUrl.startsWith('http')) {
-                        finalUrl = `/api/scraper/proxy?url=${encodeURIComponent(finalUrl)}&referer=${encodeURIComponent(referer)}${isHls && actualSource === 'anineko' ? '&proxyMedia=1' : ''}`;
+                let masterUrl = streamResponse.m3u8;
+                // Proxy only AniNeko through backend. ReAnime/VidSrc/VidKing/Videasy go direct to browser.
+                if (actualSource === 'anineko' && masterUrl.startsWith('http')) {
+                    masterUrl = `/api/scraper/proxy?url=${encodeURIComponent(masterUrl)}&referer=${encodeURIComponent(referer)}${proxyMedia}&audio=jpn`;
+                }
+                
+                const serverName = actualSource === 'reanime' ? 'ReAnime' : actualSource === 'anineko' ? 'AniNeko' : actualSource === 'videasy' ? 'Videasy' : actualSource === 'vidking' ? 'VidKing' : 'VidSrc';
+
+                const streamsList: any[] = [{
+                    quality: 'auto',
+                    audio: 'sub',
+                    provider: actualSource,
+                    server: serverName,
+                    url: masterUrl,
+                    isHls: isHls,
+                    referer: referer,
+                    subtitles: streamResponse.subtitles || [],
+                    directUrl: streamResponse.m3u8
+                }];
+
+                if (streamResponse.dubM3u8) {
+                    let dubMasterUrl = streamResponse.dubM3u8;
+                    if (actualSource === 'anineko' && dubMasterUrl.startsWith('http')) {
+                        dubMasterUrl = `/api/scraper/proxy?url=${encodeURIComponent(dubMasterUrl)}&referer=${encodeURIComponent(referer)}${proxyMedia}&audio=eng`;
                     }
-                    
-                    return [{
+                    streamsList.push({
                         quality: 'auto',
-                        audio: 'sub',
+                        audio: 'dub',
                         provider: actualSource,
-                        server: actualSource === 'anineko' ? 'AniNeko' : 'VidSrc',
-                        url: finalUrl,
-                        isHls: isHls,
+                        server: serverName,
+                        url: dubMasterUrl,
+                        isHls: true,
                         referer: referer,
                         subtitles: streamResponse.subtitles || [],
-                        directUrl: streamResponse.m3u8
-                    } as any];
+                        directUrl: streamResponse.dubM3u8
+                    });
                 }
+
+                if (Array.isArray(streamResponse.variants) && streamResponse.variants.length > 0) {
+                    for (const v of streamResponse.variants) {
+                        let vUrl = v.url;
+                        if (actualSource === 'anineko' && vUrl.startsWith('http')) {
+                            vUrl = `/api/scraper/proxy?url=${encodeURIComponent(vUrl)}&referer=${encodeURIComponent(referer)}${proxyMedia}&audio=jpn`;
+                        }
+                        streamsList.push({
+                            quality: v.quality,
+                            audio: 'sub',
+                            provider: actualSource,
+                            server: serverName,
+                            url: vUrl,
+                            isHls: true,
+                            referer: referer,
+                            subtitles: streamResponse.subtitles || [],
+                            directUrl: v.url
+                        });
+                    }
+                }
+
+                if (Array.isArray(streamResponse.dubVariants) && streamResponse.dubVariants.length > 0) {
+                    for (const v of streamResponse.dubVariants) {
+                        let vUrl = v.url;
+                        if (actualSource === 'anineko' && vUrl.startsWith('http')) {
+                            vUrl = `/api/scraper/proxy?url=${encodeURIComponent(vUrl)}&referer=${encodeURIComponent(referer)}${proxyMedia}&audio=eng`;
+                        }
+                        streamsList.push({
+                            quality: v.quality,
+                            audio: 'dub',
+                            provider: actualSource,
+                            server: serverName,
+                            url: vUrl,
+                            isHls: true,
+                            referer: referer,
+                            subtitles: streamResponse.subtitles || [],
+                            directUrl: v.url
+                        });
+                    }
+                }
+
+                return streamsList;
             }
             return [];
         }
@@ -592,12 +656,12 @@ class ScraperService {
                 showId = '';
             }
 
-            const key = `streams:allmanga:v4:${showId || title.toLowerCase()}:${episodeNumber || epSession}:${year || ''}`;
+            const key = `streams:allmanga:v7:${showId || title.toLowerCase()}:${episodeNumber || epSession}:${year || ''}`;
             const links = await this.getOrLoad(
                 key,
                 5 * 60 * 1000,
                 async () => showId
-                    ? this.allMangaScraper.getLinksForShowId(showId, episodeNumber, title)
+                    ? this.allMangaScraper.getLinksForShowId(showId, episodeNumber, title, year ? Number(year) : undefined)
                     : this.allMangaScraper.getLinksForEpisodeNumber(title, episodeNumber, year ? Number(year) : undefined),
                 {
                     shouldCache: (value) => Array.isArray(value) && value.length > 0,
@@ -608,7 +672,7 @@ class ScraperService {
             // Filter out dead/parked domains that just serve ads now
             return (Array.isArray(links) ? links : []).filter(link => {
                 const u = link?.directUrl || link?.url || '';
-                return u && !/streamsb|sbvideo|sbfull|sbspeed|sbfast|streamtape|embedsito/i.test(u);
+                return u && !/streamsb|sbvideo|sbfull|sbspeed|sbfast|streamtape|embedsito|streamwish|ok\.ru|sk\.json/i.test(u);
             });
         }
 

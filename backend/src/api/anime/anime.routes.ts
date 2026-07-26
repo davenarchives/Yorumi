@@ -123,7 +123,7 @@ router.get('/stream', async (req, res) => {
         }
 
         const title = req.query.title ? String(req.query.title) : undefined;
-        const result = await animeVideoSources.getStream(Math.floor(tmdbId), episode, source, undefined, nocache);
+        const result = await animeVideoSources.getStream(Math.floor(tmdbId), episode, source, { title, tmdbId: Math.floor(tmdbId) }, nocache);
         if (!result) {
             res.status(404).json({ error: 'No playable stream found' });
             return;
