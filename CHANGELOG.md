@@ -10,6 +10,8 @@
 - **Anime Hover Tooltips & Metadata**: Improved home section anime cards to display comprehensive AniList metadata (airing status, release year, studio, format, episode count, and genre chips) without score percentages.
 - **Title Routing & Search Scoring**: Enhanced AllManga title matching so base TV anime series outrank movies, OVAs, or specials.
 - **Video Player Toggle Sliders**: Fixed broken toggle switch styling in video player settings (`Dub`, `Auto next`, `Auto Skip`) by replacing invalid `left-4.5` classes with `translate-x-4` so the knob smoothly slides to the right when toggled ON.
+- **Sidebar & README Logo Polish**: Fixed broken sidebar logo image upon bundling in Electron/production builds by importing `yorumi-icon.png` from `src/assets/yorumi-icon.png` (matching the logo used in the README) so Vite bundles and resolves the asset cleanly across web and desktop builds. Reduced the README logo image width to 100px for a more balanced layout.
+- **Season 2 & Sequel Anime Streaming Resolution**: Resolved an issue where season 2 and sequel anime episodes in the "Latest Episodes" section failed to stream. Fixed `allmanga.ts` (`getLinksForShowId`) to prioritize the explicit mkissa season `showId` over ambiguous AniList title resolution, and bumped the cache version to `v8` in `scraper.service.ts` to clear stale empty stream caches.
 
 ### Removed
 - **Defunct Streaming Providers**: Removed offline or deprecated providers (`Animegg`, `Animenosub`, `Reanime`, `AniNeko`) from the player server picker and backend source defaults so users only encounter active, high-speed servers.

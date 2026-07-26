@@ -42,7 +42,7 @@ export const resolveStaticAssetUrl = (value?: string | null) => {
 
     if (value === '/anime-bg.png') return CLOUDINARY_SHARED_ASSETS.animeBg;
     if (value === '/monsterslash.png') return CLOUDINARY_SHARED_ASSETS.monsterSlash;
-    if (value === '/yorumi-icon.svg') return CLOUDINARY_SHARED_ASSETS.yorumiIcon;
+    if (value === '/yorumi-icon.svg' || value === '/yorumi-icon.png') return CLOUDINARY_SHARED_ASSETS.yorumiIcon;
     if (value === '/Yorumi.png') return CLOUDINARY_SHARED_ASSETS.yorumiPng;
     if (value === '/Yorumi.svg') return CLOUDINARY_SHARED_ASSETS.yorumiSvg;
     if (value === '/gcash-logo.svg') return CLOUDINARY_SHARED_ASSETS.gcashLogo;

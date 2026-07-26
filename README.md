@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="./public/yorumi-icon.png" alt="Yorumi" width="200" />
+  <img src="./public/yorumi-icon.png" alt="Yorumi" width="100" />
 
   # Y O R U M I &nbsp; ヨルミ
   

@@ -934,28 +934,14 @@ export class AllMangaScraper {
         const audios: readonly TranslationType[] = ['sub', 'dub'];
         
         await Promise.all(audios.map(async (audio) => {
-            let activeShowId = showId;
-
-            if (title) {
-                const altShow = await this.resolveShow(title, audio, episodeNumber, year);
-                if (altShow?._id) {
-                    const currentShow = await this.getShowById(showId).catch(() => null);
-                    const currentScore = currentShow ? this.scoreShow(title, currentShow, audio, episodeNumber, year) : 0;
-                    const altScore = this.scoreShow(title, altShow, audio, episodeNumber, year);
-                    if (altShow._id !== showId && altScore >= currentScore) {
-                        activeShowId = altShow._id;
-                    }
-                }
-            }
-
-            let sources = await this.getEpisodeSources(activeShowId, episodeNumber, audio);
+            let sources = await this.getEpisodeSources(showId, episodeNumber, audio);
             
             // Fallback to title search if the current showId doesn't have this audio track (common for sub/dub split shows)
             if (sources.length === 0 && title) {
                 const cleanTitle = String(title || '').trim();
                 if (cleanTitle) {
                     const altShow = await this.resolveShow(cleanTitle, audio, episodeNumber, year);
-                    if (altShow?._id && altShow._id !== activeShowId) {
+                    if (altShow?._id && altShow._id !== showId) {
                         sources = await this.getEpisodeSources(altShow._id, episodeNumber, audio);
                     }
                 }
@@ -1090,10 +1076,11 @@ export class AllMangaScraper {
         const tmdbThumbnailsPromise = this.getTmdbEpisodeThumbnails(show, total);
         
         const infos: AllMangaEpisodeInfo[] = [];
-        const chunkSize = 100;
+        const maxEp = Math.max(total, 500);
+        const chunkSize = 500;
         const tasks = [];
-        for (let start = 1; start <= total; start += chunkSize) {
-            const end = Math.min(total, start + chunkSize - 1);
+        for (let start = 0; start <= maxEp; start += chunkSize) {
+            const end = start + chunkSize - 1;
             tasks.push(() =>
                 this.gql<{ data?: { episodeInfos?: AllMangaEpisodeInfo[] } }>({
                     showId,
@@ -1117,18 +1104,31 @@ export class AllMangaScraper {
             tmdbThumbnailsPromise
         ]);
 
-        const episodes = infos
-            .map((info) => {
-                const epNum = Number(info.episodeIdNum || 0);
-                const tmdbThumb = tmdbThumbnails.get(epNum);
-                const aniThumb = animetsuThumbnails.get(epNum);
-                const preferredThumb = tmdbThumb || aniThumb;
-                return this.mapEpisodeInfo(showId, info, fallbackSnapshot, preferredThumb);
-            })
-            .filter(Boolean) as Episode[];
+        const episodesMap = new Map<number, Episode>();
+        for (const info of infos) {
+            const epNum = Number(info.episodeIdNum || 0);
+            if (!epNum || epNum <= 0) continue;
+            const tmdbThumb = tmdbThumbnails.get(epNum);
+            const aniThumb = animetsuThumbnails.get(epNum);
+            const preferredThumb = tmdbThumb || aniThumb;
+            const mapped = this.mapEpisodeInfo(showId, info, fallbackSnapshot, preferredThumb);
+            if (!mapped) continue;
+
+            const existing = episodesMap.get(epNum);
+            if (!existing) {
+                episodesMap.set(epNum, mapped);
+            } else {
+                existing.isSubbed = existing.isSubbed || mapped.isSubbed;
+                existing.isDubbed = existing.isDubbed || mapped.isDubbed;
+                if (!existing.snapshot && mapped.snapshot) existing.snapshot = mapped.snapshot;
+            }
+        }
+
+        const episodes = Array.from(episodesMap.values())
+            .sort((a, b) => Number(a.episodeNumber) - Number(b.episodeNumber));
 
         return {
-            episodes: episodes.sort((a, b) => Number(a.episodeNumber) - Number(b.episodeNumber)),
+            episodes,
             lastPage: 1,
         };
     }
