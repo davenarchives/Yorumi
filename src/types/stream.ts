@@ -13,6 +13,7 @@ export interface StreamLink {
     directUrl?: string;
     referer?: string;
     isHls: boolean;
+    isEmbed?: boolean;
     subtitles?: SubtitleTrack[];
     thumbnails?: ThumbnailInfo;
 }

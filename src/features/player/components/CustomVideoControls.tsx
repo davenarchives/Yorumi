@@ -37,7 +37,7 @@ interface CustomVideoControlsProps {
 }
 
 const PLAYBACK_SPEEDS = [0.25, 1, 1.25, 1.5, 2];
-const QUALITY_OPTIONS = ['1080P', '720P', '360P'];
+const QUALITY_OPTIONS = ['Auto', '1080P', '720P', '360P'];
 const SEEK_SECONDS = 5;
 const GLASS_BUTTON_CLASS = 'watch-control-glass rounded-full flex items-center justify-center text-white transition-colors shadow-[0_8px_28px_rgba(0,0,0,0.28)]';
 const GLASS_PANEL_CLASS = 'watch-control-glass rounded-full text-white shadow-[0_8px_28px_rgba(0,0,0,0.28)]';
@@ -269,11 +269,15 @@ export default function CustomVideoControls({
     };
 
     const handleQualitySelect = (quality: string) => {
-        const index = streams.findIndex((stream) => getMappedQuality(stream.quality) === quality);
-        if (index >= 0) {
-            onQualityChange(index);
-        } else {
+        if (quality === 'Auto') {
             onSetAutoQuality();
+        } else {
+            const index = streams.findIndex((stream) => getMappedQuality(stream.quality) === quality);
+            if (index >= 0) {
+                onQualityChange(index);
+            } else {
+                onSetAutoQuality();
+            }
         }
         setSettingsView('main');
     };
@@ -659,91 +663,91 @@ export default function CustomVideoControls({
                             <div className={`${GLASS_PANEL_CLASS} relative flex h-7 items-center gap-0 px-0 sm:h-10 sm:gap-1 sm:px-3`}>
                                 {/* Settings Popover */}
                                 {showSettings && (
-                                    <div className="absolute bottom-full right-0 mb-4 w-72 bg-[#1A1A1A]/95 backdrop-blur-xl rounded-2xl p-2 shadow-2xl border border-white/10 z-50">
+                                    <div className="absolute bottom-full right-0 mb-3 w-44 bg-[#1A1A1A]/95 backdrop-blur-xl rounded-xl p-1 shadow-2xl border border-white/10 z-50">
                                         {settingsView !== 'main' && (
                                             <button
                                                 onClick={() => setSettingsView('main')}
-                                                className="mb-2 flex w-full items-center gap-2 border-b border-white/10 px-2 pb-3 pt-1 text-left text-sm font-semibold text-white"
+                                                className="mb-1.5 flex w-full items-center gap-2 border-b border-white/10 px-2 pb-1.5 pt-1 text-left text-xs font-semibold text-white"
                                             >
-                                                <ChevronLeft className="h-4 w-4" />
+                                                <ChevronLeft className="h-3.5 w-3.5" />
                                                 {settingsView === 'quality' ? 'Quality' : settingsView === 'server' ? 'Server' : 'Playback speed'}
                                             </button>
                                         )}
 
                                         {settingsView === 'main' && (
-                                            <div className="flex flex-col">
+                                            <div className="flex flex-col gap-0.5">
                                                 <button
                                                     onClick={() => hasDub && onAudioChange(selectedAudio === 'dub' ? 'sub' : 'dub')}
                                                     disabled={!hasDub}
-                                                    className="flex items-center justify-between w-full p-3 hover:bg-white/10 rounded-xl transition-colors disabled:opacity-40"
+                                                    className="flex items-center justify-between w-full p-2 hover:bg-white/10 rounded-lg transition-colors disabled:opacity-40"
                                                 >
-                                                    <div className="flex items-center gap-3 text-white">
-                                                        <Mic className="w-5 h-5" />
-                                                        <span className="text-sm font-medium">Dub</span>
+                                                    <div className="flex items-center gap-2 text-white">
+                                                        <Mic className="w-4 h-4" />
+                                                        <span className="text-xs font-medium">Dub</span>
                                                     </div>
-                                                    <div className={`w-9 h-5 rounded-full relative shadow-inner transition-colors ${selectedAudio === 'dub' ? 'bg-white' : 'bg-white/20'}`}>
-                                                        <div className={`absolute top-1 w-3 h-3 rounded-full transition-all ${selectedAudio === 'dub' ? 'bg-black left-5' : 'bg-white left-1'}`}></div>
+                                                    <div className={`w-8 h-4 rounded-full relative shadow-inner transition-colors ${selectedAudio === 'dub' ? 'bg-white' : 'bg-white/20'}`}>
+                                                        <div className={`absolute top-0.5 left-0.5 w-3 h-3 rounded-full transition-transform duration-200 ${selectedAudio === 'dub' ? 'bg-black translate-x-4' : 'bg-white translate-x-0'}`}></div>
                                                     </div>
                                                 </button>
                                                 <button
                                                     onClick={() => onAutoNextChange?.(!autoNextEnabled)}
                                                     disabled={!onAutoNextChange || !hasNextEpisode}
-                                                    className="flex items-center justify-between w-full p-3 hover:bg-white/10 rounded-xl transition-colors disabled:opacity-40"
+                                                    className="flex items-center justify-between w-full p-2 hover:bg-white/10 rounded-lg transition-colors disabled:opacity-40"
                                                 >
-                                                    <div className="flex items-center gap-3 text-white">
-                                                        <SkipForward className="w-5 h-5" />
-                                                        <span className="text-sm font-medium">Auto next</span>
+                                                    <div className="flex items-center gap-2 text-white">
+                                                        <SkipForward className="w-4 h-4" />
+                                                        <span className="text-xs font-medium">Auto next</span>
                                                     </div>
-                                                    <div className={`w-9 h-5 rounded-full relative shadow-inner transition-colors ${autoNextEnabled && hasNextEpisode ? 'bg-white' : 'bg-white/20'}`}>
-                                                        <div className={`absolute top-1 w-3 h-3 rounded-full transition-all ${autoNextEnabled && hasNextEpisode ? 'bg-black left-5' : 'bg-white left-1'}`}></div>
+                                                    <div className={`w-8 h-4 rounded-full relative shadow-inner transition-colors ${autoNextEnabled && hasNextEpisode ? 'bg-white' : 'bg-white/20'}`}>
+                                                        <div className={`absolute top-0.5 left-0.5 w-3 h-3 rounded-full transition-transform duration-200 ${autoNextEnabled && hasNextEpisode ? 'bg-black translate-x-4' : 'bg-white translate-x-0'}`}></div>
                                                     </div>
                                                 </button>
                                                 <button
                                                     onClick={() => onAutoSkipChange?.(!autoSkipEnabled)}
                                                     disabled={!onAutoSkipChange}
-                                                    className="flex items-center justify-between w-full p-3 hover:bg-white/10 rounded-xl transition-colors disabled:opacity-40"
+                                                    className="flex items-center justify-between w-full p-2 hover:bg-white/10 rounded-lg transition-colors disabled:opacity-40"
                                                 >
-                                                    <div className="flex items-center gap-3 text-white">
-                                                        <RedoIcon className="w-5 h-5" />
-                                                        <span className="text-sm font-medium">Auto Skip</span>
+                                                    <div className="flex items-center gap-2 text-white">
+                                                        <RedoIcon className="w-4 h-4" />
+                                                        <span className="text-xs font-medium">Auto Skip</span>
                                                     </div>
-                                                    <div className={`w-9 h-5 rounded-full relative shadow-inner transition-colors ${autoSkipEnabled ? 'bg-white' : 'bg-white/20'}`}>
-                                                        <div className={`absolute top-1 w-3 h-3 rounded-full transition-all ${autoSkipEnabled ? 'bg-black left-5' : 'bg-white left-1'}`}></div>
+                                                    <div className={`w-8 h-4 rounded-full relative shadow-inner transition-colors ${autoSkipEnabled ? 'bg-white' : 'bg-white/20'}`}>
+                                                        <div className={`absolute top-0.5 left-0.5 w-3 h-3 rounded-full transition-transform duration-200 ${autoSkipEnabled ? 'bg-black translate-x-4' : 'bg-white translate-x-0'}`}></div>
                                                     </div>
                                                 </button>
 
                                                 {skipTimestampsLoading && (
-                                                    <div className="px-3 py-2 text-xs text-white/60 flex items-center gap-2">
+                                                    <div className="px-2 py-1 text-[11px] text-white/60 flex items-center gap-1.5">
                                                         <span className="animate-pulse">Loading skip times...</span>
                                                     </div>
                                                 )}
                                                 <button
                                                     onClick={() => setSettingsView('speed')}
-                                                    className="flex items-center justify-between w-full p-3 hover:bg-white/10 rounded-xl transition-colors"
+                                                    className="flex items-center justify-between w-full p-2 hover:bg-white/10 rounded-lg transition-colors"
                                                 >
-                                                    <div className="flex items-center gap-3 text-white">
-                                                        <Gauge className="w-5 h-5" />
-                                                        <span className="text-sm font-medium">Playback speed</span>
+                                                    <div className="flex items-center gap-2 text-white">
+                                                        <Gauge className="w-4 h-4" />
+                                                        <span className="text-xs font-medium">Playback speed</span>
                                                     </div>
                                                     <span className="text-xs text-white/70">{playbackSpeed}x</span>
                                                 </button>
                                                 <button
                                                     onClick={() => setSettingsView('quality')}
-                                                    className="flex items-center justify-between w-full p-3 hover:bg-white/10 rounded-xl transition-colors"
+                                                    className="flex items-center justify-between w-full p-2 hover:bg-white/10 rounded-lg transition-colors"
                                                 >
-                                                    <div className="flex items-center gap-3 text-white">
-                                                        <Video className="w-5 h-5" />
-                                                        <span className="text-sm font-medium">Quality</span>
+                                                    <div className="flex items-center gap-2 text-white">
+                                                        <Video className="w-4 h-4" />
+                                                        <span className="text-xs font-medium">Quality</span>
                                                     </div>
                                                     <span className="text-xs text-white/70">{isAutoQuality ? `Auto(${currentQuality})` : currentQuality}</span>
                                                 </button>
                                                 <button
                                                     onClick={() => setSettingsView('server')}
-                                                    className="flex items-center justify-between w-full p-3 hover:bg-white/10 rounded-xl transition-colors"
+                                                    className="flex items-center justify-between w-full p-2 hover:bg-white/10 rounded-lg transition-colors"
                                                 >
-                                                    <div className="flex items-center gap-3 text-white">
-                                                        <Monitor className="w-5 h-5" />
-                                                        <span className="text-sm font-medium">Server</span>
+                                                    <div className="flex items-center gap-2 text-white">
+                                                        <Monitor className="w-4 h-4" />
+                                                        <span className="text-xs font-medium">Server</span>
                                                     </div>
                                                     <span className="text-xs text-white/70">{selectedServerLabel}</span>
                                                 </button>
@@ -751,14 +755,14 @@ export default function CustomVideoControls({
                                         )}
 
                                         {settingsView === 'speed' && (
-                                            <div className="flex flex-col gap-1">
+                                            <div className="flex flex-col gap-0.5">
                                                 {PLAYBACK_SPEEDS.map((speed) => (
                                                     <button
                                                         key={speed}
                                                         onClick={() => setVideoPlaybackSpeed(speed)}
-                                                        className={`flex w-full items-center justify-between rounded-xl p-3 text-left transition-colors ${playbackSpeed === speed ? 'bg-white/10 text-white' : 'text-white/80 hover:bg-white/10'}`}
+                                                        className={`flex w-full items-center justify-between rounded-lg p-2 text-left transition-colors ${playbackSpeed === speed ? 'bg-white/15 text-white' : 'text-white/80 hover:bg-white/10'}`}
                                                     >
-                                                        <span className="text-sm font-medium">{speed}x</span>
+                                                        <span className="text-xs font-medium">{speed}x</span>
                                                         {playbackSpeed === speed ? <CheckCircle2 className="h-4 w-4" /> : <Circle className="h-4 w-4" />}
                                                     </button>
                                                 ))}
@@ -766,20 +770,23 @@ export default function CustomVideoControls({
                                         )}
 
                                         {settingsView === 'quality' && (
-                                            <div className="flex flex-col gap-1">
+                                            <div className="flex flex-col gap-0.5">
                                                 {QUALITY_OPTIONS.map((quality) => {
-                                                    const streamIndex = streams.findIndex((stream) => getMappedQuality(stream.quality) === quality);
-                                                    const isAvailable = streamIndex >= 0;
-                                                    const isSelected = !isAutoQuality && currentQuality === quality;
+                                                    const isAutoOption = quality === 'Auto';
+                                                    const streamIndex = isAutoOption
+                                                        ? streams.findIndex((stream) => getMappedQuality(stream.quality) === 'Auto')
+                                                        : streams.findIndex((stream) => getMappedQuality(stream.quality) === quality);
+                                                    const isAvailable = isAutoOption || streamIndex >= 0;
+                                                    const isSelected = isAutoOption ? isAutoQuality : (!isAutoQuality && currentQuality === quality);
                                                     return (
                                                         <button
                                                             key={quality}
                                                             onClick={() => handleQualitySelect(quality)}
                                                             disabled={!isAvailable}
-                                                            className={`flex w-full items-center justify-between rounded-xl p-3 text-left transition-colors disabled:opacity-40 ${isSelected ? 'bg-white/10 text-white' : 'text-white/80 hover:bg-white/10'}`}
+                                                            className={`flex w-full items-center justify-between rounded-lg p-2 text-left transition-colors disabled:opacity-40 ${isSelected ? 'bg-white/15 text-white' : 'text-white/80 hover:bg-white/10'}`}
                                                         >
-                                                            <span className="text-sm font-medium">{quality.replace('P', 'p')}</span>
-                                                            {isSelected ? <CheckCircle2 className="h-4 w-4" /> : <Circle className="h-4 w-4" />}
+                                                            <span className="text-xs font-medium">{quality === 'Auto' ? 'Auto' : quality.replace('P', 'p')}</span>
+                                                            {isSelected ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Circle className="h-3.5 w-3.5" />}
                                                         </button>
                                                     );
                                                 })}
@@ -787,7 +794,7 @@ export default function CustomVideoControls({
                                         )}
 
                                         {settingsView === 'server' && (
-                                            <div className="flex flex-col gap-1">
+                                            <div className="flex flex-col gap-0.5">
                                                 {serverOptions.map((server) => (
                                                     <button
                                                         key={server.key}
@@ -796,10 +803,10 @@ export default function CustomVideoControls({
                                                             onSetAutoQuality();
                                                             setSettingsView('main');
                                                         }}
-                                                        className={`flex w-full items-center justify-between rounded-xl p-3 text-left transition-colors ${selectedServer === server.key ? 'bg-white/10 text-white' : 'text-white/80 hover:bg-white/10'}`}
+                                                        className={`flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left transition-colors ${selectedServer === server.key ? 'bg-white/15 text-white' : 'text-white/80 hover:bg-white/10'}`}
                                                     >
-                                                        <span className="text-sm font-medium">{server.label}</span>
-                                                        {selectedServer === server.key ? <CheckCircle2 className="h-4 w-4" /> : <Circle className="h-4 w-4" />}
+                                                        <span className="text-xs font-medium">{server.label}</span>
+                                                        {selectedServer === server.key ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Circle className="h-3.5 w-3.5" />}
                                                     </button>
                                                 ))}
                                             </div>

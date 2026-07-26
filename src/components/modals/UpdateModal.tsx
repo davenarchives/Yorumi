@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Sparkles, Code2, Bug, Zap } from 'lucide-react';
 
-const CURRENT_VERSION = '3.5.5';
+const CURRENT_VERSION = '3.5.6';
 
 export default function UpdateModal() {
     const [isOpen, setIsOpen] = useState(false);
@@ -68,12 +68,12 @@ export default function UpdateModal() {
                                 <section>
                                     <h3 className="flex items-center gap-2 text-lg font-semibold text-yorumi-accent mb-3">
                                         <Zap className="h-5 w-5" />
-                                        AllManga Scraper Restored
+                                        AllManga Scraper Restored & Aligned
                                     </h3>
                                     <ul className="list-disc pl-5 space-y-2 text-gray-300 text-sm leading-relaxed">
-                                        <li><strong className="text-white">AES-GCM Decryption:</strong> We've successfully reverse-engineered AllAnime's new AES-GCM stream encryption. The `AllManga` scraper is fully operational again!</li>
-                                        <li><strong className="text-white">Playback Fix:</strong> Fixed a bug where streams wouldn't play due to an invalid referer token (`youtu-chan.com`), ensuring smooth proxy playback.</li>
-                                        <li><strong className="text-white">AllManga Defaulted:</strong> Since it's the fastest and most reliable provider, `AllManga` has been re-assigned as the default server globally.</li>
+                                        <li><strong className="text-white">Dynamic AES-256-GCM Keys:</strong> Updated `AllManga` to dynamically scrape encryption keys (`epoch`, `partB`, and JavaScript chunks) directly from `mkissa.to`, eliminating static key expiration.</li>
+                                        <li><strong className="text-white">ani-cli Alignment:</strong> Synchronized timestamp-bucketed `aaReq` signature generation, SHA-256 nonces, and `mkissa.net/api` endpoints for reliable stream retrieval.</li>
+                                        <li><strong className="text-white">Primary Server Migration:</strong> Replaced the offline `AniNeko` provider with `AllManga` as the default global player server.</li>
                                     </ul>
                                 </section>
 
@@ -81,10 +81,11 @@ export default function UpdateModal() {
                                 <section>
                                     <h3 className="flex items-center gap-2 text-lg font-semibold text-green-400 mb-3">
                                         <Code2 className="h-5 w-5" />
-                                        AniNeko Stability
+                                        Yorumi CLI & Backend Upgraded
                                     </h3>
                                     <ul className="list-disc pl-5 space-y-2 text-gray-300 text-sm leading-relaxed">
-                                        <li><strong className="text-white">Quality Locking:</strong> Fixed an issue where the `AniNeko` scraper would randomly stutter or pause. We now force the highest-quality HLS stream by default, preventing buggy adaptive bitrate switching.</li>
+                                        <li><strong className="text-white">Standalone CLI (v2.1.8):</strong> Ported the standalone `yorumi-cli` to use dynamic key fetching, multi-pass candidate decryption, and resilient payload slicing.</li>
+                                        <li><strong className="text-white">Enhanced Decryption:</strong> Added intelligent fallback handling in `allmanga.ts` to seamlessly parse both plaintext source payloads and AES-256-GCM encrypted `tobeparsed` responses.</li>
                                     </ul>
                                 </section>
 
@@ -92,10 +93,11 @@ export default function UpdateModal() {
                                 <section>
                                     <h3 className="flex items-center gap-2 text-lg font-semibold text-[#facc15] mb-3">
                                         <Sparkles className="h-5 w-5" />
-                                        UI Polish
+                                        Streamlined Providers & UI Polish
                                     </h3>
                                     <ul className="list-disc pl-5 space-y-2 text-gray-300 text-sm leading-relaxed">
-                                        <li><strong className="text-white">Universal Loading Screens:</strong> The floating "sleeping anime" loading screen now beautifully applies to all streaming providers, not just AllManga.</li>
+                                        <li><strong className="text-white">Clean Player Picker:</strong> Removed defunct servers (`Animegg`, `Animenosub`, `Reanime`, `AniNeko`) so only working, high-speed streaming servers are shown.</li>
+                                        <li><strong className="text-white">Player Toggle Sliders:</strong> Fixed broken toggle switches (`Dub`, `Auto next`, `Auto Skip`) so the slider knob smoothly animates to the right when toggled ON.</li>
                                     </ul>
                                 </section>
                             </div>

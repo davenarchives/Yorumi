@@ -20,12 +20,12 @@ const getSourceLabel = (stream: StreamLink) => {
     if (key === 'kwik') return 'Kwik';
     if (key === 'hls') return 'HLS';
     if (key === 'embed') return 'Embed';
-    if (key === 'vidsrc') return 'VidSrc';
-    if (key === 'gogoanime' || key.startsWith('gogoanime-')) return 'GogoAnime';
-    if (key === 'gogoanime-hd-1') return 'GogoAnime HD-1';
-    if (key === 'gogoanime-hd-2') return 'GogoAnime HD-2';
     if (key === 'anineko') return 'AniNeko';
-    if (key === 'animegg') return 'AnimeGG';
+    if (key === 'reanime') return 'ReAnime';
+    if (key === 'vidsrc') return 'VidSrc';
+    if (key === 'vidking') return 'VidKing';
+    if (key === 'videasy') return 'Videasy';
+    if (key === 'allmanga') return 'AllManga';
     return key
         .replace(/[-_]+/g, ' ')
         .replace(/\b\w/g, (match) => match.toUpperCase());
@@ -37,13 +37,16 @@ type StreamLookupMetadata = {
     format?: string;
 };
 
-export type StreamServerKey = 'allmanga' | 'anineko' | 'vidsrc';
+export type StreamServerKey = 'allmanga' | 'vidsrc' | 'vidking' | 'videasy';
 
 const STREAM_SERVER_OPTIONS: Array<{ key: StreamServerKey; label: string }> = [
     { key: 'allmanga', label: 'AllManga' },
     { key: 'vidsrc', label: 'VidSrc' },
-    { key: 'anineko', label: 'AniNeko' },
+    { key: 'vidking', label: 'VidKing' },
+    { key: 'videasy', label: 'Videasy' },
 ];
+
+const ALLMANGA_FALLBACK_SERVERS: StreamServerKey[] = ['vidsrc', 'vidking', 'videasy'];
 
 export function useStreams(scraperSession: string | null, animeTitle?: string, animeMetadata?: StreamLookupMetadata) {
     const [currentEpisode, setCurrentEpisode] = useState<Episode | null>(null);
@@ -68,7 +71,6 @@ export function useStreams(scraperSession: string | null, animeTitle?: string, a
             .replace(/^https?:\/\/[^/]+/i, '')
             .replace(/^\/+/, '')
             .replace(/^watch\//i, '');
-        if (!normalized || /^\d+$/.test(normalized)) return '';
         return normalized;
     };
 
@@ -152,6 +154,20 @@ export function useStreams(scraperSession: string | null, animeTitle?: string, a
         return ensureStreamDataForServer(episode, selectedServer);
     }, [ensureStreamDataForServer, selectedServer]);
 
+    const resolveStreamDataWithFallback = useCallback(async (episode: Episode, server: StreamServerKey) => {
+        const primary = await ensureStreamDataForServer(episode, server);
+        if (primary.length > 0 || server !== 'allmanga') {
+            return { server, data: primary };
+        }
+
+        for (const fallbackServer of ALLMANGA_FALLBACK_SERVERS) {
+            const data = await ensureStreamDataForServer(episode, fallbackServer);
+            if (data.length > 0) return { server: fallbackServer, data };
+        }
+
+        return { server, data: primary };
+    }, [ensureStreamDataForServer]);
+
     const prefetchStream = useCallback((episode: Episode) => {
         if (scraperSession || animeTitle) ensureStreamData(episode);
     }, [scraperSession, animeTitle, ensureStreamData]);
@@ -164,7 +180,7 @@ export function useStreams(scraperSession: string | null, animeTitle?: string, a
         alternateServers.forEach(server => {
             ensureStreamDataForServer(episode, server);
         });
-    }, [scraperSession, selectedServer, ensureStreamDataForServer]);
+    }, [selectedServer, ensureStreamDataForServer]);
 
     const availableAudios = useMemo(() => {
         const set = new Set<'sub' | 'dub'>();
@@ -301,7 +317,8 @@ export function useStreams(scraperSession: string | null, animeTitle?: string, a
         }
 
         try {
-            const streamData = await ensureStreamData(episode);
+            const resolved = await resolveStreamDataWithFallback(episode, selectedServer);
+            const streamData = resolved.data;
             if (activeLoadRequestRef.current !== requestId) {
                 return;
             }
@@ -311,9 +328,14 @@ export function useStreams(scraperSession: string | null, animeTitle?: string, a
                     : (streamData.some((s) => normalizeAudio(s.audio) === 'sub') ? 'sub' : 'dub');
                 const nextStreams = filterStreams(streamData, nextAudio);
 
+                if (resolved.server !== selectedServer) {
+                    previousServerRef.current = resolved.server;
+                    setSelectedServer(resolved.server);
+                }
+
                 const actualProvider = String(streamData[0].provider || streamData[0].server || '').trim().toLowerCase();
                 const isValidServer = STREAM_SERVER_OPTIONS.some(s => s.key === actualProvider);
-                if (actualProvider && actualProvider !== selectedServer && isValidServer) {
+                if (actualProvider && actualProvider !== resolved.server && isValidServer) {
                     previousServerRef.current = actualProvider as StreamServerKey;
                     setSelectedServer(actualProvider as StreamServerKey);
                 }
@@ -339,7 +361,7 @@ export function useStreams(scraperSession: string | null, animeTitle?: string, a
                 setServerSwitchLoading(false);
             }
         }
-    }, [ensureStreamData, ensureStreamDataForServer, selectedServer, selectedAudio, filterStreams, currentEpisode, getEpisodeCacheKey]);
+    }, [ensureStreamDataForServer, resolveStreamDataWithFallback, selectedServer, selectedAudio, filterStreams, getEpisodeCacheKey]);
 
 
     useEffect(() => {

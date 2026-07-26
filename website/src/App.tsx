@@ -254,7 +254,7 @@ function App() {
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-yorumi-main opacity-75"></span>
                     <span className="relative inline-flex rounded-full h-2 w-2 bg-yorumi-main"></span>
                   </span>
-                  Yorumi v3.5.5
+                  Yorumi v3.5.6
                 </motion.a>
                 <motion.h1 variants={itemVariants} className="text-4xl md:text-5xl lg:text-[4rem] font-display font-black leading-[1.1] tracking-tight text-yorumi-text">
                   Your anime and manga <br />

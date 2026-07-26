@@ -9,7 +9,7 @@ import { useReadList } from '../../hooks/useReadList';
 import { getDirectScraperRouteId } from '../../utils/animeNavigation';
 import { slugify } from '../../utils/slugify';
 import type { ReadListItem, WatchListItem } from '../../utils/storage';
-import yorumiIcon from '../../../public/yorumi-icon.png';
+const yorumiIcon = '/yorumi-icon.png';
 
 type SavedSidebarItem =
     | (WatchListItem & { isManga: false })

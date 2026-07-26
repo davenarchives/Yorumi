@@ -2497,8 +2497,9 @@ function createWindow() {
 		const url = details.url;
 		const isMedia = url.includes(".m3u8") || url.includes(".ts") || url.includes(".vtt");
 		const originalReferer = details.requestHeaders["Referer"] || details.requestHeaders["referer"] || "";
-		const isFromIframe = originalReferer.includes("videasy.to") || originalReferer.includes("vidsrc") || originalReferer.includes("2embed");
-		if (isMedia && !isFromIframe) {
+		const isFromIframe = originalReferer.includes("videasy.to") || originalReferer.includes("vidsrc") || originalReferer.includes("2embed") || originalReferer.includes("anineko.to") || originalReferer.includes("flixcloud.cc") || url.includes("vivibebe.site") || url.includes("flixcloud.cc");
+		const isLocalProxy = url.includes("/api/scraper/proxy");
+		if (isMedia && !isFromIframe && !isLocalProxy) {
 			details.requestHeaders["Referer"] = "https://allmanga.to/";
 			details.requestHeaders["Origin"] = "https://allmanga.to";
 		}

@@ -75,6 +75,7 @@ export default function DetailsVideoPlayer({ animeId, animeTitle, onClose, isWat
         streamUrl: currentStream?.url,
         episodeSession: currentEpisode?.session ?? epNum,
         isHls: currentStream?.isHls,
+        isEmbed: currentStream?.isEmbed,
         subtitles: currentStream?.subtitles,
         isLoading: streamLoading || (isResolvingEpisode && !currentEpisode),
         isServerSwitching: serverSwitchLoading,

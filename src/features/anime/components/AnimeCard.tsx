@@ -5,6 +5,7 @@ import { useTitleLanguage } from '../../../context/TitleLanguageContext';
 import { getDisplayTitle } from '../../../utils/titleLanguage';
 import { getDisplayImageUrl } from '../../../utils/image';
 import { cardItemVariants, pressMotion } from '../../../utils/motion';
+import { animeService } from '../../../services/animeService';
 
 interface AnimeCardProps {
     anime: Anime;
@@ -30,18 +31,31 @@ const AnimeCard: React.FC<AnimeCardProps> = ({
     const [glare, setGlare] = React.useState({ x: 50, y: 50, opacity: 0 });
     const [isHovered, setIsHovered] = React.useState(false);
     const [popupSide, setPopupSide] = React.useState<'left' | 'right'>('right');
+    const [hydratedAnime, setHydratedAnime] = React.useState<Anime | null>(null);
+    const hydrateInFlight = React.useRef(false);
+    const hydrateAttempted = React.useRef(false);
+    const tooltipAnime = hydratedAnime ? mergeAnimeDetails(anime, hydratedAnime) : anime;
 
-    const isUnreleased = anime.status === 'NOT_YET_RELEASED';
-    const episodeCount = isUnreleased ? null : (anime.latestEpisode || anime.episodes);
-    const totalEpisodeCount = isUnreleased ? null : anime.episodes;
+    const isUnreleased = tooltipAnime.status === 'NOT_YET_RELEASED';
+    const episodeCount = isUnreleased ? null : (tooltipAnime.latestEpisode || tooltipAnime.episodes);
+    const totalEpisodeCount = Number(tooltipAnime.episodes || 0) > 0 ? Number(tooltipAnime.episodes) : null;
     const displayTitle = getDisplayTitle(anime as unknown as Record<string, unknown>, language);
     const posterUrl = getDisplayImageUrl(anime.images.jpg.large_image_url || anime.images.jpg.image_url);
-    const studioName = anime.studios?.[0]?.name || anime.producers?.[0]?.name || null;
-    const displayType = formatDisplayType(anime.type);
-    const hoverHeading = anime.nextAiringEpisode
-        ? `Ep ${anime.nextAiringEpisode.episode} airing ${formatTimeUntil(anime.nextAiringEpisode.timeUntilAiring)}`
-        : formatSeasonLabel(anime, displayType);
-    const metaLine = [displayType, totalEpisodeCount ? `${totalEpisodeCount} episodes` : getStatusLabel(anime.status)].filter(Boolean);
+    const studioName = getCreditName(tooltipAnime.studios?.[0]) || getCreditName(tooltipAnime.producers?.[0]) || 'Studio TBA';
+    const displayType = formatDisplayType(tooltipAnime.type);
+    const yearLabel = tooltipAnime.year || getYearFromAired(tooltipAnime.aired?.from);
+    const seasonYearLabel = formatSeasonYearLabel(tooltipAnime.season, yearLabel);
+    const primaryMetaLabel = tooltipAnime.nextAiringEpisode
+        ? `Ep ${tooltipAnime.nextAiringEpisode.episode} airing ${formatTimeUntil(tooltipAnime.nextAiringEpisode.timeUntilAiring)}`
+        : seasonYearLabel || getStatusLabel(tooltipAnime.status);
+    const displayEpisodeCount = totalEpisodeCount || Number(tooltipAnime.latestEpisode || 0) || null;
+    const episodeCountLabel = displayEpisodeCount
+        ? `${displayEpisodeCount} episode${displayEpisodeCount === 1 ? '' : 's'}`
+        : null;
+    const formatLine = [
+        displayType,
+        episodeCountLabel,
+    ].filter(Boolean);
 
     const updatePopupSide = React.useCallback(() => {
         if (typeof window === 'undefined' || !cardRef.current) {
@@ -55,11 +69,54 @@ const AnimeCard: React.FC<AnimeCardProps> = ({
             ? boundary.getBoundingClientRect()
             : { right: window.innerWidth - 16 };
         const availableRight = Math.min(window.innerWidth - 16, boundaryRect.right);
-        const popupWidth = 260;
+        const popupWidth = 280;
         const gap = 16;
 
         setPopupSide(rect.right + gap + popupWidth > availableRight ? 'left' : 'right');
     }, []);
+
+    const hydrateTooltipDetails = React.useCallback(() => {
+        if (hydrateInFlight.current || hydrateAttempted.current || !needsTooltipHydration(tooltipAnime)) return;
+
+        const query = tooltipAnime.title_english || tooltipAnime.title_romaji || tooltipAnime.title || tooltipAnime.title_japanese;
+        const directId = getAniListDetailsId(tooltipAnime);
+        if (!directId && !query) return;
+
+        hydrateInFlight.current = true;
+        hydrateAttempted.current = true;
+
+        (async () => {
+            let details: Anime | null = null;
+
+            if (directId) {
+                const fast = await animeService.getAnimeDetailsFast(directId, tooltipAnime.type).catch(() => null);
+                details = fast?.data || null;
+            }
+
+            if (!details && query) {
+                const search = await animeService.searchAnime(String(query), 1, 6).catch(() => ({ data: [] as Anime[] }));
+                const bestMatch = pickBestHydrationMatch(tooltipAnime, search.data || []);
+                if (bestMatch?.id) {
+                    const fast = await animeService.getAnimeDetailsFast(bestMatch.id, bestMatch.type || tooltipAnime.type).catch(() => null);
+                    details = fast?.data || bestMatch;
+                } else {
+                    details = bestMatch || null;
+                }
+            }
+
+            if (details) {
+                setHydratedAnime(details);
+            }
+        })().finally(() => {
+            hydrateInFlight.current = false;
+        });
+    }, [tooltipAnime]);
+
+    React.useEffect(() => {
+        setHydratedAnime(null);
+        hydrateInFlight.current = false;
+        hydrateAttempted.current = false;
+    }, [anime.id, anime.mal_id, anime.scraperId, anime.title]);
 
     React.useEffect(() => {
         if (!isHovered) return;
@@ -120,6 +177,7 @@ const AnimeCard: React.FC<AnimeCardProps> = ({
                 setIsHovered(true);
                 updatePopupSide();
                 onMouseEnter?.(anime);
+                hydrateTooltipDetails();
                 handleMouseMove(e);
             }}
             onMouseLeave={handleMouseLeave}
@@ -188,7 +246,7 @@ const AnimeCard: React.FC<AnimeCardProps> = ({
                 </div>
 
                 {isHovered && (
-                    <div className={`pointer-events-none absolute top-2 z-[60] hidden w-[260px] rounded-2xl bg-[#14233a] p-4 text-white shadow-[0_18px_40px_rgba(0,0,0,0.45)] lg:block ${popupSide === 'left' ? 'right-[calc(100%+16px)]' : 'left-[calc(100%+16px)]'}`}>
+                    <div className={`pointer-events-none absolute top-2 z-[60] hidden w-[280px] rounded-2xl bg-[#14233a] p-4 text-white shadow-[0_18px_40px_rgba(0,0,0,0.45)] lg:block ${popupSide === 'left' ? 'right-[calc(100%+16px)]' : 'left-[calc(100%+16px)]'}`}>
                         <div
                             className="absolute top-7 h-3 w-3 bg-[#14233a]"
                             style={popupSide === 'left'
@@ -197,25 +255,30 @@ const AnimeCard: React.FC<AnimeCardProps> = ({
                         />
 
                         <div className="space-y-3">
-                            <p className="text-sm font-extrabold tracking-wide text-[#dbe8ff] uppercase">
-                                {hoverHeading}
+                            <p className="truncate text-sm font-extrabold tracking-wide text-[#b9ddff]">
+                                {primaryMetaLabel}
                             </p>
 
-                            {studioName && (
-                                <p className="text-sm font-bold text-[#7fd5ff] uppercase line-clamp-1">
-                                    {studioName}
+                            <p className="text-sm font-bold text-yorumi-accent line-clamp-1">
+                                {studioName}
+                            </p>
+
+                            {formatLine.length > 0 && (
+                                <p className="text-sm font-semibold text-[#9ed7ff]">
+                                    {formatLine.map((item, index) => (
+                                        <React.Fragment key={item}>
+                                            {index > 0 && <span className="mx-1">&bull;</span>}
+                                            {item}
+                                        </React.Fragment>
+                                    ))}
                                 </p>
                             )}
 
-                            <p className="text-sm font-semibold text-[#9fb5d5] uppercase">
-                                {metaLine.join(' • ')}
-                            </p>
-
-                            {anime.genres && anime.genres.length > 0 && (
+                            {tooltipAnime.genres && tooltipAnime.genres.length > 0 && (
                                 <div className="flex flex-wrap gap-2 pt-1">
-                                    {anime.genres.slice(0, 3).map((genre) => (
-                                        <span key={genre.mal_id} className="rounded-full bg-[#22d3ee] px-3 py-1 text-[11px] font-extrabold uppercase tracking-wide text-[#083d49]">
-                                            {genre.name}
+                                    {tooltipAnime.genres.slice(0, 3).map((genre, index) => (
+                                        <span key={`${getGenreName(genre)}-${index}`} className="rounded-full bg-yorumi-accent px-3 py-1 text-[11px] font-extrabold lowercase tracking-wide text-[#061523]">
+                                            {getGenreName(genre)}
                                         </span>
                                     ))}
                                 </div>
@@ -252,26 +315,32 @@ function formatTimeUntil(seconds: number) {
     return `in ${minutes} minute${minutes === 1 ? '' : 's'}`;
 }
 
-function formatSeasonLabel(item: Anime, displayType: string) {
-    if (item.season && item.year) {
-        return `${capitalize(item.season)} ${item.year}`;
-    }
+function getYearFromAired(value?: string) {
+    const year = Number.parseInt(String(value || '').slice(0, 4), 10);
+    return Number.isFinite(year) && year > 0 ? year : null;
+}
 
-    if (item.season) {
-        return capitalize(item.season);
-    }
+function formatSeasonYearLabel(season?: string, year?: number | null) {
+    const seasonName = season ? capitalize(season) : '';
+    if (seasonName && year) return `${seasonName} ${year}`;
+    if (year) return String(year);
+    return seasonName;
+}
 
-    if (item.year) {
-        return String(item.year);
-    }
+function getGenreName(genre: NonNullable<Anime['genres']>[number] | string) {
+    return typeof genre === 'string' ? genre : genre.name;
+}
 
-    return displayType;
+function getCreditName(credit?: { name: string } | string) {
+    if (!credit) return '';
+    return typeof credit === 'string' ? credit : credit.name;
 }
 
 function formatDisplayType(value?: string | null) {
     if (!value) return 'TV Show';
     if (value === 'TV') return 'TV Show';
-    return value.replaceAll('_', ' ');
+    if (value === 'MOVIE') return 'Movie';
+    return value.replaceAll('_', ' ').toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 function getStatusLabel(value?: string | null) {
@@ -285,8 +354,116 @@ function getStatusLabel(value?: string | null) {
         case 'NOT_YET_RELEASED':
             return 'Not yet released';
         default:
-            return value.replaceAll('_', ' ').toLowerCase();
+            return value.replaceAll('_', ' ').toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase());
     }
+}
+
+function hasGenreChips(item: Anime) {
+    return Array.isArray(item.genres) && item.genres.length > 0;
+}
+
+function hasStudioCredit(item: Anime) {
+    return Boolean(getCreditName(item.studios?.[0]) || getCreditName(item.producers?.[0]));
+}
+
+function hasEpisodeTotal(item: Anime) {
+    return Number(item.episodes || 0) > 0 || Number(item.latestEpisode || 0) > 0;
+}
+
+function needsTooltipHydration(item: Anime) {
+    const needsAiringDetails = String(item.status || '').toUpperCase() === 'RELEASING' && !item.nextAiringEpisode;
+    return !hasGenreChips(item) || !hasStudioCredit(item) || !hasEpisodeTotal(item) || needsAiringDetails;
+}
+
+function getAniListDetailsId(item: Anime) {
+    const id = Number(item.id || 0);
+    return Number.isFinite(id) && id > 0 ? id : null;
+}
+
+function normalizeTitle(value: unknown) {
+    return String(value || '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, ' ')
+        .trim();
+}
+
+function pickBestHydrationMatch(target: Anime, candidates: Anime[]) {
+    const targetTitles = [
+        target.title,
+        target.title_english,
+        target.title_romaji,
+        target.title_japanese,
+        ...(target.synonyms || []),
+    ].map(normalizeTitle).filter(Boolean);
+
+    if (targetTitles.length === 0) return null;
+
+    const targetEpisodes = Number(target.episodes || target.latestEpisode || 0);
+    const targetType = normalizeTitle(target.type);
+
+    return candidates
+        .filter((candidate) => Boolean(candidate.id || candidate.mal_id))
+        .map((candidate) => {
+            const candidateTitles = [
+                candidate.title,
+                candidate.title_english,
+                candidate.title_romaji,
+                candidate.title_japanese,
+                ...(candidate.synonyms || []),
+            ].map(normalizeTitle).filter(Boolean);
+
+            let score = 0;
+            candidateTitles.forEach((candidateTitle) => {
+                targetTitles.forEach((targetTitle) => {
+                    if (candidateTitle === targetTitle) {
+                        score = Math.max(score, 100);
+                    } else if (candidateTitle.includes(targetTitle) || targetTitle.includes(candidateTitle)) {
+                        score = Math.max(score, 70);
+                    }
+                });
+            });
+
+            const candidateEpisodes = Number(candidate.episodes || candidate.latestEpisode || 0);
+            if (targetEpisodes > 0 && candidateEpisodes > 0) {
+                score += Math.max(0, 20 - Math.abs(candidateEpisodes - targetEpisodes));
+            }
+
+            if (targetType && normalizeTitle(candidate.type) === targetType) {
+                score += 5;
+            }
+
+            return { candidate, score };
+        })
+        .sort((a, b) => b.score - a.score)
+        .find((entry) => entry.score >= 60)?.candidate || null;
+}
+
+function mergeAnimeDetails(base: Anime, details: Anime): Anime {
+    return {
+        ...base,
+        ...details,
+        title: base.title || details.title,
+        title_english: details.title_english || base.title_english,
+        title_romaji: details.title_romaji || base.title_romaji,
+        title_japanese: details.title_japanese || base.title_japanese,
+        synonyms: details.synonyms?.length ? details.synonyms : base.synonyms,
+        images: base.images || details.images,
+        anilist_cover_image: base.anilist_cover_image || details.anilist_cover_image,
+        anilist_banner_image: details.anilist_banner_image || base.anilist_banner_image,
+        scraperId: base.scraperId || details.scraperId,
+        episodeMetadata: base.episodeMetadata?.length ? base.episodeMetadata : details.episodeMetadata,
+        genres: details.genres?.length ? details.genres : base.genres,
+        studios: details.studios?.length ? details.studios : base.studios,
+        producers: details.producers?.length ? details.producers : base.producers,
+        episodes: details.episodes ?? base.episodes,
+        latestEpisode: details.latestEpisode ?? base.latestEpisode,
+        nextAiringEpisode: details.nextAiringEpisode || base.nextAiringEpisode,
+        status: details.status || base.status,
+        type: details.type || base.type,
+        year: details.year || base.year,
+        season: details.season || base.season,
+        aired: details.aired || base.aired,
+    };
 }
 
 function capitalize(value: string) {

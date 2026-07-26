@@ -6,6 +6,7 @@ import { animeService } from '../services/animeService';
  * Maps numerical quality to standard quality labels
  */
 export const getMappedQuality = (q: string): string => {
+    if (String(q || '').toLowerCase() === 'auto' || String(q || '') === '0') return 'Auto';
     const res = parseInt(q);
     if (res >= 1000) return '1080P';
     if (res >= 600) return '720P';
