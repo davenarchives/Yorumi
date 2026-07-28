@@ -77,10 +77,10 @@ async function fetchDynamicKeys() {
     
     // Fallback to static if dynamic fails
     return {
-        epoch: 6886,
-        aaKey: Buffer.from('a55ce35d83c1417fdfec0192c2b847eeae58d5bbb331a179d293aac40c035795', 'hex'),
+        epoch: 6887,
+        aaKey: Buffer.from('c9df59c795466fc271f8e48af65e7390860ac465acf6d2cb6a17670c8e5505b0', 'hex'),
         queryHash: STATIC_QUERY_HASH,
-        buildId: '12',
+        buildId: '74',
         fetchTime: Date.now()
     };
 }
@@ -93,7 +93,6 @@ const EPISODE_GQL = `query($showId:String! $translationType:VaildTranslationType
 const HEX_MAP: Record<string, string> = {
     79: 'A', '7a': 'B', '7b': 'C', '7c': 'D', '7d': 'E', '7e': 'F', '7f': 'G', 70: 'H', 71: 'I', 72: 'J',
     73: 'K', 74: 'L', 75: 'M', 76: 'N', 77: 'O', 68: 'P', 69: 'Q', '6a': 'R', '6b': 'S', '6c': 'T',
-    '6d': 'U', '6e': 'V', '6f': 'W', 60: 'X', 61: 'Y', 62: 'Z', 59: 'a', '5a': 'b', '5b': 'c',
     '5c': 'd', '5d': 'e', '5e': 'f', '5f': 'g', 50: 'h', 51: 'i', 52: 'j', 53: 'k', 54: 'l',
     55: 'm', 56: 'n', 57: 'o', 48: 'p', 49: 'q', '4a': 'r', '4b': 's', '4c': 't', '4d': 'u',
     '4e': 'v', '4f': 'w', 40: 'x', 41: 'y', 42: 'z', '08': '0', '09': '1', '0a': '2', '0b': '3',
@@ -270,7 +269,7 @@ export class AllMangaScraper {
     private async generateAaReq(): Promise<string> {
         const keys = await fetchDynamicKeys();
         const ts = Math.floor(Date.now() / TS_BUCKET_MS) * TS_BUCKET_MS;
-        const payload = { v: 1, ts, epoch: keys.epoch, qh: keys.queryHash };
+        const payload = { v: 1, ts, epoch: keys.epoch, buildId: '74', qh: keys.queryHash, k: 'k7' };
         const seed = `${keys.epoch}:${keys.queryHash}:${ts}`;
         const nonce = crypto.createHash('sha256').update(seed).digest().subarray(0, 12);
         
