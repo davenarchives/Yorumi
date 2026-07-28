@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Sparkles, Code2, Bug, Zap } from 'lucide-react';
 
-const CURRENT_VERSION = '3.5.6';
+const CURRENT_VERSION = '3.5.7';
 
 export default function UpdateModal() {
     const [isOpen, setIsOpen] = useState(false);

@@ -651,7 +651,12 @@ class ScraperService {
             // Re-assign title to the romaji version for AllManga search
             title = searchTitle;
             
-            const key = `streams:allmanga:v8:${showId || title.toLowerCase()}:${episodeNumber || epSession}:${year || ''}`;
+            // If the romaji title is drastically different from the query, the showId might be invalid
+            if (searchTitle !== baseTitle) {
+                showId = '';
+            }
+
+            const key = `streams:allmanga:v7:${showId || title.toLowerCase()}:${episodeNumber || epSession}:${year || ''}`;
             const links = await this.getOrLoad(
                 key,
                 5 * 60 * 1000,

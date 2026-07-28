@@ -218,6 +218,12 @@ const mapTopTenItemToAnime = (item: any, index: number): Anime => {
     if (item.sub && !anime.latestEpisode) {
         anime.latestEpisode = item.sub;
     }
+    if (item.episodes !== undefined && item.episodes !== null && !anime.episodes) {
+        anime.episodes = item.episodes;
+    }
+    if (item.latestEpisode !== undefined && item.latestEpisode !== null && !anime.latestEpisode) {
+        anime.latestEpisode = item.latestEpisode;
+    }
     if (item.scraperId) {
         anime.scraperId = item.scraperId;
     }
@@ -537,7 +543,7 @@ export const animeService = {
     },
 
     async getHomeFastData() {
-        const cacheKey = 'home-fast-data-v20';
+        const cacheKey = 'home-fast-data-v21';
         const cached = getCached(cacheKey, DETAIL_CACHE_TTL);
         if (cached) return cached;
 

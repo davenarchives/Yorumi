@@ -1,11 +1,14 @@
 import axios from 'axios';
 import crypto from 'crypto';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 import type { AnimeSearchResult, Episode, StreamLink, ThumbnailInfo } from './types';
 import { tmdbService } from '../api/scraper/tmdb.service';
 
 const API_URL = 'https://api.mkissa.net/api';
 const ALLMANGA_REFERER = 'https://mkissa.to';
 const STREAM_REFERER = 'https://allmanga.to';
+const execFileAsync = promisify(execFile);
 
 const ANIMETSU_API_URL = 'https://animetsu.net/v2/api/anime';
 const ANIMETSU_REFERER = 'https://animetsu.net/';
@@ -896,6 +899,73 @@ export class AllMangaScraper {
         return current;
     }
 
+    private async fetchAnidbUrl(url: string): Promise<string> {
+        try {
+            const { stdout } = await execFileAsync('curl', [
+                '-sL',
+                url,
+                '-A',
+                USER_AGENT,
+                '-H',
+                'Accept: application/json',
+                '-H',
+                'Referer: https://anidb.app/',
+                '--max-time',
+                '10',
+            ]);
+            if (stdout && stdout.trim().length > 0) {
+                return stdout.trim();
+            }
+        } catch {
+            // ignore
+        }
+        try {
+            const res = await axios.get(url, {
+                headers: { 'User-Agent': USER_AGENT, Accept: 'application/json', Referer: 'https://anidb.app/' },
+                timeout: 10_000,
+            });
+            return typeof res.data === 'string' ? res.data : JSON.stringify(res.data);
+        } catch {
+            return '';
+        }
+    }
+
+    private async searchAnidb(query: string): Promise<string | undefined> {
+        const q = encodeURIComponent(query.trim());
+        const page = await this.fetchAnidbUrl(`https://anidb.app/search/suggestions?q=${q}`);
+        if (!page) return undefined;
+        const match = page.match(/anime\/[a-z0-9-]+-(\d+)/i);
+        return match ? match[1] : undefined;
+    }
+
+    private async getAnidbStreamLink(title: string, episodeNumber: number, audio: TranslationType): Promise<string | undefined> {
+        if (!title || episodeNumber <= 0) return undefined;
+        const id = await this.searchAnidb(title);
+        if (!id) return undefined;
+        const epJsonStr = await this.fetchAnidbUrl(`https://anidb.app/api/frontend/anime/${id}/episodes`);
+        if (!epJsonStr) return undefined;
+        try {
+            const epData = JSON.parse(epJsonStr);
+            const epList = Array.isArray(epData) ? epData : (epData.episodes || epData.data || []);
+            const targetEp = epList.find((e: any) => String(e.number) === String(episodeNumber));
+            if (!targetEp?.id) return undefined;
+
+            const langJsonStr = await this.fetchAnidbUrl(`https://anidb.app/api/frontend/episode/${targetEp.id}/languages`);
+            if (!langJsonStr) return undefined;
+            const langData = JSON.parse(langJsonStr);
+            const langList = Array.isArray(langData) ? langData : (langData.languages || langData.data || []);
+            const pref = audio === 'dub' ? 'eng' : 'jpn';
+            const targetLang = langList.find((l: any) => l.code === pref) || langList[0];
+            if (!targetLang?.embed_url) return undefined;
+
+            const embedPage = await this.fetchAnidbUrl(targetLang.embed_url);
+            const m3u8Match = embedPage.match(/file:\s*['"]([^'"]+)['"]/);
+            return m3u8Match ? m3u8Match[1] : undefined;
+        } catch {
+            return undefined;
+        }
+    }
+
     async getLinksForEpisodeNumber(title: string, episodeNumber: number, year?: number): Promise<StreamLink[]> {
         const cleanTitle = String(title || '').trim();
         if (!cleanTitle || !Number.isFinite(episodeNumber) || episodeNumber <= 0) return [];
@@ -904,17 +974,29 @@ export class AllMangaScraper {
         const audios: readonly TranslationType[] = ['sub', 'dub'];
         await Promise.all(audios.map(async (audio) => {
             const show = await this.resolveShow(cleanTitle, audio, episodeNumber, year);
-            if (!show?._id) return;
+            if (show?._id) {
+                const sources = await this.getEpisodeSources(show._id, episodeNumber, audio);
+                const orderedSources = this.orderEpisodeSources(sources);
 
-            const sources = await this.getEpisodeSources(show._id, episodeNumber, audio);
-            const orderedSources = this.orderEpisodeSources(sources);
-
-            const resolvedLinksArrays = await Promise.all(
-                orderedSources.map(source => this.resolveSource(source, audio).catch(() => []))
-            );
-            
-            for (const links of resolvedLinksArrays) {
-                allLinks.push(...links);
+                const resolvedLinksArrays = await Promise.all(
+                    orderedSources.map(source => this.resolveSource(source, audio).catch(() => []))
+                );
+                
+                for (const links of resolvedLinksArrays) {
+                    allLinks.push(...links);
+                }
+            }
+            if (allLinks.filter(l => l.audio === audio).length === 0) {
+                const fallbackUrl = await this.getAnidbStreamLink(cleanTitle, episodeNumber, audio);
+                if (fallbackUrl) {
+                    allLinks.push({
+                        url: fallbackUrl,
+                        quality: '1080p',
+                        isHls: /\.m3u8/i.test(fallbackUrl),
+                        audio,
+                        server: 'Anidb',
+                    });
+                }
             }
         }));
 
@@ -934,27 +1016,52 @@ export class AllMangaScraper {
         const audios: readonly TranslationType[] = ['sub', 'dub'];
         
         await Promise.all(audios.map(async (audio) => {
-            let sources = await this.getEpisodeSources(showId, episodeNumber, audio);
+            let activeShowId = showId;
+
+            if (title) {
+                const altShow = await this.resolveShow(title, audio, episodeNumber, year);
+                if (altShow?._id) {
+                    const currentShow = await this.getShowById(showId).catch(() => null);
+                    const currentScore = currentShow ? this.scoreShow(title, currentShow, audio, episodeNumber, year) : 0;
+                    const altScore = this.scoreShow(title, altShow, audio, episodeNumber, year);
+                    if (altShow._id !== showId && altScore >= currentScore) {
+                        activeShowId = altShow._id;
+                    }
+                }
+            }
+
+            let sources = await this.getEpisodeSources(activeShowId, episodeNumber, audio);
             
             // Fallback to title search if the current showId doesn't have this audio track (common for sub/dub split shows)
             if (sources.length === 0 && title) {
                 const cleanTitle = String(title || '').trim();
                 if (cleanTitle) {
                     const altShow = await this.resolveShow(cleanTitle, audio, episodeNumber, year);
-                    if (altShow?._id && altShow._id !== showId) {
+                    if (altShow?._id && altShow._id !== activeShowId) {
                         sources = await this.getEpisodeSources(altShow._id, episodeNumber, audio);
                     }
                 }
             }
 
             const orderedSources = this.orderEpisodeSources(sources);
-
             const resolvedLinksArrays = await Promise.all(
                 orderedSources.map(source => this.resolveSource(source, audio).catch(() => []))
             );
-            
             for (const links of resolvedLinksArrays) {
                 allLinks.push(...links);
+            }
+
+            if (allLinks.filter(l => l.audio === audio).length === 0 && title) {
+                const fallbackUrl = await this.getAnidbStreamLink(String(title).trim(), episodeNumber, audio);
+                if (fallbackUrl) {
+                    allLinks.push({
+                        url: fallbackUrl,
+                        quality: '1080p',
+                        isHls: /\.m3u8/i.test(fallbackUrl),
+                        audio,
+                        server: 'Anidb',
+                    });
+                }
             }
         }));
 
@@ -969,7 +1076,7 @@ export class AllMangaScraper {
 
     private async fetchLatestUpdatesPage(page: number, limit: number) {
         const safePage = Math.max(1, Math.floor(Number(page) || 1));
-        const safeLimit = Math.max(1, Math.floor(Number(limit) || 18));
+        const safeLimit = Math.max(1, Math.floor(Number(limit) || 40));
         const payload = await this.gql<{ data?: { shows?: { edges?: AllMangaShow[]; pageInfo?: any } } }>({
             search: {
                 sortBy: 'Latest_Update',
@@ -1076,11 +1183,10 @@ export class AllMangaScraper {
         const tmdbThumbnailsPromise = this.getTmdbEpisodeThumbnails(show, total);
         
         const infos: AllMangaEpisodeInfo[] = [];
-        const maxEp = Math.max(total, 500);
-        const chunkSize = 500;
+        const chunkSize = 100;
         const tasks = [];
-        for (let start = 0; start <= maxEp; start += chunkSize) {
-            const end = start + chunkSize - 1;
+        for (let start = 1; start <= total; start += chunkSize) {
+            const end = Math.min(total, start + chunkSize - 1);
             tasks.push(() =>
                 this.gql<{ data?: { episodeInfos?: AllMangaEpisodeInfo[] } }>({
                     showId,
@@ -1104,31 +1210,18 @@ export class AllMangaScraper {
             tmdbThumbnailsPromise
         ]);
 
-        const episodesMap = new Map<number, Episode>();
-        for (const info of infos) {
-            const epNum = Number(info.episodeIdNum || 0);
-            if (!epNum || epNum <= 0) continue;
-            const tmdbThumb = tmdbThumbnails.get(epNum);
-            const aniThumb = animetsuThumbnails.get(epNum);
-            const preferredThumb = tmdbThumb || aniThumb;
-            const mapped = this.mapEpisodeInfo(showId, info, fallbackSnapshot, preferredThumb);
-            if (!mapped) continue;
-
-            const existing = episodesMap.get(epNum);
-            if (!existing) {
-                episodesMap.set(epNum, mapped);
-            } else {
-                existing.isSubbed = existing.isSubbed || mapped.isSubbed;
-                existing.isDubbed = existing.isDubbed || mapped.isDubbed;
-                if (!existing.snapshot && mapped.snapshot) existing.snapshot = mapped.snapshot;
-            }
-        }
-
-        const episodes = Array.from(episodesMap.values())
-            .sort((a, b) => Number(a.episodeNumber) - Number(b.episodeNumber));
+        const episodes = infos
+            .map((info) => {
+                const epNum = Number(info.episodeIdNum || 0);
+                const tmdbThumb = tmdbThumbnails.get(epNum);
+                const aniThumb = animetsuThumbnails.get(epNum);
+                const preferredThumb = tmdbThumb || aniThumb;
+                return this.mapEpisodeInfo(showId, info, fallbackSnapshot, preferredThumb);
+            })
+            .filter(Boolean) as Episode[];
 
         return {
-            episodes,
+            episodes: episodes.sort((a, b) => Number(a.episodeNumber) - Number(b.episodeNumber)),
             lastPage: 1,
         };
     }

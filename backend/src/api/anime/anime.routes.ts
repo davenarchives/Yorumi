@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { animeQuery, streambertAnimeService } from './anime.service';
+import { anilistService } from '../anilist/anilist.service';
 import { animeVideoSources } from './video-sources';
 
 const router = Router();
@@ -162,6 +163,22 @@ router.get('/seasonal', async (req, res) => {
     res.json(result);
 });
 
+const formatAniListTopTen = (items: any[]) =>
+    (Array.isArray(items) ? items : []).map((item) => ({
+        title: item?.title?.english || item?.title?.romaji || item?.title?.native || 'Unknown',
+        poster: item?.coverImage?.extraLarge || item?.coverImage?.large,
+        banner: item?.bannerImage,
+        type: item?.format || 'TV',
+        episodes: item?.episodes || (item?.nextAiringEpisode?.episode ? item.nextAiringEpisode.episode - 1 : null),
+        latestEpisode: item?.nextAiringEpisode?.episode ? item.nextAiringEpisode.episode - 1 : undefined,
+        trailer: item?.trailer,
+        score: item?.averageScore ? item.averageScore / 10 : 0,
+        rating: item?.averageScore ? (item.averageScore / 10).toFixed(1) : undefined,
+        id: item?.id || 0,
+        mal_id: item?.idMal || item?.id || 0,
+        anilist: item,
+    }));
+
 router.get('/home-fast', async (_req, res) => {
     try {
         const now = new Date();
@@ -169,11 +186,24 @@ router.get('/home-fast', async (_req, res) => {
         const season = month <= 3 ? 'WINTER' : month <= 6 ? 'SPRING' : month <= 9 ? 'SUMMER' : 'FALL';
         const year = now.getFullYear();
 
-        const [trending, seasonal, popular] = await Promise.all([
+        const [trending, seasonal, popular, trendingAnilist, seasonalAnilist, monthlyAnilist] = await Promise.all([
             streambertAnimeService.trending(1, 10).catch(() => ({ media: [] })),
             streambertAnimeService.seasonal(season, year, 1, 10).catch(() => ({ media: [] })),
             streambertAnimeService.popular(1, 18).catch(() => ({ media: [] })),
+            anilistService.getTrendingAnime(1, 10).catch(() => ({ media: [] })),
+            anilistService.getPopularThisSeason(1, 10).catch(() => ({ media: [] })),
+            anilistService.getPopularThisMonth(1, 10).catch(() => ({ media: [] })),
         ]);
+
+        const dayItems = (trendingAnilist?.media && trendingAnilist.media.length > 0)
+            ? formatAniListTopTen(trendingAnilist.media)
+            : trending.media;
+        const weekItems = (seasonalAnilist?.media && seasonalAnilist.media.length > 0)
+            ? formatAniListTopTen(seasonalAnilist.media)
+            : seasonal.media;
+        const monthItems = (monthlyAnilist?.media && monthlyAnilist.media.length > 0)
+            ? formatAniListTopTen(monthlyAnilist.media)
+            : popular.media;
 
         const payload = {
             spotlight: trending.media.slice(0, 8),
@@ -183,9 +213,9 @@ router.get('/home-fast', async (_req, res) => {
             monthly: popular,
             topAnime: popular,
             topTen: {
-                day: trending.media,
-                week: seasonal.media,
-                month: popular.media,
+                day: dayItems,
+                week: weekItems,
+                month: monthItems,
             },
             generatedAt: Date.now(),
         };
