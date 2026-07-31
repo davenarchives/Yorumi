@@ -667,11 +667,12 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string, 
     const sortedEpisodes = [...displayEpisodes].sort(
         (a, b) => getPlaybackEpisodeNumber(a) - getPlaybackEpisodeNumber(b)
     );
-    const currentEpisodeIndex = sortedEpisodes.findIndex((episode) => (
-        String(episode.session || '') === String(currentEpisode?.session || '')
-        || String(getPlaybackEpisodeNumber(episode)) === String(epNumParam)
-        || String(episode.episodeNumber) === String(epNumParam)
-    ));
+    const currentEpisodeIndex = sortedEpisodes.findIndex((episode) => {
+        if (episode.session && currentEpisode?.session && episode.session === currentEpisode.session) return true;
+        if (String(getPlaybackEpisodeNumber(episode)) === String(epNumParam)) return true;
+        if (String(episode.episodeNumber) === String(epNumParam)) return true;
+        return false;
+    });
     const prevEpisode = currentEpisodeIndex > 0 ? sortedEpisodes[currentEpisodeIndex - 1] : null;
     const nextEpisode = currentEpisodeIndex >= 0 && currentEpisodeIndex < sortedEpisodes.length - 1
         ? sortedEpisodes[currentEpisodeIndex + 1]

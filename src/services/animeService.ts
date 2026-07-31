@@ -94,6 +94,42 @@ const hasSufficientEpisodePayload = (anime: Partial<Anime> | null | undefined, p
     return true;
 };
 
+export function parseStudios(studiosInput: any): { name: string; mal_id: number }[] {
+    if (!studiosInput) return [];
+    if (typeof studiosInput === 'object' && !Array.isArray(studiosInput)) {
+        const edges = Array.isArray(studiosInput.edges) ? studiosInput.edges : [];
+        if (edges.length > 0) {
+            const mainEdges = edges.filter((e: any) => e.isMain);
+            const targetEdges = mainEdges.length > 0 ? mainEdges : edges;
+            return targetEdges.map((e: any) => ({
+                name: String(e?.node?.name || '').trim(),
+                mal_id: 0
+            })).filter((s: any) => Boolean(s.name) && s.name !== 'undefined');
+        }
+        const nodes = Array.isArray(studiosInput.nodes) ? studiosInput.nodes : [];
+        if (nodes.length > 0) {
+            return nodes.map((s: any) => ({
+                name: typeof s === 'string' ? s.trim() : String(s?.name || '').trim(),
+                mal_id: 0
+            })).filter((s: any) => Boolean(s.name) && s.name !== 'undefined');
+        }
+    }
+    if (Array.isArray(studiosInput)) {
+        return studiosInput.map((s) => {
+            if (typeof s === 'string') return { name: s.trim(), mal_id: 0 };
+            if (s && typeof s === 'object') {
+                const name = String(s.name || s.node?.name || '').trim();
+                return { name, mal_id: Number(s.mal_id || 0) };
+            }
+            return { name: String(s || '').trim(), mal_id: 0 };
+        }).filter((s) => Boolean(s.name) && s.name !== 'undefined');
+    }
+    if (typeof studiosInput === 'string') {
+        return [{ name: studiosInput.trim(), mal_id: 0 }];
+    }
+    return [];
+}
+
 // Helper to map AniList response to our Anime interface format
 const mapAnilistToAnime = (item: any) => {
     let extractedTitle = 'Unknown';
@@ -125,13 +161,13 @@ const mapAnilistToAnime = (item: any) => {
         duration: item.duration ? `${item.duration} min` : undefined,
         rating: item.isAdult ? 'R+ - Mild Nudity' : undefined,
         genres: item.genres?.map((g: string) => ({ name: g, mal_id: 0 })) || [],
-        studios: item.studios?.nodes?.map((s: any) => ({ name: s.name, mal_id: 0 })) || [],
-        year: item.seasonYear || item.startDate?.year,
-        season: item.season?.toLowerCase(),
+        studios: parseStudios(item.studios || item.anilist?.studios),
+        year: item.seasonYear || item.startDate?.year || item.season?.year,
+        season: typeof item.season === 'string' ? item.season.toLowerCase() : item.season?.quarter?.toLowerCase(),
         aired: {
             from: item.startDate ? `${item.startDate.year}-${item.startDate.month}-${item.startDate.day}` : undefined,
             to: item.endDate ? `${item.endDate.year}-${item.endDate.month}-${item.endDate.day}` : undefined,
-            string: item.startDate?.year ? `${item.season || ''} ${item.startDate.year}`.trim() : undefined
+            string: item.startDate?.year ? `${typeof item.season === 'string' ? item.season : (item.season?.quarter || '')} ${item.startDate.year}`.trim() : undefined
         },
         anilist_banner_image: item.bannerImage,
         anilist_cover_image: item.coverImage?.extraLarge || item.coverImage?.large,
@@ -194,7 +230,8 @@ const mapScraperToAnime = (item: any) => {
 };
 
 const mapTopTenItemToAnime = (item: any, index: number): Anime => {
-    const anime = mapAnilistToAnime(item.anilist || item || {}) as Anime;
+    const anime = mapAnilistToAnime(item || {}) as Anime;
+    anime.studios = parseStudios(item.studios || item.anilist?.studios || anime.studios);
     const score = typeof item.score === 'number' ? item.score : parseFloat(item.score || '0');
     if (item.poster) {
         const posterUrl = getDisplayImageUrl(item.poster);
@@ -231,9 +268,11 @@ const mapTopTenItemToAnime = (item: any, index: number): Anime => {
 };
 
 const mapLatestUpdateItemToAnime = (item: any): Anime => {
-    const anime = item?.anilist
-        ? (mapAnilistToAnime(item.anilist) as Anime)
-        : (mapScraperToAnime(item) as Anime);
+    const anime = item?.id || item?.title
+        ? (mapAnilistToAnime(item) as Anime)
+        : item?.anilist
+            ? (mapAnilistToAnime(item.anilist) as Anime)
+            : (mapScraperToAnime(item) as Anime);
 
     if (item.poster && !item?.anilist) {
         const posterUrl = getDisplayImageUrl(item.poster);
@@ -467,8 +506,8 @@ const clearCachedStream = (key: string) => {
     }
 };
 
-const getAnimeDetailsCacheKey = (id: number | string) => `anime-details:v4:${id}`;
-const getAnimeDetailsFastCacheKey = (id: number | string) => `anime-details-fast:v12:${id}`;
+const getAnimeDetailsCacheKey = (id: number | string) => `anime-details:v7:${id}`;
+const getAnimeDetailsFastCacheKey = (id: number | string) => `anime-details-fast:v16:${id}`;
 const normalizeStreamLookupPart = (value: unknown) =>
     String(value || '')
         .trim()
@@ -543,7 +582,7 @@ export const animeService = {
     },
 
     async getHomeFastData() {
-        const cacheKey = 'home-fast-data-v21';
+        const cacheKey = 'home-fast-data-v29';
         const cached = getCached(cacheKey, DETAIL_CACHE_TTL);
         if (cached) return cached;
 
@@ -561,10 +600,10 @@ export const animeService = {
 
                 const spotlightAnime = Array.isArray(payload?.spotlight)
                     ? payload.spotlight.map((item: any) => {
-                        const anime = item?.anilist
-                            ? (mapAnilistToAnime(item.anilist) as Anime)
-                            : item?.title?.romaji || item?.title?.english || item?.coverImage
-                                ? (mapAnilistToAnime(item) as Anime)
+                        const anime = item?.id || item?.title?.romaji || item?.title?.english || item?.coverImage
+                            ? (mapAnilistToAnime(item) as Anime)
+                            : item?.anilist
+                                ? (mapAnilistToAnime(item.anilist) as Anime)
                                 : (mapScraperToAnime(item) as Anime);
                         anime.anilist_banner_image = item.banner || anime.anilist_banner_image;
                         if (item.poster) {
@@ -591,10 +630,10 @@ export const animeService = {
                     latestUpdates: Array.isArray(payload?.latestEpisodes)
                         ? payload.latestEpisodes.map(mapLatestUpdateItemToAnime)
                         : [],
-                    trendingAnime: (payload?.trending?.media?.map(mapAnilistToAnime) || []).filter(isReleasedTrendingAnime),
-                    popularSeason: payload?.seasonal?.media?.map(mapAnilistToAnime) || [],
-                    popularMonth: payload?.monthly?.media?.map(mapAnilistToAnime) || [],
-                    topAnime: payload?.topAnime?.media?.map(mapAnilistToAnime) || [],
+                    trendingAnime: (payload?.trending?.media?.map(mapTopTenItemToAnime) || []).filter(isReleasedTrendingAnime),
+                    popularSeason: payload?.seasonal?.media?.map(mapTopTenItemToAnime) || [],
+                    popularMonth: payload?.monthly?.media?.map(mapTopTenItemToAnime) || [],
+                    topAnime: payload?.topAnime?.media?.map(mapTopTenItemToAnime) || [],
                     topAnimePagination: {
                         last_visible_page: payload?.topAnime?.pageInfo?.lastPage || 1,
                         current_page: payload?.topAnime?.pageInfo?.currentPage || 1,
@@ -638,7 +677,7 @@ export const animeService = {
 
         const fetchPromise: Promise<LatestUpdatesResult> = (async () => {
             try {
-                const res = await fetchJsonWithTimeout(`${API_BASE}/scraper/recently-updated?page=1&limit=10`, {}, 3500);
+                const res = await fetchJsonWithTimeout(`${API_BASE}/scraper/recently-updated?page=1&limit=18`, {}, 8000);
                 if (!res.ok) {
                     throw new Error(`Failed to fetch latest updates: ${res.statusText}`);
                 }
@@ -663,6 +702,12 @@ export const animeService = {
                 }
 
                 return result;
+            } catch (err) {
+                console.error('getLatestUpdates error:', err);
+                if (staleCached?.data && Array.isArray(staleCached.data) && staleCached.data.length > 0) {
+                    return staleCached;
+                }
+                return { data: [] };
             } finally {
                 inFlightRequests.delete(cacheKey);
             }
@@ -1445,10 +1490,10 @@ export const animeService = {
             const spotlight = data?.media || [];
 
             const processedSpotlight = (spotlight || []).map((item: any) => {
-                const anime = (item?.anilist
-                    ? mapAnilistToAnime(item.anilist)
-                    : item?.title?.romaji || item?.title?.english || item?.coverImage
-                        ? mapAnilistToAnime(item)
+                const anime = (item?.id || item?.title?.romaji || item?.title?.english || item?.coverImage
+                    ? mapAnilistToAnime(item)
+                    : item?.anilist
+                        ? mapAnilistToAnime(item.anilist)
                         : mapScraperToAnime(item)) as Anime;
 
                 anime.anilist_banner_image = item.banner || anime.anilist_banner_image;

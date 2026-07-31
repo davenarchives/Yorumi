@@ -220,7 +220,7 @@ class TmdbService {
         if (titleTokens.length === 0 || !this.isConfigured()) return null;
 
         const year = getYear(input.year);
-        const cacheKey = `tmdb:media-target:v4:${titleTokens.join('|')}:${year}:${String(input.format || '').toUpperCase()}`;
+        const cacheKey = `tmdb:media-target:v6:${titleTokens.join('|')}:${year}:${String(input.format || '').toUpperCase()}`;
         const now = Date.now();
         const mem = this.memoryCache.get(cacheKey);
         if (mem && mem.expiresAt > now) return (mem.value as TmdbMediaTarget | null) || null;

@@ -6,11 +6,18 @@ import { animeService } from '../services/animeService';
  * Maps numerical quality to standard quality labels
  */
 export const getMappedQuality = (q: string): string => {
-    if (String(q || '').toLowerCase() === 'auto' || String(q || '') === '0') return 'Auto';
-    const res = parseInt(q);
-    if (res >= 1000) return '1080P';
-    if (res >= 600) return '720P';
-    return '360P';
+    const str = String(q || '').trim().toLowerCase();
+    if (!str || str === 'auto' || str === '0') return 'Auto';
+    if (str.includes('1080')) return '1080p';
+    if (str.includes('720')) return '720p';
+    if (str.includes('480')) return '480p';
+    if (str.includes('360')) return '360p';
+    const res = parseInt(str, 10);
+    if (res >= 1000) return '1080p';
+    if (res >= 600) return '720p';
+    if (res >= 400) return '480p';
+    if (res >= 300) return '360p';
+    return 'Auto';
 };
 
 /**

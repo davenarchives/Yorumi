@@ -1,6 +1,7 @@
 import axios from 'axios';
 import type { VideoSource, StreamResponse } from '../api/anime/video-sources.js';
 import { streambertAnimeService } from '../api/anime/anime.service.js';
+import { anilistService } from '../api/anilist/anilist.service.js';
 
 const BASE = 'https://anineko.to';
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
@@ -18,18 +19,31 @@ export class AniNekoScraper implements VideoSource {
     id = 'anineko';
 
     async getStream(anilistId: number, episode: number, options?: { title?: string, tmdbId?: number, audio?: string }): Promise<StreamResponse | null> {
-        const metadata = options?.tmdbId ? await streambertAnimeService.getMetadata(options.tmdbId) : null;
-        const title = options?.title || metadata?.title?.romaji || metadata?.title?.english || metadata?.title?.native;
-        if (!title) return null;
+        let metadata = options?.tmdbId ? await streambertAnimeService.getMetadata(options.tmdbId).catch(() => null) : null;
+        let title = options?.title || metadata?.title?.romaji || metadata?.title?.english || metadata?.title?.native;
+
+        let searchTitles: string[] = [];
+
+        if (title) {
+            searchTitles.push(title);
+        }
+
+        if (anilistId) {
+            const anilistData = await anilistService.getMediaDetails(anilistId).catch(() => null);
+            if (anilistData?.title) {
+                if (anilistData.title.english) searchTitles.push(anilistData.title.english);
+                if (anilistData.title.romaji) searchTitles.push(anilistData.title.romaji);
+                if (anilistData.title.native) searchTitles.push(anilistData.title.native);
+            }
+            if (Array.isArray(anilistData?.synonyms)) {
+                searchTitles.push(...anilistData.synonyms);
+            }
+        }
+
+        searchTitles = Array.from(new Set(searchTitles.filter(Boolean)));
+        if (searchTitles.length === 0) return null;
 
         try {
-            const searchTitles = [
-                title,
-                metadata?.title?.romaji,
-                metadata?.title?.english,
-                metadata?.title?.native
-            ].filter(Boolean) as string[];
-
             let seriesSlug = '';
             
             for (const searchTitle of searchTitles) {
@@ -42,14 +56,15 @@ export class AniNekoScraper implements VideoSource {
                     const slugMatch = hrefMatch[1].match(/\/watch\/([^/?#]+)/);
                     if (!slugMatch) continue;
                     const slug = slugMatch[1];
+                    const imgMatch = m[0].match(/<img\b[^>]*alt=["']([^"']+)["'][^>]*>/i);
                     const titleMatch = m[0].match(/<(?:h3|[^>]+class=["'][^"']*nv-anime-title[^"']*["'][^>]*)>([\s\S]*?)<\/(?:h3|[^>]+)>/i);
-                    results.push({ slug, text: titleMatch ? stripTags(titleMatch[1]) : slug.replace(/-/g, " ") });
+                    const text = imgMatch ? decodeEntities(imgMatch[1]) : (titleMatch ? stripTags(titleMatch[1]) : slug.replace(/-/g, " "));
+                    results.push({ slug, text });
                 }
 
                 if (results.length > 0) {
-                    // Very simple exact or startsWith matcher for first iteration.
                     const expected = searchTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-                    const expectedWords = expected.replace(/-/g, ' ');
+                    const expectedWords = searchTitle.toLowerCase();
 
                     let bestMatch = results[0].slug;
                     let bestScore = -999;
@@ -58,7 +73,7 @@ export class AniNekoScraper implements VideoSource {
                         const t = r.text.toLowerCase();
                         if (r.slug === expected) score += 1000;
                         if (t === expectedWords) score += 1000;
-                        if (t.includes(expectedWords)) score += 500;
+                        if (t.includes(expectedWords) || expectedWords.includes(t)) score += 500;
                         if (score > bestScore) {
                             bestScore = score;
                             bestMatch = r.slug;
@@ -131,11 +146,13 @@ export class AniNekoScraper implements VideoSource {
                         }
                     }
                     if (extracted) {
+                        const embedOrigin = `${new URL(embed).origin}/`;
+                        const proxiedUrl = `/api/scraper/proxy?url=${encodeURIComponent(extracted)}&referer=${encodeURIComponent(embedOrigin)}`;
                         if (!m3u8) {
-                            m3u8 = extracted;
-                            referer = `${new URL(embed).origin}/`;
+                            m3u8 = proxiedUrl;
+                            referer = embedOrigin;
                         } else {
-                            variants.push({ quality: `Server ${i + 1}`, url: extracted });
+                            variants.push({ quality: `Server ${i + 1}`, url: proxiedUrl });
                         }
                     }
                 } catch {
@@ -151,11 +168,11 @@ export class AniNekoScraper implements VideoSource {
                 subtitles: [],
                 source: this.id,
                 episode,
-                title,
+                title: searchTitles[0],
                 referer
             };
         } catch (e: any) {
-            console.error(`AniNeko failed for title ${title}:`, e?.message || e);
+            console.error(`AniNeko failed for title ${searchTitles[0]}:`, e?.message || e);
             return null;
         }
     }

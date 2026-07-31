@@ -5,7 +5,7 @@ import { useTitleLanguage } from '../../../context/TitleLanguageContext';
 import { getDisplayTitle } from '../../../utils/titleLanguage';
 import { getDisplayImageUrl } from '../../../utils/image';
 import { cardItemVariants, pressMotion } from '../../../utils/motion';
-import { animeService } from '../../../services/animeService';
+import { animeService, parseStudios } from '../../../services/animeService';
 
 interface AnimeCardProps {
     anime: Anime;
@@ -41,7 +41,9 @@ const AnimeCard: React.FC<AnimeCardProps> = ({
     const totalEpisodeCount = Number(tooltipAnime.episodes || 0) > 0 ? Number(tooltipAnime.episodes) : null;
     const displayTitle = getDisplayTitle(anime as unknown as Record<string, unknown>, language);
     const posterUrl = getDisplayImageUrl(anime.images.jpg.large_image_url || anime.images.jpg.image_url);
-    const studioName = getCreditName(tooltipAnime.studios?.[0]) || getCreditName(tooltipAnime.producers?.[0]) || 'Studio TBA';
+    const cardStudios = parseStudios(tooltipAnime.studios || (tooltipAnime as any).anilist?.studios);
+    const cardProducers = parseStudios(tooltipAnime.producers || (tooltipAnime as any).anilist?.producers);
+    const studioName = getCreditName(cardStudios?.[0]) || getCreditName(cardProducers?.[0]) || 'Studio TBA';
     const displayType = formatDisplayType(tooltipAnime.type);
     const yearLabel = tooltipAnime.year || getYearFromAired(tooltipAnime.aired?.from);
     const seasonYearLabel = formatSeasonYearLabel(tooltipAnime.season, yearLabel);
@@ -331,9 +333,14 @@ function getGenreName(genre: NonNullable<Anime['genres']>[number] | string) {
     return typeof genre === 'string' ? genre : genre.name;
 }
 
-function getCreditName(credit?: { name: string } | string) {
+function getCreditName(credit?: any) {
     if (!credit) return '';
-    return typeof credit === 'string' ? credit : credit.name;
+    if (typeof credit === 'string') return credit.trim();
+    if (typeof credit === 'object') {
+        if (credit.name) return String(credit.name).trim();
+        if (credit.node?.name) return String(credit.node.name).trim();
+    }
+    return '';
 }
 
 function formatDisplayType(value?: string | null) {
@@ -363,7 +370,9 @@ function hasGenreChips(item: Anime) {
 }
 
 function hasStudioCredit(item: Anime) {
-    return Boolean(getCreditName(item.studios?.[0]) || getCreditName(item.producers?.[0]));
+    const studios = parseStudios(item.studios || (item as any).anilist?.studios);
+    const producers = parseStudios(item.producers || (item as any).anilist?.producers);
+    return Boolean(getCreditName(studios?.[0]) || getCreditName(producers?.[0]));
 }
 
 function hasEpisodeTotal(item: Anime) {
@@ -452,9 +461,9 @@ function mergeAnimeDetails(base: Anime, details: Anime): Anime {
         anilist_banner_image: details.anilist_banner_image || base.anilist_banner_image,
         scraperId: base.scraperId || details.scraperId,
         episodeMetadata: base.episodeMetadata?.length ? base.episodeMetadata : details.episodeMetadata,
-        genres: details.genres?.length ? details.genres : base.genres,
-        studios: details.studios?.length ? details.studios : base.studios,
-        producers: details.producers?.length ? details.producers : base.producers,
+        genres: (details.genres && details.genres.length > 0) ? details.genres : base.genres,
+        studios: (details.studios && details.studios.length > 0) ? details.studios : base.studios,
+        producers: (details.producers && details.producers.length > 0) ? details.producers : base.producers,
         episodes: details.episodes ?? base.episodes,
         latestEpisode: details.latestEpisode ?? base.latestEpisode,
         nextAiringEpisode: details.nextAiringEpisode || base.nextAiringEpisode,

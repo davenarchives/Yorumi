@@ -27,7 +27,7 @@ const CACHE_TTL = {
 };
 
 function getCacheKey(type: string, ...args: any[]): string {
-    return `${type}:${JSON.stringify(args)}`;
+    return `v3:${type}:${JSON.stringify(args)}`;
 }
 
 function getFromCache(key: string): any | null {
@@ -335,7 +335,13 @@ const MEDIA_FIELDS = `
     meanScore
     popularity
     genres
-    studios(isMain: true) {
+    studios {
+        edges {
+            isMain
+            node {
+                name
+            }
+        }
         nodes {
             name
         }
@@ -633,6 +639,38 @@ export const anilistService = {
             return result;
         } catch (error) {
             console.error('Error fetching popular this season:', error);
+            return { media: [], pageInfo: {} };
+        }
+    },
+
+    async getPopularAnime(page: number = 1, perPage: number = 10) {
+        const cacheKey = getCacheKey('popular_anime', page, perPage);
+        const cached = getFromCache(cacheKey);
+        if (cached) return cached;
+
+        const query = `
+            query ($page: Int, $perPage: Int) {
+                Page(page: $page, perPage: $perPage) {
+                    pageInfo {
+                        total
+                        currentPage
+                        lastPage
+                        hasNextPage
+                    }
+                    media(type: ANIME, sort: POPULARITY_DESC, isAdult: false) {
+                        ${MEDIA_FIELDS}
+                    }
+                }
+            }
+        `;
+
+        try {
+            const response = await rateLimitedRequest(query, { page, perPage });
+            const result = response.data.Page;
+            setCache(cacheKey, result, CACHE_TTL.popular);
+            return result;
+        } catch (error) {
+            console.error('Error fetching popular anime:', error);
             return { media: [], pageInfo: {} };
         }
     },

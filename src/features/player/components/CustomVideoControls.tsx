@@ -34,10 +34,12 @@ interface CustomVideoControlsProps {
     onMiniExpand?: () => void;
     isWide?: boolean;
     onToggleWide?: () => void;
+    hlsLevels?: number[];
+    onHlsQualitySelect?: (quality: string) => boolean;
 }
 
 const PLAYBACK_SPEEDS = [0.25, 1, 1.25, 1.5, 2];
-const QUALITY_OPTIONS = ['Auto', '1080P', '720P', '360P'];
+const QUALITY_OPTIONS = ['Auto', '1080p', '720p', '480p', '360p'];
 const SEEK_SECONDS = 5;
 const GLASS_BUTTON_CLASS = 'watch-control-glass rounded-full flex items-center justify-center text-white transition-colors shadow-[0_8px_28px_rgba(0,0,0,0.28)]';
 const GLASS_PANEL_CLASS = 'watch-control-glass rounded-full text-white shadow-[0_8px_28px_rgba(0,0,0,0.28)]';
@@ -80,6 +82,8 @@ export default function CustomVideoControls({
     onMiniExpand,
     isWide = false,
     onToggleWide,
+    hlsLevels = [],
+    onHlsQualitySelect,
 }: CustomVideoControlsProps) {
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
@@ -92,14 +96,48 @@ export default function CustomVideoControls({
     const [settingsView, setSettingsView] = useState<'main' | 'speed' | 'quality' | 'server'>('main');
     const [playbackSpeed, setPlaybackSpeed] = useState(1);
     const [centerAction, setCenterAction] = useState<{ type: 'play' | 'pause'; id: number } | null>(null);
+    const [selectedHlsQuality, setSelectedHlsQuality] = useState<string>('Auto');
 
     const controlsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const currentStream = streams[selectedStreamIndex];
-    const currentQuality = currentStream ? getMappedQuality(currentStream.quality) : '1080P';
+    const currentQuality = currentStream ? getMappedQuality(currentStream.quality) : 'Auto';
     const selectedServerLabel = serverOptions.find((server) => server.key === selectedServer)?.label || 'Auto';
     const hasDub = availableAudios.includes('dub');
     const adjacentHandler = hasNextEpisode ? onNextEpisode : onPrevEpisode;
     const AdjacentIcon = hasNextEpisode ? SkipForward : SkipBack;
+
+    const setVideoPlaybackSpeed = (speed: number) => {
+        if (videoRef.current) {
+            videoRef.current.playbackRate = speed;
+        }
+        setPlaybackSpeed(speed);
+        setSettingsView('main');
+    };
+
+    const handleQualitySelect = (quality: string) => {
+        const handledByHls = onHlsQualitySelect?.(quality);
+        if (handledByHls) {
+            setSelectedHlsQuality(quality);
+            if (quality === 'Auto') {
+                onSetAutoQuality();
+            }
+        } else if (quality === 'Auto') {
+            onSetAutoQuality();
+            setSelectedHlsQuality('Auto');
+        } else {
+            const index = streams.findIndex(
+                (stream) => getMappedQuality(stream.quality).toLowerCase() === quality.toLowerCase()
+            );
+            if (index >= 0) {
+                onQualityChange(index);
+                setSelectedHlsQuality(quality);
+            } else {
+                onSetAutoQuality();
+                setSelectedHlsQuality('Auto');
+            }
+        }
+        setSettingsView('main');
+    };    
     
     const introSkip = skipTimestamps.find(ts => ts.skipType === 'intro');
     const outroSkip = skipTimestamps.find(ts => ts.skipType === 'outro');
@@ -258,28 +296,6 @@ export default function CustomVideoControls({
         if (videoRef.current) {
             videoRef.current.muted = !videoRef.current.muted;
         }
-    };
-
-    const setVideoPlaybackSpeed = (speed: number) => {
-        if (videoRef.current) {
-            videoRef.current.playbackRate = speed;
-        }
-        setPlaybackSpeed(speed);
-        setSettingsView('main');
-    };
-
-    const handleQualitySelect = (quality: string) => {
-        if (quality === 'Auto') {
-            onSetAutoQuality();
-        } else {
-            const index = streams.findIndex((stream) => getMappedQuality(stream.quality) === quality);
-            if (index >= 0) {
-                onQualityChange(index);
-            } else {
-                onSetAutoQuality();
-            }
-        }
-        setSettingsView('main');
     };
 
     const toggleFullscreen = () => {
@@ -677,7 +693,12 @@ export default function CustomVideoControls({
                                         {settingsView === 'main' && (
                                             <div className="flex flex-col gap-0.5">
                                                 <button
-                                                    onClick={() => hasDub && onAudioChange(selectedAudio === 'dub' ? 'sub' : 'dub')}
+                                                    onClick={() => {
+                                                        if (hasDub) {
+                                                            onAudioChange(selectedAudio === 'dub' ? 'sub' : 'dub');
+                                                            setShowSettings(false);
+                                                        }
+                                                    }}
                                                     disabled={!hasDub}
                                                     className="flex items-center justify-between w-full p-2 hover:bg-white/10 rounded-lg transition-colors disabled:opacity-40"
                                                 >
@@ -773,11 +794,21 @@ export default function CustomVideoControls({
                                             <div className="flex flex-col gap-0.5">
                                                 {QUALITY_OPTIONS.map((quality) => {
                                                     const isAutoOption = quality === 'Auto';
+                                                    const targetHeight = parseInt(quality, 10);
+
+                                                    const hasHlsLevel = hlsLevels && hlsLevels.length > 0 && (
+                                                        isAutoOption || hlsLevels.some((h) => Math.abs(h - targetHeight) <= 150)
+                                                    );
+
                                                     const streamIndex = isAutoOption
-                                                        ? streams.findIndex((stream) => getMappedQuality(stream.quality) === 'Auto')
-                                                        : streams.findIndex((stream) => getMappedQuality(stream.quality) === quality);
-                                                    const isAvailable = isAutoOption || streamIndex >= 0;
-                                                    const isSelected = isAutoOption ? isAutoQuality : (!isAutoQuality && currentQuality === quality);
+                                                        ? streams.findIndex((stream) => getMappedQuality(stream.quality).toLowerCase() === 'auto')
+                                                        : streams.findIndex((stream) => getMappedQuality(stream.quality).toLowerCase() === quality.toLowerCase());
+
+                                                    const isAvailable = isAutoOption || hasHlsLevel || streamIndex >= 0 || (Boolean(hlsLevels && hlsLevels.length > 0) && !isNaN(targetHeight));
+                                                    const isSelected = isAutoOption
+                                                        ? (isAutoQuality && selectedHlsQuality === 'Auto')
+                                                        : (selectedHlsQuality.toLowerCase() === quality.toLowerCase() || (!isAutoQuality && currentQuality.toLowerCase() === quality.toLowerCase()));
+
                                                     return (
                                                         <button
                                                             key={quality}
@@ -785,7 +816,7 @@ export default function CustomVideoControls({
                                                             disabled={!isAvailable}
                                                             className={`flex w-full items-center justify-between rounded-lg p-2 text-left transition-colors disabled:opacity-40 ${isSelected ? 'bg-white/15 text-white' : 'text-white/80 hover:bg-white/10'}`}
                                                         >
-                                                            <span className="text-xs font-medium">{quality === 'Auto' ? 'Auto' : quality.replace('P', 'p')}</span>
+                                                            <span className="text-xs font-medium">{quality}</span>
                                                             {isSelected ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Circle className="h-3.5 w-3.5" />}
                                                         </button>
                                                     );

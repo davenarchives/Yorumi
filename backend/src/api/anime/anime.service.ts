@@ -88,7 +88,7 @@ function mapTmdbToAnilistMedia(item: any, isFullDetails = false) {
         relations: { edges: [] },
         recommendations: { nodes: [] },
         staff: { edges: [] },
-        studios: { nodes: [] },
+        studios: { nodes: (Array.isArray(item.production_companies) ? item.production_companies : []).map((c: any) => ({ name: c.name })) },
         externalLinks: [],
         streamingEpisodes: [],
     };
@@ -106,7 +106,7 @@ export const streambertAnimeService = {
     },
 
     async getMetadata(tmdbId: number, format?: string) {
-        const cacheKey = `anime:tmdb:meta:v3:${tmdbId}:${format || 'unknown'}`;
+        const cacheKey = `anime:tmdb:meta:v7:${tmdbId}:${format || 'unknown'}`;
         const cached = await cacheGet<any>(cacheKey);
         if (cached) return cached;
 
@@ -198,7 +198,7 @@ export const streambertAnimeService = {
             params['first_air_date.lte'] = lastDate;
         }
 
-        const cacheKey = `anime:tmdb:search:v2:${Buffer.from(JSON.stringify({ path, params })).toString('base64url')}`;
+        const cacheKey = `anime:tmdb:search:v3:${Buffer.from(JSON.stringify({ path, params })).toString('base64url')}`;
         const cached = await cacheGet<any>(cacheKey);
         if (cached) return cached;
 

@@ -137,18 +137,102 @@ router.get('/stream', async (req, res) => {
     }
 });
 
+const getGlobalAnilistMediaPool = async (): Promise<any[]> => {
+    const [t, s, m, a] = await Promise.all([
+        anilistService.getTrendingAnime(1, 50).catch(() => ({ media: [] })),
+        anilistService.getPopularThisSeason(1, 50).catch(() => ({ media: [] })),
+        anilistService.getPopularThisMonth(1, 50).catch(() => ({ media: [] })),
+        anilistService.getPopularAnime(1, 50).catch(() => ({ media: [] })),
+    ]);
+    return [
+        ...(t?.media || []),
+        ...(s?.media || []),
+        ...(m?.media || []),
+        ...(a?.media || []),
+    ];
+};
+
+const normalizeTitleForMatch = (title: unknown): string =>
+    String(title || '')
+        .toLowerCase()
+        .replace(/\b(season|part|cour|nd|rd|th|st)\s*\d+\b/g, ' ')
+        .replace(/[^a-z0-9]+/g, ' ')
+        .trim();
+
+const stripSpaces = (str: string): string => str.replace(/\s+/g, '');
+
+const enrichTmdbWithAnilistStudios = (tmdbMedia: any[], anilistMediaPool: any[]): any[] => {
+    if (!Array.isArray(tmdbMedia)) return [];
+    if (!Array.isArray(anilistMediaPool) || anilistMediaPool.length === 0) return tmdbMedia;
+
+    return tmdbMedia.map((tmdbItem) => {
+        if (!tmdbItem) return tmdbItem;
+
+        const tmdbTitles = [
+            tmdbItem?.title?.english,
+            tmdbItem?.title?.romaji,
+            tmdbItem?.title?.native,
+            typeof tmdbItem?.title === 'string' ? tmdbItem.title : undefined,
+        ]
+            .map(normalizeTitleForMatch)
+            .filter(Boolean);
+
+        const tmdbStripped = tmdbTitles.map(stripSpaces).filter(Boolean);
+
+        if (tmdbTitles.length === 0) return tmdbItem;
+
+        const matched = anilistMediaPool.find((aniItem) => {
+            const aniTitles = [
+                aniItem?.title?.english,
+                aniItem?.title?.romaji,
+                aniItem?.title?.native,
+                typeof aniItem?.title === 'string' ? aniItem.title : undefined,
+                ...(Array.isArray(aniItem?.synonyms) ? aniItem.synonyms : []),
+            ]
+                .map(normalizeTitleForMatch)
+                .filter(Boolean);
+
+            const aniStripped = aniTitles.map(stripSpaces).filter(Boolean);
+
+            return tmdbTitles.some((t) => aniTitles.includes(t)) ||
+                   tmdbStripped.some((t) => aniStripped.includes(t)) ||
+                   tmdbTitles.some((t) => aniTitles.some((a) => t && a && t.length >= 4 && a.length >= 4 && (t.includes(a) || a.includes(t))));
+        });
+
+        if (matched) {
+            return {
+                ...tmdbItem,
+                studios: matched.studios || tmdbItem.studios,
+                episodes: matched.episodes || tmdbItem.episodes || (matched.nextAiringEpisode?.episode ? matched.nextAiringEpisode.episode - 1 : null),
+                latestEpisode: matched.nextAiringEpisode?.episode ? matched.nextAiringEpisode.episode - 1 : tmdbItem.latestEpisode,
+                bannerImage: tmdbItem.bannerImage || matched.bannerImage,
+            };
+        }
+
+        return tmdbItem;
+    });
+};
+
 router.get('/trending', async (req, res) => {
     const page = animeQuery.toPositiveInt(req.query.page, 1, 500);
     const perPage = animeQuery.toPositiveInt(req.query.perPage || req.query.limit, 10, 50);
     const result = await streambertAnimeService.trending(page, perPage);
-    res.json(result);
+    const pool = await getGlobalAnilistMediaPool();
+    res.json({
+        ...result,
+        media: enrichTmdbWithAnilistStudios(result.media || [], pool),
+    });
 });
 
 router.get('/popular', async (req, res) => {
     const page = animeQuery.toPositiveInt(req.query.page, 1, 500);
     const perPage = animeQuery.toPositiveInt(req.query.perPage || req.query.limit, 10, 50);
     const result = await streambertAnimeService.popular(page, perPage);
-    res.json(result);
+    const pool = await getGlobalAnilistMediaPool();
+    res.json({
+        ...result,
+        media: enrichTmdbWithAnilistStudios(result.media || [], pool),
+    });
 });
 
 router.get('/seasonal', async (req, res) => {
@@ -160,24 +244,12 @@ router.get('/seasonal', async (req, res) => {
     const page = animeQuery.toPositiveInt(req.query.page, 1, 500);
     const perPage = animeQuery.toPositiveInt(req.query.perPage || req.query.limit, 10, 50);
     const result = await streambertAnimeService.seasonal(season, year, page, perPage);
-    res.json(result);
+    const pool = await getGlobalAnilistMediaPool();
+    res.json({
+        ...result,
+        media: enrichTmdbWithAnilistStudios(result.media || [], pool),
+    });
 });
-
-const formatAniListTopTen = (items: any[]) =>
-    (Array.isArray(items) ? items : []).map((item) => ({
-        title: item?.title?.english || item?.title?.romaji || item?.title?.native || 'Unknown',
-        poster: item?.coverImage?.extraLarge || item?.coverImage?.large,
-        banner: item?.bannerImage,
-        type: item?.format || 'TV',
-        episodes: item?.episodes || (item?.nextAiringEpisode?.episode ? item.nextAiringEpisode.episode - 1 : null),
-        latestEpisode: item?.nextAiringEpisode?.episode ? item.nextAiringEpisode.episode - 1 : undefined,
-        trailer: item?.trailer,
-        score: item?.averageScore ? item.averageScore / 10 : 0,
-        rating: item?.averageScore ? (item.averageScore / 10).toFixed(1) : undefined,
-        id: item?.id || 0,
-        mal_id: item?.idMal || item?.id || 0,
-        anilist: item,
-    }));
 
 router.get('/home-fast', async (_req, res) => {
     try {
@@ -186,36 +258,34 @@ router.get('/home-fast', async (_req, res) => {
         const season = month <= 3 ? 'WINTER' : month <= 6 ? 'SPRING' : month <= 9 ? 'SUMMER' : 'FALL';
         const year = now.getFullYear();
 
-        const [trending, seasonal, popular, trendingAnilist, seasonalAnilist, monthlyAnilist] = await Promise.all([
+        const [trending, seasonal, popular, allAnilistMedia] = await Promise.all([
             streambertAnimeService.trending(1, 10).catch(() => ({ media: [] })),
             streambertAnimeService.seasonal(season, year, 1, 10).catch(() => ({ media: [] })),
             streambertAnimeService.popular(1, 18).catch(() => ({ media: [] })),
-            anilistService.getTrendingAnime(1, 10).catch(() => ({ media: [] })),
-            anilistService.getPopularThisSeason(1, 10).catch(() => ({ media: [] })),
-            anilistService.getPopularThisMonth(1, 10).catch(() => ({ media: [] })),
+            getGlobalAnilistMediaPool(),
         ]);
 
-        const dayItems = (trendingAnilist?.media && trendingAnilist.media.length > 0)
-            ? formatAniListTopTen(trendingAnilist.media)
-            : trending.media;
-        const weekItems = (seasonalAnilist?.media && seasonalAnilist.media.length > 0)
-            ? formatAniListTopTen(seasonalAnilist.media)
-            : seasonal.media;
-        const monthItems = (monthlyAnilist?.media && monthlyAnilist.media.length > 0)
-            ? formatAniListTopTen(monthlyAnilist.media)
-            : popular.media;
+        const enrichedTrending = enrichTmdbWithAnilistStudios(trending.media, allAnilistMedia);
+        const enrichedSeasonal = enrichTmdbWithAnilistStudios(seasonal.media, allAnilistMedia);
+        const enrichedPopular = enrichTmdbWithAnilistStudios(popular.media, allAnilistMedia);
+
+        const dayItems = enrichedTrending.slice(0, 10);
+        const weekItems = enrichedSeasonal.slice(0, 10);
+        const monthItems = enrichedPopular.slice(0, 10);
+        const allTimeItems = enrichedPopular.slice(0, 10);
 
         const payload = {
-            spotlight: trending.media.slice(0, 8),
+            spotlight: enrichedTrending.slice(0, 8),
             latestEpisodes: [], // Scraper updates can be skipped or added later
-            trending: trending,
-            seasonal: seasonal,
-            monthly: popular,
-            topAnime: popular,
+            trending: { ...trending, media: enrichedTrending },
+            seasonal: { ...seasonal, media: enrichedSeasonal },
+            monthly: { ...popular, media: enrichedPopular },
+            topAnime: { ...popular, media: enrichedPopular },
             topTen: {
                 day: dayItems,
                 week: weekItems,
                 month: monthItems,
+                allTime: allTimeItems,
             },
             generatedAt: Date.now(),
         };

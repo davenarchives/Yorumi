@@ -121,6 +121,38 @@ export default function VideoPlayer(props: VideoPlayerProps) {
     const apiOrigin = API_BASE.replace(/\/+$/, '').replace(/\/api$/i, '');
     const [showServerMenu, setShowServerMenu] = useState(false);
     const [isFullscreen, setIsFullscreen] = useState(false);
+    const [hlsLevels, setHlsLevels] = useState<number[]>([]);
+
+    const handleHlsQualitySelect = useCallback((quality: string) => {
+        if (!hlsRef.current) return false;
+        const hls = hlsRef.current;
+        if (!hls.levels || hls.levels.length === 0) return false;
+
+        if (quality === 'Auto') {
+            hls.currentLevel = -1;
+            return true;
+        }
+
+        const targetHeight = parseInt(quality, 10);
+        if (isNaN(targetHeight)) return false;
+
+        let bestIndex = -1;
+        let minDiff = Infinity;
+        hls.levels.forEach((lvl: any, idx: number) => {
+            const h = lvl.height || 0;
+            const diff = Math.abs(h - targetHeight);
+            if (diff < minDiff) {
+                minDiff = diff;
+                bestIndex = idx;
+            }
+        });
+
+        if (bestIndex >= 0 && minDiff <= 150) {
+            hls.currentLevel = bestIndex;
+            return true;
+        }
+        return false;
+    }, []);
 
     useEffect(() => {
         const handleFullscreenChange = () => {
@@ -595,6 +627,20 @@ export default function VideoPlayer(props: VideoPlayerProps) {
                 hlsRef.current = null;
             }
             video.src = resolvedStreamUrl;
+            
+            const isSameEpisode = lastTimeRef.current.session === episodeSession;
+            const start = isSameEpisode && lastTimeRef.current.time > 0 
+                ? lastTimeRef.current.time 
+                : Number(startAtRef.current || 0);
+
+            const handleLoadedMetadata = () => {
+                if (start > 0 && Number.isFinite(video.duration) && start < video.duration - 1) {
+                    video.currentTime = start;
+                }
+                video.play().catch(e => console.warn('Native video autoplay blocked:', e));
+                video.removeEventListener('loadedmetadata', handleLoadedMetadata);
+            };
+            video.addEventListener('loadedmetadata', handleLoadedMetadata);
             return;
         }
 
@@ -642,7 +688,9 @@ export default function VideoPlayer(props: VideoPlayerProps) {
         hls.on(Hls.Events.MEDIA_ATTACHED, () => {
             hls.loadSource(resolvedStreamUrl);
         });
-        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        hls.on(Hls.Events.MANIFEST_PARSED, (_, data) => {
+            const parsed = (data?.levels || hls.levels || []).map((lvl: any) => lvl.height).filter(Boolean);
+            setHlsLevels(parsed);
             // HLS stream ready — start playback now that segments are available.
             const isSameEpisode = lastTimeRef.current.session === episodeSession;
             const start = isSameEpisode && lastTimeRef.current.time > 0 
@@ -828,6 +876,8 @@ export default function VideoPlayer(props: VideoPlayerProps) {
                                     onMiniExpand={onMiniExpand}
                                     isWide={isWide}
                                     onToggleWide={onToggleWide}
+                                    hlsLevels={hlsLevels}
+                                    onHlsQualitySelect={handleHlsQualitySelect}
                                 />
                             </>
                         ) : (

@@ -48,9 +48,6 @@ function buildTypesQuery(episodeLengthSeconds?: number | null) {
     const params = new URLSearchParams();
     params.append('types', 'op');
     params.append('types', 'ed');
-    if (typeof episodeLengthSeconds === 'number' && Number.isFinite(episodeLengthSeconds) && episodeLengthSeconds > 0) {
-        params.append('episodeLength', episodeLengthSeconds.toFixed(3));
-    }
     const query = params.toString();
     return query ? `?${query}` : '';
 }

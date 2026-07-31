@@ -7,12 +7,16 @@ import AnimeCardSkeleton from '../features/anime/components/AnimeCardSkeleton';
 import { slugify } from '../utils/slugify';
 import type { Anime } from '../types/anime';
 import { API_BASE } from '../config/api';
+import { parseStudios } from '../services/animeService';
 
 // Helper to map AniList response to our Anime interface format
 const mapAnilistToAnime = (item: any): Anime => ({
     mal_id: item.idMal || item.id,
     id: item.id,
     title: item.title?.english || item.title?.romaji || 'Unknown',
+    title_japanese: item.title?.native,
+    title_english: item.title?.english,
+    title_romaji: item.title?.romaji,
     images: {
         jpg: {
             image_url: item.coverImage?.large || '',
@@ -30,7 +34,7 @@ const mapAnilistToAnime = (item: any): Anime => ({
     anilist_banner_image: item.bannerImage,
     anilist_cover_image: item.coverImage?.extraLarge || item.coverImage?.large,
     duration: item.duration ? `${item.duration} min` : undefined,
-    studios: item.studios?.nodes?.map((s: any) => s.name) || [],
+    studios: parseStudios(item.studios),
     trailer: item.trailer,
 });
 
