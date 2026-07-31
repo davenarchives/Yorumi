@@ -22,6 +22,7 @@ const getSourceLabel = (stream: StreamLink) => {
     if (key === 'embed') return 'Embed';
     if (key === 'anineko') return 'AniNeko';
     if (key === 'reanime') return 'ReAnime';
+    if (key === 'animegg') return 'AnimeGG';
     if (key === 'vidsrc') return 'VidSrc';
     if (key === 'vidking') return 'VidKing';
     if (key === 'videasy') return 'Videasy';
@@ -37,9 +38,12 @@ type StreamLookupMetadata = {
     format?: string;
 };
 
-export type StreamServerKey = 'allmanga' | 'vidsrc' | 'vidking' | 'videasy';
+export type StreamServerKey = 'allmanga' | 'vidsrc' | 'vidking' | 'videasy' | 'reanime' | 'animegg' | 'anineko';
 
 const STREAM_SERVER_OPTIONS: Array<{ key: StreamServerKey; label: string }> = [
+    { key: 'reanime', label: 'ReAnime' },
+    { key: 'animegg', label: 'AnimeGG' },
+    { key: 'anineko', label: 'AniNeko' },
     { key: 'allmanga', label: 'AllManga' },
     { key: 'vidsrc', label: 'VidSrc' },
     { key: 'vidking', label: 'VidKing' },
@@ -55,13 +59,13 @@ export function useStreams(scraperSession: string | null, animeTitle?: string, a
     const [selectedStreamIndex, setSelectedStreamIndex] = useState<number>(0);
     const [isAutoQuality, setIsAutoQuality] = useState(true);
     const [selectedAudio, setSelectedAudio] = useState<'sub' | 'dub'>('sub');
-    const [selectedServer, setSelectedServer] = useState<StreamServerKey>('allmanga');
+    const [selectedServer, setSelectedServer] = useState<StreamServerKey>('reanime');
     const [showQualityMenu, setShowQualityMenu] = useState(false);
     const [streamLoading, setStreamLoading] = useState(false);
     const [serverSwitchLoading, setServerSwitchLoading] = useState(false);
     const streamCache = useRef(new Map<string, Promise<StreamLink[]>>());
     const activeLoadRequestRef = useRef(0);
-    const previousServerRef = useRef<StreamServerKey>('allmanga');
+    const previousServerRef = useRef<StreamServerKey>('reanime');
 
     const currentStream = streams[selectedStreamIndex] || null;
     const normalizeDirectScraperSession = (value: unknown) => {
@@ -363,7 +367,6 @@ export function useStreams(scraperSession: string | null, animeTitle?: string, a
         }
     }, [ensureStreamDataForServer, resolveStreamDataWithFallback, selectedServer, selectedAudio, filterStreams, getEpisodeCacheKey]);
 
-
     useEffect(() => {
         if (previousServerRef.current === selectedServer) return;
         previousServerRef.current = selectedServer;
@@ -415,13 +418,12 @@ export function useStreams(scraperSession: string | null, animeTitle?: string, a
         setStreams([]);
         setSelectedStreamIndex(0);
         setSelectedAudio('sub');
-        setSelectedServer('allmanga');
+        setSelectedServer('reanime');
         setStreamLoading(false);
         setServerSwitchLoading(false);
         streamCache.current.clear();
     }, []);
 
-    // Invalidate cache for a specific episode so the next loadStream call fetches fresh.
     const bustEpisodeCache = useCallback((session: string) => {
         const normalizedSession = String(session || '').trim();
         if (!normalizedSession) return;

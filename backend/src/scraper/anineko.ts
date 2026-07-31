@@ -1,0 +1,162 @@
+import axios from 'axios';
+import type { VideoSource, StreamResponse } from '../api/anime/video-sources.js';
+import { streambertAnimeService } from '../api/anime/anime.service.js';
+
+const BASE = 'https://anineko.to';
+const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+const H = { 'User-Agent': USER_AGENT };
+
+function stripTags(html: string) {
+    return html.replace(/<[^>]*>?/gm, '').trim();
+}
+
+function decodeEntities(str: string) {
+    return str.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+}
+
+export class AniNekoScraper implements VideoSource {
+    id = 'anineko';
+
+    async getStream(anilistId: number, episode: number, options?: { title?: string, tmdbId?: number, audio?: string }): Promise<StreamResponse | null> {
+        const metadata = options?.tmdbId ? await streambertAnimeService.getMetadata(options.tmdbId) : null;
+        const title = options?.title || metadata?.title?.romaji || metadata?.title?.english || metadata?.title?.native;
+        if (!title) return null;
+
+        try {
+            const searchTitles = [
+                title,
+                metadata?.title?.romaji,
+                metadata?.title?.english,
+                metadata?.title?.native
+            ].filter(Boolean) as string[];
+
+            let seriesSlug = '';
+            
+            for (const searchTitle of searchTitles) {
+                const searchHtml = await axios.get<string>(`${BASE}/browser?keyword=${encodeURIComponent(searchTitle)}`, { headers: H }).then(r => r.data).catch(() => '');
+                const results = [];
+                for (const m of searchHtml.matchAll(/<a\b[^>]*class=["'][^"']*nv-anime-thumb[^"']*["'][^>]*>[\s\S]*?<\/a>/gi)) {
+                    const tag = m[0].match(/<a\b[^>]*>/i)?.[0] ?? "";
+                    const hrefMatch = tag.match(/href=["']([^"']+)["']/i);
+                    if (!hrefMatch) continue;
+                    const slugMatch = hrefMatch[1].match(/\/watch\/([^/?#]+)/);
+                    if (!slugMatch) continue;
+                    const slug = slugMatch[1];
+                    const titleMatch = m[0].match(/<(?:h3|[^>]+class=["'][^"']*nv-anime-title[^"']*["'][^>]*)>([\s\S]*?)<\/(?:h3|[^>]+)>/i);
+                    results.push({ slug, text: titleMatch ? stripTags(titleMatch[1]) : slug.replace(/-/g, " ") });
+                }
+
+                if (results.length > 0) {
+                    // Very simple exact or startsWith matcher for first iteration.
+                    const expected = searchTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+                    const expectedWords = expected.replace(/-/g, ' ');
+
+                    let bestMatch = results[0].slug;
+                    let bestScore = -999;
+                    for (const r of results) {
+                        let score = 0;
+                        const t = r.text.toLowerCase();
+                        if (r.slug === expected) score += 1000;
+                        if (t === expectedWords) score += 1000;
+                        if (t.includes(expectedWords)) score += 500;
+                        if (score > bestScore) {
+                            bestScore = score;
+                            bestMatch = r.slug;
+                        }
+                    }
+                    if (bestScore > 0) {
+                        seriesSlug = bestMatch;
+                        break;
+                    }
+                }
+            }
+
+            if (!seriesSlug) return null;
+
+            // Fetch episodes
+            const seriesHtml = await axios.get<string>(`${BASE}/watch/${seriesSlug}`, { headers: H }).then(r => r.data);
+            const episodes = [];
+            for (const m of seriesHtml.matchAll(/<article\b[^>]*class=["'][^"']*nv-info-episode-item[^"']*["'][^>]*>([\s\S]*?)<\/article>/gi)) {
+                const block = m[1];
+                const link = block.match(/<a\b[^>]*class=["'][^"']*nv-info-episode-main[^"']*["'][^>]*>/i)?.[0] ?? "";
+                const hrefMatch = link.match(/href=["']([^"']+)["']/i);
+                if (!hrefMatch) continue;
+                const numMatch = hrefMatch[1].match(/\/ep-(\d+)/);
+                if (!numMatch) continue;
+                const num = parseInt(numMatch[1]);
+                if (num === episode) {
+                    const badges = [...block.matchAll(/<span\b[^>]*>([\s\S]*?)<\/span>/gi)].map((b) => stripTags(b[1]).toLowerCase());
+                    episodes.push({ num, hasSub: badges.includes("sub"), hasDub: badges.includes("dub") });
+                }
+            }
+
+            if (episodes.length === 0) return null;
+
+            const targetAudio = options?.audio === 'dub' ? 'dub' : 'sub';
+            const epSlug = `ep-${episode}`;
+            const watchHtml = await axios.get<string>(`${BASE}/watch/${seriesSlug}/${epSlug}`, { headers: { ...H, Referer: `${BASE}/watch/${seriesSlug}` } }).then(r => r.data);
+            
+            const byAudio: { sub: string[], dub: string[] } = { sub: [], dub: [] };
+            for (const panel of watchHtml.matchAll(/<div\b[^>]*class=["'][^"']*nv-server-grid[^"']*["'][^>]*data-id=["']([^"']+)["'][^>]*>([\s\S]*?)(?=<div\b[^>]*class=["'][^"']*nv-server-grid|$)/gi)) {
+                const rawAudio = panel[1].toLowerCase();
+                const panelAudio = rawAudio.includes("dub") ? "dub" : "sub";
+                for (const btn of panel[2].matchAll(/data-video=["']([^"']+)["']/gi)) {
+                    byAudio[panelAudio].push(decodeEntities(btn[1]));
+                }
+            }
+
+            const embeds = byAudio[targetAudio] || byAudio['sub'] || [];
+            if (embeds.length === 0) return null;
+
+            let m3u8 = '';
+            let referer = '';
+            const variants: { quality: string; url: string }[] = [];
+
+            for (let i = 0; i < embeds.length; i++) {
+                const embed = embeds[i];
+                try {
+                    const embedHtml = await axios.get<string>(embed, { headers: { ...H, Referer: `${BASE}/` } }).then(r => r.data).catch(() => '');
+                    const patterns = [
+                        /const\s+src\s*=\s*["'](https?:\/\/[^"']+\.m3u8[^"']*)["']/i,
+                        /file\s*:\s*["'](https?:\/\/[^"']+\.m3u8[^"']*)["']/i,
+                        /["'](https?:\/\/[^"']+\/master\.m3u8[^"']*)["']/i,
+                        /["'](https?:\/\/[^"']+\.m3u8[^"']*)["']/i,
+                    ];
+                    let extracted = '';
+                    for (const pattern of patterns) {
+                        const m = embedHtml.match(pattern);
+                        if (m) {
+                            extracted = decodeEntities(m[1]);
+                            break;
+                        }
+                    }
+                    if (extracted) {
+                        if (!m3u8) {
+                            m3u8 = extracted;
+                            referer = `${new URL(embed).origin}/`;
+                        } else {
+                            variants.push({ quality: `Server ${i + 1}`, url: extracted });
+                        }
+                    }
+                } catch {
+                    // continue
+                }
+            }
+
+            if (!m3u8) return null;
+
+            return {
+                m3u8,
+                variants,
+                subtitles: [],
+                source: this.id,
+                episode,
+                title,
+                referer
+            };
+        } catch (e: any) {
+            console.error(`AniNeko failed for title ${title}:`, e?.message || e);
+            return null;
+        }
+    }
+}

@@ -1,5 +1,7 @@
 import axios from 'axios';
 import crypto from 'crypto';
+import type { VideoSource, StreamResponse, SubtitleTrack } from '../api/anime/video-sources.js';
+import { streambertAnimeService } from '../api/anime/anime.service.js';
 
 const BASE = 'https://reanime.to';
 const FLIX = 'https://flixcloud.cc';
@@ -377,4 +379,59 @@ export async function fetchReAnimeStream(anilistId: number, episode: number, aud
     }
 
     return results.length > 0 ? results : null;
+}
+
+export class ReAnimeScraper implements VideoSource {
+    id = 'reanime';
+
+    async getStream(anilistId: number, episode: number, options?: { title?: string; tmdbId?: number; audio?: string }): Promise<StreamResponse | null> {
+        try {
+            const [subData, dubData] = await Promise.all([
+                fetchReAnimeStream(anilistId, episode, 'sub', options?.title).catch(() => null),
+                fetchReAnimeStream(anilistId, episode, 'dub', options?.title).catch(() => null),
+            ]);
+
+            const subStreams = (subData || []) as any[];
+            const dubStreams = (dubData || []) as any[];
+
+            const primarySub = subStreams[0];
+            const primaryDub = dubStreams[0];
+            const primaryData = primarySub || primaryDub;
+            
+            if (!primaryData?.url) return null;
+
+            const m3u8 = primarySub?.url || primaryDub?.url;
+            const dubM3u8 = primaryDub?.url !== primarySub?.url ? primaryDub?.url : undefined;
+            const referer = primaryData.referer || 'https://reanime.to/';
+
+            const subtitles: SubtitleTrack[] = (primaryData.subtitles || []).map((sub: any) => ({
+                lang: sub.language || 'eng',
+                url: sub.url
+            }));
+
+            const variants = subStreams.slice(1).map(s => ({ quality: s.serverName || 'HD-1', url: s.url }));
+            const dubVariants = dubStreams.slice(1).map(s => ({ quality: s.serverName || 'HD-1', url: s.url }));
+
+            let title = options?.title;
+            if (!title) {
+                const metadata = options?.tmdbId ? await streambertAnimeService.getMetadata(options.tmdbId) : null;
+                title = metadata?.title?.romaji || metadata?.title?.english || metadata?.title?.native || primaryData.video_title;
+            }
+
+            return {
+                m3u8,
+                dubM3u8,
+                variants,
+                dubVariants,
+                subtitles,
+                source: this.id,
+                episode,
+                title,
+                referer
+            };
+        } catch (error: any) {
+            console.error(`ReAnime failed for AniList ${anilistId} ep ${episode}:`, error?.message || error);
+            return null;
+        }
+    }
 }

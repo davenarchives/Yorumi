@@ -130,13 +130,17 @@ export default function VideoPlayer(props: VideoPlayerProps) {
         return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
     }, []);
     const getServerDisplayName = (key: string) => {
-        if (key === 'allmanga') return 'AllManga';
+        const option = serverOptions?.find((s) => s.key === key);
+        if (option?.label) return option.label;
+        if (key === 'reanime') return 'ReAnime';
+        if (key === 'animegg') return 'AnimeGG';
         if (key === 'anineko') return 'AniNeko';
+        if (key === 'allmanga') return 'AllManga';
         if (key === 'vidsrc') return 'VidSrc';
         if (key === 'vidking') return 'VidKing';
         if (key === 'videasy') return 'Videasy';
         if (key === 'auto') return 'AllManga';
-        return key;
+        return key.replace(/[-_]+/g, ' ').replace(/\b\w/g, (match) => match.toUpperCase());
     };
 
     const resolvedStreamUrl = useMemo(() => {
