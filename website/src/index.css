@@ -23,10 +23,10 @@
   .dark {
     --color-main: #00A3FF;
     --color-accent: #3DB4F2;
-    --color-bg: #0a0a0a;
-    --color-card: #1a1a1a;
+    --color-bg: #262124;
+    --color-card: #342d31;
     --color-text: #ffffff;
-    --color-muted: #888888;
+    --color-muted: #b5aab0;
   }
   
   body {

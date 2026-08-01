@@ -17,15 +17,16 @@ import type { Variants } from 'framer-motion';
 import { DocumentationGuide, type DocTabId } from './Documentation';
 
 const SLIDES = [
-  { id: 1, image: '/browse-animes.png', label: 'Browse Animes', description: 'Discover thousands of titles instantly across all genres.' },
-  { id: 2, image: '/browse-mangas.png', label: 'Browse Mangas', description: 'Explore a vast, organized library of manga and manhwa.' },
-  { id: 3, image: '/anime-details.png', label: 'Anime Details', description: 'Get comprehensive stats, episodes, and rich metadata.' },
-  { id: 4, image: '/manga-details.png', label: 'Manga Details', description: 'Deep dive into chapters, artwork, and story progression.' },
-  { id: 5, image: '/watch-anime.png', label: 'Watch Anime in One Click', description: 'Immerse yourself in a cinematic, zero-latency streaming experience.' },
-  { id: 6, image: '/read-manga.png', label: 'Read Manga in One Click', description: 'Seamless reading powered by a high-performance stealth engine.' },
+  { id: 1, image: '/browse-animes.png', label: 'Browse Animes', description: 'Browse thousands of anime titles.' },
+  { id: 2, image: '/browse-mangas.png', label: 'Browse Mangas', description: 'Access a comprehensive library of manga and manhwa.' },
+  { id: 3, image: '/search-anime.png', label: 'Search Media', description: 'Find your favorite titles instantly with powerful search tools.' },
+  { id: 4, image: '/anime-details.png', label: 'Anime Details', description: 'View detailed stats, episode lists, and metadata.' },
+  { id: 5, image: '/manga-details.png', label: 'Manga Details', description: 'Access chapter lists, artwork, and story information.' },
+  { id: 6, image: '/watch-anime.png', label: 'Watch Anime in One Click', description: 'Stream anime directly within the application.' },
+  { id: 7, image: '/read-manga.png', label: 'Read Manga in One Click', description: 'Read manga chapters directly within the application.' },
 ];
 
-function HeroSlider() {
+function AppPreviews() {
   const [currentIndex, setCurrentIndex] = useState(0);
 
   useEffect(() => {
@@ -39,9 +40,9 @@ function HeroSlider() {
   const handlePrev = () => setCurrentIndex((prev) => (prev - 1 + SLIDES.length) % SLIDES.length);
 
   return (
-    <div className="relative w-full max-w-[850px] flex flex-col items-center">
-      {/* Text labels above */}
-      <div className="h-16 flex flex-col items-center justify-end w-full z-50 mb-6">
+    <div className="relative w-full max-w-[1000px] flex flex-col items-center mx-auto">
+      {/* Description text above */}
+      <div className="flex flex-col items-center justify-end w-full z-50 mb-10 min-h-[40px]">
         <AnimatePresence mode="wait">
           <motion.div
             key={currentIndex}
@@ -51,10 +52,7 @@ function HeroSlider() {
             transition={{ duration: 0.4, ease: "easeOut" }}
             className="flex flex-col items-center"
           >
-            <h3 className="text-yorumi-text font-bold text-xl md:text-2xl tracking-wide text-center">
-              {SLIDES[currentIndex].label}
-            </h3>
-            <p className="text-yorumi-muted font-medium mt-1 text-center">
+            <p className="text-yorumi-text font-display font-bold text-2xl md:text-3xl tracking-tight text-center">
               {SLIDES[currentIndex].description}
             </p>
           </motion.div>
@@ -62,9 +60,8 @@ function HeroSlider() {
       </div>
 
       {/* Stacked Cards Container */}
-      <div className="relative w-full aspect-[16/10] mb-10 group">
+      <div className="relative w-full max-w-[800px] aspect-video mb-16 mt-8 group mx-auto">
         {SLIDES.map((slide, index) => {
-          // Calculate relative position where 0 is active, 1 is behind, 2 is further behind.
           let relativeIndex = index - currentIndex;
           if (relativeIndex < 0) relativeIndex += SLIDES.length;
 
@@ -72,14 +69,21 @@ function HeroSlider() {
           if (relativeIndex === 0) state = 'active';
           else if (relativeIndex === 1) state = 'next1';
           else if (relativeIndex === 2) state = 'next2';
-          else if (relativeIndex === SLIDES.length - 1) state = 'prev';
+          else if (relativeIndex === SLIDES.length - 1) state = 'prev1';
+          else if (relativeIndex === SLIDES.length - 2) state = 'prev2';
+
+          // Pseudo-random offsets based on slide ID for an asymmetrical, dynamic flow
+          const yOffset = (slide.id * 23) % 60 - 30; // -30 to +30 px
+          const scaleOffset = ((slide.id * 11) % 6) / 100; // 0.0 to 0.05
+          const xOffset = (slide.id * 17) % 6 - 3; // -3% to +3%
 
           const variants = {
-            active: { x: 0, y: 0, scale: 1, zIndex: 30, opacity: 1 },
-            next1: { x: 0, y: 25, scale: 0.95, zIndex: 20, opacity: 1 },
-            next2: { x: 0, y: 50, scale: 0.90, zIndex: 10, opacity: 1 },
-            prev: { x: 0, y: -30, scale: 1.05, zIndex: 40, opacity: 0 },
-            hidden: { x: 0, y: 50, scale: 0.85, zIndex: 0, opacity: 0 }
+            active: { x: '0%', y: 0, scale: 1.15, zIndex: 30, opacity: 1 },
+            next1: { x: `${68 + xOffset}%`, y: 35 + yOffset, scale: 0.85 + scaleOffset, zIndex: 20, opacity: 0.65 },
+            next2: { x: '110%', y: 80, scale: 0.7, zIndex: 10, opacity: 0 },
+            prev1: { x: `${-68 + xOffset}%`, y: -25 - yOffset, scale: 0.88 + scaleOffset, zIndex: 20, opacity: 0.65 },
+            prev2: { x: '-110%', y: -50, scale: 0.7, zIndex: 10, opacity: 0 },
+            hidden: { x: '0%', y: 0, scale: 0.65, zIndex: 0, opacity: 0 }
           };
 
           return (
@@ -88,7 +92,7 @@ function HeroSlider() {
               variants={variants}
               animate={state}
               initial="hidden"
-              transition={{ type: "spring", stiffness: 350, damping: 35 }}
+              transition={{ type: "spring", stiffness: 300, damping: 30 }}
               drag={state === 'active' ? "x" : false}
               dragConstraints={{ left: 0, right: 0 }}
               dragElastic={0.2}
@@ -98,29 +102,28 @@ function HeroSlider() {
               }}
               onClick={() => {
                 if (state === 'next1') handleNext();
-                if (state === 'next2') setCurrentIndex((prev) => (prev + 2) % SLIDES.length);
+                if (state === 'prev1') handlePrev();
               }}
-              className="absolute inset-0 w-full h-full rounded-3xl overflow-hidden cursor-grab active:cursor-grabbing"
+              className="absolute inset-0 w-full h-full rounded-3xl overflow-hidden cursor-grab active:cursor-grabbing shadow-2xl"
             >
-              {/* Dark Overlay for non-active cards to create depth */}
               <motion.div 
                 animate={{ opacity: state === 'active' ? 0 : 0.6 }}
-                className="absolute inset-0 bg-[#0f1115] z-20 pointer-events-none transition-opacity duration-300"
+                className="absolute inset-0 bg-[#000000] z-20 pointer-events-none transition-opacity duration-300"
               />
-              <img src={slide.image} alt={slide.label} className="w-full h-full object-cover relative z-10 pointer-events-none" />
+              <img src={slide.image} alt={slide.label} className="w-full h-full object-contain bg-yorumi-bg relative z-10 pointer-events-none" />
             </motion.div>
           );
         })}
       </div>
 
       {/* Indicators */}
-      <div className="flex gap-3 mt-6 z-50">
+      <div className="flex gap-2.5 mt-2 z-50">
         {SLIDES.map((_, idx) => (
           <button
             key={idx}
             onClick={() => setCurrentIndex(idx)}
-            className={`w-3 h-3 rounded-full transition-all duration-500 ease-out ${
-              idx === currentIndex ? 'bg-yorumi-main w-10 shadow-[0_0_12px_rgba(var(--color-yorumi-main),0.6)]' : 'bg-yorumi-text/20 hover:bg-yorumi-text/40'
+            className={`h-2 rounded-full transition-all duration-500 ease-out ${
+              idx === currentIndex ? 'bg-yorumi-main w-6 shadow-[0_0_10px_rgba(var(--color-yorumi-main),0.5)]' : 'w-2 bg-yorumi-text/20 hover:bg-yorumi-text/40'
             }`}
           />
         ))}
@@ -128,7 +131,6 @@ function HeroSlider() {
     </div>
   );
 }
-
 function App() {
   const [currentPage, setCurrentPage] = useState<'home' | 'get-started' | 'docs'>('home');
   const [isDarkMode, setIsDarkMode] = useState(false);
@@ -152,8 +154,8 @@ function App() {
   };
 
   useEffect(() => {
-    setIsDarkMode(false);
-    document.documentElement.classList.remove('dark');
+    setIsDarkMode(true);
+    document.documentElement.classList.add('dark');
 
     const handleScroll = () => {
       setIsScrolled(window.scrollY > 20);
@@ -210,8 +212,11 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen font-sans selection:bg-yorumi-main selection:text-white transition-colors duration-500 bg-yorumi-bg">
+    <div className="min-h-screen font-sans selection:bg-yorumi-main selection:text-white transition-colors duration-500 bg-yorumi-bg text-yorumi-text overflow-x-hidden relative z-0">
       
+      {/* Light Mode Blue Gradient Overlay */}
+      <div className={`fixed inset-0 pointer-events-none -z-10 transition-opacity duration-700 ${isDarkMode ? 'opacity-0' : 'opacity-100'} bg-gradient-to-br from-blue-300/30 via-transparent to-blue-200/20`} />
+
       {/* Sticky Premium Navigation */}
       <motion.nav 
         initial={{ y: -100 }}
@@ -282,11 +287,11 @@ function App() {
                 variants={containerVariants}
                 initial="hidden"
                 animate="visible"
-                className="flex flex-col justify-center h-full z-10 py-1"
+                className="flex flex-col justify-center h-full z-10 py-1 lg:pl-12 xl:pl-20"
               >
-                <div className="flex flex-col gap-6">
+                <div className="flex flex-col gap-5">
                   <div className="flex items-baseline gap-3 flex-wrap">
-                    <motion.h1 variants={itemVariants} className="text-5xl md:text-6xl lg:text-7xl font-display font-bold leading-none tracking-tight text-yorumi-text">
+                    <motion.h1 variants={itemVariants} className="text-5xl lg:text-6xl font-display font-bold leading-none tracking-tight text-yorumi-text">
                       Yorumi
                     </motion.h1>
                     <motion.a
@@ -294,13 +299,13 @@ function App() {
                       href="https://github.com/davenarchives/Yorumi/releases"
                       target="_blank"
                       rel="noreferrer"
-                      className="text-yorumi-main font-semibold text-sm md:text-base tracking-wide hover:opacity-80 transition-opacity"
+                      className="text-yorumi-main font-semibold text-sm tracking-wide hover:opacity-80 transition-opacity"
                     >
                       v3.5.7
                     </motion.a>
                   </div>
                   
-                  <motion.p variants={itemVariants} className="text-xl md:text-2xl font-medium text-yorumi-muted max-w-xl leading-relaxed">
+                  <motion.p variants={itemVariants} className="text-lg md:text-xl font-medium text-yorumi-muted max-w-lg leading-relaxed">
                     A modern, open-source platform for streaming anime and reading manga. Built with performance and user experience in mind.
                   </motion.p>
                 </div>
@@ -334,8 +339,8 @@ function App() {
             transition={{ type: "spring", stiffness: 50, damping: 20, delay: 0.4 }}
             className="relative w-full h-full flex items-center justify-center lg:justify-end"
           >
-            <div className="w-full transform hover:scale-[1.01] transition-all duration-700 ease-out z-10">
-              <HeroSlider />
+            <div className="w-full max-w-[500px] transform hover:-translate-y-2 transition-all duration-700 ease-out z-10">
+              <img src="/yorumi-mascot.png" alt="Yorumi Mascot" className="w-full h-auto drop-shadow-2xl object-contain pointer-events-none" />
             </div>
           </motion.div>
         </div>
@@ -549,39 +554,10 @@ function App() {
           </div>
         )}
 
-        {/* Pro Max Features Section */}
+        {/* App Previews Section */}
         {currentPage === 'home' && (
-        <div id="features" className="w-full max-w-[1400px] mt-40">
-          <motion.div 
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: "-100px" }}
-            className="text-center mb-16 space-y-4"
-          >
-            <h2 className="text-4xl md:text-5xl font-display font-black tracking-tighter text-yorumi-text">Built for enthusiasts.</h2>
-            <p className="text-xl text-yorumi-muted font-medium">Carefully crafted for a seamless viewing and reading experience.</p>
-          </motion.div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <FeatureCard 
-              icon={<Server className="w-8 h-8 text-yorumi-text transition-colors" />}
-              title="Electron Scraper Engine"
-              description="A custom headless Electron instance that mimics Chromium to silently solve Cloudflare JS challenges and extract raw stream keys."
-              delay={0.1}
-            />
-            <FeatureCard 
-              icon={<Zap className="w-8 h-8 text-yorumi-text transition-colors" />}
-              title="Lightning Fast Caching"
-              description="Powered by Redis and Upstash, Yorumi caches metadata and provider links to ensure instantaneous, rate-limit-free load times."
-              delay={0.2}
-            />
-            <FeatureCard 
-              icon={<Terminal className="w-8 h-8 text-yorumi-text transition-colors" />}
-              title="Standalone CLI"
-              description="Search, download, and stream media straight into your favorite local media player entirely from your terminal."
-              delay={0.3}
-            />
-          </div>
+        <div id="previews" className="w-full max-w-[1400px] mt-40">
+          <AppPreviews />
         </div>
         )}
       </main>
@@ -617,26 +593,6 @@ function App() {
   );
 }
 
-function FeatureCard({ icon, title, description, delay }: { icon: React.ReactNode, title: string, description: string, delay: number }) {
-  return (
-    <motion.div 
-      initial={{ opacity: 0, y: 30 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, margin: "-50px" }}
-      transition={{ duration: 0.6, delay, ease: "easeOut" }}
-      className="group bg-yorumi-card rounded-[2rem] p-10 flex flex-col gap-6 transition-transform duration-500 hover:-translate-y-2 overflow-hidden"
-    >
-      <div className="bg-yorumi-bg w-16 h-16 rounded-2xl flex items-center justify-center transition-transform duration-500 group-hover:scale-110">
-        {icon}
-      </div>
-      <div>
-        <h3 className="text-3xl font-display font-black tracking-tight mb-3 text-yorumi-text">{title}</h3>
-        <p className="text-yorumi-muted font-medium text-lg leading-relaxed">
-          {description}
-        </p>
-      </div>
-    </motion.div>
-  );
-}
+
 
 export default App;
