@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { 
   Sun,
   Moon,
@@ -7,10 +7,7 @@ import {
   Star,
   AlertTriangle,
   Download,
-  Bug,
-  Server,
-  Zap,
-  Terminal
+  Bug
 } from 'lucide-react';
 import { motion, useScroll, useTransform, AnimatePresence } from 'framer-motion';
 import type { Variants } from 'framer-motion';
