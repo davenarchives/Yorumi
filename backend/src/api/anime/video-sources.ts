@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { AllMangaScraper } from '../../scraper/allmanga';
 import { AniNekoScraper } from '../../scraper/anineko';
+import { AnikotoScraper } from '../../scraper/anikoto';
 import { cacheGet, cacheSet } from '../../utils/redis-cache';
 import { logger } from '../../core/logger';
 import { streambertAnimeService } from './anime.service';
@@ -232,6 +233,7 @@ class AllMangaSource implements VideoSource {
 const sources: VideoSource[] = [
     new AllMangaSource(),
     new AniNekoScraper(),
+    new AnikotoScraper(),
     new EmbedSource('vidsrc', 'https://vsembed.su'),
     new EmbedSource('vidking', 'https://www.vidking.net'),
     new VideasySource(),

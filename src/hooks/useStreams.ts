@@ -38,11 +38,12 @@ type StreamLookupMetadata = {
     format?: string;
 };
 
-export type StreamServerKey = 'allmanga' | 'anineko' | 'vidsrc' | 'vidking' | 'videasy';
+export type StreamServerKey = 'allmanga' | 'anineko' | 'anikoto' | 'vidsrc' | 'vidking' | 'videasy';
 
 const STREAM_SERVER_OPTIONS: Array<{ key: StreamServerKey; label: string }> = [
     { key: 'allmanga', label: 'AllManga' },
     { key: 'anineko', label: 'AniNeko' },
+    { key: 'anikoto', label: 'Anikoto' },
     { key: 'vidsrc', label: 'VidSrc' },
     { key: 'vidking', label: 'VidKing' },
     { key: 'videasy', label: 'Videasy' },

@@ -2,7 +2,12 @@
 
 ## [3.5.7] - 2026-07-28
 
+### Added & Changed
+- **Minimal Website Landing Page, Separate Documentation Pages, & UI Polish**: Redesigned the hero section of `website/src/App.tsx` to adopt a clean, minimal aesthetic with the **v3.5.7** version indicator aligned to the base of the **Yorumi** heading (`items-baseline`), styled the **Get Started** button in Yorumi's signature blue theme (`bg-yorumi-main`). Abstracted the **Start Using** Hub and the 3-column **Developer Docs & Guides** component (`website/src/Documentation.tsx`) into their own dedicated, full-page views (`#get-started` and `#docs`) with URL hash-routing, ensuring users no longer just scroll down a massive single page. Removed faint borders across cards and fixed the "blacked-out" button contrast issue on Client download links by replacing solid dark backgrounds with beautiful, theme-aware translucent colors (`bg-yorumi-main/10`), ensuring perfect visibility in both light and dark modes. Also includes a placeholder for a new TMDB API Key picture tutorial!
+- **Anikoto Provider Integration**: Ported the Anikoto scraper logic into the Yorumi backend, enabling a new stream source for anime. Registered `anikoto` in the video-sources API and frontend `useStreams.ts` to allow users to select it in the player.
+
 ### Fixed
+- **AniNeko Playback Stability**: Fixed a critical issue where AniNeko streams would load the `m3u8` playlist but fail to play (stuck at 0:00 with a black screen). Resolved by explicitly injecting `CODECS="avc1.640028,mp4a.40.2"` into the HLS manifest so Chrome accepts the High-profile H.264 video chunks, and patched a stream pipeline vulnerability in the backend proxy (`scraper.routes.ts`) where dropped upstream connections would hang indefinitely without closing the browser's response stream.
 - **AllManga Backend Scraper Corruption**: Fixed two corrupted code regions in `backend/src/scraper/allmanga.ts` caused by bad merges — a duplicate `followRedirects` method with stale code fragments spliced in, and orphaned `fetchLatestUpdatesPage` body code that broke `getLinksForShowId`. The backend scraper now compiles and runs correctly, restoring stream resolution for AllManga sources.
 
 ## [3.5.6] - 2026-07-26

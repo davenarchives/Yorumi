@@ -556,7 +556,7 @@ class ScraperService {
                     masterUrl = `/api/scraper/proxy?url=${encodeURIComponent(masterUrl)}&referer=${encodeURIComponent(referer)}${proxyMedia}&audio=jpn`;
                 }
                 
-                const serverName = actualSource === 'reanime' ? 'ReAnime' : actualSource === 'anineko' ? 'AniNeko' : actualSource === 'videasy' ? 'Videasy' : actualSource === 'vidking' ? 'VidKing' : 'VidSrc';
+                const serverName = actualSource === 'reanime' ? 'ReAnime' : actualSource === 'anineko' ? 'AniNeko' : actualSource === 'anikoto' ? 'Anikoto' : actualSource === 'videasy' ? 'Videasy' : actualSource === 'vidking' ? 'VidKing' : 'VidSrc';
 
                 const streamsList: any[] = [{
                     quality: 'auto',

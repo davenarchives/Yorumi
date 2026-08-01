@@ -1087,6 +1087,15 @@ router.get('/proxy', async (req, res) => {
                 res.set('Access-Control-Expose-Headers', 'Content-Length, Content-Range, Accept-Ranges');
                 // Remove Content-Length because we are stripping the mask which changes the length
                 req.on('close', () => { response.data?.destroy?.(); });
+                
+                response.data.on('error', () => {
+                    if (!res.headersSent) res.status(502);
+                    res.end();
+                });
+                demaskStream.on('error', () => {
+                    res.end();
+                });
+
                 return response.data.pipe(demaskStream).pipe(res);
             }
 
@@ -1170,6 +1179,11 @@ router.get('/proxy', async (req, res) => {
             .map((line) => {
                 const trimmed = line.trim();
                 if (!trimmed) return line;
+
+                if (trimmed.startsWith('#EXT-X-STREAM-INF:') && !trimmed.includes('CODECS=')) {
+                    // Inject generic High Profile H.264 codec to prevent Chrome from rejecting the stream
+                    return `${trimmed},CODECS="avc1.640028,mp4a.40.2"`;
+                }
 
                 if (trimmed.startsWith('#') && trimmed.includes('URI=')) {
                     return line.replace(/URI=["']([^"']+)["']/g, (_m, uri) => {

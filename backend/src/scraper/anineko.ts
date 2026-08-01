@@ -147,12 +147,11 @@ export class AniNekoScraper implements VideoSource {
                     }
                     if (extracted) {
                         const embedOrigin = `${new URL(embed).origin}/`;
-                        const proxiedUrl = `/api/scraper/proxy?url=${encodeURIComponent(extracted)}&referer=${encodeURIComponent(embedOrigin)}`;
                         if (!m3u8) {
-                            m3u8 = proxiedUrl;
+                            m3u8 = extracted;
                             referer = embedOrigin;
                         } else {
-                            variants.push({ quality: `Server ${i + 1}`, url: proxiedUrl });
+                            variants.push({ quality: `Server ${i + 1}`, url: extracted });
                         }
                     }
                 } catch {
