@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { VideoSource, StreamResponse } from '../api/anime/video-sources.js';
+import type { VideoSource, StreamResponse, SubtitleTrack } from '../api/anime/video-sources.js';
 import { streambertAnimeService } from '../api/anime/anime.service.js';
 import { anilistService } from '../api/anilist/anilist.service.js';
 
@@ -12,7 +12,34 @@ function stripTags(html: string) {
 }
 
 function decodeEntities(str: string) {
-    return str.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+    return str
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&#0*39;/g, "'")
+        .replace(/&#x27;/gi, "'");
+}
+
+function unpackEval(code: string): string {
+    try {
+        const match = code.match(/}\s*\(\s*['"]([\s\S]*?)['"]\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*['"]([\s\S]*?)['"]\.split\(['"]\|['"]\)/);
+        if (match) {
+            let p = match[1];
+            const a = parseInt(match[2], 10);
+            let c = parseInt(match[3], 10);
+            const k = match[4].split('|');
+            while (c--) {
+                if (k[c]) {
+                    p = p.replace(new RegExp('\\b' + c.toString(a) + '\\b', 'g'), k[c]);
+                }
+            }
+            return p;
+        }
+    } catch {
+        // ignore
+    }
+    return '';
 }
 
 export class AniNekoScraper implements VideoSource {
@@ -63,26 +90,25 @@ export class AniNekoScraper implements VideoSource {
                 }
 
                 if (results.length > 0) {
-                    const expected = searchTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-                    const expectedWords = searchTitle.toLowerCase();
+                    const normalizeStr = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+                    const expectedNorm = normalizeStr(searchTitle);
 
                     let bestMatch = results[0].slug;
                     let bestScore = -999;
                     for (const r of results) {
                         let score = 0;
-                        const t = r.text.toLowerCase();
-                        if (r.slug === expected) score += 1000;
-                        if (t === expectedWords) score += 1000;
-                        if (t.includes(expectedWords) || expectedWords.includes(t)) score += 500;
+                        const tNorm = normalizeStr(r.text);
+                        const slugNorm = normalizeStr(r.slug);
+                        if (slugNorm === expectedNorm || r.slug === expectedNorm) score += 1000;
+                        if (tNorm === expectedNorm) score += 1000;
+                        if (tNorm.includes(expectedNorm) || expectedNorm.includes(tNorm)) score += 500;
                         if (score > bestScore) {
                             bestScore = score;
                             bestMatch = r.slug;
                         }
                     }
-                    if (bestScore > 0) {
-                        seriesSlug = bestMatch;
-                        break;
-                    }
+                    seriesSlug = bestMatch;
+                    break;
                 }
             }
 
@@ -98,7 +124,7 @@ export class AniNekoScraper implements VideoSource {
                 if (!hrefMatch) continue;
                 const numMatch = hrefMatch[1].match(/\/ep-(\d+)/);
                 if (!numMatch) continue;
-                const num = parseInt(numMatch[1]);
+                const num = parseInt(numMatch[1], 10);
                 if (num === episode) {
                     const badges = [...block.matchAll(/<span\b[^>]*>([\s\S]*?)<\/span>/gi)].map((b) => stripTags(b[1]).toLowerCase());
                     episodes.push({ num, hasSub: badges.includes("sub"), hasDub: badges.includes("dub") });
@@ -123,6 +149,22 @@ export class AniNekoScraper implements VideoSource {
             const embeds = byAudio[targetAudio] || byAudio['sub'] || [];
             if (embeds.length === 0) return null;
 
+            const subtitles: SubtitleTrack[] = [];
+            for (const embedUrl of embeds) {
+                try {
+                    const parsedUrl = new URL(embedUrl);
+                    const subUrl = parsedUrl.searchParams.get('sub') || parsedUrl.searchParams.get('caption_1') || parsedUrl.searchParams.get('c1_file');
+                    if (subUrl && /^https?:\/\//i.test(subUrl)) {
+                        const lang = parsedUrl.searchParams.get('sub_1') || parsedUrl.searchParams.get('c1_label') || 'English';
+                        if (!subtitles.some(s => s.url === subUrl)) {
+                            subtitles.push({ lang, url: subUrl });
+                        }
+                    }
+                } catch {
+                    // ignore
+                }
+            }
+
             let m3u8 = '';
             let referer = '';
             const variants: { quality: string; url: string }[] = [];
@@ -130,7 +172,7 @@ export class AniNekoScraper implements VideoSource {
             for (let i = 0; i < embeds.length; i++) {
                 const embed = embeds[i];
                 try {
-                    const embedHtml = await axios.get<string>(embed, { headers: { ...H, Referer: `${BASE}/` } }).then(r => r.data).catch(() => '');
+                    const embedHtml = await axios.get<string>(embed, { headers: { ...H, Referer: `${BASE}/` }, timeout: 10_000 }).then(r => r.data).catch(() => '');
                     const patterns = [
                         /const\s+src\s*=\s*["'](https?:\/\/[^"']+\.m3u8[^"']*)["']/i,
                         /file\s*:\s*["'](https?:\/\/[^"']+\.m3u8[^"']*)["']/i,
@@ -145,6 +187,18 @@ export class AniNekoScraper implements VideoSource {
                             break;
                         }
                     }
+
+                    if (!extracted) {
+                        const packedMatch = embedHtml.match(/eval\(function\(p,a,c,k,e,d\)[\s\S]*?\.split\(['"]\|['"]\)\)\)/);
+                        if (packedMatch) {
+                            const unpacked = unpackEval(packedMatch[0]);
+                            const m = unpacked.match(/["'](https?:\/\/[^"']+\.m3u8[^"']*)["']/i) || unpacked.match(/(https?:\/\/[^"'\s]+\.m3u8[^"'\s]*)/i);
+                            if (m) {
+                                extracted = decodeEntities(m[1]);
+                            }
+                        }
+                    }
+
                     if (extracted) {
                         const embedOrigin = `${new URL(embed).origin}/`;
                         if (!m3u8) {
@@ -164,7 +218,7 @@ export class AniNekoScraper implements VideoSource {
             return {
                 m3u8,
                 variants,
-                subtitles: [],
+                subtitles,
                 source: this.id,
                 episode,
                 title: searchTitles[0],

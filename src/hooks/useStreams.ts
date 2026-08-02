@@ -36,6 +36,7 @@ type StreamLookupMetadata = {
     titlesKey?: string;
     year?: string | number;
     format?: string;
+    anilistId?: number;
 };
 
 export type StreamServerKey = 'allmanga' | 'anineko' | 'anikoto' | 'vidsrc' | 'vidking' | 'videasy';
@@ -134,6 +135,7 @@ export function useStreams(scraperSession: string | null, animeTitle?: string, a
                 titles: metadataTitlesKey ? metadataTitlesKey.split('|') : undefined,
                 year: metadataYear,
                 format: metadataFormat,
+                anilistId: animeMetadata?.anilistId,
             })
                 .then((data) => {
                     if (!Array.isArray(data) || data.length === 0) {
@@ -150,7 +152,7 @@ export function useStreams(scraperSession: string | null, animeTitle?: string, a
             streamCache.current.set(cacheKey, promise);
         }
         return streamCache.current.get(cacheKey)!;
-    }, [scraperSession, animeTitle, metadataTitlesKey, metadataYear, metadataFormat, getEpisodeCacheKey]);
+    }, [scraperSession, animeTitle, metadataTitlesKey, metadataYear, metadataFormat, animeMetadata?.anilistId, getEpisodeCacheKey]);
 
 
     const ensureStreamData = useCallback((episode: Episode): Promise<StreamLink[]> => {

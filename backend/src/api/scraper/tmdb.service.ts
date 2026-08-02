@@ -11,6 +11,8 @@ type TmdbSearchInput = {
     titles?: Array<string | undefined>;
     year?: string | number;
     format?: string;
+    anilistId?: number;
+    malId?: number;
 };
 
 type TmdbSearchResult = {
@@ -211,7 +213,51 @@ class TmdbService {
         return resolved || undefined;
     }
 
+    async resolveTmdbIdFromAniZip(anilistId: number): Promise<number | null> {
+        const id = Number(anilistId);
+        if (!Number.isFinite(id) || id <= 0) return null;
+        const cacheKey = `tmdb:anizip-mapping:v1:${id}`;
+        const now = Date.now();
+        const mem = this.memoryCache.get(cacheKey);
+        if (mem && mem.expiresAt > now) return (mem.value as number | null) || null;
+
+        const redisCached = await cacheGet<number | null>(cacheKey).catch(() => null);
+        if (redisCached !== null) {
+            this.memoryCache.set(cacheKey, { expiresAt: now + 7 * 24 * 60 * 60 * 1000, value: redisCached });
+            return redisCached || null;
+        }
+
+        try {
+            const { data } = await axios.get<any>(`https://api.ani.zip/mappings?anilist_id=${id}`, {
+                timeout: 5000,
+                headers: { Accept: 'application/json' },
+            });
+            const rawTmdbId = Number(data?.mappings?.themoviedb_id || data?.mappings?.tmdb_id || 0);
+            const resolved = Number.isFinite(rawTmdbId) && rawTmdbId > 0 ? rawTmdbId : null;
+
+            this.memoryCache.set(cacheKey, { expiresAt: now + 7 * 24 * 60 * 60 * 1000, value: resolved });
+            cacheSet(cacheKey, resolved, 7 * 24 * 60 * 60).catch(() => undefined);
+            return resolved;
+        } catch {
+            this.memoryCache.set(cacheKey, { expiresAt: now + 2 * 60 * 60 * 1000, value: null });
+            cacheSet(cacheKey, null, 2 * 60 * 60).catch(() => undefined);
+            return null;
+        }
+    }
+
     async resolveMediaTarget(input: TmdbSearchInput): Promise<TmdbMediaTarget | null> {
+        if (input.anilistId && input.anilistId > 0) {
+            const aniZipTmdbId = await this.resolveTmdbIdFromAniZip(input.anilistId);
+            if (aniZipTmdbId) {
+                const isMovie = String(input.format || '').toUpperCase() === 'MOVIE';
+                return {
+                    tmdbId: aniZipTmdbId,
+                    mediaType: isMovie ? 'movie' : 'tv',
+                    title: input.title,
+                };
+            }
+        }
+
         const titles = [
             ...(Array.isArray(input.titles) ? input.titles : []),
             input.title,

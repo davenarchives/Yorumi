@@ -653,6 +653,7 @@ router.get('/streams', async (req, res) => {
         const year = String(req.query.year || '').trim();
         const format = String(req.query.format || '').trim();
         const episodeNumber = Number(req.query.ep_number || 0) || undefined;
+        const anilistId = Number(req.query.anilist_id || 0) || undefined;
         const result = await scraperService.getStreams(animeSession, epSession, {
             provider,
             title,
@@ -660,6 +661,7 @@ router.get('/streams', async (req, res) => {
             year,
             format,
             episodeNumber,
+            anilistId,
         });
         const hostBase = getPublicBase(req);
         const normalized = Array.isArray(result)

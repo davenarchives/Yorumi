@@ -12,6 +12,7 @@ type StreamProviderOptions = {
     year?: string | number;
     format?: string;
     episodeNumber?: number;
+    anilistId?: number;
 };
 
 class ScraperService {
@@ -527,18 +528,26 @@ class ScraperService {
         // ── Custom Video Sources (video-sources.ts) ─────────────────────────
         if (provider === 'vidsrc' || provider === 'vidking' || provider === 'anineko' || provider === 'videasy' || provider === 'reanime') {
             const title = String(options?.title || this.queryFromSessionSlug(animeSession)).trim();
+            const parsedAnilistId = parseInt(animeSession, 10);
+            const anilistId = options?.anilistId || (!isNaN(parsedAnilistId) && parsedAnilistId > 0 ? parsedAnilistId : undefined);
+
             const tmdbTarget = await tmdbService.resolveMediaTarget({ 
                 title, 
                 titles: options?.titles, 
                 year: options?.year, 
-                format: options?.format 
+                format: options?.format,
+                anilistId,
             }).catch(() => null);
 
-            const anilistId = parseInt(animeSession, 10);
             const episodeNumber = Number(options?.episodeNumber || this.parseEpisodeNumber(epSession)) || 1;
             const { animeVideoSources } = require('../anime/video-sources');
-            const targetId = !isNaN(anilistId) ? anilistId : (tmdbTarget?.tmdbId || 0);
-            const streamResponse = await animeVideoSources.getStream(targetId, episodeNumber, provider, { title, tmdbId: tmdbTarget?.tmdbId });
+            const targetId = tmdbTarget?.tmdbId || (anilistId || 0);
+            const streamResponse = await animeVideoSources.getStream(targetId, episodeNumber, provider, {
+                title,
+                tmdbId: tmdbTarget?.tmdbId,
+                format: options?.format,
+                anilistId,
+            });
             
             if (streamResponse?.m3u8) {
                 const isHls = /\.m3u8?(?:[?#]|$)/i.test(streamResponse.m3u8);

@@ -26,7 +26,7 @@ export type StreamResponse = {
 
 export type VideoSource = {
     id: string;
-    getStream(anilistId: number, episode: number, options?: { title?: string, tmdbId?: number, format?: string }): Promise<StreamResponse | null>;
+    getStream(anilistId: number, episode: number, options?: { title?: string, tmdbId?: number, format?: string, anilistId?: number }): Promise<StreamResponse | null>;
 };
 
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0';
@@ -58,22 +58,30 @@ async function getEpisodeTitle(anilistId: number, episode: number) {
     return match?.title;
 }
 
-async function resolveTmdbInfo(targetId: number, episode: number, options?: { title?: string; tmdbId?: number; format?: string }) {
+async function resolveTmdbInfo(targetId: number, episode: number, options?: { title?: string; tmdbId?: number; format?: string; anilistId?: number }) {
     let tmdbId = options?.tmdbId;
     let format = options?.format;
+    const anilistId = options?.anilistId || (targetId > 0 ? targetId : undefined);
+
+    if (!tmdbId && anilistId) {
+        tmdbId = await tmdbService.resolveTmdbIdFromAniZip(anilistId).catch(() => undefined) || undefined;
+    }
+
     if (tmdbId) {
         const meta = await streambertAnimeService.getMetadata(tmdbId, format).catch(() => null);
         format = meta?.format || format;
-    } else if (options?.title) {
-        const target = await tmdbService.resolveMediaTarget({ title: options.title, format }).catch(() => null);
+    } else if (options?.title || anilistId) {
+        const target = await tmdbService.resolveMediaTarget({ title: options?.title, format, anilistId }).catch(() => null);
         if (target?.tmdbId) {
             tmdbId = target.tmdbId;
             format = target.mediaType === 'movie' ? 'MOVIE' : target.mediaType === 'tv' ? 'TV' : format;
         }
     }
+
     if (!tmdbId) {
-        tmdbId = targetId;
+        return { tmdbId: null, isMovie: false, seasonNumber: 1, relativeEpisode: episode };
     }
+
     const isMovie = format === 'MOVIE';
     let seasonNumber = 1;
     let relativeEpisode = episode;
@@ -90,9 +98,11 @@ async function resolveTmdbInfo(targetId: number, episode: number, options?: { ti
 class VideasySource implements VideoSource {
     id = 'videasy';
 
-    async getStream(anilistId: number, episode: number, options?: { title?: string, tmdbId?: number, format?: string }): Promise<StreamResponse | null> {
+    async getStream(anilistId: number, episode: number, options?: { title?: string, tmdbId?: number, format?: string, anilistId?: number }): Promise<StreamResponse | null> {
         const baseUrl = String(process.env.VIDEASY_BASE_URL || 'https://player.videasy.to').replace(/\/+$/, '');
         const { tmdbId, isMovie, seasonNumber, relativeEpisode } = await resolveTmdbInfo(anilistId, episode, options);
+        if (!tmdbId) return null;
+
         const playerUrl = isMovie
             ? `${baseUrl}/movie/${tmdbId}`
             : `${baseUrl}/tv/${tmdbId}/${seasonNumber}/${relativeEpisode}`;
@@ -138,9 +148,11 @@ class VideasySource implements VideoSource {
 class EmbedSource implements VideoSource {
     constructor(public id: string, private baseUrl: string) {}
 
-    async getStream(targetId: number, episode: number, options?: { title?: string, tmdbId?: number, format?: string }): Promise<StreamResponse | null> {
+    async getStream(targetId: number, episode: number, options?: { title?: string, tmdbId?: number, format?: string, anilistId?: number }): Promise<StreamResponse | null> {
         const cleanBase = this.baseUrl.replace(/\/+$/, '');
         const { tmdbId, isMovie, seasonNumber, relativeEpisode } = await resolveTmdbInfo(targetId, episode, options);
+        if (!tmdbId) return null;
+
         let playerUrl = isMovie
             ? `${cleanBase}/embed/movie/${tmdbId}`
             : `${cleanBase}/embed/tv/${tmdbId}/${seasonNumber}/${relativeEpisode}`;
@@ -248,7 +260,7 @@ function orderedSources(requested: string) {
 export const animeVideoSources = {
     async getStream(anilistId: number, episode: number, requestedSource = 'allmanga', options?: { title?: string, tmdbId?: number }, nocache = false): Promise<StreamResponse | null> {
         const sourceId = String(requestedSource || 'allmanga').trim().toLowerCase();
-        const cacheKey = `anime:stream:v102:${anilistId}:${episode}:${sourceId}`;
+        const cacheKey = `anime:stream:v103:${anilistId}:${episode}:${sourceId}`;
         if (!nocache) {
             const cached = await cacheGet<StreamResponse>(cacheKey);
             if (cached) return cached;

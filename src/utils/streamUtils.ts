@@ -32,6 +32,7 @@ export const getStreamData = async (
         titles?: string[];
         year?: string | number;
         format?: string;
+        anilistId?: number;
     }
 ): Promise<StreamLink[]> => {
     const playbackEpisodeNumber = Number(episode._tmdbAbsolute || episode.episodeNumber || 0) || undefined;

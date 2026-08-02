@@ -384,7 +384,7 @@ const scraperSearchCache = new Map<string, { data: any[]; timestamp: number }>()
 const SCRAPER_SEARCH_TTL = 5 * 60 * 1000;
 const AZ_LIST_CACHE_TTL = 10 * 60 * 1000;
 const PERSISTED_CACHE_PREFIX = 'yorumi_api_cache_v8';
-const STREAM_CACHE_VERSION = 'v13';
+const STREAM_CACHE_VERSION = 'v14';
 const PERSISTED_STREAM_CACHE_PREFIX = `yorumi_stream_cache_${STREAM_CACHE_VERSION}`;
 
 const readPersistedCache = (key: string, ttl: number) => {
@@ -1294,6 +1294,7 @@ export const animeService = {
         year?: string | number;
         format?: string;
         episodeNumber?: number;
+        anilistId?: number;
     }) {
         const provider = String(options?.provider || 'auto').trim().toLowerCase() || 'auto';
         const lookupScope = getStreamLookupCacheScope({ ...options, provider });
@@ -1320,6 +1321,7 @@ export const animeService = {
                         ...(Array.isArray(options?.titles) && options.titles.length > 0 ? { alt_titles: options.titles.join('|') } : {}),
                         ...(options?.year ? { year: options.year } : {}),
                         ...(options?.format ? { format: options.format } : {}),
+                        ...(options?.anilistId ? { anilist_id: options.anilistId } : {}),
                         _cb: Date.now(),
                     },
                 });
