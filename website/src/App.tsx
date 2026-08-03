@@ -7,7 +7,7 @@ import {
   Star,
   AlertTriangle,
   Download,
-  Bug
+  Sparkles
 } from 'lucide-react';
 import { motion, useScroll, useTransform, AnimatePresence } from 'framer-motion';
 import type { Variants } from 'framer-motion';
@@ -16,11 +16,13 @@ import { DocumentationGuide, type DocTabId } from './Documentation';
 const SLIDES = [
   { id: 1, image: '/browse-animes.png', label: 'Browse Animes', description: 'Browse thousands of anime titles.' },
   { id: 2, image: '/browse-mangas.png', label: 'Browse Mangas', description: 'Access a comprehensive library of manga and manhwa.' },
-  { id: 3, image: '/search-anime.png', label: 'Search Media', description: 'Find your favorite titles instantly with powerful search tools.' },
-  { id: 4, image: '/anime-details.png', label: 'Anime Details', description: 'View detailed stats, episode lists, and metadata.' },
-  { id: 5, image: '/manga-details.png', label: 'Manga Details', description: 'Access chapter lists, artwork, and story information.' },
-  { id: 6, image: '/watch-anime.png', label: 'Watch Anime in One Click', description: 'Stream anime directly within the application.' },
-  { id: 7, image: '/read-manga.png', label: 'Read Manga in One Click', description: 'Read manga chapters directly within the application.' },
+  { id: 3, image: '/lighnovel.png', label: 'Read Light Novels', description: 'Explore top 100 collections and trending light novels.' },
+  { id: 4, image: '/search-anime.png', label: 'Search Media', description: 'Find your favorite titles instantly with powerful search tools.' },
+  { id: 5, image: '/anime-details.png', label: 'Anime Details', description: 'View detailed stats, episode lists, and metadata.' },
+  { id: 6, image: '/manga-details.png', label: 'Manga Details', description: 'Access chapter lists, artwork, and story information.' },
+  { id: 7, image: '/watch-anime.png', label: 'Watch Anime in One Click', description: 'Stream anime directly within the application.' },
+  { id: 8, image: '/read-manga.png', label: 'Read Manga in One Click', description: 'Read manga chapters directly within the application.' },
+  { id: 9, image: '/read-lightnovel.png', label: 'Read Light Novels in One Click', description: 'Read light novel chapters with custom typography and reader settings.' },
 ];
 
 function AppPreviews() {
@@ -298,12 +300,12 @@ function App() {
                       rel="noreferrer"
                       className="text-yorumi-main font-semibold text-sm tracking-wide hover:opacity-80 transition-opacity"
                     >
-                      v3.5.7
+                      v4.0.0
                     </motion.a>
                   </div>
                   
                   <motion.p variants={itemVariants} className="text-lg md:text-xl font-medium text-yorumi-muted max-w-lg leading-relaxed">
-                    A modern, open-source platform for streaming anime and reading manga. Built with performance and user experience in mind.
+                    A modern, open-source platform for streaming anime, reading manga, and reading light novels. Built with performance and user experience in mind.
                   </motion.p>
                 </div>
                 
@@ -365,7 +367,7 @@ function App() {
             <div className="bg-yorumi-card rounded-3xl p-6 md:p-8 space-y-6">
               <div className="text-sm md:text-base text-yorumi-muted">
                 <span className="font-medium text-yorumi-text">The latest stable version:</span>{' '}
-                <span className="text-yorumi-main font-semibold">v3.5.7</span>
+                <span className="text-yorumi-main font-semibold">v4.0.0</span>
               </div>
 
               {/* Keep ONLY legit release downloads: latest .exe, source-code zip, and standalone CLI domain */}
@@ -377,7 +379,7 @@ function App() {
                   className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-yorumi-main/20 hover:bg-yorumi-main/30 text-yorumi-main font-semibold text-sm transition-colors border border-yorumi-main/30"
                 >
                   <Download className="w-4 h-4" />
-                  <span>Yorumi-v3.5.7.exe</span>
+                  <span>Yorumi-v4.0.0.exe</span>
                 </a>
                 <a
                   href="https://github.com/davenarchives/Yorumi/archive/refs/heads/main.zip"
@@ -400,21 +402,24 @@ function App() {
               </div>
 
               <div className="border-t border-white/5 pt-6 space-y-4">
-                <div className="text-sm font-semibold text-yorumi-text">What&apos;s new in this version?</div>
+                <div className="text-sm font-semibold text-yorumi-text">What&apos;s new in version 4.0.0?</div>
                 <div className="space-y-3">
                   <div className="flex items-center gap-2 text-sm font-bold text-yorumi-main">
-                    <Bug className="w-4 h-4" />
-                    <span>Bug Fixes & Enhancements</span>
+                    <Sparkles className="w-4 h-4" />
+                    <span>Major Release: Light Novels Hub & AniDB Scraper Engine</span>
                   </div>
-                  <ul className="list-disc list-inside text-sm text-yorumi-muted space-y-1 pl-1">
+                  <ul className="list-disc list-inside text-sm text-yorumi-muted space-y-1.5 pl-1">
                     <li>
-                      <span className="font-semibold text-yorumi-text">scraper:</span> Dynamic AES-256-GCM key scraping & AllManga scraper stream resolution restoration.
+                      <span className="font-semibold text-yorumi-text">light novel:</span> Dedicated Light Novel (LN) reading hub with custom reader, chapter selector, popular/top 100 collections, bookmarks & reading progress.
                     </li>
                     <li>
-                      <span className="font-semibold text-yorumi-text">web:</span> Minimal hero redesign with streamlined get started workflow & documentation hub.
+                      <span className="font-semibold text-yorumi-text">anime provider:</span> Switched main anime stream engine to <span className="font-semibold text-yorumi-text">AniDB</span> with direct multi-quality HLS streaming (1080p, 720p, 360p) and Japanese Sub & English Dub audio.
                     </li>
                     <li>
-                      <span className="font-semibold text-yorumi-text">anime:</span> Updated `/anime/home-fast` to populate Top Ten lists with latest episode counts.
+                      <span className="font-semibold text-yorumi-text">desktop bundle:</span> Standalone Electron `.exe` build with 100% embedded Express backend scraper (no local or external backend host required).
+                    </li>
+                    <li>
+                      <span className="font-semibold text-yorumi-text">player:</span> Direct quality switching, stream proxies, and fixed player position stability on episode changes.
                     </li>
                   </ul>
                 </div>
