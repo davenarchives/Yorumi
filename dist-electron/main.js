@@ -2591,20 +2591,23 @@ app.whenReady().then(() => {
         try { console.error('Failed to configure auto-updater:', e); } catch (err) {}
     }
 
+    let backendProcess = null;
     try {
         const cp = __require('child_process');
         const path = __require('path');
         const fs = __require('fs');
         
-        let backendPath = path.join(__dirname, '../backend/dist/bundle.cjs');
+        let backendPath = path.join(process.resourcesPath, 'app.asar.unpacked/backend/dist/bundle.cjs');
         if (!fs.existsSync(backendPath)) {
-            // Production path inside app.asar
+            backendPath = path.join(__dirname, '../backend/dist/bundle.cjs');
+        }
+        if (!fs.existsSync(backendPath)) {
             backendPath = path.join(process.resourcesPath, 'app.asar/backend/dist/bundle.cjs');
         }
         
         if (fs.existsSync(backendPath)) {
             try { console.log("Starting backend from:", backendPath); } catch (e) {}
-            const backendProcess = cp.fork(backendPath, [], {
+            backendProcess = cp.fork(backendPath, [], {
                 env: { ...process.env, VERCEL: 'false', ELECTRON_RUN_AS_NODE: '1', YORUMI_USER_DATA_DIR: userDataPath },
                 stdio: ['ignore', 'pipe', 'pipe', 'ipc']
             });
@@ -2617,12 +2620,27 @@ app.whenReady().then(() => {
             backendProcess.on('error', (err) => {
                 try { console.error("Backend process error:", err); } catch (e) {}
             });
+            backendProcess.on('exit', (code, signal) => {
+                try { console.log(`Backend exited with code ${code} and signal ${signal}`); } catch (e) {}
+            });
         } else {
             try { console.error("Backend not found at:", backendPath); } catch (e) {}
         }
     } catch (e) {
         try { console.error("Failed to start backend", e); } catch (err) {}
     }
+
+    const cleanupBackend = () => {
+        if (backendProcess) {
+            try {
+                backendProcess.kill('SIGTERM');
+            } catch (e) {}
+            backendProcess = null;
+        }
+    };
+    app.on('before-quit', cleanupBackend);
+    app.on('will-quit', cleanupBackend);
+
 	createWindow();
 	app.on("activate", () => {
 		if (BrowserWindow.getAllWindows().length === 0) createWindow();

@@ -6,9 +6,9 @@ let browserInstance: Browser | null = null;
 let browserLaunchPromise: Promise<Browser> | null = null;
 
 const launchBrowser = async (): Promise<Browser> => {
-    const isProduction = process.env.NODE_ENV === 'production' || process.env.VERCEL === '1';
+    const isServerless = process.env.VERCEL === '1' || !!process.env.AWS_LAMBDA_FUNCTION_NAME;
 
-    if (isProduction) {
+    if (isServerless) {
         logger.info('Launching shared serverless Chromium instance');
 
         const chromiumModule = await import('@sparticuz/chromium') as Record<string, unknown>;
@@ -56,7 +56,7 @@ const launchBrowser = async (): Promise<Browser> => {
 
     return localPuppeteer.launch({
         headless: true,
-        executablePath: getSystemBrowserPath() || (process.env.ELECTRON_RUN_AS_NODE === '1' ? process.execPath : undefined),
+        executablePath: getSystemBrowserPath(),
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',

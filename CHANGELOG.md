@@ -11,6 +11,7 @@
 - **Website Redesign for v4.0.0**: Updated `website/src/App.tsx` description, version badges to `v4.0.0`, client `.exe` download links, "What's new" release highlights, and carousel preview slides for Light Novel browsing and reading (`lighnovel.png`, `read-lightnovel.png`).
 
 ### Fixed
+- **Standalone Executable (.exe) Non-Dev Runtime Reliability**: Fixed standalone `.exe` runtime execution for non-developer end users. Added `asarUnpack` for `backend/dist/bundle.cjs` in `package.json`, registered `before-quit` and `will-quit` backend process cleanup in `dist-electron/main.js` to eliminate `EADDRINUSE :::3001` port conflicts, updated `browser-manager.ts` to restrict `@sparticuz/chromium` to serverless environments (`VERCEL=1`), and removed `process.execPath` fallback in Puppeteer browser launching.
 - **Player Quality Selection Persistence**: Fixed quality options (1080p, 720p, 480p, 360p) being greyed out or resetting to Auto when using HLS streams or single-source providers in `CustomVideoControls.tsx`.
 - **Player Route & Position Stability**: Fixed persistent player route checks in `PersistentPlayerContext.tsx` to prevent the video player from unmounting or popping out into a floating mini-player when changing episode search parameters on the details page.
 - **Stale Stream Cache Invalidation**: Bumped stream cache version key to `v104` in `video-sources.ts` to automatically purge stale stream caches.

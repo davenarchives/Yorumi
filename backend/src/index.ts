@@ -11,8 +11,16 @@ if (shouldRunStandaloneServer) {
     const startServer = async () => {
         logger.info('Starting Yorumi backend server');
 
-        app.listen(port, () => {
+        const server = app.listen(port, () => {
             logger.info(`Server is running on http://localhost:${port}`);
+        });
+
+        server.on('error', (err: any) => {
+            if (err.code === 'EADDRINUSE') {
+                logger.warn(`Port ${port} is already in use. Yorumi backend may already be running.`);
+            } else {
+                logger.error('Backend server error:', err);
+            }
         });
 
         startScraperWarmer();

@@ -88,6 +88,9 @@
       "!node_modules/**/*",
       "!backend/node_modules/**/*"
     ],
+    "asarUnpack": [
+      "backend/dist/bundle.cjs"
+    ],
     "win": {
       "target": "nsis",
       "icon": "public/yorumi-icon.png"
