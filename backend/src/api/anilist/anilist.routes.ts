@@ -5,6 +5,28 @@ import { redis } from '../mapping/mapper';
 import { mappingService } from '../mapping/mapping.service';
 import { scraperService } from '../scraper/scraper.service';
 import { tmdbService } from '../scraper/tmdb.service';
+import * as mangaScraperService from '../scraper/manga.service';
+
+const mapScraperMangaToAniListMedia = (items: any[]) =>
+    (Array.isArray(items) ? items : []).map((item) => ({
+        id: item.id,
+        title: {
+            english: item.title,
+            romaji: item.title,
+            native: item.title,
+        },
+        coverImage: {
+            extraLarge: item.thumbnail || item.coverImage,
+            large: item.thumbnail || item.coverImage,
+        },
+        description: item.synopsis || `Latest chapter: ${item.latestChapter || 'N/A'}`,
+        format: 'MANGA',
+        countryOfOrigin: item.countryOfOrigin || 'JP',
+        status: (item.status || 'RELEASING').toUpperCase(),
+        averageScore: 0,
+        genres: Array.isArray(item.genres) ? item.genres.map((g: string) => ({ name: g })) : [],
+        chapters: parseFloat(item.latestChapter?.replace(/\D/g, '') || '0') || undefined,
+    }));
 
 const router = Router();
 const HOME_FAST_CACHE_KEY = 'anilist:home:fast:v20';
@@ -546,7 +568,14 @@ router.get('/top/manga', async (req, res) => {
         const page = req.query.page ? parseInt(req.query.page as string) : 1;
         const perPage = req.query.limit ? parseInt(req.query.limit as string) : 24;
 
-        const data = await anilistService.getTopManga(page, perPage);
+        let data = await anilistService.getTopManga(page, perPage).catch(() => null);
+        if (!data?.media || data.media.length === 0) {
+            const fallback = await mangaScraperService.getMangaDirectory(page).catch(() => ({ data: [], totalPages: 1 }));
+            data = {
+                media: mapScraperMangaToAniListMedia(fallback.data),
+                pageInfo: { currentPage: page, lastPage: fallback.totalPages || 1, hasNextPage: page < (fallback.totalPages || 1) }
+            };
+        }
         res.json(data);
     } catch (error) {
         console.error('Error in top manga route:', error);
@@ -560,7 +589,14 @@ router.get('/popular/manga', async (req, res) => {
         const page = req.query.page ? parseInt(req.query.page as string) : 1;
         const perPage = req.query.limit ? parseInt(req.query.limit as string) : 24;
 
-        const data = await anilistService.getPopularManga(page, perPage);
+        let data = await anilistService.getPopularManga(page, perPage).catch(() => null);
+        if (!data?.media || data.media.length === 0) {
+            const fallback = await mangaScraperService.getMangaDirectory(page).catch(() => ({ data: [], totalPages: 1 }));
+            data = {
+                media: mapScraperMangaToAniListMedia(fallback.data),
+                pageInfo: { currentPage: page, lastPage: fallback.totalPages || 1, hasNextPage: page < (fallback.totalPages || 1) }
+            };
+        }
         res.json(data);
     } catch (error) {
         console.error('Error in popular manga route:', error);
@@ -574,7 +610,14 @@ router.get('/top/manhwa', async (req, res) => {
         const page = req.query.page ? parseInt(req.query.page as string) : 1;
         const perPage = req.query.limit ? parseInt(req.query.limit as string) : 24;
 
-        const data = await anilistService.getPopularManhwa(page, perPage);
+        let data = await anilistService.getPopularManhwa(page, perPage).catch(() => null);
+        if (!data?.media || data.media.length === 0) {
+            const fallback = await mangaScraperService.getNewManga(page).catch(() => ({ data: [], totalPages: 1 }));
+            data = {
+                media: mapScraperMangaToAniListMedia(fallback.data.map(item => ({ ...item, countryOfOrigin: 'KR' }))),
+                pageInfo: { currentPage: page, lastPage: fallback.totalPages || 1, hasNextPage: page < (fallback.totalPages || 1) }
+            };
+        }
         res.json(data);
     } catch (error) {
         console.error('Error in top manhwa route:', error);
@@ -588,7 +631,14 @@ router.get('/top/one-shot', async (req, res) => {
         const page = req.query.page ? parseInt(req.query.page as string) : 1;
         const perPage = req.query.limit ? parseInt(req.query.limit as string) : 24;
 
-        const data = await anilistService.getOneShotManga(page, perPage);
+        let data = await anilistService.getOneShotManga(page, perPage).catch(() => null);
+        if (!data?.media || data.media.length === 0) {
+            const fallback = await mangaScraperService.getLatestManga(page).catch(() => ({ data: [], totalPages: 1 }));
+            data = {
+                media: mapScraperMangaToAniListMedia(fallback.data),
+                pageInfo: { currentPage: page, lastPage: fallback.totalPages || 1, hasNextPage: page < (fallback.totalPages || 1) }
+            };
+        }
         res.json(data);
     } catch (error) {
         console.error('Error in top one-shot route:', error);
@@ -616,7 +666,14 @@ router.get('/trending/manga', async (req, res) => {
         const page = req.query.page ? parseInt(req.query.page as string) : 1;
         const perPage = req.query.limit ? parseInt(req.query.limit as string) : 10;
 
-        const data = await anilistService.getTrendingManga(page, perPage);
+        let data = await anilistService.getTrendingManga(page, perPage).catch(() => null);
+        if (!data?.media || data.media.length === 0) {
+            const fallback = await mangaScraperService.getLatestManga(page).catch(() => ({ data: [], totalPages: 1 }));
+            data = {
+                media: mapScraperMangaToAniListMedia(fallback.data),
+                pageInfo: { currentPage: page, lastPage: fallback.totalPages || 1, hasNextPage: page < (fallback.totalPages || 1) }
+            };
+        }
         res.json(data);
     } catch (error) {
         res.status(500).json({ error: 'Failed to fetch trending manga' });
