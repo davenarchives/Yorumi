@@ -1,4 +1,7 @@
 import axios from 'axios';
+import { exec } from 'child_process';
+import util from 'util';
+const execPromise = util.promisify(exec);
 import { AllMangaScraper } from '../../scraper/allmanga';
 import { AniNekoScraper } from '../../scraper/anineko';
 import { AnikotoScraper } from '../../scraper/anikoto';
@@ -242,25 +245,95 @@ class AllMangaSource implements VideoSource {
     }
 }
 
+class AniDBSource implements VideoSource {
+    id = 'anidb';
+
+    async getStream(anilistId: number, episode: number, options?: { title?: string, tmdbId?: number, format?: string, anilistId?: number }): Promise<StreamResponse | null> {
+        try {
+            const metadata = options?.tmdbId ? await streambertAnimeService.getMetadata(options.tmdbId).catch(() => null) : null;
+            const searchTitle = options?.title || metadata?.title?.romaji || metadata?.title?.english || metadata?.title?.native || '';
+            if (searchTitle) {
+                const browseCmd = `curl.exe -sL -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36" "https://anidb.app/browse?q=${encodeURIComponent(searchTitle)}"`;
+                const { stdout: browseHtml } = await execPromise(browseCmd, { timeout: 10000 });
+                
+                const matches = [...browseHtml.matchAll(/href=["'](https?:\/\/anidb\.app\/anime\/[^"']+)["']/g)].map(m => m[1]);
+                const firstLink = matches[0];
+                const animeId = firstLink?.split('-').pop();
+
+                if (animeId) {
+                    const epCmd = `curl.exe -sL -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" "https://anidb.app/api/frontend/anime/${animeId}/episodes"`;
+                    const { stdout: epJson } = await execPromise(epCmd, { timeout: 10000 });
+                    const epData = JSON.parse(epJson);
+                    const epList = epData?.episodes || (Array.isArray(epData) ? epData : []);
+                    
+                    const targetEp = epList.find((e: any) => Number(e.number || e.episode) === episode) || epList[0];
+                    const epId = targetEp?.id;
+
+                    if (epId) {
+                        const langCmd = `curl.exe -sL -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" "https://anidb.app/api/frontend/episode/${epId}/languages"`;
+                        const { stdout: langJson } = await execPromise(langCmd, { timeout: 10000 });
+                        const langData = JSON.parse(langJson);
+                        const embeds = langData?.languages || (Array.isArray(langData) ? langData : []);
+
+                        const jpnEmbed = embeds.find((e: any) => e.code === 'jpn' || String(e.name || '').toLowerCase().includes('japan'))?.embed_url || embeds[0]?.embed_url;
+                        const engEmbed = embeds.find((e: any) => e.code === 'eng' || String(e.name || '').toLowerCase().includes('english'))?.embed_url;
+
+                        let masterM3u8: string | null = null;
+                        let dubM3u8: string | null = null;
+
+                        if (jpnEmbed) {
+                            const { stdout: jpnHtml } = await execPromise(`curl.exe -sL -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" "${jpnEmbed}"`, { timeout: 10000 });
+                            const m = jpnHtml.match(/(?:file|src)\s*:\s*["']([^"']+\.m3u8[^"']*)["']/i) || jpnHtml.match(/["'](https?:\/\/[^"']+\.m3u8[^"']*)["']/i);
+                            if (m?.[1]) masterM3u8 = m[1];
+                        }
+
+                        if (engEmbed) {
+                            const { stdout: engHtml } = await execPromise(`curl.exe -sL -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" "${engEmbed}"`, { timeout: 10000 });
+                            const m = engHtml.match(/(?:file|src)\s*:\s*["']([^"']+\.m3u8[^"']*)["']/i) || engHtml.match(/["'](https?:\/\/[^"']+\.m3u8[^"']*)["']/i);
+                            if (m?.[1]) dubM3u8 = m[1];
+                        }
+
+                        if (masterM3u8) {
+                            return {
+                                m3u8: masterM3u8,
+                                dubM3u8: dubM3u8 || undefined,
+                                subtitles: [],
+                                source: this.id,
+                                episode,
+                                title: await getEpisodeTitle(anilistId, episode),
+                                referer: 'https://anidb.app/',
+                            };
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            logger.warn(`[anidb-scraper] AniDB scraping failed for episode ${episode}`, error);
+        }
+
+        // Fallback to Videasy if anidb.app title is not found
+        const videasy = new VideasySource();
+        return videasy.getStream(anilistId, episode, options).catch(() => null);
+    }
+}
+
 const sources: VideoSource[] = [
-    new AllMangaSource(),
-    new AniNekoScraper(),
-    new AnikotoScraper(),
-    new EmbedSource('vidsrc', 'https://vsembed.su'),
+    new AniDBSource(),
+    new EmbedSource('vidsrc', 'https://vidsrc.pm'),
     new EmbedSource('vidking', 'https://www.vidking.net'),
     new VideasySource(),
 ];
 
 function orderedSources(requested: string) {
-    if (!requested || requested === 'auto' || requested === 'allmanga') return sources;
+    if (!requested || requested === 'auto' || requested === 'anidb') return sources;
     const source = sources.find((item) => item.id === requested);
     return source ? [source] : sources;
 }
 
 export const animeVideoSources = {
-    async getStream(anilistId: number, episode: number, requestedSource = 'allmanga', options?: { title?: string, tmdbId?: number }, nocache = false): Promise<StreamResponse | null> {
-        const sourceId = String(requestedSource || 'allmanga').trim().toLowerCase();
-        const cacheKey = `anime:stream:v103:${anilistId}:${episode}:${sourceId}`;
+    async getStream(anilistId: number, episode: number, requestedSource = 'anidb', options?: { title?: string, tmdbId?: number }, nocache = false): Promise<StreamResponse | null> {
+        const sourceId = String(requestedSource || 'anidb').trim().toLowerCase();
+        const cacheKey = `anime:stream:v104:${anilistId}:${episode}:${sourceId}`;
         if (!nocache) {
             const cached = await cacheGet<StreamResponse>(cacheKey);
             if (cached) return cached;

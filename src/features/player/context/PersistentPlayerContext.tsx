@@ -52,11 +52,9 @@ export function PersistentPlayerProvider({ children }: { children: ReactNode }) 
         height: number;
     } | null>(null);
 
-    const searchParams = new URLSearchParams(location.search);
-    const isWatchRoute = location.pathname.startsWith('/anime/details/') || 
-                         (location.pathname.startsWith('/anime/details/') && searchParams.has('ep'));
-    const shouldShowMiniPlayer = Boolean(playerProps && !isClosed && hasStartedPlayback && (!isWatchRoute || !inlineRect));
-    const shouldShowInlinePlayer = Boolean(playerProps && !isClosed && isWatchRoute && inlineRect);
+    const isWatchRoute = location.pathname.startsWith('/anime/details');
+    const shouldShowMiniPlayer = Boolean(playerProps && !isClosed && hasStartedPlayback && !isWatchRoute);
+    const shouldShowInlinePlayer = Boolean(playerProps && !isClosed && isWatchRoute);
     const shouldRenderPlayer = shouldShowMiniPlayer || shouldShowInlinePlayer;
 
     const updateInlineRect = useCallback(() => {

@@ -14,6 +14,10 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string, 
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
     const location = useLocation();
+    const getEpisodeNavigationState = () => ({
+        ...(location.state && typeof location.state === 'object' ? location.state as Record<string, unknown> : {}),
+        preventScrollTop: true,
+    });
 
     // 1. Anime Data
     const animeHook = useAnime();
@@ -348,7 +352,7 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string, 
                 if (targetWatchKey) markEpisodeComplete(targetWatchKey);
                 // Update URL if we defaulted to a different episode or resolved 'latest'
                 if (String(targetEpisodeNumber) !== epNumParam) {
-                    setSearchParams({ ep: String(targetEpisodeNumber) }, { replace: true });
+                    setSearchParams({ ep: String(targetEpisodeNumber) }, { replace: true, state: getEpisodeNavigationState() });
                 }
                 setIsPlayerReady(false);
                 loadStream(targetEp);
@@ -622,7 +626,7 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string, 
         const episodeWatchKey = getEpisodeWatchKey(ep);
         if (episodeWatchKey) markEpisodeComplete(episodeWatchKey);
         resetEpisodePlaybackState(false);
-        setSearchParams({ ep: String(episodeNumber) });
+        setSearchParams({ ep: String(episodeNumber) }, { state: getEpisodeNavigationState() });
         loadStream(ep);
     };
 

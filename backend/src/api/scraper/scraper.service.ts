@@ -524,9 +524,9 @@ class ScraperService {
 
     async getStreams(animeSession: string, epSession: string, options?: StreamProviderOptions) {
         const provider = String(options?.provider || 'auto').trim().toLowerCase() || 'auto';
-
+        
         // ── Custom Video Sources (video-sources.ts) ─────────────────────────
-        if (provider === 'vidsrc' || provider === 'vidking' || provider === 'anineko' || provider === 'videasy' || provider === 'reanime') {
+        if (provider === 'vidsrc' || provider === 'vidking' || provider === 'anidb' || provider === 'videasy' || provider === 'reanime' || provider === 'anineko' || provider === 'anikoto') {
             const title = String(options?.title || this.queryFromSessionSlug(animeSession)).trim();
             const parsedAnilistId = parseInt(animeSession, 10);
             const anilistId = options?.anilistId || (!isNaN(parsedAnilistId) && parsedAnilistId > 0 ? parsedAnilistId : undefined);
@@ -553,19 +553,15 @@ class ScraperService {
                 const isHls = /\.m3u8?(?:[?#]|$)/i.test(streamResponse.m3u8);
                 const referer = streamResponse.referer || '';
                 const actualSource = String(streamResponse.source || provider).trim().toLowerCase();
-                // AniNeko needs proxy with maskCheck for PNG-masked .ts chunks.
-                // ReAnime streams go direct to browser — fetch.flixcloud.cc blocks server-side
-                // requests (Cloudflare WAF) but works with Electron's real Chrome TLS fingerprint.
                 let proxyMedia = '';
                 if (actualSource === 'anineko') proxyMedia = '&proxyMedia=1&maskCheck=1';
                 
                 let masterUrl = streamResponse.m3u8;
-                // Proxy only AniNeko through backend. ReAnime/VidSrc/VidKing/Videasy go direct to browser.
-                if (actualSource === 'anineko' && masterUrl.startsWith('http')) {
-                    masterUrl = `/api/scraper/proxy?url=${encodeURIComponent(masterUrl)}&referer=${encodeURIComponent(referer)}${proxyMedia}&audio=jpn`;
+                if ((actualSource === 'anineko' || actualSource === 'anikoto' || actualSource === 'anidb') && masterUrl.startsWith('http')) {
+                    masterUrl = `/api/scraper/proxy?url=${encodeURIComponent(masterUrl)}&referer=${encodeURIComponent(referer)}${proxyMedia}`;
                 }
                 
-                const serverName = actualSource === 'reanime' ? 'ReAnime' : actualSource === 'anineko' ? 'AniNeko' : actualSource === 'anikoto' ? 'Anikoto' : actualSource === 'videasy' ? 'Videasy' : actualSource === 'vidking' ? 'VidKing' : 'VidSrc';
+                const serverName = actualSource === 'anidb' ? 'AniDB' : actualSource === 'videasy' ? 'Videasy' : actualSource === 'vidking' ? 'VidKing' : actualSource === 'vidsrc' ? 'VidSrc' : actualSource.toUpperCase();
 
                 const streamsList: any[] = [{
                     quality: 'auto',
@@ -581,8 +577,8 @@ class ScraperService {
 
                 if (streamResponse.dubM3u8) {
                     let dubMasterUrl = streamResponse.dubM3u8;
-                    if (actualSource === 'anineko' && dubMasterUrl.startsWith('http')) {
-                        dubMasterUrl = `/api/scraper/proxy?url=${encodeURIComponent(dubMasterUrl)}&referer=${encodeURIComponent(referer)}${proxyMedia}&audio=eng`;
+                    if ((actualSource === 'anineko' || actualSource === 'anikoto' || actualSource === 'anidb') && dubMasterUrl.startsWith('http')) {
+                        dubMasterUrl = `/api/scraper/proxy?url=${encodeURIComponent(dubMasterUrl)}&referer=${encodeURIComponent(referer)}${proxyMedia}`;
                     }
                     streamsList.push({
                         quality: 'auto',
@@ -600,8 +596,8 @@ class ScraperService {
                 if (Array.isArray(streamResponse.variants) && streamResponse.variants.length > 0) {
                     for (const v of streamResponse.variants) {
                         let vUrl = v.url;
-                        if (actualSource === 'anineko' && vUrl.startsWith('http')) {
-                            vUrl = `/api/scraper/proxy?url=${encodeURIComponent(vUrl)}&referer=${encodeURIComponent(referer)}${proxyMedia}&audio=jpn`;
+                        if ((actualSource === 'anineko' || actualSource === 'anikoto' || actualSource === 'anidb') && vUrl.startsWith('http')) {
+                            vUrl = `/api/scraper/proxy?url=${encodeURIComponent(vUrl)}&referer=${encodeURIComponent(referer)}${proxyMedia}`;
                         }
                         streamsList.push({
                             quality: v.quality,
@@ -620,8 +616,8 @@ class ScraperService {
                 if (Array.isArray(streamResponse.dubVariants) && streamResponse.dubVariants.length > 0) {
                     for (const v of streamResponse.dubVariants) {
                         let vUrl = v.url;
-                        if (actualSource === 'anineko' && vUrl.startsWith('http')) {
-                            vUrl = `/api/scraper/proxy?url=${encodeURIComponent(vUrl)}&referer=${encodeURIComponent(referer)}${proxyMedia}&audio=eng`;
+                        if ((actualSource === 'anineko' || actualSource === 'anikoto' || actualSource === 'anidb') && vUrl.startsWith('http')) {
+                            vUrl = `/api/scraper/proxy?url=${encodeURIComponent(vUrl)}&referer=${encodeURIComponent(referer)}${proxyMedia}`;
                         }
                         streamsList.push({
                             quality: v.quality,
@@ -650,19 +646,14 @@ class ScraperService {
             const format = options?.format;
             const titles = options?.titles;
 
-            // Resolve exact AniList season title to fix AllManga's strict season separation
-            // We use seasonNumber = 1 because the `title` from Yorumi is ALREADY the specific season's title
-            const anilistResult = await anilistService.resolveSeasonTitle(title, 1);
-            
-            const baseTitle = anilistResult.romaji || anilistResult.title || title;
-            const searchTitle = baseTitle;
-            
-            // Re-assign title to the romaji version for AllManga search
-            title = searchTitle;
-            
-            // If the romaji title is drastically different from the query, the showId might be invalid
-            if (searchTitle !== baseTitle) {
-                showId = '';
+            // Only resolve season title if showId is missing
+            const isAllMangaSession = AllMangaScraper.isAllMangaSession(showId);
+            if (!isAllMangaSession && title) {
+                const anilistResult = await anilistService.resolveSeasonTitle(title, 1).catch(() => ({ romaji: '', title: '' }));
+                const baseTitle = anilistResult.romaji || anilistResult.title || title;
+                if (baseTitle) {
+                    title = baseTitle;
+                }
             }
 
             const key = `streams:allmanga:v7:${showId || title.toLowerCase()}:${episodeNumber || epSession}:${year || ''}`;

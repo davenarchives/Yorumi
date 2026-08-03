@@ -18,19 +18,23 @@ interface DetailsVideoPlayerProps {
 
 export default function DetailsVideoPlayer({ animeId, animeTitle, onClose, isWatched, onMarkWatched, isResolvingEpisode = false, fallbackEpisode = null, prevEpisode = null, nextEpisode = null }: DetailsVideoPlayerProps) {
     const location = useLocation();
-    const [searchParams, setSearchParams] = useSearchParams();
+    const [, setSearchParams] = useSearchParams();
     const { registerPlayer, setInlinePlayerElement } = usePersistentPlayer();
+    const getEpisodeNavigationState = () => ({
+        ...(location.state && typeof location.state === 'object' ? location.state as Record<string, unknown> : {}),
+        preventScrollTop: true,
+    });
 
     const goToPrevEp = () => {
         if (!prevEpisode) return;
         const num = prevEpisode._tmdbAbsolute || prevEpisode.playbackEpisodeNumber || prevEpisode.episodeNumber;
-        if (num) setSearchParams({ ep: String(num) });
+        if (num) setSearchParams({ ep: String(num) }, { state: getEpisodeNavigationState() });
     };
 
     const goToNextEp = () => {
         if (!nextEpisode) return;
         const num = nextEpisode._tmdbAbsolute || nextEpisode.playbackEpisodeNumber || nextEpisode.episodeNumber;
-        if (num) setSearchParams({ ep: String(num) });
+        if (num) setSearchParams({ ep: String(num) }, { state: getEpisodeNavigationState() });
     };
 
     const {

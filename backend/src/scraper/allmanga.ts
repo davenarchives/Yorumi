@@ -900,28 +900,9 @@ export class AllMangaScraper {
 
     private async fetchAnidbUrl(url: string): Promise<string> {
         try {
-            const { stdout } = await execFileAsync('curl', [
-                '-sL',
-                url,
-                '-A',
-                USER_AGENT,
-                '-H',
-                'Accept: application/json',
-                '-H',
-                'Referer: https://anidb.app/',
-                '--max-time',
-                '10',
-            ]);
-            if (stdout && stdout.trim().length > 0) {
-                return stdout.trim();
-            }
-        } catch {
-            // ignore
-        }
-        try {
             const res = await axios.get(url, {
                 headers: { 'User-Agent': USER_AGENT, Accept: 'application/json', Referer: 'https://anidb.app/' },
-                timeout: 10_000,
+                timeout: 3000,
             });
             return typeof res.data === 'string' ? res.data : JSON.stringify(res.data);
         } catch {
@@ -1011,33 +992,22 @@ export class AllMangaScraper {
     async getLinksForShowId(showId: string, episodeNumber: number, title?: string, year?: number): Promise<StreamLink[]> {
         if (!showId || !Number.isFinite(episodeNumber) || episodeNumber <= 0) return [];
 
+        const cleanShowId = AllMangaScraper.fromSession(showId) || showId;
         const allLinks: StreamLink[] = [];
         const audios: readonly TranslationType[] = ['sub', 'dub'];
         
         await Promise.all(audios.map(async (audio) => {
-            let activeShowId = showId;
-
-            if (title) {
-                const altShow = await this.resolveShow(title, audio, episodeNumber, year);
-                if (altShow?._id) {
-                    const currentShow = await this.getShowById(showId).catch(() => null);
-                    const currentScore = currentShow ? this.scoreShow(title, currentShow, audio, episodeNumber, year) : 0;
-                    const altScore = this.scoreShow(title, altShow, audio, episodeNumber, year);
-                    if (altShow._id !== showId && altScore >= currentScore) {
-                        activeShowId = altShow._id;
-                    }
-                }
-            }
-
+            let activeShowId = cleanShowId;
             let sources = await this.getEpisodeSources(activeShowId, episodeNumber, audio);
-            
-            // Fallback to title search if the current showId doesn't have this audio track (common for sub/dub split shows)
+
+            // Fallback to title search if the current showId doesn't have this audio track or episode
             if (sources.length === 0 && title) {
                 const cleanTitle = String(title || '').trim();
                 if (cleanTitle) {
                     const altShow = await this.resolveShow(cleanTitle, audio, episodeNumber, year);
                     if (altShow?._id && altShow._id !== activeShowId) {
-                        sources = await this.getEpisodeSources(altShow._id, episodeNumber, audio);
+                        activeShowId = altShow._id;
+                        sources = await this.getEpisodeSources(activeShowId, episodeNumber, audio);
                     }
                 }
             }

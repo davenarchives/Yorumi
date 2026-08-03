@@ -130,11 +130,8 @@ export default function CustomVideoControls({
             );
             if (index >= 0) {
                 onQualityChange(index);
-                setSelectedHlsQuality(quality);
-            } else {
-                onSetAutoQuality();
-                setSelectedHlsQuality('Auto');
             }
+            setSelectedHlsQuality(quality);
         }
         setSettingsView('main');
     };    
@@ -143,45 +140,34 @@ export default function CustomVideoControls({
     const outroSkip = skipTimestamps.find(ts => ts.skipType === 'outro');
 
     const [hoverProgress, setHoverProgress] = useState<{ x: number; time: number } | null>(null);
-    const [hoverSprite, setHoverSprite] = useState<{ url: string; col: number; row: number; spriteGrid: { columns: number; rows: number }; interval: number } | null>(null);
-    const [hoverThumbnailUrl, setHoverThumbnailUrl] = useState<string | null>(null);
+    const getMediaDuration = useCallback((video: HTMLVideoElement | null | undefined) => {
+        if (!video) return 0;
+        const directDuration = Number(video.duration);
+        if (Number.isFinite(directDuration) && directDuration > 0) return directDuration;
 
-    const getHoverThumbnail = useCallback((time: number) => {
-        const thumbnails = currentStream?.thumbnails;
-        if (!thumbnails) return { sprite: null, url: null };
-
-        if (thumbnails.spriteUrl && thumbnails.spriteGrid) {
-            const interval = thumbnails.interval || 10;
-            const frameIndex = Math.floor(time / interval);
-            const col = frameIndex % thumbnails.spriteGrid.columns;
-            const row = Math.floor(frameIndex / thumbnails.spriteGrid.columns);
-            if (row < thumbnails.spriteGrid.rows) {
-                return {
-                    sprite: { url: thumbnails.spriteUrl, col, row, spriteGrid: thumbnails.spriteGrid, interval },
-                    url: null
-                };
+        try {
+            const seekable = video.seekable;
+            if (seekable && seekable.length > 0) {
+                const end = Number(seekable.end(seekable.length - 1));
+                return Number.isFinite(end) && end > 0 ? end : 0;
             }
+        } catch {
+            return 0;
         }
 
-
-
-        return { sprite: null, url: null };
-    }, [currentStream?.thumbnails]);
+        return 0;
+    }, []);
 
     const handleProgressHover = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
         const rect = e.currentTarget.getBoundingClientRect();
         const x = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-        const time = x * duration;
+        const activeDuration = getMediaDuration(videoRef.current) || duration;
+        const time = x * activeDuration;
         setHoverProgress({ x, time });
-        const { sprite, url } = getHoverThumbnail(time);
-        setHoverSprite(sprite);
-        setHoverThumbnailUrl(url);
-    }, [duration, getHoverThumbnail]);
+    }, [duration, getMediaDuration, videoRef]);
 
     const handleProgressLeave = useCallback(() => {
         setHoverProgress(null);
-        setHoverSprite(null);
-        setHoverThumbnailUrl(null);
     }, []);
 
     const formatTime = (timeInSeconds: number) => {
@@ -244,8 +230,14 @@ export default function CustomVideoControls({
         const video = videoRef.current;
         if (!video) return;
 
-        const updateTime = () => setCurrentTime(video.currentTime);
-        const updateDuration = () => setDuration(video.duration);
+        const updateDuration = () => {
+            const nextDuration = getMediaDuration(video);
+            if (nextDuration > 0) setDuration(nextDuration);
+        };
+        const updateTime = () => {
+            setCurrentTime(Number.isFinite(video.currentTime) ? video.currentTime : 0);
+            updateDuration();
+        };
         
         // Restore volume and playback state on new video elements
         video.volume = volume;
@@ -266,12 +258,21 @@ export default function CustomVideoControls({
 
         video.addEventListener('timeupdate', updateTime);
         video.addEventListener('loadedmetadata', updateDuration);
+        video.addEventListener('durationchange', updateDuration);
+        video.addEventListener('loadeddata', updateDuration);
+        video.addEventListener('canplay', updateDuration);
+        video.addEventListener('progress', updateDuration);
         video.addEventListener('play', updatePlayState);
         video.addEventListener('pause', updatePlayState);
         video.addEventListener('volumechange', updateVolume);
+        updateTime();
         return () => {
             video.removeEventListener('timeupdate', updateTime);
             video.removeEventListener('loadedmetadata', updateDuration);
+            video.removeEventListener('durationchange', updateDuration);
+            video.removeEventListener('loadeddata', updateDuration);
+            video.removeEventListener('canplay', updateDuration);
+            video.removeEventListener('progress', updateDuration);
             video.removeEventListener('play', updatePlayState);
             video.removeEventListener('pause', updatePlayState);
             video.removeEventListener('volumechange', updateVolume);
@@ -331,20 +332,38 @@ export default function CustomVideoControls({
         if (videoRef.current) {
             videoRef.current.currentTime = time;
             setCurrentTime(time);
+            const nextDuration = getMediaDuration(videoRef.current);
+            if (nextDuration > 0) setDuration(nextDuration);
         }
     };
 
     const seekBy = (seconds: number) => {
         const video = videoRef.current;
         if (!video) return;
-        const durationSeconds = Number.isFinite(video.duration) ? video.duration : 0;
+        const durationSeconds = getMediaDuration(video);
         const nextTime = Math.max(0, Math.min(durationSeconds || Number.MAX_SAFE_INTEGER, video.currentTime + seconds));
         video.currentTime = nextTime;
         setCurrentTime(nextTime);
         handleMouseMove();
     };
 
-    const progressPercentage = duration ? (currentTime / duration) * 100 : 0;
+    const activeDuration = getMediaDuration(videoRef.current) || duration;
+    const progressPercentage = activeDuration ? Math.max(0, Math.min(100, (currentTime / activeDuration) * 100)) : 0;
+    const renderHoverPreview = () => {
+        if (!hoverProgress) return null;
+
+        return (
+            <div
+                className="absolute bottom-full left-0 z-20 mb-2 -translate-x-1/2 pointer-events-none"
+                style={{ left: `${hoverProgress.x * 100}%` }}
+            >
+                <div className="rounded bg-white px-2 py-1 text-xs font-medium leading-none text-slate-600 shadow-lg">
+                    {formatTime(hoverProgress.time)}
+                </div>
+                <div className="mx-auto -mt-1 h-2 w-2 rotate-45 bg-white shadow-lg" />
+            </div>
+        );
+    };
 
     useEffect(() => {
         const playerShell = videoRef.current?.closest('.watch-player-shell') as HTMLElement;
@@ -462,22 +481,32 @@ export default function CustomVideoControls({
                     </div>
 
                     <div className="absolute inset-x-0 bottom-0 flex flex-col gap-2 p-2 bg-gradient-to-t from-black/70 via-black/40 to-transparent">
-                        <div className="relative h-1 w-full cursor-pointer overflow-hidden rounded-full bg-white/25">
-                            {introSkip && (
+                        <div
+                            className="relative h-5 w-full cursor-pointer group/progress"
+                            onMouseMove={handleProgressHover}
+                            onMouseLeave={handleProgressLeave}
+                        >
+                            <div className="absolute left-0 right-0 top-1/2 h-2 -translate-y-1/2 overflow-hidden rounded-full bg-white/25 shadow-inner">
+                                {introSkip && (
+                                    <div
+                                        className="absolute top-0 h-full rounded-full bg-emerald-400/35"
+                                        style={getSkipRangeStyle(introSkip) || undefined}
+                                    />
+                                )}
+                                {outroSkip && (
+                                    <div
+                                        className="absolute top-0 h-full rounded-full bg-amber-400/35"
+                                        style={getSkipRangeStyle(outroSkip) || undefined}
+                                    />
+                                )}
                                 <div
-                                    className="absolute top-0 h-full rounded-full bg-emerald-400/30"
-                                    style={getSkipRangeStyle(introSkip) || undefined}
+                                    className="absolute left-0 top-0 h-full rounded-full bg-yorumi-accent"
+                                    style={{ width: `${progressPercentage}%` }}
                                 />
-                            )}
-                            {outroSkip && (
-                                <div
-                                    className="absolute top-0 h-full rounded-full bg-amber-400/30"
-                                    style={getSkipRangeStyle(outroSkip) || undefined}
-                                />
-                            )}
+                            </div>
                             <div
-                                className="absolute left-0 top-0 h-full rounded-full bg-white"
-                                style={{ width: `${progressPercentage}%` }}
+                                className="absolute top-1/2 z-20 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow"
+                                style={{ left: `${progressPercentage}%` }}
                             />
                             <input
                                 type="range"
@@ -485,8 +514,9 @@ export default function CustomVideoControls({
                                 max={duration || 100}
                                 value={currentTime}
                                 onChange={handleSeek}
-                                className="absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0 outline-none focus:outline-none focus:ring-0"
+                                className="absolute inset-0 z-30 h-full w-full cursor-pointer opacity-0 outline-none focus:outline-none focus:ring-0"
                             />
+                            {renderHoverPreview()}
                         </div>
 
                         <div className="flex items-center gap-2">
@@ -541,26 +571,32 @@ export default function CustomVideoControls({
             >
                 <div className="mx-auto max-w-5xl flex flex-col gap-3 sm:gap-4 pointer-events-auto">
                     {/* Scrubber / Progress Bar */}
-                    <div 
-                        className="relative h-1 w-full bg-white/20 cursor-pointer group overflow-hidden rounded-full"
+                    <div
+                        className="relative h-7 w-full cursor-pointer group/progress"
                         onMouseMove={handleProgressHover}
                         onMouseLeave={handleProgressLeave}
                     >
-                        {introSkip && (
+                        <div className="absolute left-0 right-0 top-1/2 h-2.5 -translate-y-1/2 overflow-hidden rounded-full bg-white/25 shadow-inner">
+                            {introSkip && (
+                                <div
+                                    className="absolute top-0 h-full rounded-full bg-emerald-400/35"
+                                    style={getSkipRangeStyle(introSkip) || undefined}
+                                />
+                            )}
+                            {outroSkip && (
+                                <div
+                                    className="absolute top-0 h-full rounded-full bg-amber-400/35"
+                                    style={getSkipRangeStyle(outroSkip) || undefined}
+                                />
+                            )}
                             <div
-                                className="absolute top-0 h-full rounded-full bg-emerald-400/30"
-                                style={getSkipRangeStyle(introSkip) || undefined}
+                                className="absolute left-0 top-0 h-full rounded-full bg-yorumi-accent"
+                                style={{ width: `${progressPercentage}%` }}
                             />
-                        )}
-                        {outroSkip && (
-                            <div
-                                className="absolute top-0 h-full rounded-full bg-amber-400/30"
-                                style={getSkipRangeStyle(outroSkip) || undefined}
-                            />
-                        )}
-                        <div 
-                            className="absolute top-0 left-0 h-full bg-white rounded-full transition-all duration-150 ease-out"
-                            style={{ width: `${progressPercentage}%` }}
+                        </div>
+                        <div
+                            className="absolute top-1/2 z-20 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow"
+                            style={{ left: `${progressPercentage}%` }}
                         />
                         <input
                             type="range"
@@ -568,44 +604,9 @@ export default function CustomVideoControls({
                             max={duration || 100}
                             value={currentTime}
                             onChange={handleSeek}
-                            className="absolute inset-0 w-full h-full cursor-pointer opacity-0 outline-none focus:outline-none focus:ring-0 z-10"
+                            className="absolute inset-0 z-30 h-full w-full cursor-pointer opacity-0 outline-none focus:outline-none focus:ring-0"
                         />
-                        {/* Hover thumb */}
-                        <div 
-                            className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow"
-                            style={{ left: `calc(${progressPercentage}% - 6px)` }}
-                        />
-                        {/* Hover Preview Thumbnail */}
-                        {hoverProgress && (hoverSprite || hoverThumbnailUrl) && (
-                            <div 
-                                className="absolute bottom-full left-0 mb-2 transform -translate-x-1/2 transition-all duration-150 pointer-events-none z-20"
-                                style={{ left: `${hoverProgress.x * 100}%` }}
-                            >
-                                <div className="relative bg-black/90 rounded-lg overflow-hidden shadow-2xl border border-white/10">
-                                    {hoverSprite ? (
-                                        <div 
-                                            className="w-48 h-27"
-                                            style={{
-                                                backgroundImage: `url(${hoverSprite.url})`,
-                                                backgroundSize: `${hoverSprite.spriteGrid.columns * 100}% ${hoverSprite.spriteGrid.rows * 100}%`,
-                                                backgroundPosition: `${hoverSprite.col / (hoverSprite.spriteGrid.columns - 1) * 100}% ${hoverSprite.row / (hoverSprite.spriteGrid.rows - 1) * 100}%`,
-                                            }}
-                                        />
-                                    ) : hoverThumbnailUrl && (
-                                        <img 
-                                            src={hoverThumbnailUrl} 
-                                            alt={`Preview at ${formatTime(hoverProgress.time)}`}
-                                            className="w-48 h-27 object-cover"
-                                            loading="lazy"
-                                        />
-                                    )}
-                                    <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black to-transparent px-2 py-1 text-xs text-white/80">
-                                        {formatTime(hoverProgress.time)}
-                                    </div>
-                                </div>
-                                <div className="w-2 h-2 bg-black/90 rotate-45 mx-auto -mt-1 border-r border-b border-white/10" />
-                            </div>
-                        )}
+                        {renderHoverPreview()}
                     </div>
 
                     {/* Controls */}
@@ -794,17 +795,6 @@ export default function CustomVideoControls({
                                             <div className="flex flex-col gap-0.5">
                                                 {QUALITY_OPTIONS.map((quality) => {
                                                     const isAutoOption = quality === 'Auto';
-                                                    const targetHeight = parseInt(quality, 10);
-
-                                                    const hasHlsLevel = hlsLevels && hlsLevels.length > 0 && (
-                                                        isAutoOption || hlsLevels.some((h) => Math.abs(h - targetHeight) <= 150)
-                                                    );
-
-                                                    const streamIndex = isAutoOption
-                                                        ? streams.findIndex((stream) => getMappedQuality(stream.quality).toLowerCase() === 'auto')
-                                                        : streams.findIndex((stream) => getMappedQuality(stream.quality).toLowerCase() === quality.toLowerCase());
-
-                                                    const isAvailable = isAutoOption || hasHlsLevel || streamIndex >= 0 || (Boolean(hlsLevels && hlsLevels.length > 0) && !isNaN(targetHeight));
                                                     const isSelected = isAutoOption
                                                         ? (isAutoQuality && selectedHlsQuality === 'Auto')
                                                         : (selectedHlsQuality.toLowerCase() === quality.toLowerCase() || (!isAutoQuality && currentQuality.toLowerCase() === quality.toLowerCase()));
@@ -813,8 +803,7 @@ export default function CustomVideoControls({
                                                         <button
                                                             key={quality}
                                                             onClick={() => handleQualitySelect(quality)}
-                                                            disabled={!isAvailable}
-                                                            className={`flex w-full items-center justify-between rounded-lg p-2 text-left transition-colors disabled:opacity-40 ${isSelected ? 'bg-white/15 text-white' : 'text-white/80 hover:bg-white/10'}`}
+                                                            className={`flex w-full items-center justify-between rounded-lg p-2 text-left transition-colors ${isSelected ? 'bg-white/15 text-white' : 'text-white/80 hover:bg-white/10'}`}
                                                         >
                                                             <span className="text-xs font-medium">{quality}</span>
                                                             {isSelected ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Circle className="h-3.5 w-3.5" />}

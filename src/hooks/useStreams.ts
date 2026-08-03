@@ -26,6 +26,7 @@ const getSourceLabel = (stream: StreamLink) => {
     if (key === 'vidsrc') return 'VidSrc';
     if (key === 'vidking') return 'VidKing';
     if (key === 'videasy') return 'Videasy';
+    if (key === 'anidb') return 'AniDB';
     if (key === 'allmanga') return 'AllManga';
     return key
         .replace(/[-_]+/g, ' ')
@@ -39,18 +40,15 @@ type StreamLookupMetadata = {
     anilistId?: number;
 };
 
-export type StreamServerKey = 'allmanga' | 'anineko' | 'anikoto' | 'vidsrc' | 'vidking' | 'videasy';
+export type StreamServerKey = 'anidb' | 'vidsrc' | 'vidking' | 'videasy';
 
 const STREAM_SERVER_OPTIONS: Array<{ key: StreamServerKey; label: string }> = [
-    { key: 'allmanga', label: 'AllManga' },
-    { key: 'anineko', label: 'AniNeko' },
-    { key: 'anikoto', label: 'Anikoto' },
+    { key: 'anidb', label: 'AniDB' },
     { key: 'vidsrc', label: 'VidSrc' },
     { key: 'vidking', label: 'VidKing' },
     { key: 'videasy', label: 'Videasy' },
 ];
 
-const ALLMANGA_FALLBACK_SERVERS: StreamServerKey[] = ['vidsrc', 'vidking', 'videasy'];
 
 export function useStreams(scraperSession: string | null, animeTitle?: string, animeMetadata?: StreamLookupMetadata) {
     const [currentEpisode, setCurrentEpisode] = useState<Episode | null>(null);
@@ -59,13 +57,13 @@ export function useStreams(scraperSession: string | null, animeTitle?: string, a
     const [selectedStreamIndex, setSelectedStreamIndex] = useState<number>(0);
     const [isAutoQuality, setIsAutoQuality] = useState(true);
     const [selectedAudio, setSelectedAudio] = useState<'sub' | 'dub'>('sub');
-    const [selectedServer, setSelectedServer] = useState<StreamServerKey>('allmanga');
+    const [selectedServer, setSelectedServer] = useState<StreamServerKey>('anidb');
     const [showQualityMenu, setShowQualityMenu] = useState(false);
     const [streamLoading, setStreamLoading] = useState(false);
     const [serverSwitchLoading, setServerSwitchLoading] = useState(false);
     const streamCache = useRef(new Map<string, Promise<StreamLink[]>>());
     const activeLoadRequestRef = useRef(0);
-    const previousServerRef = useRef<StreamServerKey>('allmanga');
+    const previousServerRef = useRef<StreamServerKey>('anidb');
 
     const currentStream = streams[selectedStreamIndex] || null;
     const normalizeDirectScraperSession = (value: unknown) => {
@@ -161,15 +159,6 @@ export function useStreams(scraperSession: string | null, animeTitle?: string, a
 
     const resolveStreamDataWithFallback = useCallback(async (episode: Episode, server: StreamServerKey) => {
         const primary = await ensureStreamDataForServer(episode, server);
-        if (primary.length > 0 || server !== 'allmanga') {
-            return { server, data: primary };
-        }
-
-        for (const fallbackServer of ALLMANGA_FALLBACK_SERVERS) {
-            const data = await ensureStreamDataForServer(episode, fallbackServer);
-            if (data.length > 0) return { server: fallbackServer, data };
-        }
-
         return { server, data: primary };
     }, [ensureStreamDataForServer]);
 
@@ -419,7 +408,7 @@ export function useStreams(scraperSession: string | null, animeTitle?: string, a
         setStreams([]);
         setSelectedStreamIndex(0);
         setSelectedAudio('sub');
-        setSelectedServer('allmanga');
+        setSelectedServer('anidb');
         setStreamLoading(false);
         setServerSwitchLoading(false);
         streamCache.current.clear();

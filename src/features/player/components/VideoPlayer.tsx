@@ -164,14 +164,13 @@ export default function VideoPlayer(props: VideoPlayerProps) {
     const getServerDisplayName = (key: string) => {
         const option = serverOptions?.find((s) => s.key === key);
         if (option?.label) return option.label;
-        if (key === 'reanime') return 'ReAnime';
-        if (key === 'animegg') return 'AnimeGG';
-        if (key === 'anineko') return 'AniNeko';
-        if (key === 'allmanga') return 'AllManga';
+        if (key === 'anidb') return 'AniDB';
         if (key === 'vidsrc') return 'VidSrc';
         if (key === 'vidking') return 'VidKing';
         if (key === 'videasy') return 'Videasy';
-        if (key === 'auto') return 'AllManga';
+        if (key === 'reanime') return 'ReAnime';
+        if (key === 'animegg') return 'AnimeGG';
+        if (key === 'auto') return 'AniDB';
         return key.replace(/[-_]+/g, ' ').replace(/\b\w/g, (match) => match.toUpperCase());
     };
 
