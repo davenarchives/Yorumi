@@ -24,7 +24,9 @@ function App() {
     ));
 
     const queryParams = new URLSearchParams(location.search);
-    const activeTab = location.pathname.startsWith('/manga')
+    const activeTab = location.pathname.startsWith('/ln') || queryParams.get('type') === 'ln'
+        ? 'ln'
+        : location.pathname.startsWith('/manga')
         || queryParams.get('type') === 'manga'
         || queryParams.get('tab') === 'continue-reading'
         || queryParams.get('tab') === 'readlist'
@@ -65,7 +67,7 @@ function App() {
     return (
         <LazyMotion features={domAnimation}>
             <MotionConfig reducedMotion="user" transition={gentleTransition}>
-                <div className={`min-h-screen bg-yorumi-bg text-white font-sans ${activeTab === 'manga' ? 'selection:bg-yorumi-manga' : 'selection:bg-yorumi-accent'} selection:text-white overflow-x-hidden`}>
+                <div className={`min-h-screen bg-yorumi-bg text-white font-sans ${activeTab === 'ln' ? 'selection:bg-yorumi-ln selection:text-black' : activeTab === 'manga' ? 'selection:bg-yorumi-manga selection:text-white' : 'selection:bg-yorumi-accent selection:text-white'} overflow-x-hidden`}>
                     {/* Electron drag region */}
                     <div 
                         className="fixed top-0 left-[70px] right-[150px] h-8 z-[9999]" 
@@ -73,7 +75,7 @@ function App() {
                     />
                     
                     <div className="fixed inset-0 pointer-events-none z-0">
-                        <div className={`absolute top-[-10%] left-[-10%] w-[40%] h-[40%] ${activeTab === 'manga' ? 'bg-yorumi-manga/5' : 'bg-yorumi-accent/5'} rounded-full blur-[120px]`} />
+                        <div className={`absolute top-[-10%] left-[-10%] w-[40%] h-[40%] ${activeTab === 'ln' ? 'bg-yorumi-ln/5' : activeTab === 'manga' ? 'bg-yorumi-manga/5' : 'bg-yorumi-accent/5'} rounded-full blur-[120px]`} />
                         <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-yorumi-main/5 rounded-full blur-[120px]" />
                     </div>
 
@@ -85,7 +87,7 @@ function App() {
                             <AppRoutes />
                         </PersistentPlayerProvider>
 
-                        <ScrollToTop activeTab={activeTab as 'anime' | 'manga'} isVisible={showScrollToTop} />
+                        <ScrollToTop activeTab={activeTab as 'anime' | 'manga' | 'ln'} isVisible={showScrollToTop} />
                     </div>
                     
                     <UpdateModal />

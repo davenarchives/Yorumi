@@ -4,7 +4,7 @@ import { useDebounce } from '../../../hooks/useDebounce';
 import { searchApi, type SearchPreviewItem } from '../api';
 
 interface UseNavbarSearchOptions {
-    activeTab: 'anime' | 'manga';
+    activeTab: 'anime' | 'manga' | 'ln';
     language: TitleLanguage;
 }
 
@@ -42,7 +42,9 @@ export function useNavbarSearch({ activeTab, language }: UseNavbarSearchOptions)
             try {
                 const results = activeTab === 'anime'
                     ? await searchApi.getAnimePreview(term, language)
-                    : await searchApi.getMangaPreview(term, language);
+                    : activeTab === 'manga'
+                    ? await searchApi.getMangaPreview(term, language)
+                    : await searchApi.getLNPreview(term, language);
 
                 if (requestId !== searchRequestIdRef.current) return;
 

@@ -1,19 +1,23 @@
 import { useState, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { ArrowLeft, Search, Tv, BookOpen, Library, LogOut } from 'lucide-react';
+import { ArrowLeft, Search, Tv, BookOpen, BookText, Library, LogOut } from 'lucide-react';
 import SearchModal from '../shared/SearchModal';
 import { useContinueReading } from '../../hooks/useContinueReading';
 import { useContinueWatching } from '../../hooks/useContinueWatching';
 import { useWatchList } from '../../hooks/useWatchList';
 import { useReadList } from '../../hooks/useReadList';
+import { useLNReadList } from '../../hooks/useLNReadList';
+import { useContinueLNReading } from '../../hooks/useContinueLNReading';
 import { getDirectScraperRouteId } from '../../utils/animeNavigation';
 import { slugify } from '../../utils/slugify';
 import type { ReadListItem, WatchListItem } from '../../utils/storage';
+import type { LNReadListItem } from '../../types/ln';
 import yorumiIcon from '../../assets/yorumi-icon.png';
 
 type SavedSidebarItem =
-    | (WatchListItem & { isManga: false })
-    | (ReadListItem & { isManga: true });
+    | (WatchListItem & { isType: 'anime' })
+    | (ReadListItem & { isType: 'manga' })
+    | (LNReadListItem & { isType: 'ln' });
 
 const toPositiveNumber = (value: unknown) => {
     const parsed = Number(value);
@@ -66,13 +70,15 @@ export default function Sidebar() {
     const navigate = useNavigate();
     const location = useLocation();
     const [isSearchOpen, setIsSearchOpen] = useState(false);
-    const [searchType, setSearchType] = useState<'anime' | 'manga'>('anime');
+    const [searchType, setSearchType] = useState<'anime' | 'manga' | 'ln'>('anime');
     const [hoveredCard, setHoveredCard] = useState<{title: string, top: number} | null>(null);
 
     const { watchList: normalWatchList } = useWatchList();
     const { readList: normalReadList } = useReadList();
+    const { readList: lnReadList } = useLNReadList();
     const { continueWatchingList } = useContinueWatching();
     const { continueReadingList } = useContinueReading();
+    const { continueReadingList: continueLNList } = useContinueLNReading();
 
     const clickTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const [clickCount, setClickCount] = useState(0);
@@ -81,13 +87,11 @@ export default function Sidebar() {
         setClickCount((prev) => {
             const newCount = prev + 1;
             if (newCount >= 5) {
-                // Must navigate to the Vault interface (\/\ or \/manga\) per guidelines
                 const isManga = location.pathname.startsWith('/manga');
                 navigate(isManga ? '/manga' : '/');
                 return 0;
             }
             if (newCount === 1) {
-                // Only navigate home on the first click, not every click
                 navigate('/');
             }
             return newCount;
@@ -102,14 +106,14 @@ export default function Sidebar() {
     };
 
     const displaySavedItems: SavedSidebarItem[] = [
-        ...normalWatchList.map(item => ({ ...item, isManga: false as const })),
-        ...normalReadList.map(item => ({ ...item, isManga: true as const }))
+        ...normalWatchList.map((item) => ({ ...item, isType: 'anime' as const })),
+        ...normalReadList.map((item) => ({ ...item, isType: 'manga' as const })),
+        ...lnReadList.map((item) => ({ ...item, isType: 'ln' as const })),
     ]
-    .filter((item, index, self) => 
-        // deduplicate by ID across lists just in case
-        index === self.findIndex((t) => t.id === item.id)
-    )
-    .sort((a, b) => new Date(b.addedAt || 0).getTime() - new Date(a.addedAt || 0).getTime());
+        .filter((item, index, self) =>
+            index === self.findIndex((t) => String(t.id) === String(item.id) && t.isType === item.isType)
+        )
+        .sort((a, b) => new Date(b.addedAt || 0).getTime() - new Date(a.addedAt || 0).getTime());
 
     const getMatchingWatchProgress = (item: WatchListItem) => {
         const ids = new Set([
@@ -124,7 +128,17 @@ export default function Sidebar() {
     };
 
     const openSavedItem = (item: SavedSidebarItem) => {
-        if (item.isManga) {
+        if (item.isType === 'ln') {
+            const progress = continueLNList.find((entry) => String(entry.novelId) === String(item.id));
+            if (progress?.chapterId) {
+                navigate(`/ln/read/${slugify(item.title || 'novel')}/${item.id}/${encodeURIComponent(progress.chapterId)}`);
+                return;
+            }
+            navigate(`/ln/details/${item.id}`);
+            return;
+        }
+
+        if (item.isType === 'manga') {
             const progress = continueReadingList.find((entry) => String(entry.mangaId) === String(item.id));
             if (progress?.chapterNumber) {
                 navigate(`/manga/read/${slugify(item.title || 'manga')}/${item.id}/c${progress.chapterNumber}`);
@@ -169,6 +183,13 @@ export default function Sidebar() {
                     icon={ArrowLeft} 
                     title="Back" 
                     onClick={() => {
+                        if (location.pathname.startsWith('/ln/read/')) {
+                            const parts = location.pathname.split('/');
+                            if (parts.length >= 5) {
+                                navigate(`/ln/details/${parts[4]}`);
+                                return;
+                            }
+                        }
                         if (location.pathname.startsWith('/manga/read/')) {
                             const parts = location.pathname.split('/');
                             if (parts.length >= 5) {
@@ -176,12 +197,17 @@ export default function Sidebar() {
                                 return;
                             }
                         }
+                        if (location.pathname.startsWith('/ln/details/')) {
+                            navigate('/ln');
+                            return;
+                        }
+                        if (location.pathname.startsWith('/manga/details/')) {
+                            navigate('/manga');
+                            return;
+                        }
                         if (location.pathname.startsWith('/anime/details/')) {
-                            const parts = location.pathname.split('/');
-                            if (parts.length >= 5) {
-                                navigate(`/anime/details/${parts[4]}`);
-                                return;
-                            }
+                            navigate('/');
+                            return;
                         }
                         navigate(-1);
                     }} 
@@ -191,12 +217,14 @@ export default function Sidebar() {
                     title="Search" 
                     onClick={() => {
                         const isManga = location.pathname.startsWith('/manga');
-                        setSearchType(isManga ? 'manga' : 'anime');
+                        const isLN = location.pathname.startsWith('/ln');
+                        setSearchType(isLN ? 'ln' : isManga ? 'manga' : 'anime');
                         setIsSearchOpen(true);
                     }} 
                 />
-                <SidebarIcon icon={Tv} title="Anime" onClick={() => navigate('/')} isActive={location.pathname === '/' || location.pathname.startsWith('/anime')} />
-                <SidebarIcon icon={BookOpen} title="Manga" onClick={() => navigate('/manga')} isActive={location.pathname === '/manga' || location.pathname.startsWith('/manga')} />
+                <SidebarIcon icon={Tv} title="Anime" onClick={() => navigate('/')} isActive={location.pathname === '/' || location.pathname.startsWith('/anime')} activeColor="bg-yorumi-accent/20 text-yorumi-accent" />
+                <SidebarIcon icon={BookOpen} title="Manga" onClick={() => navigate('/manga')} isActive={location.pathname === '/manga' || location.pathname.startsWith('/manga')} activeColor="bg-yorumi-manga/20 text-yorumi-manga" />
+                <SidebarIcon icon={BookText} title="LN" onClick={() => navigate('/ln')} isActive={location.pathname === '/ln' || location.pathname.startsWith('/ln')} activeColor="bg-amber-400/20 text-amber-400" />
                 <SidebarIcon icon={Library} title="Library" onClick={() => navigate('/library')} isActive={location.pathname === '/library'} />
             </div>
 
@@ -206,7 +234,7 @@ export default function Sidebar() {
                     <div className="w-full flex-1 overflow-y-auto flex flex-col items-center gap-3 px-1 pb-4 scrollbar-thin scrollbar-thumb-transparent hover:scrollbar-thumb-blue-500 scrollbar-track-transparent">
                         {displaySavedItems.map(item => (
                             <button
-                                key={`${item.isManga ? 'manga' : 'anime'}-${item.id}`}
+                                key={`${item.isType}-${item.id}`}
                                 onClick={() => openSavedItem(item)}
                                 onMouseEnter={(e) => {
                                     const rect = e.currentTarget.getBoundingClientRect();
@@ -256,14 +284,15 @@ interface SidebarIconProps {
     title: string;
     onClick: () => void;
     isActive?: boolean;
+    activeColor?: string;
     className?: string;
 }
 
-function SidebarIcon({ icon: Icon, title, onClick, isActive, className }: SidebarIconProps) {
+function SidebarIcon({ icon: Icon, title, onClick, isActive, activeColor = 'bg-yorumi-accent/20 text-yorumi-accent', className }: SidebarIconProps) {
     return (
         <button
             onClick={onClick}
-            className={`w-11 h-11 rounded-xl flex items-center justify-center transition-all duration-200 group relative outline-none focus:outline-none ${isActive ? 'bg-yorumi-accent/20 text-yorumi-accent' : 'text-gray-400 hover:text-white hover:bg-white/10'} ${className || ''}`}
+            className={`w-11 h-11 rounded-xl flex items-center justify-center transition-all duration-200 group relative outline-none focus:outline-none ${isActive ? activeColor : 'text-gray-400 hover:text-white hover:bg-white/10'} ${className || ''}`}
         >
             <Icon className="w-5 h-5" />
             <span className="absolute left-[60px] bg-[#1a1a1a] text-white text-[13px] font-semibold px-3 py-1.5 rounded-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-[150] shadow-xl border border-white/5">

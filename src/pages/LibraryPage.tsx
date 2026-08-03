@@ -3,12 +3,16 @@ import { useNavigate } from 'react-router-dom';
 import Carousel from '../components/ui/Carousel';
 import ContinueWatching from '../features/anime/components/ContinueWatching';
 import MangaContinueReading from '../features/manga/components/MangaContinueReading';
+import LNContinueReading from '../features/ln/components/LNContinueReading';
 import { useContinueReading } from '../hooks/useContinueReading';
 import { useContinueWatching } from '../hooks/useContinueWatching';
+import { useContinueLNReading } from '../hooks/useContinueLNReading';
 import { useReadList } from '../hooks/useReadList';
 import { useWatchList } from '../hooks/useWatchList';
+import { useLNReadList } from '../hooks/useLNReadList';
 import { slugify } from '../utils/slugify';
 import type { WatchListItem } from '../utils/storage';
+
 const getAnimeRouteId = (item: WatchListItem) => {
     const scraperId = item.scraperId;
     if (String(scraperId || '').startsWith('vault') || item.type === 'Vault Video') {
@@ -23,26 +27,36 @@ const getAnimeRouteId = (item: WatchListItem) => {
 export default function LibraryPage() {
     const { continueWatchingList, removeFromHistory: removeWatchingHistory } = useContinueWatching();
     const { continueReadingList, removeFromHistory: removeReadingHistory } = useContinueReading();
+    const { continueReadingList: continueLNList, removeLNProgress } = useContinueLNReading();
     const { watchList, removeFromWatchList } = useWatchList();
     const { readList, removeFromReadList } = useReadList();
+    const { readList: lnReadList, toggleLNReadList } = useLNReadList();
     const navigate = useNavigate();
 
     const filteredWatching = continueWatchingList;
     const filteredReading = continueReadingList;
+    const filteredLN = continueLNList;
     const filteredWatchList = watchList;
     const filteredReadList = readList;
+    const filteredLNList = lnReadList;
 
-    const hasContent = filteredWatching.length > 0 || filteredReading.length > 0 || filteredWatchList.length > 0 || filteredReadList.length > 0;
+    const hasContent =
+        filteredWatching.length > 0 ||
+        filteredReading.length > 0 ||
+        filteredLN.length > 0 ||
+        filteredWatchList.length > 0 ||
+        filteredReadList.length > 0 ||
+        filteredLNList.length > 0;
 
     return (
         <div className="min-h-screen bg-[#0a0a0a] pt-12 pb-24">
             <div className="w-full max-w-7xl mx-auto px-8 md:px-14 relative">
                 <div className="mb-8">
                     <h1 className="mb-2 text-2xl font-bold uppercase tracking-wider text-white">
-                        'MY LIBRARY'
+                        MY LIBRARY
                     </h1>
                     <p className="text-sm text-gray-400">
-                        'Watch history, progress, and saved titles'
+                        Watch history, progress, and saved titles
                     </p>
                 </div>
 
@@ -72,6 +86,16 @@ export default function LibraryPage() {
                         onReadClick={(mangaId, mangaTitle, chapterNumber) => {
                             const title = slugify(mangaTitle || 'manga');
                             navigate(`/manga/read/${title}/${mangaId}/c${chapterNumber}`);
+                        }}
+                    />
+
+                    <LNContinueReading
+                        title={`Continue Reading Light Novels (${filteredLN.length})`}
+                        items={filteredLN}
+                        onRemove={removeLNProgress}
+                        onReadClick={(novelId, novelTitle, chapterId) => {
+                            const title = slugify(novelTitle || 'novel');
+                            navigate(`/ln/read/${title}/${novelId}/${encodeURIComponent(chapterId)}`);
                         }}
                     />
 
@@ -109,7 +133,7 @@ export default function LibraryPage() {
                     )}
 
                     {filteredReadList.length > 0 && (
-                        <Carousel title={`Readlist (${filteredReadList.length})`} variant="portrait">
+                        <Carousel title={`Manga Readlist (${filteredReadList.length})`} variant="portrait">
                             {filteredReadList.map((item) => (
                                 <div
                                     key={item.id}
@@ -135,6 +159,38 @@ export default function LibraryPage() {
                                     </div>
                                     <div className="px-1">
                                         <h4 className="text-sm font-bold text-white/90 truncate group-hover:text-yorumi-manga transition-colors">{item.title}</h4>
+                                    </div>
+                                </div>
+                            ))}
+                        </Carousel>
+                    )}
+
+                    {filteredLNList.length > 0 && (
+                        <Carousel title={`Novellist (${filteredLNList.length})`} variant="portrait">
+                            {filteredLNList.map((item) => (
+                                <div
+                                    key={item.id}
+                                    className="relative group h-full cursor-pointer"
+                                    onClick={() => {
+                                        navigate(`/ln/details/${item.id}`);
+                                    }}
+                                >
+                                    <div className="relative aspect-[3/4] rounded-xl overflow-hidden mb-3 shadow-lg border border-white/5 transition-colors cursor-pointer">
+                                        {item.image && <img src={item.image} alt={item.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />}
+                                        <div className="absolute inset-0 bg-black/40 group-hover:bg-black/20 transition-colors flex items-center justify-center" />
+                                        <button
+                                            className="absolute top-2 right-2 p-1.5 rounded-full bg-black/60 backdrop-blur hover:bg-red-500/80 text-white/80 hover:text-white transition-all opacity-0 group-hover:opacity-100 z-10"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                toggleLNReadList(item);
+                                            }}
+                                            title="Remove from novellist"
+                                        >
+                                            <X className="w-3.5 h-3.5" />
+                                        </button>
+                                    </div>
+                                    <div className="px-1">
+                                        <h4 className="text-sm font-bold text-white/90 truncate group-hover:text-amber-400 transition-colors">{item.title}</h4>
                                     </div>
                                 </div>
                             ))}

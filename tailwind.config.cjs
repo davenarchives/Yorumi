@@ -11,6 +11,7 @@ module.exports = {
                     main: '#00A3FF',  // vibrant Blue
                     accent: '#3DB4F2', // Light Sky Blue (Anime)
                     manga: '#c084fc',  // Light Purple (Manga)
+                    ln: '#fbbf24',     // Light Yellow (Light Novels)
                     bg: '#0a0a0a',    // Deep Dark (Neutral)
                     text: '#ffffff',
                 }

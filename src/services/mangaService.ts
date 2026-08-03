@@ -21,13 +21,20 @@ const SPOTLIGHT_CACHE_TTL = 10 * 60 * 1000;
 const CHAPTER_LIST_CACHE_TTL = 20 * 60 * 1000;
 const CHAPTER_PAGES_CACHE_TTL = 30 * 60 * 1000;
 
+const isEmptyData = (data: any) => {
+    if (!data) return true;
+    if (Array.isArray(data) && data.length === 0) return true;
+    if (Array.isArray(data.data) && data.data.length === 0) return true;
+    return false;
+};
+
 const readPersistedCache = (key: string, ttl: number) => {
     try {
         const raw = localStorage.getItem(`${PERSISTED_CACHE_PREFIX}:${key}`);
         if (!raw) return null;
         const parsed = JSON.parse(raw) as { data: any; timestamp: number };
         if (!parsed || typeof parsed.timestamp !== 'number') return null;
-        if (Date.now() - parsed.timestamp > ttl) {
+        if (Date.now() - parsed.timestamp > ttl || isEmptyData(parsed.data)) {
             localStorage.removeItem(`${PERSISTED_CACHE_PREFIX}:${key}`);
             return null;
         }
@@ -47,11 +54,11 @@ const writePersistedCache = (key: string, data: any, timestamp: number) => {
     }
 };
 
-// Auto-cleanup legacy manga-unified caches on load
+// Auto-cleanup legacy/stale manga caches on load
 try {
     if (typeof window !== 'undefined' && window.localStorage) {
         Object.keys(localStorage).forEach(k => {
-            if (k.includes('manga-unified:') || k.includes('manga-spotlight')) {
+            if (k.includes('manga-unified:') || k.includes('manga-spotlight') || k.includes('manga-top') || k.includes('manga-popular')) {
                 localStorage.removeItem(k);
             }
         });
@@ -63,14 +70,14 @@ try {
 const getCached = (key: string, ttl: number) => {
     const cached = responseCache.get(key);
     if (cached) {
-        if (Date.now() - cached.timestamp < ttl) {
+        if (Date.now() - cached.timestamp < ttl && !isEmptyData(cached.data)) {
             return cached.data;
         }
         responseCache.delete(key);
     }
 
     const persisted = readPersistedCache(key, ttl);
-    if (persisted) {
+    if (persisted && !isEmptyData(persisted)) {
         responseCache.set(key, { data: persisted, timestamp: Date.now() });
         return persisted;
     }
@@ -79,6 +86,7 @@ const getCached = (key: string, ttl: number) => {
 };
 
 const setCached = (key: string, data: any) => {
+    if (isEmptyData(data)) return;
     const timestamp = Date.now();
     responseCache.set(key, { data, timestamp });
     writePersistedCache(key, data, timestamp);
@@ -86,7 +94,7 @@ const setCached = (key: string, data: any) => {
 
 const fetchWithCache = async <T>(cacheKey: string, ttl: number, fetcher: () => Promise<T>): Promise<T> => {
     const cached = getCached(cacheKey, ttl);
-    if (cached) {
+    if (cached && !isEmptyData(cached)) {
         return cached as T;
     }
 
@@ -96,7 +104,9 @@ const fetchWithCache = async <T>(cacheKey: string, ttl: number, fetcher: () => P
 
     const request = fetcher()
         .then((result) => {
-            setCached(cacheKey, result);
+            if (!isEmptyData(result)) {
+                setCached(cacheKey, result);
+            }
             return result;
         })
         .finally(() => {
@@ -278,62 +288,102 @@ export const mangaService = {
     // Fetch top manga from AniList (sorted by SCORE)
     async getTopManga(page: number = 1) {
         return fetchWithCache(`manga-top:${page}`, LIST_CACHE_TTL, async () => {
-            const res = await fetch(`${API_BASE}/anilist/top/manga?page=${page}`);
-            const data = await res.json();
-            return {
-                data: data.media?.map(mapAnilistToManga) || [],
-                pagination: {
-                    last_visible_page: data.pageInfo?.lastPage || 1,
-                    current_page: data.pageInfo?.currentPage || 1,
-                    has_next_page: data.pageInfo?.hasNextPage || false
+            try {
+                const res = await fetch(`${API_BASE}/anilist/top/manga?page=${page}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    const items = data.media?.map(mapAnilistToManga) || [];
+                    if (items.length > 0) {
+                        return {
+                            data: items,
+                            pagination: {
+                                last_visible_page: data.pageInfo?.lastPage || 1,
+                                current_page: data.pageInfo?.currentPage || 1,
+                                has_next_page: data.pageInfo?.hasNextPage || false
+                            }
+                        };
+                    }
                 }
-            };
+            } catch (e) {
+                console.warn('getTopManga failed, using directory fallback', e);
+            }
+            return mangaService.getMangaDirectory(page);
         });
     },
 
     // Fetch trending manga from AniList (sorted by TRENDING)
     async getTrendingManga(page: number = 1) {
-        const res = await fetch(`${API_BASE}/anilist/trending/manga?page=${page}`);
-        const data = await res.json();
-        return {
-            data: data.media?.map(mapAnilistToManga) || [],
-            pagination: {
-                last_visible_page: data.pageInfo?.lastPage || 1,
-                current_page: data.pageInfo?.currentPage || 1,
-                has_next_page: data.pageInfo?.hasNextPage || false
+        try {
+            const res = await fetch(`${API_BASE}/anilist/trending/manga?page=${page}`);
+            if (res.ok) {
+                const data = await res.json();
+                const items = data.media?.map(mapAnilistToManga) || [];
+                if (items.length > 0) {
+                    return {
+                        data: items,
+                        pagination: {
+                            last_visible_page: data.pageInfo?.lastPage || 1,
+                            current_page: data.pageInfo?.currentPage || 1,
+                            has_next_page: data.pageInfo?.hasNextPage || false
+                        }
+                    };
+                }
             }
-        };
+        } catch (e) {
+            console.warn('getTrendingManga failed, using latest fallback', e);
+        }
+        return mangaService.getLatestMangaScraper(page);
     },
 
     // Fetch all-time popular manga from AniList (sorted by POPULARITY)
     async getPopularManga(page: number = 1) {
         return fetchWithCache(`manga-popular:${page}`, LIST_CACHE_TTL, async () => {
-            const res = await fetch(`${API_BASE}/anilist/popular/manga?page=${page}`);
-            const data = await res.json();
-            return {
-                data: data.media?.map(mapAnilistToManga) || [],
-                pagination: {
-                    last_visible_page: data.pageInfo?.lastPage || 1,
-                    current_page: data.pageInfo?.currentPage || 1,
-                    has_next_page: data.pageInfo?.hasNextPage || false
+            try {
+                const res = await fetch(`${API_BASE}/anilist/popular/manga?page=${page}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    const items = data.media?.map(mapAnilistToManga) || [];
+                    if (items.length > 0) {
+                        return {
+                            data: items,
+                            pagination: {
+                                last_visible_page: data.pageInfo?.lastPage || 1,
+                                current_page: data.pageInfo?.currentPage || 1,
+                                has_next_page: data.pageInfo?.hasNextPage || false
+                            }
+                        };
+                    }
                 }
-            };
+            } catch (e) {
+                console.warn('getPopularManga failed, using directory fallback', e);
+            }
+            return mangaService.getMangaDirectory(page);
         });
     },
 
     // Fetch popular manhwa from AniList
     async getPopularManhwa(page: number = 1) {
         return fetchWithCache(`manga-popular-manhwa:${page}`, LIST_CACHE_TTL, async () => {
-            const res = await fetch(`${API_BASE}/anilist/top/manhwa?page=${page}`);
-            const data = await res.json();
-            return {
-                data: data.media?.map(mapAnilistToManga) || [],
-                pagination: {
-                    last_visible_page: data.pageInfo?.lastPage || 1,
-                    current_page: data.pageInfo?.currentPage || 1,
-                    has_next_page: data.pageInfo?.hasNextPage || false
+            try {
+                const res = await fetch(`${API_BASE}/anilist/top/manhwa?page=${page}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    const items = data.media?.map(mapAnilistToManga) || [];
+                    if (items.length > 0) {
+                        return {
+                            data: items,
+                            pagination: {
+                                last_visible_page: data.pageInfo?.lastPage || 1,
+                                current_page: data.pageInfo?.currentPage || 1,
+                                has_next_page: data.pageInfo?.hasNextPage || false
+                            }
+                        };
+                    }
                 }
-            };
+            } catch (e) {
+                console.warn('getPopularManhwa failed, using new manga fallback', e);
+            }
+            return mangaService.getNewMangaScraper(page);
         });
     },
 
@@ -637,11 +687,36 @@ export const mangaService = {
 
     async getEnrichedSpotlight() {
         return fetchWithCache(`manga-spotlight`, SPOTLIGHT_CACHE_TTL, async () => {
-            const res = await fetch(`${API_BASE}/manga/spotlight`);
-            const data = await res.json();
-            return {
-                data: data.data?.map(mapAnilistToManga) || []
-            };
+            try {
+                const res = await fetch(`${API_BASE}/manga/spotlight`);
+                if (res.ok) {
+                    const data = await res.json();
+                    const items = data.data?.map(mapAnilistToManga) || [];
+                    if (items.length > 0) {
+                        return { data: items };
+                    }
+                }
+            } catch (e) {
+                console.warn('getEnrichedSpotlight failed, using hot updates fallback', e);
+            }
+            const hot = await mangaService.getHotUpdates().catch(() => []);
+            if (Array.isArray(hot) && hot.length > 0) {
+                const mappedHot = hot.slice(0, 8).map((item: any) => ({
+                    mal_id: item.id,
+                    id: item.id,
+                    title: item.title,
+                    title_english: item.title,
+                    images: { jpg: { large_image_url: item.thumbnail, image_url: item.thumbnail } },
+                    chapters: item.chapter ? parseInt(item.chapter.replace(/\D/g, '')) || undefined : undefined,
+                    type: 'Manga',
+                    status: 'Unknown',
+                    score: 0,
+                    genres: [],
+                    synopsis: `Latest Chapter: ${item.chapter}`
+                } as unknown as Manga));
+                return { data: mappedHot };
+            }
+            return { data: [] };
         });
     },
 

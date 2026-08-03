@@ -9,7 +9,7 @@ interface ScrollToTopProps {
     /** Custom className for additional styling */
     className?: string;
     /** Active tab to determine theme color */
-    activeTab?: 'anime' | 'manga';
+    activeTab?: 'anime' | 'manga' | 'ln';
     /** Optional controlled visibility */
     isVisible?: boolean;
 }
@@ -46,8 +46,8 @@ export default function ScrollToTop({ threshold = 400, className = '', activeTab
         });
     };
 
-    const bgColor = activeTab === 'manga' ? 'bg-yorumi-manga' : 'bg-yorumi-accent';
-    const hoverColor = activeTab === 'manga' ? 'hover:bg-yorumi-manga/90' : 'hover:bg-yorumi-accent/90';
+    const bgColor = activeTab === 'ln' ? 'bg-amber-400 text-black font-extrabold' : activeTab === 'manga' ? 'bg-yorumi-manga text-white' : 'bg-yorumi-accent text-white';
+    const hoverColor = activeTab === 'ln' ? 'hover:bg-amber-300 hover:scale-110' : activeTab === 'manga' ? 'hover:bg-yorumi-manga/90' : 'hover:bg-yorumi-accent/90';
 
     return (
         <m.button

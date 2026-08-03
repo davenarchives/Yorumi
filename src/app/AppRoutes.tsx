@@ -15,6 +15,9 @@ import MangaGenrePage from '../pages/MangaGenrePage';
 import MangaPage from '../pages/MangaPage';
 import MangaReaderPage from '../pages/MangaReaderPage';
 import MangaReadListPage from '../pages/MangaReadListPage';
+import LNPage from '../pages/LNPage';
+import LNDetailsPage from '../pages/LNDetailsPage';
+import LNReaderPage from '../pages/LNReaderPage';
 import ProfilePage from '../pages/ProfilePage';
 import LibraryPage from '../pages/LibraryPage';
 import UserProfilePage from '../pages/UserProfilePage';
@@ -29,6 +32,9 @@ const getTransitionKey = (pathname: string) => {
     }
     if (pathname.startsWith('/manga/details/')) {
         return '/manga/details';
+    }
+    if (pathname.startsWith('/ln/details/')) {
+        return '/ln/details';
     }
     return pathname;
 };
@@ -60,6 +66,10 @@ export function AppRoutes() {
                     <Route path="/manga" element={<MangaPage />} />
                     <Route path="/manga/details/:id" element={<MangaDetailsPage />} />
                     <Route path="/manga/read/:title/:id/:chapter" element={<MangaReaderPage />} />
+
+                    <Route path="/ln" element={<LNPage />} />
+                    <Route path="/ln/details/:id" element={<LNDetailsPage />} />
+                    <Route path="/ln/read/:title/:id/:chapter" element={<LNReaderPage />} />
                     <Route path="/genre/:name" element={<GenrePage />} />
                     <Route path="/manga/genre/:name" element={<MangaGenrePage />} />
                     <Route path="/manga/popular" element={<MangaFormatPage />} />

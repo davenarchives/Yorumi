@@ -59,7 +59,7 @@ const SpotlightCover: React.FC<{ thumbnail: string; title: string }> = ({ thumbn
             onMouseMove={handleMouseMove}
         >
             <div
-                className="w-full h-full rounded-xl overflow-hidden shadow-[0_0_40px_rgba(0,0,0,0.6)] border border-white/10 transition-all duration-75 ease-out"
+                className="w-full h-full rounded-xl overflow-hidden transition-all duration-75 ease-out"
                 style={{
                     transform: `rotateX(${rotation.x}deg) rotateY(${rotation.y}deg) scale3d(${isHovered ? 1.02 : 1}, ${isHovered ? 1.02 : 1}, 1)`,
                     transformStyle: 'preserve-3d',
@@ -165,7 +165,7 @@ const MangaSpotlight: React.FC<MangaSpotlightProps> = ({ onMangaClick }) => {
                             </div>
                         </div>
 
-                        <div className="hidden md:block w-56 lg:w-64 h-[360px] rounded-xl bg-white/10 border border-white/10" />
+                        <div className="hidden md:block w-56 lg:w-64 h-[360px] rounded-xl bg-white/10" />
                     </div>
                 </div>
 
@@ -244,7 +244,7 @@ const MangaSpotlight: React.FC<MangaSpotlightProps> = ({ onMangaClick }) => {
                                     {/* Top Section: Mobile Cover & Title */}
                                     <div className="w-full mb-4">
                                         <div className="flex items-center gap-3 mb-3">
-                                            <div className="md:hidden h-24 w-16 rounded-md overflow-hidden shadow-lg shadow-black/50 border border-white/10 flex-shrink-0 relative">
+                                            <div className="md:hidden h-24 w-16 rounded-md overflow-hidden flex-shrink-0 relative">
                                                 <img
                                                     src={activeManga.images.jpg.large_image_url}
                                                     alt={displayTitle}
@@ -327,7 +327,7 @@ const MangaSpotlight: React.FC<MangaSpotlightProps> = ({ onMangaClick }) => {
                                             <div 
                                                 className="w-full h-full origin-bottom transition-transform duration-500 ease-out [transform:translateX(-40%)_translateY(-20px)_scale(0.9)_rotate(-8deg)] group-hover:[transform:translateX(-45%)_translateY(-20px)_scale(0.92)_rotate(-6deg)]"
                                             >
-                                                <div className="w-full h-full rounded-xl overflow-hidden shadow-[0_0_30px_rgba(0,0,0,0.5)] border border-white/10 brightness-[0.6] transition-all duration-300">
+                                                <div className="w-full h-full rounded-xl overflow-hidden brightness-[0.6] transition-all duration-300">
                                                     <img src={mangas[(selectedIndex - 1 + mangas.length) % mangas.length].images.jpg.large_image_url} className="w-full h-full object-cover" alt="" />
                                                 </div>
                                             </div>
@@ -348,7 +348,7 @@ const MangaSpotlight: React.FC<MangaSpotlightProps> = ({ onMangaClick }) => {
                                             <div 
                                                 className="w-full h-full origin-bottom transition-transform duration-500 ease-out [transform:translateX(40%)_translateY(-20px)_scale(0.9)_rotate(8deg)] group-hover:[transform:translateX(45%)_translateY(-20px)_scale(0.92)_rotate(6deg)]"
                                             >
-                                                <div className="w-full h-full rounded-xl overflow-hidden shadow-[0_0_30px_rgba(0,0,0,0.5)] border border-white/10 brightness-[0.6] transition-all duration-300">
+                                                <div className="w-full h-full rounded-xl overflow-hidden brightness-[0.6] transition-all duration-300">
                                                     <img src={mangas[(selectedIndex + 1) % mangas.length].images.jpg.large_image_url} className="w-full h-full object-cover" alt="" />
                                                 </div>
                                             </div>

@@ -9,7 +9,7 @@ import type { SearchPreviewItem } from '../../features/search/api';
 interface SearchModalProps {
     isOpen: boolean;
     onClose: () => void;
-    type: 'anime' | 'manga';
+    type: 'anime' | 'manga' | 'ln';
 }
 
 export default function SearchModal({ isOpen, onClose, type }: SearchModalProps) {
@@ -95,6 +95,10 @@ export default function SearchModal({ isOpen, onClose, type }: SearchModalProps)
     const handleResultClick = (item: SearchPreviewItem) => {
         saveRecentSearch(item.title);
         onClose();
+        if (type === 'ln') {
+            navigate(item.url, { state: { ln: item.ln || item.manga } });
+            return;
+        }
         if (type === 'manga') {
             navigate(item.url, { state: { manga: item.manga } });
             return;
@@ -138,19 +142,17 @@ export default function SearchModal({ isOpen, onClose, type }: SearchModalProps)
         e.preventDefault();
         if (searchQuery.trim()) {
             saveRecentSearch(searchQuery);
-            // Navigate to A-Z page or just keep results in modal? The prompt says "remove the search page", 
-            // so we should rely on the modal's preview results, or if they hit enter, take the first result.
             if (searchResults.length > 0) {
                 handleResultClick(searchResults[0]);
             }
         }
     };
 
-    const accentColor = type === 'manga' ? 'text-yorumi-manga' : 'text-yorumi-accent';
-    const accentBg = type === 'manga' ? 'bg-yorumi-manga' : 'bg-yorumi-accent';
+    const accentColor = type === 'ln' ? 'text-amber-400' : type === 'manga' ? 'text-yorumi-manga' : 'text-yorumi-accent';
+    const accentBg = type === 'ln' ? 'bg-amber-400' : type === 'manga' ? 'bg-yorumi-manga' : 'bg-yorumi-accent';
 
     const filteredResults = searchResults.filter(item => {
-        if (type === 'manga') return true;
+        if (type === 'manga' || type === 'ln') return true;
         const itemType = (item.type || '').toUpperCase();
         return ['TV', 'SERIES', 'ONA', 'OVA', 'MOVIE', 'SPECIAL'].includes(itemType);
     });
@@ -183,7 +185,7 @@ export default function SearchModal({ isOpen, onClose, type }: SearchModalProps)
                             <input
                                 ref={inputRef}
                                 type="text"
-                                placeholder={`Search ${type === 'manga' ? 'manga and manhwa' : 'movies and series'}...`}
+                                placeholder={`Search ${type === 'ln' ? 'light novels & web novels' : type === 'manga' ? 'manga and manhwa' : 'movies and series'}...`}
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                                 className="w-full bg-transparent border-none outline-none text-white text-xl pl-12 pr-12 placeholder-gray-500 py-2"

@@ -18,6 +18,7 @@ export interface SearchPreviewItem {
     score?: number;
     url: string;
     manga?: any;
+    ln?: any;
 }
 
 type PreviewAnime = Anime & {
@@ -136,6 +137,24 @@ export const searchApi = {
             duration: null,
             score: item.score,
             url: `/manga/details/${item.id || item.mal_id}`,
+            manga: item,
+        })) as SearchPreviewItem[];
+    },
+
+    async getLNPreview(query: string, language: TitleLanguage) {
+        const { lnService } = await import('../../services/lnService');
+        const items = await lnService.searchNovels(query);
+        return items.slice(0, 5).map((item) => ({
+            id: item.id,
+            title: getDisplayTitle(item as unknown as Record<string, unknown>, language),
+            subtitle: item.author || getSecondaryTitle(item as unknown as Record<string, unknown>, language),
+            image: item.images?.jpg?.image_url || '',
+            date: '',
+            type: item.type || 'NOVEL',
+            duration: null,
+            score: item.score,
+            url: `/ln/details/${item.id}`,
+            ln: item,
             manga: item,
         })) as SearchPreviewItem[];
     },
