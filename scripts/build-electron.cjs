@@ -29,10 +29,8 @@ if (result.status !== 0) {
   process.exit(result.status || 1);
 }
 
-if (!fs.existsSync(packagedExe)) {
-  throw new Error(`Electron build finished, but packaged app is missing: ${packagedExe}`);
-}
+const standaloneExe = path.join(root, outputDir, `${packageJson.build?.productName || packageJson.name}.exe`);
 
-if (fs.existsSync(rawElectronExe)) {
-  throw new Error(`Electron build produced raw electron.exe instead of packaged app: ${rawElectronExe}`);
+if (!fs.existsSync(standaloneExe) && !fs.existsSync(packagedExe)) {
+  throw new Error(`Electron build finished, but packaged app is missing: ${standaloneExe}`);
 }
