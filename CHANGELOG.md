@@ -1,16 +1,33 @@
 # Changelog
 
+## [4.0.0] - 2026-08-04
+
+### Added & Changed
+- **Light Novel (LN) Reading Hub & Reader**: Introduced a dedicated Light Novel feature slice (`src/features/ln`), complete with an LN Homepage (`/ln`), Spotlight hero, All-Time Popular list, Top 100 LN grid, Search filter, Bookmark management, Reading Progress synchronization, and a custom LN Reader (`/ln/read/...`) with customizable typography, theme controls, and chapter navigation.
+- **AniDB Primary Anime Scraper Engine**: Switched the primary anime streaming source engine to **AniDB** (`anidb.app`), using multi-step scraping (`browse` $\rightarrow$ `episodes` $\rightarrow$ `languages` $\rightarrow$ `master.m3u8`).
+- **Direct Multi-Quality & Dual-Audio Playback**: Enabled native HLS resolution switching (**1080p**, **720p**, **360p**) and Japanese Sub & English Dub audio track selection for AniDB streams via backend `.m3u8` and segment (`.xls`) proxying.
+- **Streamlined Provider Options**: Configured `AniDB` as default primary provider, backed by `VidSrc`, `VidKing`, and `Videasy`.
+- **Standalone Electron Executable (.exe)**: Embedded the Express backend scraper (`backend/dist/bundle.cjs`) directly into the Electron `.exe` build so desktop users run 100% self-contained out-of-the-box without needing any local or external server.
+- **Website Redesign for v4.0.0**: Updated `website/src/App.tsx` description, version badges to `v4.0.0`, client `.exe` download links, "What's new" release highlights, and carousel preview slides for Light Novel browsing and reading (`lighnovel.png`, `read-lightnovel.png`).
+
+### Fixed
+- **Player Quality Selection Persistence**: Fixed quality options (1080p, 720p, 480p, 360p) being greyed out or resetting to Auto when using HLS streams or single-source providers in `CustomVideoControls.tsx`.
+- **Player Route & Position Stability**: Fixed persistent player route checks in `PersistentPlayerContext.tsx` to prevent the video player from unmounting or popping out into a floating mini-player when changing episode search parameters on the details page.
+- **Stale Stream Cache Invalidation**: Bumped stream cache version key to `v104` in `video-sources.ts` to automatically purge stale stream caches.
+
 ## [3.5.7] - 2026-07-28
 
 ### Added & Changed
 - **Minimal Website Landing Page, Separate Documentation Pages, & UI Polish**: Redesigned the hero section of `website/src/App.tsx` to adopt a clean, minimal aesthetic with the **v3.5.7** version indicator aligned to the base of the **Yorumi** heading (`items-baseline`), styled the **Get Started** button in Yorumi's signature blue theme (`bg-yorumi-main`). Abstracted the **Start Using** Hub and the 3-column **Developer Docs & Guides** component (`website/src/Documentation.tsx`) into their own dedicated, full-page views (`#get-started` and `#docs`) with URL hash-routing, ensuring users no longer just scroll down a massive single page. Removed faint borders across cards and fixed the "blacked-out" button contrast issue on Client download links by replacing solid dark backgrounds with beautiful, theme-aware translucent colors (`bg-yorumi-main/10`), ensuring perfect visibility in both light and dark modes. Also includes a placeholder for a new TMDB API Key picture tutorial!
 - **Anikoto Provider Integration**: Ported the Anikoto scraper logic into the Yorumi backend, enabling a new stream source for anime. Registered `anikoto` in the video-sources API and frontend `useStreams.ts` to allow users to select it in the player.
+- **Anime Player Scrubber Polish**: Enlarged the video progress bar, switched played progress to Yorumi blue, added a plain circular playhead, and simplified hover timestamps.
 
 ### Fixed
-- **TMDB ID Resolution for VidSrc, VidKing, & Videasy**: Fixed an issue where TMDB-based video sources failed to load when playing AniList anime due to raw AniList IDs being passed instead of valid TMDB IDs. Integrated automatic AniZip mapping (`api.ani.zip`) in `tmdb.service.ts` to map AniList IDs directly to TMDB IDs without requiring manual TMDB API keys. Fallback logic now gracefully skips missing TMDB IDs instead of generating broken iframe embeds.
-- **AniNeko Scraper & Title Matching**: Fixed a critical bug in `backend/src/scraper/anineko.ts` where HTML entity encoding in search results (`&#039;`) caused apostrophe title mismatches and score drops to 0, returning null for titles like *Frieren: Beyond Journey's End*. Added Dean Edwards packer decoding (`unpackEval`) to extract `.m3u8` streams from obfuscated embed providers (`otakuhg`, `otakuvid`, `bibiemb`), and added direct subtitle VTT extraction from server link query parameters.
-- **AniNeko Playback Stability**: Fixed a critical issue where AniNeko streams would load the `m3u8` playlist but fail to play (stuck at 0:00 with a black screen). Resolved by explicitly injecting `CODECS="avc1.640028,mp4a.40.2"` into the HLS manifest so Chrome accepts the High-profile H.264 video chunks, and patched a stream pipeline vulnerability in the backend proxy (`scraper.routes.ts`) where dropped upstream connections would hang indefinitely without closing the browser's response stream.
-- **AllManga Backend Scraper Corruption**: Fixed two corrupted code regions in `backend/src/scraper/allmanga.ts` caused by bad merges — a duplicate `followRedirects` method with stale code fragments spliced in, and orphaned `fetchLatestUpdatesPage` body code that broke `getLinksForShowId`. The backend scraper now compiles and runs correctly, restoring stream resolution for AllManga sources.
+- **Anime Player Next-Episode Navigation State**: Preserved route state when switching episodes from the details player controls and adjacent episode previews, preventing scraper-session detail pages from rebuilding with the raw session token as the anime title and keeping the viewport anchored on the player during next/auto-next.
+- **AllManga Stream Resolution Speed Optimization**: Bypassed redundant AniList season title resolution (`resolveSeasonTitle`) and redundant GraphQL search queries in `scraper.service.ts` and `backend/src/scraper/allmanga.ts` when a valid AllManga show ID session is present. Replaced process-heavy `execFileAsync('curl')` calls with direct non-blocking `axios.get` requests (3s timeout) in `fetchAnidbUrl`, reducing AllManga stream resolution times from over 9 seconds down to ~150ms.
+- **Removed VidSrc Fallback on AllManga Stream Load**: Removed automatic fallback to `vidsrc`, `vidking`, and `videasy` servers in `src/hooks/useStreams.ts` when `AllManga` is selected, ensuring the player maintains the user's chosen server instead of silently switching.
+- **Manga Page Loading & Empty Section Protection**: Fixed manga page sections failing to load when AniList GraphQL API throttles or returns empty arrays. Added resilient fallbacks to MangaKatana scrapers across backend `/top/manga`, `/popular/manga`, `/top/manhwa`, `/top/one-shot`, and `/trending/manga` routes, and implemented `isEmptyData` cache protection to prevent caching empty responses.
+- **Spotlight Cards Visual Cleanup**: Removed borders and drop-shadows across spotlight card components in `MangaSpotlight.tsx` for a clean presentation.
 
 ## [3.5.6] - 2026-07-26
 
