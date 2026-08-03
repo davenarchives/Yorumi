@@ -536,10 +536,10 @@ async function getPagedScraperManga(page: number, scraperFunc: (p: number) => Pr
     const slicedResults = allResults.slice(startIdxInCombined, startIdxInCombined + APP_ITEMS_PER_PAGE);
     const newTotalPages = Math.ceil((totalPages * MK_ITEMS_PER_PAGE) / APP_ITEMS_PER_PAGE);
 
-    const API_BASE_URL = process.env.API_URL || 'http://localhost:3001/api';
+    const API_BASE_URL = process.env.API_URL || '/api';
     const mapped = slicedResults.map((item: any) => {
         const proxiedThumbnail = item.thumbnail && item.thumbnail.includes('mangakatana.com')
-            ? `${API_BASE_URL}/image/proxy?url=${encodeURIComponent(item.thumbnail)}`
+            ? `/api/image/proxy?url=${encodeURIComponent(item.thumbnail)}`
             : item.thumbnail;
             
         return {
@@ -712,7 +712,7 @@ async function enrichWithAniListPhotos(mangaList: any[]) {
     // Deprecated: We just use proxy for thumbnails now
     return mangaList.map((item) => {
         if (item.thumbnail && item.thumbnail.includes('mangakatana.com')) {
-            const proxiedUrl = `http://localhost:3001/api/image/proxy?url=${encodeURIComponent(item.thumbnail)}`;
+            const proxiedUrl = `/api/image/proxy?url=${encodeURIComponent(item.thumbnail)}`;
             return { ...item, thumbnail: proxiedUrl, coverImage: proxiedUrl };
         }
         return item;

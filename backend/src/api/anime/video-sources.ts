@@ -253,26 +253,30 @@ class AniDBSource implements VideoSource {
             const metadata = options?.tmdbId ? await streambertAnimeService.getMetadata(options.tmdbId).catch(() => null) : null;
             const searchTitle = options?.title || metadata?.title?.romaji || metadata?.title?.english || metadata?.title?.native || '';
             if (searchTitle) {
-                const browseCmd = `curl.exe -sL -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36" "https://anidb.app/browse?q=${encodeURIComponent(searchTitle)}"`;
-                const { stdout: browseHtml } = await execPromise(browseCmd, { timeout: 10000 });
+                const headers = {
+                    'User-Agent': USER_AGENT,
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                    'Referer': 'https://anidb.app/',
+                };
+
+                const browseRes = await axios.get<string>(`https://anidb.app/browse?q=${encodeURIComponent(searchTitle)}`, { headers, timeout: 10000 }).catch(() => null);
+                const browseHtml = String(browseRes?.data || '');
                 
                 const matches = [...browseHtml.matchAll(/href=["'](https?:\/\/anidb\.app\/anime\/[^"']+)["']/g)].map(m => m[1]);
                 const firstLink = matches[0];
                 const animeId = firstLink?.split('-').pop();
 
                 if (animeId) {
-                    const epCmd = `curl.exe -sL -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" "https://anidb.app/api/frontend/anime/${animeId}/episodes"`;
-                    const { stdout: epJson } = await execPromise(epCmd, { timeout: 10000 });
-                    const epData = JSON.parse(epJson);
+                    const epRes = await axios.get<any>(`https://anidb.app/api/frontend/anime/${animeId}/episodes`, { headers, timeout: 10000 }).catch(() => null);
+                    const epData = epRes?.data;
                     const epList = epData?.episodes || (Array.isArray(epData) ? epData : []);
                     
                     const targetEp = epList.find((e: any) => Number(e.number || e.episode) === episode) || epList[0];
                     const epId = targetEp?.id;
 
                     if (epId) {
-                        const langCmd = `curl.exe -sL -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" "https://anidb.app/api/frontend/episode/${epId}/languages"`;
-                        const { stdout: langJson } = await execPromise(langCmd, { timeout: 10000 });
-                        const langData = JSON.parse(langJson);
+                        const langRes = await axios.get<any>(`https://anidb.app/api/frontend/episode/${epId}/languages`, { headers, timeout: 10000 }).catch(() => null);
+                        const langData = langRes?.data;
                         const embeds = langData?.languages || (Array.isArray(langData) ? langData : []);
 
                         const jpnEmbed = embeds.find((e: any) => e.code === 'jpn' || String(e.name || '').toLowerCase().includes('japan'))?.embed_url || embeds[0]?.embed_url;
@@ -282,26 +286,32 @@ class AniDBSource implements VideoSource {
                         let dubM3u8: string | null = null;
 
                         if (jpnEmbed) {
-                            const { stdout: jpnHtml } = await execPromise(`curl.exe -sL -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" "${jpnEmbed}"`, { timeout: 10000 });
+                            const jpnRes = await axios.get<string>(jpnEmbed, { headers: { ...headers, Referer: 'https://anidb.app/' }, timeout: 10000 }).catch(() => null);
+                            const jpnHtml = String(jpnRes?.data || '');
                             const m = jpnHtml.match(/(?:file|src)\s*:\s*["']([^"']+\.m3u8[^"']*)["']/i) || jpnHtml.match(/["'](https?:\/\/[^"']+\.m3u8[^"']*)["']/i);
                             if (m?.[1]) masterM3u8 = m[1];
                         }
 
                         if (engEmbed) {
-                            const { stdout: engHtml } = await execPromise(`curl.exe -sL -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" "${engEmbed}"`, { timeout: 10000 });
+                            const engRes = await axios.get<string>(engEmbed, { headers: { ...headers, Referer: 'https://anidb.app/' }, timeout: 10000 }).catch(() => null);
+                            const engHtml = String(engRes?.data || '');
                             const m = engHtml.match(/(?:file|src)\s*:\s*["']([^"']+\.m3u8[^"']*)["']/i) || engHtml.match(/["'](https?:\/\/[^"']+\.m3u8[^"']*)["']/i);
                             if (m?.[1]) dubM3u8 = m[1];
                         }
 
                         if (masterM3u8) {
+                            const referer = 'https://anidb.app/';
+                            const proxiedM3u8 = `/api/scraper/proxy?url=${encodeURIComponent(masterM3u8)}&referer=${encodeURIComponent(referer)}`;
+                            const proxiedDubM3u8 = dubM3u8 ? `/api/scraper/proxy?url=${encodeURIComponent(dubM3u8)}&referer=${encodeURIComponent(referer)}` : undefined;
+
                             return {
-                                m3u8: masterM3u8,
-                                dubM3u8: dubM3u8 || undefined,
+                                m3u8: proxiedM3u8,
+                                dubM3u8: proxiedDubM3u8,
                                 subtitles: [],
                                 source: this.id,
                                 episode,
                                 title: await getEpisodeTitle(anilistId, episode),
-                                referer: 'https://anidb.app/',
+                                referer,
                             };
                         }
                     }
