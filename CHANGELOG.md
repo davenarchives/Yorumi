@@ -1,5 +1,14 @@
 # Changelog
 
+## [4.0.1] - 2026-08-05
+
+### Added & Changed
+- **Cross-Platform Desktop Release Automation**: Added automated GitHub Actions build workflow (`.github/workflows/release.yml`) that compiles macOS (`.dmg`), Linux (`.AppImage`), and Windows (`.exe`) installers in parallel and publishes official GitHub Releases when version tags (`v*`) are pushed.
+- **Multi-Platform Build Commands**: Configured `package.json` with explicit `build:electron:win`, `build:electron:mac`, `build:electron:linux`, and `build:electron:all` scripts.
+
+### Fixed
+- **VidSrc Provider & Embed Player Resolution**: Fixed backend route validation in `scraper.routes.ts` (`/api/scraper/streams`), updated VidSrc default domain to `https://vidsrc.net` in `video-sources.ts`, and added standard HTML5 `<iframe />` fallback rendering in `VideoPlayer.tsx` for web browser mode.
+
 ## [4.0.0] - 2026-08-04
 
 ### Added & Changed

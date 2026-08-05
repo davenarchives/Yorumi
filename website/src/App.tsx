@@ -300,7 +300,7 @@ function App() {
                       rel="noreferrer"
                       className="text-yorumi-main font-semibold text-sm tracking-wide hover:opacity-80 transition-opacity"
                     >
-                      v4.0.0
+                      v4.0.1
                     </motion.a>
                   </div>
                   
@@ -367,7 +367,7 @@ function App() {
             <div className="bg-yorumi-card rounded-3xl p-6 md:p-8 space-y-6">
               <div className="text-sm md:text-base text-yorumi-muted">
                 <span className="font-medium text-yorumi-text">The latest stable version:</span>{' '}
-                <span className="text-yorumi-main font-semibold">v4.0.0</span>
+                <span className="text-yorumi-main font-semibold">v4.0.1</span>
               </div>
 
               {/* Keep ONLY legit release downloads: latest .exe, source-code zip, and standalone CLI domain */}
@@ -379,7 +379,7 @@ function App() {
                   className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-yorumi-main/20 hover:bg-yorumi-main/30 text-yorumi-main font-semibold text-sm transition-colors border border-yorumi-main/30"
                 >
                   <Download className="w-4 h-4" />
-                  <span>Yorumi-v4.0.0.exe</span>
+                  <span>Yorumi-v4.0.1.exe</span>
                 </a>
                 <a
                   href="https://github.com/davenarchives/Yorumi/archive/refs/heads/main.zip"
