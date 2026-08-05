@@ -1,0 +1,61 @@
+name: Build Desktop Releases
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build Desktop App (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Root Dependencies
+        run: npm ci
+
+      - name: Install Backend Dependencies
+        run: |
+          cd backend
+          npm ci
+          cd ..
+
+      - name: Build Web & Scraper Assets
+        run: npm run build
+
+      - name: Package Desktop App (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: npm run build:electron:linux
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Package Desktop App (macOS)
+        if: matrix.os == 'macos-latest'
+        run: npm run build:electron:mac
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Package Desktop App (Windows)
+        if: matrix.os == 'windows-latest'
+        run: npm run build:electron:win
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: yorumi-desktop-${{ matrix.os }}
+          path: dist-app/*
