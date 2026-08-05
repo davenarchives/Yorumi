@@ -59,4 +59,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: yorumi-desktop-${{ matrix.os }}
-          path: dist-app/*
+          path: |
+            dist-app/*.exe
+            dist-app/*.dmg
+            dist-app/*.AppImage
+            dist-app/*.zip
+            dist-app/*.blockmap
