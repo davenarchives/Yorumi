@@ -28,7 +28,6 @@
         "fuse.js": "^7.1.0",
         "graphql-request": "^7.4.0",
         "hianime": "^1.5.1",
-        "hianime-scraper": "^3.5.0",
         "puppeteer-extra": "^3.3.6",
         "puppeteer-extra-plugin-stealth": "^2.11.2"
     },
