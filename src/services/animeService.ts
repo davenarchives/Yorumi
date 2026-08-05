@@ -172,12 +172,12 @@ const mapAnilistToAnime = (item: any) => {
         anilist_banner_image: item.bannerImage,
         anilist_cover_image: item.coverImage?.extraLarge || item.coverImage?.large,
         countryOfOrigin: item.countryOfOrigin,
-        nextAiringEpisode: item.nextAiringEpisode ? {
-            episode: item.nextAiringEpisode.episode,
-            timeUntilAiring: item.nextAiringEpisode.timeUntilAiring ?? (item.nextAiringEpisode.airingAt ? item.nextAiringEpisode.airingAt - Math.floor(Date.now() / 1000) : 0)
+        nextAiringEpisode: (item.nextAiringEpisode || item.anilist?.nextAiringEpisode) ? {
+            episode: (item.nextAiringEpisode || item.anilist?.nextAiringEpisode).episode,
+            timeUntilAiring: (item.nextAiringEpisode || item.anilist?.nextAiringEpisode).timeUntilAiring ?? ((item.nextAiringEpisode || item.anilist?.nextAiringEpisode).airingAt ? (item.nextAiringEpisode || item.anilist?.nextAiringEpisode).airingAt - Math.floor(Date.now() / 1000) : 0)
         } : undefined,
         // For ongoing anime, latest episode = next airing episode - 1
-        latestEpisode: item.nextAiringEpisode ? item.nextAiringEpisode.episode - 1 : undefined,
+        latestEpisode: (item.nextAiringEpisode || item.anilist?.nextAiringEpisode) ? (item.nextAiringEpisode || item.anilist?.nextAiringEpisode).episode - 1 : undefined,
         characters: item.characters, // Pass through the characters object directly as logic is handled in component or matches structure
         trailer: item.trailer ? {
             id: item.trailer.id,
@@ -506,8 +506,8 @@ const clearCachedStream = (key: string) => {
     }
 };
 
-const getAnimeDetailsCacheKey = (id: number | string) => `anime-details:v7:${id}`;
-const getAnimeDetailsFastCacheKey = (id: number | string) => `anime-details-fast:v16:${id}`;
+const getAnimeDetailsCacheKey = (id: number | string) => `anime-details:v8:${id}`;
+const getAnimeDetailsFastCacheKey = (id: number | string) => `anime-details-fast:v17:${id}`;
 const normalizeStreamLookupPart = (value: unknown) =>
     String(value || '')
         .trim()

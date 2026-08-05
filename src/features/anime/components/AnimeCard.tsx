@@ -6,6 +6,7 @@ import { getDisplayTitle } from '../../../utils/titleLanguage';
 import { getDisplayImageUrl } from '../../../utils/image';
 import { cardItemVariants, pressMotion } from '../../../utils/motion';
 import { animeService, parseStudios } from '../../../services/animeService';
+import { getDisplayMetaLabel, isAnimeAiring } from '../../../utils/animeAiring';
 
 interface AnimeCardProps {
     anime: Anime;
@@ -45,11 +46,7 @@ const AnimeCard: React.FC<AnimeCardProps> = ({
     const cardProducers = parseStudios(tooltipAnime.producers || (tooltipAnime as any).anilist?.producers);
     const studioName = getCreditName(cardStudios?.[0]) || getCreditName(cardProducers?.[0]) || 'Studio TBA';
     const displayType = formatDisplayType(tooltipAnime.type);
-    const yearLabel = tooltipAnime.year || getYearFromAired(tooltipAnime.aired?.from);
-    const seasonYearLabel = formatSeasonYearLabel(tooltipAnime.season, yearLabel);
-    const primaryMetaLabel = tooltipAnime.nextAiringEpisode
-        ? `Ep ${tooltipAnime.nextAiringEpisode.episode} airing ${formatTimeUntil(tooltipAnime.nextAiringEpisode.timeUntilAiring)}`
-        : seasonYearLabel || getStatusLabel(tooltipAnime.status);
+    const primaryMetaLabel = getDisplayMetaLabel(tooltipAnime);
     const displayEpisodeCount = totalEpisodeCount || Number(tooltipAnime.latestEpisode || 0) || null;
     const episodeCountLabel = displayEpisodeCount
         ? `${displayEpisodeCount} episode${displayEpisodeCount === 1 ? '' : 's'}`
@@ -380,7 +377,7 @@ function hasEpisodeTotal(item: Anime) {
 }
 
 function needsTooltipHydration(item: Anime) {
-    const needsAiringDetails = String(item.status || '').toUpperCase() === 'RELEASING' && !item.nextAiringEpisode;
+    const needsAiringDetails = isAnimeAiring(item.status) && !item.nextAiringEpisode;
     return !hasGenreChips(item) || !hasStudioCredit(item) || !hasEpisodeTotal(item) || needsAiringDetails;
 }
 

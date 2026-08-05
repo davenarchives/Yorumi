@@ -13,6 +13,7 @@ const IFRAME_LOAD_TIMEOUT_MS = 18_000;
 const NATIVE_LOAD_TIMEOUT_MS = 20_000;
 const MEDIA_STALL_TIMEOUT_MS = 14_000;
 const HAVE_FUTURE_DATA = 3;
+const isElectron = typeof window !== 'undefined' && (window.location.protocol === 'file:' || Boolean((window as any).electron || (window as any).electronAPI));
 
 type ThemedWebViewElement = HTMLWebViewElement & {
     insertCSS: (css: string) => Promise<string>;
@@ -881,17 +882,31 @@ export default function VideoPlayer(props: VideoPlayerProps) {
                             </>
                         ) : (
                             <>
-                                <webview
-                                    ref={webviewRef as any}
-                                    src={resolvedStreamUrl}
-                                    partition="persist:player"
-                                    className="w-full h-full border-0 bg-black"
-                                    allowpopups
-                                    allowFullScreen
-                                    httpreferrer={streams?.[selectedStreamIndex]?.referer || (resolvedStreamUrl?.includes('allmanga') ? 'https://allmanga.to/' : '')}
-                                    useragent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-                                    webpreferences="webSecurity=no"
-                                />
+                                {isElectron ? (
+                                    <webview
+                                        ref={webviewRef as any}
+                                        src={resolvedStreamUrl}
+                                        partition="persist:player"
+                                        className="w-full h-full border-0 bg-black"
+                                        allowpopups
+                                        allowFullScreen
+                                        httpreferrer={streams?.[selectedStreamIndex]?.referer || (resolvedStreamUrl?.includes('allmanga') ? 'https://allmanga.to/' : '')}
+                                        useragent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                                        webpreferences="webSecurity=no"
+                                    />
+                                ) : (
+                                    <iframe
+                                        src={resolvedStreamUrl}
+                                        className="w-full h-full border-0 bg-black"
+                                        allowFullScreen
+                                        allow="autoplay; fullscreen; picture-in-picture"
+                                        referrerPolicy="no-referrer"
+                                        onLoad={() => {
+                                            clearIframeLoadTimeout();
+                                            notifyIframeReady();
+                                        }}
+                                    />
+                                )}
                                 {displayMode === 'mini' && (
                                     <div className="absolute inset-x-0 top-0 z-20 flex items-start justify-between p-2 bg-gradient-to-b from-black/55 to-transparent opacity-0 transition-opacity duration-200 group-hover:opacity-100">
                                         <button

@@ -351,6 +351,7 @@ const MEDIA_FIELDS = `
     nextAiringEpisode {
         episode
         airingAt
+        timeUntilAiring
     }
     streamingEpisodes {
         title

@@ -17,6 +17,7 @@ import type { Anime } from '../types/anime';
 import { getAnimeDetailsRouteId, getAnimeWatchRouteId } from '../utils/animeNavigation';
 import { cardItemVariants, pressMotion } from '../utils/motion';
 import { storage } from '../utils/storage';
+import { isAnimeAiring, getAiringLabel } from '../utils/animeAiring';
 
 type RecommendationCard = YumiRecommendationCard;
 
@@ -596,7 +597,11 @@ export default function YumiPage() {
                                                         <h3 className="truncate text-base font-black leading-tight text-white transition-colors duration-300 group-hover:text-yorumi-accent">{card.title}</h3>
                                                         <div className="mt-1 flex items-center gap-2 text-sm font-semibold text-slate-400">
                                                             {typeof card.score === 'number' && card.score > 0 && <span className="text-[#facc15]">★ {card.score.toFixed(1)}</span>}
-                                                            {card.year && <span>{card.year}</span>}
+                                                            {card.item && 'status' in card.item && isAnimeAiring((card.item as Anime).status) ? (
+                                                                <span className="text-yorumi-accent font-bold">{getAiringLabel(card.item as Anime)}</span>
+                                                            ) : (
+                                                                card.year && <span>{card.year}</span>
+                                                            )}
                                                         </div>
                                                         {card.synopsis && (
                                                             <p className="mt-1.5 line-clamp-2 text-xs font-semibold leading-relaxed text-slate-400">

@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import type { Anime } from '../../../../types/anime';
 import { useTitleLanguage } from '../../../../context/TitleLanguageContext';
 import { getDisplayTitle } from '../../../../utils/titleLanguage';
+import { isAnimeAiring, getAiringLabel, getSeasonYearLabel } from '../../../../utils/animeAiring';
 
 interface DetailsInfoProps {
     anime: Anime;
@@ -101,8 +102,12 @@ export default function DetailsInfo({ anime, episodesCount, isLoading = false, i
                                             {anime.score}
                                         </span>
                                     )}
-                                    {anime.year && (
-                                        <span>{anime.year}</span>
+                                    {isAnimeAiring(anime.status) ? (
+                                        <span className="text-[#9ed7ff] font-extrabold">{getAiringLabel(anime)}</span>
+                                    ) : (
+                                        (getSeasonYearLabel(anime.season, anime.year) || anime.year) && (
+                                            <span>{getSeasonYearLabel(anime.season, anime.year) || anime.year}</span>
+                                        )
                                     )}
                                     {getLatestEpisode() && (
                                         <span>{getLatestEpisode()} Episodes</span>

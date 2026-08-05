@@ -29,7 +29,7 @@ const mapScraperMangaToAniListMedia = (items: any[]) =>
     }));
 
 const router = Router();
-const HOME_FAST_CACHE_KEY = 'anilist:home:fast:v20';
+const HOME_FAST_CACHE_KEY = 'anilist:home:fast:v21';
 const HOME_FAST_TTL_SECONDS = 120;
 let homeFastMemoryCache: { data: any; timestamp: number } | null = null;
 let homeFastRefreshPromise: Promise<any> | null = null;
@@ -319,6 +319,8 @@ const enrichAnimeKaiItems = async (items: any[]) => {
                 ...item,
                 id: anilistMedia?.id || 0,
                 mal_id: anilistMedia?.idMal || anilistMedia?.id || 0,
+                nextAiringEpisode: anilistMedia?.nextAiringEpisode || item.nextAiringEpisode,
+                status: anilistMedia?.status || item.status,
                 anilist: anilistMedia || null,
             };
         }
@@ -386,6 +388,12 @@ const wrapAniListMediaItems = (items: any[]) =>
         type: item?.format || 'TV',
         episodes: item?.episodes || (item?.nextAiringEpisode?.episode ? item.nextAiringEpisode.episode - 1 : null),
         latestEpisode: item?.nextAiringEpisode?.episode ? item.nextAiringEpisode.episode - 1 : undefined,
+        nextAiringEpisode: item?.nextAiringEpisode ? {
+            episode: item.nextAiringEpisode.episode,
+            airingAt: item.nextAiringEpisode.airingAt,
+            timeUntilAiring: item.nextAiringEpisode.timeUntilAiring ?? (item.nextAiringEpisode.airingAt ? item.nextAiringEpisode.airingAt - Math.floor(Date.now() / 1000) : 0),
+        } : undefined,
+        status: item?.status,
         trailer: item?.trailer,
         score: item?.averageScore ? item.averageScore / 10 : 0,
         rating: item?.averageScore ? (item.averageScore / 10).toFixed(1) : undefined,

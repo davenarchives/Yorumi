@@ -329,8 +329,8 @@ class AniDBSource implements VideoSource {
 
 const sources: VideoSource[] = [
     new AniDBSource(),
-    new EmbedSource('vidsrc', 'https://vidsrc.pm'),
-    new EmbedSource('vidking', 'https://www.vidking.net'),
+    new EmbedSource('vidsrc', process.env.VIDSRC_BASE_URL || 'https://vidsrc.net'),
+    new EmbedSource('vidking', process.env.VIDKING_BASE_URL || 'https://www.vidking.net'),
     new VideasySource(),
 ];
 

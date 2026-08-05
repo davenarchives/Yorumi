@@ -16,9 +16,14 @@ export interface SearchPreviewItem {
     type: string | undefined;
     duration: string | null;
     score?: number;
+    status?: string;
+    nextAiringEpisode?: { episode: number; timeUntilAiring: number };
+    latestEpisode?: number;
+    episodes?: number | null;
     url: string;
     manga?: any;
     ln?: any;
+    raw?: any;
 }
 
 type PreviewAnime = Anime & {
@@ -66,6 +71,11 @@ export const searchApi = {
                 type: item.type,
                 duration: item.duration || null,
                 score: item.score,
+                status: item.status,
+                nextAiringEpisode: item.nextAiringEpisode,
+                latestEpisode: item.latestEpisode,
+                episodes: item.episodes,
+                raw: item,
                 url: `/anime/details/${item.id || item.mal_id}`,
                 manga: item,
             })) as SearchPreviewItem[];

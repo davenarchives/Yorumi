@@ -3,17 +3,31 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const root = process.cwd();
-const packageJson = require(path.join(root, 'package.json'));
-const outputDir = packageJson.build?.directories?.output || 'dist-app';
 const electronBuilderCli = require.resolve('electron-builder/cli.js');
 const electronDist = path.relative(root, path.join(root, 'node_modules', 'electron', 'dist'));
-const appOutDir = path.join(root, outputDir, 'win-unpacked');
-const packagedExe = path.join(appOutDir, `${packageJson.build?.productName || packageJson.name}.exe`);
-const rawElectronExe = path.join(appOutDir, 'electron.exe');
+
+const userArgs = process.argv.slice(2);
+
+// Check if any platform-specific build flags were provided
+const platformFlags = ['--win', '-w', '--mac', '-m', '--linux', '-l', '-wml', '--all', '-c.targets'];
+const hasPlatformArg = userArgs.some((arg) =>
+  platformFlags.some((flag) => arg.toLowerCase().startsWith(flag.toLowerCase()))
+);
+
+const builderArgs = [electronBuilderCli];
+
+// Only use local electronDist if building for current local platform without explicit target overrides
+if (!hasPlatformArg && fs.existsSync(path.join(root, electronDist))) {
+  builderArgs.push(`--config.electronDist=${electronDist}`);
+}
+
+builderArgs.push(...userArgs);
+
+console.log(`[Yorumi Desktop Build] Running electron-builder with args:`, userArgs.join(' ') || '(default platform)');
 
 const result = spawnSync(
   process.execPath,
-  [electronBuilderCli, `--config.electronDist=${electronDist}`],
+  builderArgs,
   {
     cwd: root,
     stdio: 'inherit',
@@ -29,8 +43,5 @@ if (result.status !== 0) {
   process.exit(result.status || 1);
 }
 
-const standaloneExe = path.join(root, outputDir, `${packageJson.build?.productName || packageJson.name}.exe`);
+console.log('[Yorumi Desktop Build] Packaging complete!');
 
-if (!fs.existsSync(standaloneExe) && !fs.existsSync(packagedExe)) {
-  throw new Error(`Electron build finished, but packaged app is missing: ${standaloneExe}`);
-}

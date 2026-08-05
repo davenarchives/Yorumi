@@ -205,6 +205,8 @@ const enrichTmdbWithAnilistStudios = (tmdbMedia: any[], anilistMediaPool: any[])
                 studios: matched.studios || tmdbItem.studios,
                 episodes: matched.episodes || tmdbItem.episodes || (matched.nextAiringEpisode?.episode ? matched.nextAiringEpisode.episode - 1 : null),
                 latestEpisode: matched.nextAiringEpisode?.episode ? matched.nextAiringEpisode.episode - 1 : tmdbItem.latestEpisode,
+                nextAiringEpisode: matched.nextAiringEpisode || tmdbItem.nextAiringEpisode,
+                status: tmdbItem.status || matched.status,
                 bannerImage: tmdbItem.bannerImage || matched.bannerImage,
             };
         }

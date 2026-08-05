@@ -26,6 +26,10 @@ const mapAnilistToAnime = (item: any): Anime => ({
     synopsis: item.description?.replace(/<[^>]*>/g, '') || '',
     score: item.averageScore ? item.averageScore / 10 : 0,
     episodes: item.episodes,
+    nextAiringEpisode: item.nextAiringEpisode ? {
+        episode: item.nextAiringEpisode.episode,
+        timeUntilAiring: item.nextAiringEpisode.timeUntilAiring ?? (item.nextAiringEpisode.airingAt ? item.nextAiringEpisode.airingAt - Math.floor(Date.now() / 1000) : 0)
+    } : undefined,
     latestEpisode: item.nextAiringEpisode?.episode ? item.nextAiringEpisode.episode - 1 : undefined,
     status: item.status,
     type: item.format,

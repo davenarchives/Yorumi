@@ -639,8 +639,9 @@ router.get('/streams', async (req, res) => {
 
         if (!epSession || !animeSession) {
             const provider = String(req.query.provider || '').trim().toLowerCase();
-            // Videasy resolves via TMDB (title + episode number) — no scraper session needed.
-            if (provider !== 'videasy') {
+            // Metadata/embed providers (videasy, vidsrc, vidking, anidb) resolve via TMDB/AniDB title + episode — no scraper session needed.
+            const isSessionlessProvider = provider === 'videasy' || provider === 'vidsrc' || provider === 'vidking' || provider === 'anidb';
+            if (!isSessionlessProvider) {
                 return res.status(400).json({ error: 'anime_session and ep_session are required' });
             }
         }

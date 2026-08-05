@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { useTitleLanguage } from '../../context/TitleLanguageContext';
 import { useNavbarSearch } from '../../features/search/hooks/useNavbarSearch';
 import type { SearchPreviewItem } from '../../features/search/api';
+import { isAnimeAiring, getAiringLabel } from '../../utils/animeAiring';
 
 interface SearchModalProps {
     isOpen: boolean;
@@ -257,7 +258,11 @@ export default function SearchModal({ isOpen, onClose, type }: SearchModalProps)
                                                     <div className="flex-1 min-w-0">
                                                         <h3 className="text-white font-bold text-base truncate group-hover:text-white/90">{item.title}</h3>
                                                         <div className="flex items-center gap-1.5 text-[13px] font-medium text-gray-400 mt-0.5">
-                                                            {displayYear && <span>{displayYear}</span>}
+                                                            {isAnimeAiring(item.status || (item.raw as any)?.status) ? (
+                                                                <span className="text-[#4d88e5] font-bold">{getAiringLabel(item as any)}</span>
+                                                            ) : (
+                                                                displayYear && <span>{displayYear}</span>
+                                                            )}
                                                             {displayYear && item.score && <span>•</span>}
                                                             {item.score ? (
                                                                 <span className="flex items-center gap-1">

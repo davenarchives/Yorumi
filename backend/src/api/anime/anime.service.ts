@@ -1,5 +1,6 @@
 import { tmdbService } from '../scraper/tmdb.service';
 import { cacheGet, cacheSet } from '../../utils/redis-cache';
+import { anilistService } from '../anilist/anilist.service';
 
 const FIVE_MINUTES_SECONDS = 5 * 60;
 const ONE_DAY_SECONDS = 24 * 60 * 60;
@@ -44,7 +45,8 @@ function mapTmdbStatus(status: string | undefined): string {
         case 'Ended': return 'FINISHED';
         case 'Canceled': return 'CANCELLED';
         case 'In Production': return 'NOT_YET_RELEASED';
-        default: return 'RELEASING';
+        case 'Planned': return 'NOT_YET_RELEASED';
+        default: return status ? status.toUpperCase().replace(/\s+/g, '_') : 'FINISHED';
     }
 }
 
@@ -106,7 +108,7 @@ export const streambertAnimeService = {
     },
 
     async getMetadata(tmdbId: number, format?: string) {
-        const cacheKey = `anime:tmdb:meta:v7:${tmdbId}:${format || 'unknown'}`;
+        const cacheKey = `anime:tmdb:meta:v8:${tmdbId}:${format || 'unknown'}`;
         const cached = await cacheGet<any>(cacheKey);
         if (cached) return cached;
 
@@ -149,6 +151,43 @@ export const streambertAnimeService = {
             media!.recommendations.nodes = payload.similar.results.slice(0, 12).map((rec: any) => ({
                 mediaRecommendation: mapTmdbToAnilistMedia(rec)
             }));
+        }
+
+        if (media) {
+            try {
+                const titles = [
+                    media.title?.english,
+                    media.title?.romaji,
+                    media.title?.native,
+                    payload.name,
+                    payload.original_name,
+                ].filter(Boolean);
+
+                const anilistMatch = await anilistService.findBestAnimeMatch({
+                    titles,
+                    format: media.format,
+                    year: media.seasonYear,
+                    episodes: media.episodes,
+                    perPage: 5,
+                }).catch(() => null);
+
+                if (anilistMatch) {
+                    if (anilistMatch.nextAiringEpisode) {
+                        (media as any).nextAiringEpisode = anilistMatch.nextAiringEpisode;
+                    }
+                    if (anilistMatch.status) {
+                        media.status = anilistMatch.status;
+                    }
+                    if (anilistMatch.studios?.nodes?.length) {
+                        media.studios = anilistMatch.studios;
+                    }
+                    if (anilistMatch.episodes) {
+                        media.episodes = media.episodes || anilistMatch.episodes;
+                    }
+                }
+            } catch {
+                // Keep base media if AniList match fails
+            }
         }
 
         await cacheSet(cacheKey, media, ONE_DAY_SECONDS);
