@@ -6,6 +6,9 @@ on:
       - 'v*'
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     name: Build Desktop App (${{ matrix.os }})
@@ -65,3 +68,16 @@ jobs:
             dist-app/*.AppImage
             dist-app/*.zip
             dist-app/*.blockmap
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist-app/*.exe
+            dist-app/*.dmg
+            dist-app/*.AppImage
+            dist-app/*.zip
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
