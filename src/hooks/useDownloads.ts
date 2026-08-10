@@ -116,7 +116,8 @@ export function useDownloads() {
             animeId: string | number | undefined,
             episodeNumber: number | string | undefined,
             anilistId?: number | string,
-            alternateEpNumbers?: (number | string | undefined)[]
+            alternateEpNumbers?: (number | string | undefined)[],
+            animeTitle?: string
         ): ActiveDownloadProgress | undefined => {
             const epNums = [episodeNumber, ...(alternateEpNumbers || [])]
                 .map((n) => Number(n))
@@ -126,14 +127,22 @@ export function useDownloads() {
 
             for (const ep of epNums) {
                 if (strId) {
-                    const key = downloadService.getEpisodeKey(strId, ep);
-                    const prog = activeDownloads.get(key);
-                    if (prog) return prog;
+                    const k1 = downloadService.getEpisodeKey(strId, ep, animeTitle);
+                    const k2 = downloadService.getEpisodeKey(strId, ep);
+                    if (activeDownloads.has(k1)) return activeDownloads.get(k1);
+                    if (activeDownloads.has(k2)) return activeDownloads.get(k2);
                 }
                 if (strAnilist) {
-                    const key = downloadService.getEpisodeKey(strAnilist, ep);
-                    const prog = activeDownloads.get(key);
-                    if (prog) return prog;
+                    const k1 = downloadService.getEpisodeKey(strAnilist, ep, animeTitle);
+                    const k2 = downloadService.getEpisodeKey(strAnilist, ep);
+                    if (activeDownloads.has(k1)) return activeDownloads.get(k1);
+                    if (activeDownloads.has(k2)) return activeDownloads.get(k2);
+                }
+            }
+
+            for (const prog of activeDownloads.values()) {
+                if (epNums.includes(Number(prog.episodeNumber))) {
+                    return prog;
                 }
             }
 

@@ -134,7 +134,10 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string, 
                 if (targetTitle && item.animeTitle && item.animeTitle.toLowerCase().includes(targetTitle.toLowerCase())) return true;
                 return false;
             });
-            return match?.positionSeconds || match?.timestamp || 0;
+            const pos = match?.positionSeconds || match?.timestamp || 0;
+            const dur = match?.durationSeconds || 0;
+            if (dur > 0 && pos >= dur - 10) return 0;
+            return pos;
         } catch {
             return 0;
         }
@@ -662,6 +665,7 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string, 
     const handleEpisodeClick = (ep: Episode) => {
         persistLatestProgress();
         autoLoadAttemptKeyRef.current = '';
+        setStartAtOverrideSeconds(0);
         const episodeNumber = getPlaybackEpisodeNumber(ep);
         const episodeWatchKey = getEpisodeWatchKey(ep);
         if (episodeWatchKey) markEpisodeComplete(episodeWatchKey);

@@ -185,6 +185,7 @@ export function PersistentPlayerProvider({ children }: { children: ReactNode }) 
             );
 
             if (!isSameEpisode) {
+                lastPlaybackTimeRef.current = { time: 0 };
                 return props;
             }
 

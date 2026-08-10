@@ -258,6 +258,8 @@ export default function VideoPlayer(props: VideoPlayerProps) {
     const isOfflineStream = useMemo(() => {
         return Boolean(
             streamUrl?.startsWith('blob:') ||
+            streamUrl?.startsWith('atom://') ||
+            streamUrl?.startsWith('file://') ||
             streamUrl?.includes('/api/scraper/local-file') ||
             streams[selectedStreamIndex]?.provider === 'Offline Storage'
         );
@@ -346,9 +348,13 @@ export default function VideoPlayer(props: VideoPlayerProps) {
             : Number(startAtRef.current || 0);
 
         const applyStart = () => {
-            if (start > 0) {
+            let validStart = start;
+            if (Number.isFinite(video.duration) && video.duration > 0 && validStart >= video.duration - 5) {
+                validStart = 0;
+            }
+            if (validStart > 0) {
                 try {
-                    video.currentTime = start;
+                    video.currentTime = validStart;
                 } catch (e) {
                     console.warn('Failed setting currentTime:', e);
                 }
@@ -359,9 +365,13 @@ export default function VideoPlayer(props: VideoPlayerProps) {
         };
 
         const handleStartSync = () => {
-            if (start > 0 && Math.abs(video.currentTime - start) > 1.5) {
+            let validStart = start;
+            if (Number.isFinite(video.duration) && video.duration > 0 && validStart >= video.duration - 5) {
+                validStart = 0;
+            }
+            if (validStart > 0 && Math.abs(video.currentTime - validStart) > 1.5) {
                 try {
-                    video.currentTime = start;
+                    video.currentTime = validStart;
                 } catch {}
             }
         };
@@ -734,8 +744,14 @@ export default function VideoPlayer(props: VideoPlayerProps) {
                 : Number(startAtRef.current || 0);
 
             const handleLoadedMetadata = () => {
-                if (start > 0 && Number.isFinite(video.duration) && start < video.duration - 1) {
-                    video.currentTime = start;
+                let validStart = start;
+                if (Number.isFinite(video.duration) && video.duration > 0 && validStart >= video.duration - 5) {
+                    validStart = 0;
+                }
+                if (validStart > 0) {
+                    video.currentTime = validStart;
+                } else {
+                    video.currentTime = 0;
                 }
                 video.play().catch(e => console.warn('Native video autoplay blocked:', e));
                 video.removeEventListener('loadedmetadata', handleLoadedMetadata);
@@ -860,6 +876,10 @@ export default function VideoPlayer(props: VideoPlayerProps) {
 
     const handleNativeEnded = useCallback((event: SyntheticEvent<HTMLVideoElement>) => {
         const video = event.currentTarget;
+        if (Number.isFinite(video.duration) && video.duration > 0 && video.currentTime < video.duration - 5) {
+            return;
+        }
+
         onProgressRef.current?.({
             currentTime: video.currentTime,
             duration: video.duration,

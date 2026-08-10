@@ -412,10 +412,11 @@ export default function DetailsEpisodeGrid({
                                 animeId,
                                 epNum,
                                 anilistId,
-                                [ep.episodeNumber, ep.playbackEpisodeNumber, ep._tmdbAbsolute]
+                                [ep.episodeNumber, ep.playbackEpisodeNumber, ep._tmdbAbsolute],
+                                animeTitle
                             );
                             const isDownloading = progressInfo?.status === 'downloading' || progressInfo?.status === 'saving';
-                            const isResolving = resolvingEpisodes.has(epNum);
+                            const isResolving = resolvingEpisodes.has(epNum) && !isDownloading && !isDownloaded;
 
                             return (
                                 <EpisodeCard
