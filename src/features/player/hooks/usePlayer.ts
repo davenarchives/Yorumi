@@ -73,6 +73,7 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string, 
         clearStreams,
         loadStream,
         bustEpisodeCache,
+        prefetchStream,
     } = streamsHook;
 
     // 3. UI State
@@ -725,6 +726,15 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string, 
     const nextEpisode = currentEpisodeIndex >= 0 && currentEpisodeIndex < sortedEpisodes.length - 1
         ? sortedEpisodes[currentEpisodeIndex + 1]
         : null;
+
+    useEffect(() => {
+        if (nextEpisode) {
+            prefetchStream(nextEpisode);
+        }
+        if (prevEpisode) {
+            prefetchStream(prevEpisode);
+        }
+    }, [nextEpisode, prevEpisode, prefetchStream]);
 
     const handlePrevEp = () => {
         if (prevEpisode) {
