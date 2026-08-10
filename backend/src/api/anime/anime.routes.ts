@@ -261,9 +261,9 @@ router.get('/home-fast', async (_req, res) => {
         const year = now.getFullYear();
 
         const [trending, seasonal, popular, allAnilistMedia] = await Promise.all([
-            streambertAnimeService.trending(1, 10).catch(() => ({ media: [] })),
-            streambertAnimeService.seasonal(season, year, 1, 10).catch(() => ({ media: [] })),
-            streambertAnimeService.popular(1, 18).catch(() => ({ media: [] })),
+            streambertAnimeService.trending(1, 30).catch(() => ({ media: [] })),
+            streambertAnimeService.seasonal(season, year, 1, 24).catch(() => ({ media: [] })),
+            streambertAnimeService.popular(1, 24).catch(() => ({ media: [] })),
             getGlobalAnilistMediaPool(),
         ]);
 

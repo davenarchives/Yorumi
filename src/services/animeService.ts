@@ -4,6 +4,7 @@ import axios from "axios";
 import type { Anime } from "../types/anime";
 import { db, isFirebaseEnabled } from "./firebase";
 import { API_BASE } from "../config/api";
+import { downloadService, type DownloadedEpisode } from "./downloadService";
 import { getDisplayImageUrl } from "../utils/image";
 import { isSupportedScraperSessionId } from "../utils/animeNavigation";
 import { setLocalStorageWithCleanup } from "../utils/localStorageQuota";
@@ -370,6 +371,7 @@ const hasAvailableEpisodes = (anime: Anime) => {
 const isReleasedTrendingAnime = (anime: Anime) => {
     const status = String(anime.status || '').toUpperCase();
     if (status === 'NOT_YET_RELEASED') return false;
+    if (status === 'RELEASING' || status === 'FINISHED' || status === 'COMPLETED' || status === 'CURRENT') return true;
     return hasAvailableEpisodes(anime);
 };
 
@@ -383,8 +385,8 @@ const mappingCache = new Map<string, string>();
 const scraperSearchCache = new Map<string, { data: any[]; timestamp: number }>();
 const SCRAPER_SEARCH_TTL = 5 * 60 * 1000;
 const AZ_LIST_CACHE_TTL = 10 * 60 * 1000;
-const PERSISTED_CACHE_PREFIX = 'yorumi_api_cache_v8';
-const STREAM_CACHE_VERSION = 'v14';
+const PERSISTED_CACHE_PREFIX = 'yorumi_api_cache_v10';
+const STREAM_CACHE_VERSION = 'v18';
 const PERSISTED_STREAM_CACHE_PREFIX = `yorumi_stream_cache_${STREAM_CACHE_VERSION}`;
 
 const readPersistedCache = (key: string, ttl: number) => {
@@ -393,8 +395,8 @@ const readPersistedCache = (key: string, ttl: number) => {
         if (!raw) return null;
         const parsed = JSON.parse(raw) as { data: any; timestamp: number };
         if (!parsed || typeof parsed.timestamp !== 'number') return null;
-        if (Date.now() - parsed.timestamp > ttl) {
-            localStorage.removeItem(`${PERSISTED_CACHE_PREFIX}:${key}`);
+        const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
+        if (!isOffline && ttl !== Infinity && Date.now() - parsed.timestamp > ttl) {
             return null;
         }
         return parsed.data;
@@ -415,15 +417,15 @@ const writePersistedCache = (key: string, data: any, timestamp: number) => {
 };
 
 const getCached = (key: string, customTtl?: number) => {
+    const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
     if (cache.has(key)) {
         const entry = cache.get(key)!;
         const ttl = customTtl ?? CACHE_TTL;
-        if (Date.now() - entry.timestamp < ttl) {
+        if (isOffline || ttl === Infinity || Date.now() - entry.timestamp < ttl) {
             return entry.data;
         }
-        cache.delete(key);
     }
-    const persisted = readPersistedCache(key, customTtl ?? CACHE_TTL);
+    const persisted = readPersistedCache(key, isOffline ? Infinity : (customTtl ?? CACHE_TTL));
     if (persisted) {
         cache.set(key, { data: persisted, timestamp: Date.now() });
         return persisted;
@@ -994,6 +996,9 @@ export const animeService = {
 
         const fetchPromise = (async () => {
             try {
+                if (!navigator.onLine) {
+                    throw new Error('Offline');
+                }
                 const formatParam = format ? `&format=${encodeURIComponent(format)}` : '';
                 const res = await fetch(`${API_BASE}/anime/metadata?id=${id}${formatParam}`);
                 if (!res.ok) {
@@ -1011,6 +1016,45 @@ export const animeService = {
                     setCache(cacheKey, result, DETAIL_CACHE_TTL);
                 }
                 return result;
+            } catch (error) {
+                const stale = getStaleCached(cacheKey);
+                if (stale) return stale;
+
+                try {
+                    const downloads = await downloadService.getDownloads();
+                    const targetStr = String(id).trim();
+                    const matching = downloads.filter((d: DownloadedEpisode) => String(d.animeId).trim() === targetStr);
+                    if (matching.length > 0) {
+                        const first = matching[0];
+                        return {
+                            data: {
+                                id: Number(id) || 0,
+                                mal_id: Number(id) || 0,
+                                title: first.animeTitle,
+                                title_english: first.animeTitle,
+                                images: {
+                                    jpg: {
+                                        image_url: first.animeImage,
+                                        large_image_url: first.animeImage,
+                                    }
+                                },
+                                episodes: matching.length,
+                                status: 'Completed',
+                                synopsis: 'Offline Downloaded Series',
+                            },
+                            episodes: matching.map((d: DownloadedEpisode) => ({
+                                session: d.id,
+                                episodeNumber: String(d.episodeNumber),
+                                title: d.episodeTitle || `Episode ${d.episodeNumber}`,
+                                snapshot: d.animeImage,
+                            })),
+                            scraperSession: null,
+                        };
+                    }
+                } catch {
+                    /* ignore fallback error */
+                }
+                return { data: null, episodes: [], scraperSession: null };
             } finally {
                 inFlightRequests.delete(cacheKey);
             }
@@ -1535,7 +1579,7 @@ export const animeService = {
     },
 
     // Get trending anime from AniList (Deduplicated)
-    async getTrendingAnime(page: number = 1, limit: number = 10) {
+    async getTrendingAnime(page: number = 1, limit: number = 24) {
         const cacheKey = `trending-${page}-${limit}`;
         const cached = getCached(cacheKey, DETAIL_CACHE_TTL);
         if (cached) return cached;

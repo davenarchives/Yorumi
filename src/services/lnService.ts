@@ -2,6 +2,7 @@ import axios from 'axios';
 import type { LightNovel, LNChapter, LNChapterContent } from '../types/ln';
 import { API_BASE } from '../config/api';
 import { getDisplayImageUrl } from '../utils/image';
+import { fetchWithOfflineFallback } from './offlineCache';
 
 const ANILIST_URL = 'https://graphql.anilist.co';
 
@@ -80,10 +81,129 @@ const mapAniListToLN = (media: any): LightNovel => {
 export const lnService = {
     // 1. Spotlight Light Novels
     async getSpotlight(): Promise<LightNovel[]> {
-        const query = `
-            query {
-                Page(page: 1, perPage: 10) {
-                    media(type: MANGA, format: NOVEL, sort: [TRENDING_DESC, POPULARITY_DESC]) {
+        return fetchWithOfflineFallback('ln_spotlight', async () => {
+            const query = `
+                query {
+                    Page(page: 1, perPage: 10) {
+                        media(type: MANGA, format: NOVEL, sort: [TRENDING_DESC, POPULARITY_DESC]) {
+                            id
+                            idMal
+                            title { english romaji native }
+                            coverImage { extraLarge large }
+                            bannerImage
+                            description
+                            averageScore
+                            popularity
+                            status
+                            format
+                            chapters
+                            volumes
+                            genres
+                            synonyms
+                            staff(perPage: 5) { edges { role node { name { full } } } }
+                        }
+                    }
+                }
+            `;
+            const res = await fetchAniList(query);
+            const list = res?.Page?.media || [];
+            return list.map(mapAniListToLN);
+        });
+    },
+
+    // 2. Latest LN Updates / Trending
+    async getLatestUpdates(): Promise<LightNovel[]> {
+        return fetchWithOfflineFallback('ln_latest', async () => {
+            const query = `
+                query {
+                    Page(page: 1, perPage: 24) {
+                        media(type: MANGA, format: NOVEL, sort: [UPDATED_AT_DESC, TRENDING_DESC]) {
+                            id
+                            idMal
+                            title { english romaji native }
+                            coverImage { extraLarge large }
+                            description
+                            averageScore
+                            popularity
+                            status
+                            format
+                            chapters
+                            genres
+                            staff(perPage: 5) { edges { role node { name { full } } } }
+                        }
+                    }
+                }
+            `;
+            const res = await fetchAniList(query);
+            const list = res?.Page?.media || [];
+            return list.map(mapAniListToLN);
+        });
+    },
+
+    // 3. All Time Popular LNs
+    async getPopular(page: number = 1): Promise<LightNovel[]> {
+        return fetchWithOfflineFallback(`ln_popular_${page}`, async () => {
+            const query = `
+                query($page: Int) {
+                    Page(page: $page, perPage: 24) {
+                        media(type: MANGA, format: NOVEL, sort: [POPULARITY_DESC]) {
+                            id
+                            idMal
+                            title { english romaji native }
+                            coverImage { extraLarge large }
+                            description
+                            averageScore
+                            popularity
+                            status
+                            format
+                            chapters
+                            genres
+                            staff(perPage: 5) { edges { role node { name { full } } } }
+                        }
+                    }
+                }
+            `;
+            const res = await fetchAniList(query, { page });
+            const list = res?.Page?.media || [];
+            return list.map(mapAniListToLN);
+        });
+    },
+
+    // 4. Top 100 Rated LNs
+    async getTop100(page: number = 1): Promise<LightNovel[]> {
+        return fetchWithOfflineFallback(`ln_top100_${page}`, async () => {
+            const query = `
+                query($page: Int) {
+                    Page(page: $page, perPage: 24) {
+                        media(type: MANGA, format: NOVEL, sort: [SCORE_DESC]) {
+                            id
+                            idMal
+                            title { english romaji native }
+                            coverImage { extraLarge large }
+                            description
+                            averageScore
+                            popularity
+                            status
+                            format
+                            chapters
+                            genres
+                            staff(perPage: 5) { edges { role node { name { full } } } }
+                        }
+                    }
+                }
+            `;
+            const res = await fetchAniList(query, { page });
+            const list = res?.Page?.media || [];
+            return list.map(mapAniListToLN);
+        });
+    },
+
+    // 5. Single LN Details from AniList
+    async getDetails(id: string | number): Promise<LightNovel | null> {
+        return fetchWithOfflineFallback(`ln_details_${id}`, async () => {
+            const query = `
+                query($id: Int) {
+                    Media(id: $id, type: MANGA) {
                         id
                         idMal
                         title { english romaji native }
@@ -99,213 +219,114 @@ export const lnService = {
                         genres
                         synonyms
                         staff(perPage: 5) { edges { role node { name { full } } } }
-                    }
-                }
-            }
-        `;
-        const res = await fetchAniList(query);
-        const list = res?.Page?.media || [];
-        return list.map(mapAniListToLN);
-    },
-
-    // 2. Latest LN Updates / Trending
-    async getLatestUpdates(): Promise<LightNovel[]> {
-        const query = `
-            query {
-                Page(page: 1, perPage: 24) {
-                    media(type: MANGA, format: NOVEL, sort: [UPDATED_AT_DESC, TRENDING_DESC]) {
-                        id
-                        idMal
-                        title { english romaji native }
-                        coverImage { extraLarge large }
-                        description
-                        averageScore
-                        popularity
-                        status
-                        format
-                        chapters
-                        genres
-                        staff(perPage: 5) { edges { role node { name { full } } } }
-                    }
-                }
-            }
-        `;
-        const res = await fetchAniList(query);
-        const list = res?.Page?.media || [];
-        return list.map(mapAniListToLN);
-    },
-
-    // 3. All Time Popular LNs
-    async getPopular(page: number = 1): Promise<LightNovel[]> {
-        const query = `
-            query($page: Int) {
-                Page(page: $page, perPage: 24) {
-                    media(type: MANGA, format: NOVEL, sort: [POPULARITY_DESC]) {
-                        id
-                        idMal
-                        title { english romaji native }
-                        coverImage { extraLarge large }
-                        description
-                        averageScore
-                        popularity
-                        status
-                        format
-                        chapters
-                        genres
-                        staff(perPage: 5) { edges { role node { name { full } } } }
-                    }
-                }
-            }
-        `;
-        const res = await fetchAniList(query, { page });
-        const list = res?.Page?.media || [];
-        return list.map(mapAniListToLN);
-    },
-
-    // 4. Top 100 Rated LNs
-    async getTop100(page: number = 1): Promise<LightNovel[]> {
-        const query = `
-            query($page: Int) {
-                Page(page: $page, perPage: 24) {
-                    media(type: MANGA, format: NOVEL, sort: [SCORE_DESC]) {
-                        id
-                        idMal
-                        title { english romaji native }
-                        coverImage { extraLarge large }
-                        description
-                        averageScore
-                        popularity
-                        status
-                        format
-                        chapters
-                        genres
-                        staff(perPage: 5) { edges { role node { name { full } } } }
-                    }
-                }
-            }
-        `;
-        const res = await fetchAniList(query, { page });
-        const list = res?.Page?.media || [];
-        return list.map(mapAniListToLN);
-    },
-
-    // 5. Single LN Details from AniList
-    async getDetails(id: string | number): Promise<LightNovel | null> {
-        const query = `
-            query($id: Int) {
-                Media(id: $id, type: MANGA) {
-                    id
-                    idMal
-                    title { english romaji native }
-                    coverImage { extraLarge large }
-                    bannerImage
-                    description
-                    averageScore
-                    popularity
-                    status
-                    format
-                    chapters
-                    volumes
-                    genres
-                    synonyms
-                    staff(perPage: 5) { edges { role node { name { full } } } }
-                    relations {
-                        edges {
-                            relationType
-                            node {
-                                id
-                                title { romaji english native }
-                                coverImage { large }
-                                format
-                                type
+                        relations {
+                            edges {
+                                relationType
+                                node {
+                                    id
+                                    title { romaji english native }
+                                    coverImage { large }
+                                    format
+                                    type
+                                }
                             }
                         }
-                    }
-                    recommendations(perPage: 10) {
-                        nodes {
-                            mediaRecommendation {
-                                id
-                                title { romaji english }
-                                coverImage { large }
-                                type
-                                format
+                        recommendations(perPage: 10) {
+                            nodes {
+                                mediaRecommendation {
+                                    id
+                                    title { romaji english }
+                                    coverImage { large }
+                                    type
+                                    format
+                                }
                             }
                         }
                     }
                 }
-            }
-        `;
-        const numericId = parseInt(String(id), 10);
-        if (isNaN(numericId)) return null;
+            `;
+            const numericId = parseInt(String(id), 10);
+            if (isNaN(numericId)) return null;
 
-        const res = await fetchAniList(query, { id: numericId });
-        if (!res?.Media) return null;
-        return mapAniListToLN(res.Media);
+            const res = await fetchAniList(query, { id: numericId });
+            if (!res?.Media) return null;
+            return mapAniListToLN(res.Media);
+        });
     },
 
     // 6. Backend Integration: Resolve AniList title to backend scraper novel ID
     async resolveScraperId(titles: string[]): Promise<string | null> {
-        try {
-            const { data } = await apiClient.post('/ln/resolve', { titles });
-            return data?.scraperId || null;
-        } catch {
-            return null;
-        }
+        const key = `ln_resolve_${titles.join('_')}`;
+        return fetchWithOfflineFallback(key, async () => {
+            try {
+                const { data } = await apiClient.post('/ln/resolve', { titles });
+                return data?.scraperId || null;
+            } catch {
+                return null;
+            }
+        });
     },
 
     // 7. Backend Integration: Get scraper novel details & chapters
-    async getScraperNovelDetails(scraperId: string): Promise<{ chapters: LNChapter[]; description?: string; author?: string } | null> {
-        try {
-            const { data } = await apiClient.get(`/ln/details/${encodeURIComponent(scraperId)}`);
-            if (data?.success && data?.data) {
-                return {
-                    chapters: data.data.chapters || [],
-                    description: data.data.description,
-                    author: data.data.author,
-                };
+    async getScraperNovelDetails(scraperId: string, refresh = false): Promise<{ chapters: LNChapter[]; description?: string; author?: string } | null> {
+        return fetchWithOfflineFallback(`ln_scraper_details_${scraperId}`, async () => {
+            try {
+                const query = refresh ? '?refresh=true' : '';
+                const { data } = await apiClient.get(`/ln/details/${encodeURIComponent(scraperId)}${query}`);
+                if (data?.success && data?.data) {
+                    return {
+                        chapters: data.data.chapters || [],
+                        description: data.data.description,
+                        author: data.data.author,
+                    };
+                }
+                return null;
+            } catch {
+                return null;
             }
-            return null;
-        } catch {
-            return null;
-        }
+        });
     },
 
     // 8. Backend Integration: Read Chapter Content
     async getChapterContent(chapterId: string): Promise<LNChapterContent | null> {
-        try {
-            const { data } = await apiClient.get(`/ln/read/${encodeURIComponent(chapterId)}`);
-            if (data?.success && data?.data) {
-                return data.data;
+        return fetchWithOfflineFallback(`ln_content_${chapterId}`, async () => {
+            try {
+                const { data } = await apiClient.get(`/ln/read/${encodeURIComponent(chapterId)}`);
+                if (data?.success && data?.data) {
+                    return data.data;
+                }
+                return null;
+            } catch {
+                return null;
             }
-            return null;
-        } catch {
-            return null;
-        }
+        });
     },
 
     // 9. Search LN Novels
     async searchNovels(query: string): Promise<LightNovel[]> {
-        const gqlQuery = `
-            query($search: String) {
-                Page(page: 1, perPage: 24) {
-                    media(search: $search, type: MANGA, format: NOVEL) {
-                        id
-                        idMal
-                        title { english romaji native }
-                        coverImage { extraLarge large }
-                        description
-                        averageScore
-                        popularity
-                        status
-                        format
-                        chapters
-                        genres
+        return fetchWithOfflineFallback(`ln_search_${query}`, async () => {
+            const gqlQuery = `
+                query($search: String) {
+                    Page(page: 1, perPage: 24) {
+                        media(search: $search, type: MANGA, format: NOVEL) {
+                            id
+                            idMal
+                            title { english romaji native }
+                            coverImage { extraLarge large }
+                            description
+                            averageScore
+                            popularity
+                            status
+                            format
+                            chapters
+                            genres
+                        }
                     }
                 }
-            }
-        `;
-        const res = await fetchAniList(gqlQuery, { search: query });
-        const list = res?.Page?.media || [];
-        return list.map(mapAniListToLN);
+            `;
+            const res = await fetchAniList(gqlQuery, { search: query });
+            const list = res?.Page?.media || [];
+            return list.map(mapAniListToLN);
+        });
     },
 };

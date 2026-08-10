@@ -116,8 +116,8 @@ export async function searchNovelBin(query: string): Promise<NovelSearchResult[]
         });
 
         return results;
-    } catch (error) {
-        console.error('[NovelBin] Search error:', error);
+    } catch (error: any) {
+        console.error('[NovelBin] Search error:', error?.message || error);
         return [];
     }
 }
@@ -186,22 +186,14 @@ export async function getNovelBinDetails(slug: string): Promise<NovelDetails | n
                 if (!cSlug || seenSlugs.has(cSlug)) return;
                 seenSlugs.add(cSlug);
 
-                const numMatch = cTitle.match(/chapter\s+([\d.]+)/i) ||
-                                 cTitle.match(/arc\s+\d+\s*[-–—]\s*([\d.]+)/i) ||
-                                 cSlug.match(/chapter-([\d.]+)/i);
-                const chapterNumber = numMatch ? parseFloat(numMatch[1]) : num++;
-
                 chapters.push({
                     id: `nb:${cSlug}`,
-                    number: chapterNumber,
+                    number: num++,
                     title: cTitle,
                     url: cHref.startsWith('http') ? cHref : `${NOVELBIN_BASE}${cHref.startsWith('/') ? '' : '/'}${cHref}`,
                 });
             }
         });
-
-        // Ensure chapters are sorted in ascending order (Chapter 1, 2, 3...)
-        chapters.sort((a, b) => a.number - b.number);
 
         return {
             id: `nb:${cleanSlug}`,
@@ -214,8 +206,8 @@ export async function getNovelBinDetails(slug: string): Promise<NovelDetails | n
             source: 'novelbin',
             chapters,
         };
-    } catch (error) {
-        console.error('[NovelBin] Details error:', error);
+    } catch (error: any) {
+        console.error('[NovelBin] Details error:', error?.message || error);
         return null;
     }
 }
@@ -259,8 +251,8 @@ export async function getNovelBinChapterContent(chapterSlug: string): Promise<No
             prevChapterId,
             nextChapterId,
         };
-    } catch (error) {
-        console.error('[NovelBin] Chapter content error:', error);
+    } catch (error: any) {
+        console.error('[NovelBin] Chapter content error:', error?.message || error);
         return null;
     }
 }
@@ -350,19 +342,13 @@ export async function getWuxiaWorldDetails(slug: string): Promise<NovelDetails |
             if (!chapterSlug || seenSlugs.has(chapterSlug)) return;
             seenSlugs.add(chapterSlug);
 
-            const numMatch = ch.title.match(/chapter\s+([\d.]+)/i) ||
-                             ch.title.match(/arc\s+\d+\s*[-–—]\s*([\d.]+)/i);
-            const number = numMatch ? parseFloat(numMatch[1]) : idx + 1;
-
             chapters.push({
                 id: `wx:${chapterSlug}`,
-                number,
+                number: idx + 1,
                 title: ch.title,
                 url: ch.href,
             });
         });
-
-        chapters.sort((a, b) => a.number - b.number);
 
         return {
             id: `wx:${cleanSlug}`,

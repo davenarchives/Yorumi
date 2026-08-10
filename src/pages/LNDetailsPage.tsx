@@ -8,16 +8,19 @@ import { useTitleLanguage } from '../context/TitleLanguageContext';
 import { getDisplayTitle } from '../utils/titleLanguage';
 import { slugify } from '../utils/slugify';
 import { Play, Plus, Check, Search, Star } from 'lucide-react';
+import ChapterViewToggle, { useChapterViewMode, type ChapterViewMode } from '../components/ui/ChapterViewToggle';
 
 // Chapter Grid Component matching Manga details format
 const LNChapterList = ({
     chapters,
     readChapters,
     onChapterClick,
+    viewMode = 'list',
 }: {
     chapters: LNChapter[];
     readChapters: Set<string>;
     onChapterClick: (ch: LNChapter) => void;
+    viewMode?: ChapterViewMode;
 }) => {
     const [searchQuery, setSearchQuery] = useState('');
     const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
@@ -42,7 +45,7 @@ const LNChapterList = ({
     const currentChapters = sortedChapters.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
 
     return (
-        <div className="mt-6 bg-[#111] rounded-2xl p-4 sm:p-6 shadow-xl ring-1 ring-white/5">
+        <div className="mt-6 bg-[#111] rounded-2xl p-4 sm:p-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
                 <h3 className="text-xl font-black text-white">{chapters.length} Chapters</h3>
                 <button
@@ -69,53 +72,91 @@ const LNChapterList = ({
                             setSearchQuery(e.target.value);
                             setPage(1);
                         }}
-                        className="w-full bg-[#1a1a1a] text-white pl-11 pr-4 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-400/50 transition-all border border-white/5"
+                        className="w-full bg-[#1a1a1a] text-white pl-11 pr-4 py-3 rounded-xl focus:outline-none focus:bg-[#222] transition-all"
                     />
                 </div>
             </div>
 
-            <div className="flex flex-col space-y-1">
-                {currentChapters.map((ch, index) => {
-                    const isRead = readChapters.has(String(ch.id));
+            {viewMode === 'grid' ? (
+                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10 gap-2.5">
+                    {currentChapters.map((ch, index) => {
+                        const isRead = readChapters.has(String(ch.id));
 
-                    const titleMatch = ch.title.match(/^(Chapter\s+[\d.]+)(?:\s*[:-]\s*(.*))?/i);
-                    const chapterNumStr = titleMatch ? titleMatch[1] : ch.title;
-                    const subtitleStr = titleMatch && titleMatch[2] ? titleMatch[2] : '';
+                        const titleMatch = ch.title.match(/^(Arc\s+\d+[\s–—,-]*(?:Chapter\s*)?[\d.]+|Vol(?:ume)?\s*[\d.]+\s*(?:Chapter\s*)?[\d.]+|Chapter\s+[\d.]+|Ch\.\s*[\d.]+)(?:\s*[:–—,-]\s*["'«]?(.*?)["'»]?)?$/i);
+                        const mainStr = titleMatch ? titleMatch[1].trim() : ch.title.split(/[:–—]/)[0].trim();
+                        const subMatch = titleMatch ? titleMatch[2] : (ch.title.includes(':') || ch.title.includes('–') ? ch.title.split(/[:–—]/).slice(1).join(' ').trim() : '');
+                        const subtitleStr = subMatch ? subMatch.replace(/^["'«]|["'»]$/g, '').trim() : '';
 
-                    return (
-                        <button
-                            key={`${ch.id}-${index}`}
-                            onClick={() => onChapterClick(ch)}
-                            className={`flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-4 rounded-xl transition-all duration-200 text-left group
-                                ${isRead ? 'opacity-50' : ''} hover:bg-[#1a1a1a] active:scale-[0.99] cursor-pointer border border-transparent hover:border-white/5`}
-                        >
-                            <div className="flex flex-col min-w-0">
-                                <span className={`font-black text-lg ${isRead ? 'text-gray-400' : 'text-white group-hover:text-amber-400'} transition-colors`}>
-                                    {chapterNumStr}
+                        return (
+                            <button
+                                key={`${ch.id}-${index}`}
+                                onClick={() => onChapterClick(ch)}
+                                title={ch.title}
+                                className={`aspect-square flex flex-col items-center justify-center p-2 rounded-xl transition-all duration-200 text-center group
+                                    ${isRead ? 'opacity-50 bg-[#141414]' : 'bg-[#1a1a1a] hover:bg-[#252525]'} active:scale-95 cursor-pointer`}
+                            >
+                                <span className={`font-semibold text-xs sm:text-sm leading-tight ${isRead ? 'text-gray-400' : 'text-gray-200 group-hover:text-amber-400'} transition-colors line-clamp-2`}>
+                                    {mainStr}
                                 </span>
                                 {subtitleStr && (
-                                    <span className="text-gray-400 text-sm truncate mt-0.5">
+                                    <span className="text-[10px] text-gray-400 truncate w-full mt-1 px-0.5 font-normal">
                                         {subtitleStr}
                                     </span>
                                 )}
-                            </div>
-                            {ch.releaseDate && (
-                                <span className="text-gray-500 text-sm font-semibold shrink-0">
-                                    {ch.releaseDate}
-                                </span>
-                            )}
-                        </button>
-                    );
-                })}
-                {currentChapters.length === 0 && (
-                    <div className="text-center py-8 text-gray-500">
-                        No chapters found matching "{searchQuery}"
-                    </div>
-                )}
-            </div>
+                            </button>
+                        );
+                    })}
+                    {currentChapters.length === 0 && (
+                        <div className="col-span-full text-center py-8 text-gray-500">
+                            No chapters found matching "{searchQuery}"
+                        </div>
+                    )}
+                </div>
+            ) : (
+                <div className="flex flex-col space-y-1">
+                    {currentChapters.map((ch, index) => {
+                        const isRead = readChapters.has(String(ch.id));
+
+                        const titleMatch = ch.title.match(/^(Arc\s+\d+[\s–—,-]*(?:Chapter\s*)?[\d.]+|Vol(?:ume)?\s*[\d.]+\s*(?:Chapter\s*)?[\d.]+|Chapter\s+[\d.]+|Ch\.\s*[\d.]+)(?:\s*[:–—,-]\s*["'«]?(.*?)["'»]?)?$/i);
+                        const mainStr = titleMatch ? titleMatch[1].trim() : ch.title.split(/[:–—]/)[0].trim();
+                        const subMatch = titleMatch ? titleMatch[2] : (ch.title.includes(':') || ch.title.includes('–') ? ch.title.split(/[:–—]/).slice(1).join(' ').trim() : '');
+                        const subtitleStr = subMatch ? subMatch.replace(/^["'«]|["'»]$/g, '').trim() : '';
+
+                        return (
+                            <button
+                                key={`${ch.id}-${index}`}
+                                onClick={() => onChapterClick(ch)}
+                                className={`flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3.5 rounded-xl transition-all duration-200 text-left group
+                                    ${isRead ? 'opacity-50' : ''} hover:bg-[#1a1a1a] active:scale-[0.99] cursor-pointer`}
+                            >
+                                <div className="flex flex-col min-w-0">
+                                    <span className={`font-semibold text-base ${isRead ? 'text-gray-400' : 'text-gray-200 group-hover:text-amber-400'} transition-colors`}>
+                                        {mainStr}
+                                    </span>
+                                    {subtitleStr && (
+                                        <span className="text-gray-400 text-xs sm:text-sm font-normal truncate mt-0.5">
+                                            {subtitleStr}
+                                        </span>
+                                    )}
+                                </div>
+                                {ch.releaseDate && (
+                                    <span className="text-gray-500 text-xs font-medium shrink-0">
+                                        {ch.releaseDate}
+                                    </span>
+                                )}
+                            </button>
+                        );
+                    })}
+                    {currentChapters.length === 0 && (
+                        <div className="text-center py-8 text-gray-500">
+                            No chapters found matching "{searchQuery}"
+                        </div>
+                    )}
+                </div>
+            )}
 
             {totalPages > 1 && (
-                <div className="flex flex-col items-center gap-4 mt-8 pt-6 border-t border-white/5">
+                <div className="flex flex-col items-center gap-4 mt-8 pt-6 border-t border-white/10">
                     <div className="flex flex-wrap justify-center gap-2">
                         {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
                             <button
@@ -142,6 +183,7 @@ export default function LNDetailsPage() {
     const navigate = useNavigate();
     const location = useLocation();
     const { language } = useTitleLanguage();
+    const [viewMode, setViewMode] = useChapterViewMode();
 
     const routeLN = (location.state as { ln?: LightNovel } | null)?.ln ?? null;
 
@@ -200,7 +242,16 @@ export default function LNDetailsPage() {
                     }
                 }
 
-                const scraperDetails = await lnService.getScraperNovelDetails(scraperId);
+                let scraperDetails = await lnService.getScraperNovelDetails(scraperId);
+                if (scraperDetails?.chapters && scraperDetails.chapters.length > 5) {
+                    const chs = scraperDetails.chapters;
+                    if (chs[0]?.title?.toLowerCase().includes('arc 1') && chs[1]?.title?.toLowerCase().includes('arc 5')) {
+                        // Stale cache detected, force purge & fresh fetch
+                        const fresh = await lnService.getScraperNovelDetails(scraperId, true);
+                        if (fresh) scraperDetails = fresh;
+                    }
+                }
+
                 if (mounted && scraperDetails) {
                     if (scraperDetails.chapters) {
                         setChapters(scraperDetails.chapters);
@@ -423,6 +474,7 @@ export default function LNDetailsPage() {
                         <div className="flex items-center gap-4 mb-6">
                             <h3 className="text-xl font-black text-white uppercase tracking-wider whitespace-nowrap">Chapters</h3>
                             <div className="flex-1 h-px bg-white/10" />
+                            <ChapterViewToggle viewMode={viewMode} onViewModeChange={setViewMode} />
                         </div>
                         {loadingChapters ? (
                             <div className="mt-6 bg-[#111] rounded-2xl p-4 sm:p-6 shadow-xl ring-1 ring-white/5 animate-pulse">
@@ -449,6 +501,7 @@ export default function LNDetailsPage() {
                                 chapters={chapters}
                                 readChapters={readChapters}
                                 onChapterClick={handleChapterClick}
+                                viewMode={viewMode}
                             />
                         ) : (
                             <div className="text-gray-500 text-center py-4 space-y-2">

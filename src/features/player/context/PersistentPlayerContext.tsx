@@ -1,11 +1,10 @@
- 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router-dom';
 import VideoPlayer, { type VideoPlayerProps } from '../components/VideoPlayer';
 
 type PersistentPlayerContextValue = {
-    registerPlayer: (props: VideoPlayerProps, watchUrl: string) => void;
+    registerPlayer: (props: VideoPlayerProps, watchUrl: string, watchState?: any) => void;
     setInlinePlayerElement: (element: HTMLElement | null) => void;
 };
 
@@ -37,13 +36,15 @@ export function PersistentPlayerProvider({ children }: { children: ReactNode }) 
     const navigate = useNavigate();
     const [playerProps, setPlayerProps] = useState<VideoPlayerProps | null>(null);
     const [watchUrl, setWatchUrl] = useState('');
+    const [watchState, setWatchState] = useState<any>(null);
     const [inlineElement, setInlineElement] = useState<HTMLElement | null>(null);
-    const [inlineRect, setInlineRect] = useState<DOMRect | null>(null);
+    const [inlineRect, setInlineRect] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
     const [isClosed, setIsClosed] = useState(false);
-    const [hasStartedPlayback, setHasStartedPlayback] = useState(false);
     const [miniPosition, setMiniPosition] = useState<MiniPosition | null>(null);
     const [miniSize, setMiniSize] = useState(() => getMiniSize());
     const watchUrlRef = useRef('');
+    const watchStateRef = useRef<any>(null);
+    const lastPlaybackTimeRef = useRef<{ session?: string; time: number }>({ time: 0 });
     const dragRef = useRef<{
         pointerId: number;
         offsetX: number;
@@ -53,43 +54,70 @@ export function PersistentPlayerProvider({ children }: { children: ReactNode }) 
     } | null>(null);
 
     const isWatchRoute = location.pathname.startsWith('/anime/details');
-    const shouldShowMiniPlayer = Boolean(playerProps && !isClosed && hasStartedPlayback && !isWatchRoute);
-    const shouldShowInlinePlayer = Boolean(playerProps && !isClosed && isWatchRoute);
-    const shouldRenderPlayer = shouldShowMiniPlayer || shouldShowInlinePlayer;
+    const hasPlayer = Boolean(playerProps && (playerProps.streamUrl || playerProps.isLoading || playerProps.isServerSwitching));
+    const isInlineAvailable = Boolean(isWatchRoute && inlineElement && document.body.contains(inlineElement));
 
-    const updateInlineRect = useCallback(() => {
-        if (!inlineElement) {
+    useEffect(() => {
+        if (!isInlineAvailable || !inlineElement) {
             setInlineRect(null);
             return;
         }
-        const rect = inlineElement.getBoundingClientRect();
-        setInlineRect({
-            ...rect.toJSON(),
-            top: rect.top + window.scrollY,
-            left: rect.left + window.scrollX,
-            width: rect.width,
-            height: rect.height,
-        } as DOMRect);
-    }, [inlineElement]);
 
-    useEffect(() => {
-        const frameId = window.requestAnimationFrame(updateInlineRect);
-        if (!inlineElement) {
-            return () => window.cancelAnimationFrame(frameId);
-        }
+        const updateRect = () => {
+            if (!inlineElement || !document.body.contains(inlineElement)) return;
+            const rect = inlineElement.getBoundingClientRect();
+            if (rect.width > 0 && rect.height > 0) {
+                setInlineRect({
+                    left: rect.left + window.scrollX,
+                    top: rect.top + window.scrollY,
+                    width: rect.width,
+                    height: rect.height,
+                });
+            }
+        };
 
-        const observer = new ResizeObserver(updateInlineRect);
-        observer.observe(inlineElement);
-        window.addEventListener('resize', updateInlineRect);
-        window.addEventListener('scroll', updateInlineRect, { passive: true });
+        updateRect();
+
+        window.addEventListener('resize', updateRect, { passive: true });
+
+        const resizeObserver = new ResizeObserver(updateRect);
+        resizeObserver.observe(inlineElement);
 
         return () => {
-            window.cancelAnimationFrame(frameId);
-            observer.disconnect();
-            window.removeEventListener('resize', updateInlineRect);
-            window.removeEventListener('scroll', updateInlineRect);
+            window.removeEventListener('resize', updateRect);
+            resizeObserver.disconnect();
         };
-    }, [inlineElement, updateInlineRect]);
+    }, [isInlineAvailable, inlineElement]);
+
+    const isInlineMode = Boolean(isInlineAvailable && inlineRect);
+    const shouldShowInlinePlayer = Boolean(hasPlayer && !isClosed && isInlineAvailable);
+    const shouldShowMiniPlayer = Boolean(hasPlayer && !isClosed && !isInlineAvailable && playerProps?.streamUrl);
+    const shouldRenderPlayer = shouldShowMiniPlayer || shouldShowInlinePlayer;
+
+    const effectivePlayerProps = useMemo(() => {
+        if (!playerProps) return null;
+        const sameSessionTime = lastPlaybackTimeRef.current.session === playerProps.episodeSession
+            ? lastPlaybackTimeRef.current.time
+            : 0;
+
+        const effectiveStartAt = (playerProps.startAtSeconds && playerProps.startAtSeconds > sameSessionTime)
+            ? playerProps.startAtSeconds
+            : (sameSessionTime > 0 ? sameSessionTime : playerProps.startAtSeconds);
+
+        return {
+            ...playerProps,
+            startAtSeconds: effectiveStartAt,
+            onProgress: (progress: { currentTime: number; duration: number; ended?: boolean }) => {
+                if (progress.currentTime > 0) {
+                    lastPlaybackTimeRef.current = {
+                        session: playerProps.episodeSession,
+                        time: progress.currentTime,
+                    };
+                }
+                playerProps.onProgress?.(progress);
+            },
+        };
+    }, [playerProps]);
 
     useEffect(() => {
         const handleResize = () => {
@@ -115,65 +143,85 @@ export function PersistentPlayerProvider({ children }: { children: ReactNode }) 
         return () => window.cancelAnimationFrame(frameId);
     }, [miniPosition, miniSize.height, miniSize.width, shouldShowMiniPlayer]);
 
-    const registerPlayer = useCallback((props: VideoPlayerProps, nextWatchUrl: string) => {
-        const previousWatchUrl = watchUrlRef.current;
+    const registerPlayer = useCallback((props: VideoPlayerProps, nextWatchUrl: string, nextWatchState?: any) => {
         watchUrlRef.current = nextWatchUrl;
         setWatchUrl(nextWatchUrl);
+        if (nextWatchState !== undefined) {
+            watchStateRef.current = nextWatchState;
+            setWatchState(nextWatchState);
+        }
         setPlayerProps((currentProps) => {
-            const isSameIncomingStream = Boolean(
-                currentProps?.streamUrl &&
-                props.streamUrl &&
-                currentProps.streamUrl === props.streamUrl
+            if (!currentProps) return props;
+
+            const currentEpNum = Number(currentProps.episodeNumber);
+            const incomingEpNum = Number(props.episodeNumber);
+
+            const isDifferentNumericId = (idA?: string, idB?: string): boolean => {
+                const a = String(idA || '').trim();
+                const b = String(idB || '').trim();
+                if (!a || !b) return false;
+                return /^\d+$/.test(a) && /^\d+$/.test(b) && a !== b;
+            };
+
+            const cleanA = (currentProps.animeTitle || '').trim().toLowerCase();
+            const cleanB = (props.animeTitle || '').trim().toLowerCase();
+            const titleMatches = Boolean(cleanA && cleanB && (
+                cleanA === cleanB ||
+                cleanA.includes(cleanB) ||
+                cleanB.includes(cleanA)
+            ));
+
+            const isSameAnime = Boolean(
+                (currentProps.animeId && props.animeId && (
+                    currentProps.animeId === props.animeId ||
+                    !isDifferentNumericId(currentProps.animeId, props.animeId)
+                )) ||
+                titleMatches
             );
 
             const isSameEpisode = Boolean(
-                currentProps?.episodeSession &&
-                props.episodeSession &&
-                currentProps.episodeSession === props.episodeSession
+                (currentProps.episodeSession && props.episodeSession && currentProps.episodeSession === props.episodeSession) ||
+                (isSameAnime && Number.isFinite(currentEpNum) && Number.isFinite(incomingEpNum) && currentEpNum === incomingEpNum)
             );
 
-            const isIncomingStreamEmpty = !props.streamUrl && !props.isLoading;
-            const isServerSwitchLoading = props.isLoading && isSameEpisode;
-
-            // Preserve the active stream if:
-            // 1. The incoming stream is exactly the same (prevents video flicker).
-            // 2. The incoming state is totally empty (user navigated to a new page but didn't click an episode yet).
-            // 3. The incoming state is loading the exact SAME episode (user switched servers/qualities, so keep playing in background).
-            const shouldPreserveActiveStream = Boolean(
-                currentProps?.streamUrl &&
-                (isSameIncomingStream || isIncomingStreamEmpty || isServerSwitchLoading)
-            );
-
-            if (!shouldPreserveActiveStream || !currentProps) {
+            if (!isSameEpisode) {
                 return props;
             }
 
-            return {
-                ...props,
-                streamUrl: currentProps.streamUrl,
-                episodeSession: currentProps.episodeSession,
-                isHls: currentProps.isHls,
-                subtitles: currentProps.subtitles,
-                isLoading: false,
-                hasPlayableSource: currentProps.hasPlayableSource,
-                streamExhausted: false,
-                startAtSeconds: currentProps.startAtSeconds,
-            };
+            if (isSameEpisode && currentProps.streamUrl) {
+                if (props.streamUrl && props.streamUrl !== currentProps.streamUrl && !props.isLoading) {
+                    return props;
+                }
+
+                return {
+                    ...props,
+                    streamUrl: currentProps.streamUrl,
+                    episodeSession: currentProps.episodeSession || props.episodeSession,
+                    isHls: currentProps.isHls,
+                    subtitles: currentProps.subtitles,
+                    isLoading: false,
+                    hasPlayableSource: currentProps.hasPlayableSource,
+                    streamExhausted: false,
+                };
+            }
+
+            return props;
         });
         setIsClosed(false);
     }, []);
 
     const handleMiniClose = useCallback(() => {
         setIsClosed(true);
-        setHasStartedPlayback(false);
         setPlayerProps(null);
     }, []);
 
     const handleMiniExpand = useCallback(() => {
-        if (watchUrl) {
-            navigate(watchUrl);
+        const targetUrl = watchUrlRef.current || watchUrl;
+        const targetState = watchStateRef.current || watchState;
+        if (targetUrl) {
+            navigate(targetUrl, { state: targetState });
         }
-    }, [navigate, watchUrl]);
+    }, [navigate, watchUrl, watchState]);
 
     const handleMiniPointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
         if (!shouldShowMiniPlayer || event.button !== 0) return;
@@ -208,62 +256,65 @@ export function PersistentPlayerProvider({ children }: { children: ReactNode }) 
         event.currentTarget.releasePointerCapture(event.pointerId);
     }, []);
 
-    const handlePlaybackStateChange = useCallback((state: { isPlaying: boolean }) => {
-        if (state.isPlaying) {
-            setHasStartedPlayback(true);
-        }
-    }, []);
-
     const contextValue = useMemo<PersistentPlayerContextValue>(() => ({
         registerPlayer,
         setInlinePlayerElement: setInlineElement,
     }), [registerPlayer]);
 
-    const layerStyle = shouldShowMiniPlayer
-        ? miniPosition
+    const containerStyle: React.CSSProperties | undefined = shouldRenderPlayer
+        ? (isInlineMode && inlineRect
             ? {
-                left: `${miniPosition.x}px`,
-                top: `${miniPosition.y}px`,
-                width: `${miniSize.width}px`,
-                height: `${miniSize.height}px`,
-            }
-            : {
-                bottom: '24px',
-                right: '24px',
-                width: MINI_PLAYER_WIDTH,
-                aspectRatio: '16 / 9',
-            }
-        : inlineRect
-            ? {
+                position: 'absolute',
                 left: `${inlineRect.left}px`,
                 top: `${inlineRect.top}px`,
                 width: `${inlineRect.width}px`,
                 height: `${inlineRect.height}px`,
+                zIndex: 40,
+                borderRadius: '1rem',
+                overflow: 'hidden',
             }
-            : undefined;
+            : (miniPosition
+                ? {
+                    position: 'fixed',
+                    left: `${miniPosition.x}px`,
+                    top: `${miniPosition.y}px`,
+                    width: `${miniSize.width}px`,
+                    height: `${miniSize.height}px`,
+                    zIndex: 2147483646,
+                    borderRadius: '0.75rem',
+                    overflow: 'hidden',
+                }
+                : {
+                    position: 'fixed',
+                    bottom: '24px',
+                    right: '24px',
+                    width: MINI_PLAYER_WIDTH,
+                    aspectRatio: '16 / 9',
+                    zIndex: 2147483646,
+                    borderRadius: '0.75rem',
+                    overflow: 'hidden',
+                }))
+        : undefined;
 
     return (
         <PersistentPlayerContext.Provider value={contextValue}>
             {children}
-            {shouldRenderPlayer && playerProps && layerStyle && createPortal(
+            {shouldRenderPlayer && effectivePlayerProps && containerStyle && createPortal(
                 <div
-                    className={`${
-                        shouldShowMiniPlayer
-                            ? 'fixed z-[2147483646] cursor-grab rounded-xl shadow-2xl shadow-black/70 active:cursor-grabbing'
-                            : 'absolute z-20 rounded-none md:rounded-2xl'
-                    } overflow-hidden bg-black transition-[left,top,right,bottom,width,height,opacity,transform] duration-300 ease-out`}
-                    style={layerStyle}
-                    onPointerDown={handleMiniPointerDown}
-                    onPointerMove={handleMiniPointerMove}
-                    onPointerUp={handleMiniPointerUp}
-                    onPointerCancel={handleMiniPointerUp}
+                    className={`shadow-2xl shadow-black/80 bg-black transition-[border-radius] duration-200 ease-out ${
+                        isInlineMode ? 'absolute z-40' : 'fixed cursor-grab active:cursor-grabbing z-[2147483646]'
+                    }`}
+                    style={containerStyle}
+                    onPointerDown={!isInlineMode ? handleMiniPointerDown : undefined}
+                    onPointerMove={!isInlineMode ? handleMiniPointerMove : undefined}
+                    onPointerUp={!isInlineMode ? handleMiniPointerUp : undefined}
+                    onPointerCancel={!isInlineMode ? handleMiniPointerUp : undefined}
                 >
                     <VideoPlayer
-                        {...playerProps}
-                        displayMode={shouldShowMiniPlayer ? 'mini' : 'full'}
+                        {...effectivePlayerProps}
+                        displayMode={isInlineMode ? 'full' : 'mini'}
                         onMiniClose={handleMiniClose}
                         onMiniExpand={handleMiniExpand}
-                        onPlaybackStateChange={handlePlaybackStateChange}
                     />
                 </div>,
                 document.body

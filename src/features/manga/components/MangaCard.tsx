@@ -117,26 +117,14 @@ const MangaCard: React.FC<MangaCardProps> = ({ manga, onClick, onMouseEnter, inL
         >
             {/* Image Container with 3D Transform */}
             <div
-                className="relative aspect-[2/3] rounded-lg overflow-hidden mb-3 shadow-lg ring-0 outline-none transition-all duration-75 ease-out"
+                className="relative aspect-[2/3] rounded-lg overflow-hidden mb-3 bg-[#141414] transition-all duration-75 ease-out"
                 style={{
                     transform: disableTilt
                         ? 'none'
                         : `rotateX(${rotation.x}deg) rotateY(${rotation.y}deg) scale3d(${isHovered ? 1.05 : 1}, ${isHovered ? 1.05 : 1}, 1)`,
                     transformStyle: 'preserve-3d',
-                    boxShadow: isHovered
-                        ? '0 20px 40px -5px rgba(0,0,0,0.4), 0 10px 20px -5px rgba(0,0,0,0.2)'
-                        : 'none'
                 }}
             >
-                {/* Glare Overlay */}
-                <div
-                    className="absolute inset-0 z-30 pointer-events-none mix-blend-overlay transition-opacity duration-300"
-                    style={{
-                        background: `radial-gradient(circle at ${glare.x}% ${glare.y}%, rgba(255,255,255,0.3) 0%, transparent 80%)`,
-                        opacity: disableTilt ? 0 : glare.opacity
-                    }}
-                />
-
                 <img
                     src={manga.images.jpg.large_image_url || manga.images.jpg.image_url}
                     alt={displayTitle}
@@ -197,7 +185,7 @@ const MangaCard: React.FC<MangaCardProps> = ({ manga, onClick, onMouseEnter, inL
             </div>
 
             {isHovered && (
-                <div className={`pointer-events-none absolute top-2 z-[60] hidden w-[260px] rounded-2xl bg-[#1a1a2e] p-4 text-white shadow-[0_18px_40px_rgba(0,0,0,0.45)] lg:block ${popupSide === 'left' ? 'right-[calc(100%+16px)]' : 'left-[calc(100%+16px)]'}`}>
+                <div className={`pointer-events-none absolute top-2 z-[60] hidden w-[260px] rounded-2xl bg-[#1a1a2e] p-4 text-white shadow-xl lg:block ${popupSide === 'left' ? 'right-[calc(100%+16px)]' : 'left-[calc(100%+16px)]'}`}>
                     <div
                         className="absolute top-7 h-3 w-3 bg-[#1a1a2e]"
                         style={popupSide === 'left'

@@ -46,13 +46,13 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Package Desktop App (macOS)
+      - name: Package Desktop App (macOS Universal)
         if: matrix.os == 'macos-latest'
-        run: npm run build:electron:mac
+        run: npm run build:electron:mac:universal
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Package Desktop App (Windows)
+      - name: Package Desktop App (Windows Multi-Arch)
         if: matrix.os == 'windows-latest'
         run: npm run build:electron:win
         env:
@@ -67,6 +67,8 @@ jobs:
             dist-app/*.dmg
             dist-app/*.AppImage
             dist-app/*.zip
+            dist-app/*.tar.gz
+            dist-app/*.pkg
             dist-app/*.blockmap
 
       - name: Publish GitHub Release
@@ -78,6 +80,8 @@ jobs:
             dist-app/*.dmg
             dist-app/*.AppImage
             dist-app/*.zip
+            dist-app/*.tar.gz
+            dist-app/*.pkg
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

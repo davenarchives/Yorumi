@@ -114,3 +114,15 @@ export async function releaseLock(key: string): Promise<void> {
     memoryFallback.delete(key);
 }
 
+export async function cacheDel(key: string): Promise<void> {
+    const client = getRedisClient();
+    if (client) {
+        try {
+            await client.del(key);
+        } catch (error) {
+            handleRedisError('cacheDel', key, error);
+        }
+    }
+    memoryFallback.delete(key);
+}
+

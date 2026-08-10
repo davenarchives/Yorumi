@@ -14,6 +14,7 @@ import { tmdbService } from './services/tmdbService';
 import ScrollRestoration from './components/layout/ScrollRestoration';
 import UpdateModal from './components/modals/UpdateModal';
 import OTAUpdateModal from './components/modals/OTAUpdateModal';
+import OfflineBanner from './components/shared/OfflineBanner';
 
 function App() {
     const location = useLocation();
@@ -92,6 +93,7 @@ function App() {
                     
                     <UpdateModal />
                     <OTAUpdateModal />
+                    <OfflineBanner />
                 </div>
             </MotionConfig>
         </LazyMotion>

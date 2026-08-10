@@ -206,7 +206,7 @@ export default function Sidebar() {
                             return;
                         }
                         if (location.pathname.startsWith('/anime/details/')) {
-                            navigate('/');
+                            navigate(-1);
                             return;
                         }
                         navigate(-1);

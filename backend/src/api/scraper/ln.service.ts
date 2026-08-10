@@ -1,5 +1,5 @@
 import * as novelScraper from '../../scraper/novel';
-import { cacheGet, cacheSet } from '../../utils/redis-cache';
+import { cacheGet, cacheSet, cacheDel } from '../../utils/redis-cache';
 import { createHash } from 'crypto';
 
 const SEARCH_CACHE_TTL = 10 * 60 * 1000;
@@ -142,10 +142,22 @@ class LNService {
         return null;
     }
 
-    async getNovelDetails(scraperId: string) {
+    async getNovelDetails(scraperId: string, refresh = false) {
         const cacheKey = `ln:details:${scraperId}`;
-        const cached = await cacheGet<any>(cacheKey).catch(() => null);
-        if (cached) return cached;
+        if (!refresh) {
+            const cached = await cacheGet<any>(cacheKey).catch(() => null);
+            if (cached) {
+                // Invalidate stale caches from old bug where Arc 1-1 and Arc 5-1 were sorted together
+                const chs = cached.chapters || [];
+                const isStaleJumbled = chs.length > 5 &&
+                    chs[0]?.title?.toLowerCase().includes('arc 1') &&
+                    chs[1]?.title?.toLowerCase().includes('arc 5');
+                if (!isStaleJumbled) {
+                    return cached;
+                }
+                await cacheDel(cacheKey).catch(() => {});
+            }
+        }
 
         let details: novelScraper.NovelDetails | null = null;
         if (scraperId.startsWith('nb:')) {

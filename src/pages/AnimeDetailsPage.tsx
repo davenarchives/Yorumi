@@ -3,6 +3,8 @@ import { useParams, useNavigate, useLocation, useSearchParams } from 'react-rout
 import { useAnime } from '../hooks/useAnime';
 import { useWatchList } from '../hooks/useWatchList';
 import { useFavoriteAnime } from '../hooks/useFavoriteAnime';
+import { useDownloads } from '../hooks/useDownloads';
+import { isDownloadTitleMatch } from '../services/downloadService';
 import type { Anime, Episode } from '../types/anime';
 import type { WatchListItem } from '../utils/storage';
 import { animeService } from '../services/animeService';
@@ -18,7 +20,7 @@ import DetailsVideoPlayer from '../features/anime/components/details/DetailsVide
 const isMovieAnime = (anime: Partial<Anime> | null | undefined) =>
     String(anime?.type || '').toUpperCase() === 'MOVIE';
 
-const buildInstantEpisodes = (anime: Anime | null): NormalizedEpisode[] => {
+const buildInstantEpisodes = (anime: Anime | null, maxEpisodes?: number): NormalizedEpisode[] => {
     if (!anime) return [];
 
     const metadata = Array.isArray(anime.episodeMetadata) ? anime.episodeMetadata : [];
@@ -51,13 +53,16 @@ const buildInstantEpisodes = (anime: Anime | null): NormalizedEpisode[] => {
 
     const latestEpisode = Number(anime.latestEpisode || 0);
     const totalEpisodes = Number(anime.episodes || 0);
+    const rawCount = Math.max(
+        metadataEpisodes.length,
+        Number.isFinite(latestEpisode) ? latestEpisode : 0,
+        Number.isFinite(totalEpisodes) ? totalEpisodes : 0
+    );
+    // If a maxEpisodes cap is provided (e.g. current season's episode count), respect it
+    // to prevent placeholder episodes from bleeding across multi-season shows during async TMDB resolution.
     const expectedCount = Math.min(
         1500,
-        Math.max(
-            metadataEpisodes.length,
-            Number.isFinite(latestEpisode) ? latestEpisode : 0,
-            Number.isFinite(totalEpisodes) ? totalEpisodes : 0
-        )
+        maxEpisodes && maxEpisodes > 0 ? Math.min(rawCount, maxEpisodes) : rawCount
     );
 
     if (expectedCount <= 0) return metadataEpisodes;
@@ -362,6 +367,7 @@ function AnimeDetailsPageContent() {
     const location = useLocation();
     const animeHook = useAnime();
     const { selectedAnime, episodes, epLoading, episodesResolved, episodesBackgroundLoading, detailsLoading, error, watchedEpisodes, toggleEpisodeComplete } = animeHook;
+    const { downloads } = useDownloads();
     const handleAnimeClickRef = useRef(animeHook.handleAnimeClick);
     const breadcrumbParent = typeof location.state?.breadcrumbParent === 'string'
         ? location.state.breadcrumbParent
@@ -387,9 +393,11 @@ function AnimeDetailsPageContent() {
 
     // We need to sync the URL ID with the hook's selectedAnime
     useEffect(() => {
-        // Scroll to top on mount unless explicitly prevented (e.g. season navigation)
+        // Scroll to top on mount unless explicitly prevented (e.g. season navigation or expanding mini player)
         if (!location.state?.preventScrollTop) {
             window.scrollTo({ top: 0, behavior: 'auto' });
+        } else if (searchParams.get('ep')) {
+            scrollToPlayer();
         }
 
         if (!id) return;
@@ -466,6 +474,16 @@ function AnimeDetailsPageContent() {
                 id: seededAnilistId,
                 mal_id: seededMalId
             } as Anime);
+        } else if (routeAnime || location.state?.fromDownloads || id) {
+            const fallbackTitle = routeAnime?.title || location.state?.animeTitle || id.replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim();
+            handleAnimeClickRef.current({
+                ...(routeAnime || {}),
+                id: routeAnime?.id || 0,
+                mal_id: routeAnime?.mal_id || 0,
+                scraperId: id,
+                title: fallbackTitle,
+                images: routeAnime?.images || { jpg: { image_url: '', large_image_url: '' } }
+            } as Anime);
         } else {
             navigate('/', { replace: true });
         }
@@ -473,12 +491,21 @@ function AnimeDetailsPageContent() {
 
     const { isInWatchList, addToWatchList, removeFromWatchList } = useWatchList();
     const { isFavorite, addFavorite, removeFavorite } = useFavoriteAnime();
-    const instantEpisodes = useMemo(() => buildInstantEpisodes(selectedAnime), [selectedAnime]);
     const activeSeasonId = Number(selectedAnime?.id || 0);
     const initialSeasonChips = useMemo(
         () => selectedAnime ? buildSeasonChips([selectedAnime, ...getRelatedSeasonCandidates(selectedAnime)], activeSeasonId) : [],
         [activeSeasonId, selectedAnime]
     );
+    const instantEpisodes = useMemo(() => {
+        // Determine the cap for placeholder episodes based on the active season chip.
+        // This prevents merged episodes across seasons while TMDB resolves asynchronously.
+        // We use initialSeasonChips (synchronously available) to find the active chip's count.
+        const activeInitialChip = initialSeasonChips.find((chip) => chip.id === activeSeasonId);
+        const instantMaxEpisodes = activeInitialChip && activeInitialChip.count && initialSeasonChips.length > 1
+            ? activeInitialChip.count
+            : undefined;
+        return buildInstantEpisodes(selectedAnime, instantMaxEpisodes);
+    }, [selectedAnime, initialSeasonChips, activeSeasonId]);
     const routeSeasonChips = useMemo(
         () => readRouteSeasonChips(location.state?.seasonChips, activeSeasonId),
         [activeSeasonId, location.state]
@@ -896,11 +923,77 @@ function AnimeDetailsPageContent() {
         };
     });
     const baseScraperEpisodes = normalizeScraperEpisodes(episodes.length > 0 ? episodes : instantEpisodes);
-    const visibleEpisodes = tmdbInstantEpisodes.length > 0
+
+    // When multiple season chips are visible and TMDB hasn't provided episode metadata yet,
+    // cap scraper episodes to this anime's own episode count (latestEpisode or episodes from AniList).
+    // This prevents merged S1+S2 episodes (e.g. 25 total) from showing before TMDB resolves.
+    const scraperEpisodeCap = !hasTmdbMetadataSource && displayChips.length > 1
+        ? Math.max(Number(selectedAnime.episodes || 0), Number(selectedAnime.latestEpisode || 0))
+        : 0;
+    const cappedBaseScraperEpisodes = scraperEpisodeCap > 0 && baseScraperEpisodes.length > scraperEpisodeCap
+        ? baseScraperEpisodes.slice(0, scraperEpisodeCap)
+        : baseScraperEpisodes;
+
+    let visibleEpisodes = tmdbInstantEpisodes.length > 0
         ? tmdbInstantEpisodes
         : hasTmdbMetadataSource
             ? []
-            : baseScraperEpisodes;
+            : cappedBaseScraperEpisodes;
+
+    const currentAnimeId = String(selectedAnime?.mal_id || selectedAnime?.id || id || '').trim();
+    const currentAnimeTitle = (selectedAnime?.title || selectedAnime?.title_english || selectedAnime?.title_romaji || location.state?.animeTitle || '').trim().toLowerCase();
+
+    const isDifferentNumericId = (idA?: string, idB?: string): boolean => {
+        const a = String(idA || '').trim();
+        const b = String(idB || '').trim();
+        if (!a || !b) return false;
+        return /^\d+$/.test(a) && /^\d+$/.test(b) && a !== b;
+    };
+
+    const matchingDownloads = downloads.filter((d) => {
+        if (currentAnimeId && String(d.animeId).trim() === currentAnimeId) return true;
+        if (currentAnimeTitle && isDownloadTitleMatch(d.animeTitle, currentAnimeTitle)) {
+            // Only reject if BOTH IDs are numeric and different (e.g. S1 numeric ID vs S2 numeric ID).
+            // Do NOT reject slug IDs vs numeric IDs for the same show.
+            if (isDifferentNumericId(d.animeId, currentAnimeId)) return false;
+            return true;
+        }
+        if (location.state?.downloadId && d.id === location.state.downloadId) return true;
+        return false;
+    });
+
+    const isFromDownloads = Boolean(location.state?.fromDownloads);
+
+    if ((!navigator.onLine || isFromDownloads) && matchingDownloads.length > 0) {
+        const downloadedEpisodeSet = new Set(matchingDownloads.map((d) => Number(d.episodeNumber)));
+        
+        const filtered = visibleEpisodes.filter((ep) => {
+            // Revert Fix 3 — use the original single-field match.
+            // The cross-season bleed is now fixed upstream in matchingDownloads.
+            const epNum = Number(ep.episodeNumber || ep.playbackEpisodeNumber);
+            return downloadedEpisodeSet.has(epNum);
+        });
+
+        if (filtered.length > 0) {
+            visibleEpisodes = filtered;
+        } else if (matchingDownloads.length > 0) {
+            visibleEpisodes = matchingDownloads.map((d): NormalizedEpisode => ({
+                session: d.id,
+                episodeNumber: String(d.episodeNumber),
+                title: d.episodeTitle || `Episode ${d.episodeNumber}`,
+                thumbnail: d.animeImage,
+                snapshot: d.animeImage,
+                playbackEpisodeNumber: Number(d.episodeNumber),
+            }));
+        }
+
+        // Sort ascending by episode number (1, 2, 3...)
+        visibleEpisodes.sort((a, b) => {
+            const numA = Number(a.episodeNumber || a.playbackEpisodeNumber || 0);
+            const numB = Number(b.episodeNumber || b.playbackEpisodeNumber || 0);
+            return numA - numB;
+        });
+    }
 
     const hasEpisodes = visibleEpisodes.length > 0;
     const isTmdbEpisodesResolving = hasTmdbMetadataSource && tmdbEpisodesLoading && !hasEpisodes;
@@ -986,6 +1079,11 @@ function AnimeDetailsPageContent() {
                             isLoading={isEpisodesResolving}
                             skeletonCount={episodeSkeletonCount}
                             fallbackCoverImage={selectedAnime.images?.jpg?.large_image_url || selectedAnime.images?.jpg?.image_url || selectedAnime.anilist_cover_image || ''}
+                            animeId={animeId}
+                            animeTitle={selectedAnime.title}
+                            animeImage={selectedAnime.images?.jpg?.large_image_url || selectedAnime.images?.jpg?.image_url || selectedAnime.anilist_cover_image || ''}
+                            scraperSession={selectedAnime.title}
+                            anilistId={selectedAnime.id}
                             onSeasonClick={handleSeasonChipClick}
                             onEpisodeClick={(ep) => {
                                 const playbackEpisodeNumber = getPlaybackEpisodeNumber(ep);

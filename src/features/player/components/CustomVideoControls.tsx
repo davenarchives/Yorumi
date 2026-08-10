@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Settings, Cast, Maximize, Minimize, Mic, Gauge, Video, Monitor, ChevronLeft, CheckCircle2, Circle, X, RotateCcw, RotateCw } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Settings, Maximize, Minimize, Mic, Gauge, Video, Monitor, ChevronLeft, CheckCircle2, Circle, X, RotateCcw, RotateCw } from 'lucide-react';
 import RedoIcon from '@mui/icons-material/Redo';
 import type { StreamServerKey } from '../../../hooks/useStreams';
 import type { StreamLink } from '../../../types/stream';
@@ -36,6 +36,12 @@ interface CustomVideoControlsProps {
     onToggleWide?: () => void;
     hlsLevels?: number[];
     onHlsQualitySelect?: (quality: string) => boolean;
+    initialDuration?: number;
+    animeId?: string;
+    animeTitle?: string;
+    animeImage?: string;
+    episodeNumber?: number;
+    episodeTitle?: string;
 }
 
 const PLAYBACK_SPEEDS = [0.25, 1, 1.25, 1.5, 2];
@@ -84,10 +90,17 @@ export default function CustomVideoControls({
     onToggleWide,
     hlsLevels = [],
     onHlsQualitySelect,
+    initialDuration = 0,
+    animeId,
+    animeTitle,
+    animeImage,
+    episodeNumber,
+    episodeTitle,
 }: CustomVideoControlsProps) {
+
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
-    const [duration, setDuration] = useState(0);
+    const [duration, setDuration] = useState(initialDuration || 0);
     const [volume, setVolume] = useState(1);
     const [isMuted, setIsMuted] = useState(false);
     const [isFullscreen, setIsFullscreen] = useState(false);
@@ -98,8 +111,19 @@ export default function CustomVideoControls({
     const [centerAction, setCenterAction] = useState<{ type: 'play' | 'pause'; id: number } | null>(null);
     const [selectedHlsQuality, setSelectedHlsQuality] = useState<string>('Auto');
 
+    useEffect(() => {
+        if (initialDuration && initialDuration > 0) {
+            setDuration(prev => (prev > 0 ? prev : initialDuration));
+        }
+    }, [initialDuration]);
+
     const controlsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const currentStream = streams[selectedStreamIndex];
+    const isOfflineStream = Boolean(
+        currentStream?.provider === 'Offline Storage' ||
+        currentStream?.url?.startsWith('blob:') ||
+        currentStream?.url?.includes('/api/scraper/local-file')
+    );
     const currentQuality = currentStream ? getMappedQuality(currentStream.quality) : 'Auto';
     const selectedServerLabel = serverOptions.find((server) => server.key === selectedServer)?.label || 'Auto';
     const hasDub = availableAudios.includes('dub');
@@ -680,11 +704,11 @@ export default function CustomVideoControls({
                             <div className={`${GLASS_PANEL_CLASS} relative flex h-7 items-center gap-0 px-0 sm:h-10 sm:gap-1 sm:px-3`}>
                                 {/* Settings Popover */}
                                 {showSettings && (
-                                    <div className="absolute bottom-full right-0 mb-3 w-44 bg-[#1A1A1A]/95 backdrop-blur-xl rounded-xl p-1 shadow-2xl border border-white/10 z-50">
+                                    <div className="absolute bottom-full right-0 mb-3 w-44 bg-[#1A1A1A]/95 backdrop-blur-xl rounded-xl p-1 shadow-2xl z-50">
                                         {settingsView !== 'main' && (
                                             <button
                                                 onClick={() => setSettingsView('main')}
-                                                className="mb-1.5 flex w-full items-center gap-2 border-b border-white/10 px-2 pb-1.5 pt-1 text-left text-xs font-semibold text-white"
+                                                className="mb-1.5 flex w-full items-center gap-2 border-b border-white/5 px-2 pb-1.5 pt-1 text-left text-xs font-semibold text-white"
                                             >
                                                 <ChevronLeft className="h-3.5 w-3.5" />
                                                 {settingsView === 'quality' ? 'Quality' : settingsView === 'server' ? 'Server' : 'Playback speed'}
@@ -763,16 +787,18 @@ export default function CustomVideoControls({
                                                     </div>
                                                     <span className="text-xs text-white/70">{isAutoQuality ? `Auto(${currentQuality})` : currentQuality}</span>
                                                 </button>
-                                                <button
-                                                    onClick={() => setSettingsView('server')}
-                                                    className="flex items-center justify-between w-full p-2 hover:bg-white/10 rounded-lg transition-colors"
-                                                >
-                                                    <div className="flex items-center gap-2 text-white">
-                                                        <Monitor className="w-4 h-4" />
-                                                        <span className="text-xs font-medium">Server</span>
-                                                    </div>
-                                                    <span className="text-xs text-white/70">{selectedServerLabel}</span>
-                                                </button>
+                                                {!isOfflineStream && (
+                                                    <button
+                                                        onClick={() => setSettingsView('server')}
+                                                        className="flex items-center justify-between w-full p-2 hover:bg-white/10 rounded-lg transition-colors"
+                                                    >
+                                                        <div className="flex items-center gap-2 text-white">
+                                                            <Monitor className="w-4 h-4" />
+                                                            <span className="text-xs font-medium">Server</span>
+                                                        </div>
+                                                        <span className="text-xs text-white/70">{selectedServerLabel}</span>
+                                                    </button>
+                                                )}
                                             </div>
                                         )}
 
@@ -836,9 +862,6 @@ export default function CustomVideoControls({
 
                                 <button onClick={() => { setShowSettings(!showSettings); setSettingsView('main'); }} className="rounded-full p-1.5 text-white transition-colors hover:bg-white/10 hover:text-white/80 sm:p-2">
                                     <Settings className="h-3.5 w-3.5 sm:h-5 sm:w-5" />
-                                </button>
-                                <button onClick={handleCast} className="rounded-full p-1.5 text-white transition-colors hover:bg-white/10 hover:text-white/80 sm:p-2">
-                                    <Cast className="h-3.5 w-3.5 sm:h-5 sm:w-5" />
                                 </button>
                                 <button
                                     onClick={onToggleWide}

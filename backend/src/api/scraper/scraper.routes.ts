@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import fs from 'fs';
 import { scraperService } from './scraper.service';
 import axios from 'axios';
 import { redis } from '../mapping/mapper';
@@ -928,6 +929,66 @@ router.get('/embed-asset', async (req, res) => {
     }
 });
 
+// Serve local downloaded video/audio files with byte range support
+router.get('/local-file', (req, res) => {
+    let filePath = req.query.path as string;
+    if (!filePath) {
+        return res.status(400).send('Missing path parameter');
+    }
+
+    try {
+        // If .ts was requested but .mp4 exists in the same path, prefer the MP4 file
+        if (filePath.endsWith('.ts')) {
+            const mp4Path = filePath.replace(/\.ts$/i, '.mp4');
+            if (fs.existsSync(mp4Path) && fs.statSync(mp4Path).size > 0) {
+                filePath = mp4Path;
+            }
+        }
+
+        if (!fs.existsSync(filePath)) {
+            return res.status(404).send('File not found');
+        }
+
+        const stat = fs.statSync(filePath);
+        const fileSize = stat.size;
+        const range = req.headers.range;
+
+        const isTs = filePath.endsWith('.ts');
+        const contentType = isTs ? 'video/mp2t' : 'video/mp4';
+
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Range, Accept-Ranges, Content-Type');
+        res.setHeader('Content-Disposition', 'inline');
+
+        if (range) {
+            const parts = range.replace(/bytes=/, '').split('-');
+            const start = parseInt(parts[0], 10);
+            const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+            const chunksize = end - start + 1;
+
+            const fileStream = fs.createReadStream(filePath, { start, end });
+            res.writeHead(206, {
+                'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+                'Accept-Ranges': 'bytes',
+                'Content-Length': chunksize,
+                'Content-Type': contentType,
+            });
+            fileStream.pipe(res);
+        } else {
+            res.writeHead(200, {
+                'Content-Length': fileSize,
+                'Content-Type': contentType,
+                'Accept-Ranges': 'bytes',
+            });
+            fs.createReadStream(filePath).pipe(res);
+        }
+    } catch (error) {
+        console.error('Error serving local file:', error);
+        return res.status(500).send('Error reading local file');
+    }
+});
+
 // Generic HLS proxy for stream sources (rewrites nested playlists and keys)
 router.get('/proxy', async (req, res) => {
     const targetUrl = req.query.url as string;
@@ -1205,8 +1266,19 @@ router.get('/proxy', async (req, res) => {
 
                 const proxySuffix = `&referer=${encodeURIComponent(nextReferer)}${nextCookie ? `&cookie=${encodeURIComponent(nextCookie)}` : ''}${proxyMediaSegments ? '&proxyMedia=1' : ''}${req.query.maskCheck === '1' ? '&maskCheck=1' : ''}${requestedAudio ? `&audio=${encodeURIComponent(requestedAudio)}` : ''}`;
 
-                if (proxyMediaSegments) {
-                    // Always proxy all segments when proxyMedia=1 (needed for PNG-masked TS like AniNeko).
+                if (
+                    proxyMediaSegments ||
+                    nextReferer.includes('anidb') ||
+                    targetUrl.includes('anidb') ||
+                    nextReferer.includes('megaplay') ||
+                    nextReferer.includes('vidtube') ||
+                    nextReferer.includes('hianimes') ||
+                    targetUrl.includes('ibyteimg') ||
+                    targetUrl.includes('shiora') ||
+                    targetUrl.includes('norami') ||
+                    targetUrl.includes('akirax')
+                ) {
+                    // Always proxy all segments when proxyMedia=1 or for AniDB / AniKoto (needed for PNG mask stripping & Referer authentication).
                     return `${getPublicBase(req)}/api/scraper/proxy?url=${encodeURIComponent(absolute)}${proxySuffix}`;
                 }
 

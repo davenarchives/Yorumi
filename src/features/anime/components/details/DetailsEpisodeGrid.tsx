@@ -1,7 +1,10 @@
-import { memo, useState } from 'react';
-import { CircleCheckBig } from 'lucide-react';
+import { memo, useState, useCallback } from 'react';
+import { CircleCheckBig, Download, Loader2, FolderOpen } from 'lucide-react';
 import type { Episode, Anime } from '../../../../types/anime';
-import { getEpisodeWatchKey } from '../../../../utils/episodeWatchKey';
+import { getEpisodeWatchKey, getPlaybackEpisodeNumber } from '../../../../utils/episodeWatchKey';
+import { useDownloads } from '../../../../hooks/useDownloads';
+import { downloadService } from '../../../../services/downloadService';
+import { getStreamData } from '../../../../utils/streamUtils';
 
 export type NormalizedEpisode = Episode & {
     title: string;
@@ -57,6 +60,11 @@ interface DetailsEpisodeGridProps {
     isLoading?: boolean;
     skeletonCount?: number;
     fallbackCoverImage?: string;
+    animeId?: string;
+    animeTitle?: string;
+    animeImage?: string;
+    scraperSession?: string;
+    anilistId?: number;
     onSeasonClick?: (season: SeasonChip) => void;
     onEpisodeClick: (ep: NormalizedEpisode) => void;
 }
@@ -66,22 +74,52 @@ type EpisodeCardProps = {
     isWatched: boolean;
     isActive: boolean;
     fallbackCoverImage?: string;
+    animeId?: string;
+    animeTitle?: string;
+    animeImage?: string;
+    scraperSession?: string;
+    anilistId?: number;
     onEpisodeClick: (ep: NormalizedEpisode) => void;
+    onDownload: (ep: NormalizedEpisode) => void;
+    onDeleteDownload: (epNum: number) => void;
+    isDownloaded: boolean;
+    downloadProgress?: number;
+    isDownloading: boolean;
+    isResolvingDownload: boolean;
 };
 
-const EpisodeCard = memo(function EpisodeCard({ episode, isWatched, isActive, fallbackCoverImage, onEpisodeClick }: EpisodeCardProps) {
+function isEpisodeUnreleased(airDate?: string | null): boolean {
+    if (!airDate) return false;
+    const time = new Date(airDate).getTime();
+    return Number.isFinite(time) && time > Date.now();
+}
+
+const EpisodeCard = memo(function EpisodeCard({
+    episode,
+    isWatched,
+    isActive,
+    fallbackCoverImage,
+    onEpisodeClick,
+    onDownload,
+    onDeleteDownload,
+    isDownloaded,
+    downloadProgress = 0,
+    isDownloading,
+    isResolvingDownload,
+}: EpisodeCardProps) {
     const cleanTitle = episode.title ? episode.title.split('<note-split>')[0].trim() : '';
     const displayTitle = cleanTitle || `Episode ${episode.episodeNumber}`;
-    const isUnreleased = Boolean(episode.airDate && new Date(episode.airDate).getTime() > Date.now());
+    const isUnreleased = isEpisodeUnreleased(episode.airDate);
     const thumbnail = isUnreleased ? fallbackCoverImage : (episode.thumbnail || episode.snapshot);
+    const epNum = getPlaybackEpisodeNumber(episode) || Number(episode.episodeNumber || 1);
 
     return (
-        <button
+        <div
             key={episode.session || episode.episodeNumber}
             onClick={() => {
                 if (!isUnreleased) onEpisodeClick(episode);
             }}
-            className={`flex items-stretch text-left bg-[#141414] rounded-lg overflow-hidden transition-all duration-200 group h-[104px]
+            className={`relative flex items-stretch text-left bg-[#141414] rounded-lg overflow-hidden transition-all duration-200 group h-[104px]
                 ${isActive ? 'ring-1 ring-blue-400 bg-[#1a1a1a]' : isWatched ? 'ring-1 ring-green-500/30 bg-green-500/5 hover:bg-green-500/10' : 'hover:bg-[#1a1a1a]'}
                 ${isUnreleased ? 'opacity-60 cursor-not-allowed' : 'hover:scale-[1.02] cursor-pointer'}`}
             title={displayTitle}
@@ -109,16 +147,69 @@ const EpisodeCard = memo(function EpisodeCard({ episode, isWatched, isActive, fa
                     </div>
                 )}
             </div>
-            <div className="flex-1 p-3 flex flex-col justify-start min-w-0">
-                <div className="flex justify-between items-center w-full">
-                    <span className={`font-black text-xs uppercase tracking-wider ${isWatched ? 'text-green-500' : 'text-blue-300'}`}>E{episode.episodeNumber}</span>
-                    {isWatched && (
-                        <CircleCheckBig className="w-4 h-4 text-green-500 shrink-0" />
-                    )}
+            <div className="flex-1 p-3 flex flex-col justify-between min-w-0">
+                <div>
+                    <div className="flex justify-between items-center w-full">
+                        <span className={`font-black text-xs uppercase tracking-wider ${isWatched ? 'text-green-500' : 'text-blue-300'}`}>E{episode.episodeNumber}</span>
+                        <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                            {!isUnreleased && (
+                                <button
+                                    type="button"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (isDownloaded) {
+                                            onDeleteDownload(epNum);
+                                        } else if (!isDownloading && !isResolvingDownload) {
+                                            onDownload(episode);
+                                        }
+                                    }}
+                                    disabled={isDownloading || isResolvingDownload}
+                                    className={`p-1 rounded-md transition-all ${
+                                        isDownloaded
+                                            ? 'text-emerald-400 hover:bg-red-500/20 hover:text-red-400'
+                                            : isDownloading || isResolvingDownload
+                                            ? 'text-yorumi-accent hover:bg-white/10'
+                                            : 'text-gray-400 hover:text-white hover:bg-white/10 opacity-70 group-hover:opacity-100'
+                                    }`}
+                                    title={
+                                        isDownloaded
+                                            ? 'Downloaded for offline (Click to delete)'
+                                            : isDownloading
+                                            ? `Downloading ${downloadProgress}%`
+                                            : isResolvingDownload
+                                            ? 'Resolving stream...'
+                                            : 'Download episode'
+                                    }
+                                >
+                                    {isResolvingDownload ? (
+                                        <Loader2 className="w-3.5 h-3.5 animate-spin text-yorumi-accent" />
+                                    ) : isDownloading ? (
+                                        <div className="flex items-center gap-1 text-[10px] font-bold text-yorumi-accent">
+                                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                            <span>{downloadProgress}%</span>
+                                        </div>
+                                    ) : isDownloaded ? (
+                                        <CircleCheckBig className="w-3.5 h-3.5 text-emerald-400" />
+                                    ) : (
+                                        <Download className="w-3.5 h-3.5" />
+                                    )}
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                    <span className={`font-semibold text-sm line-clamp-2 mt-0.5 leading-snug ${isWatched ? 'text-green-50' : 'text-white'}`}>{isUnreleased ? 'Unreleased' : displayTitle}</span>
                 </div>
-                <span className={`font-semibold text-sm line-clamp-2 mt-0.5 leading-snug min-h-[2.5rem] ${isWatched ? 'text-green-50' : 'text-white'}`}>{isUnreleased ? 'Unreleased' : displayTitle}</span>
+
+                {isDownloading && (
+                    <div className="w-full bg-white/10 h-1 rounded-full overflow-hidden mt-1">
+                        <div
+                            className="bg-yorumi-accent h-full transition-all duration-300 rounded-full"
+                            style={{ width: `${Math.max(5, downloadProgress)}%` }}
+                        />
+                    </div>
+                )}
             </div>
-        </button>
+        </div>
     );
 });
 
@@ -137,14 +228,141 @@ const EpisodeCardSkeleton = () => (
     </div>
 );
 
-export default function DetailsEpisodeGrid({ episodes, watchedEpisodes, activeEpParam, seasonChips = [], isLoading = false, skeletonCount = 12, fallbackCoverImage, onSeasonClick, onEpisodeClick }: DetailsEpisodeGridProps) {
+export default function DetailsEpisodeGrid({
+    episodes,
+    watchedEpisodes,
+    activeEpParam,
+    seasonChips = [],
+    isLoading = false,
+    skeletonCount = 12,
+    fallbackCoverImage,
+    animeId = '',
+    animeTitle = '',
+    animeImage = '',
+    scraperSession = '',
+    anilistId,
+    onSeasonClick,
+    onEpisodeClick,
+}: DetailsEpisodeGridProps) {
+    const { isEpisodeDownloaded, getDownloadProgress, startDownload, deleteDownload } = useDownloads();
+    const [resolvingEpisodes, setResolvingEpisodes] = useState<Set<number>>(new Set());
+    const isElectron = typeof window !== 'undefined' && Boolean(window.electronAPI?.openDownloadsFolder);
+
+    const handleDownloadEpisode = useCallback(
+        async (ep: NormalizedEpisode) => {
+            const epNum = getPlaybackEpisodeNumber(ep) || Number(ep.episodeNumber || 1);
+            if (!animeId || !epNum) return;
+
+            setResolvingEpisodes((prev) => new Set(prev).add(epNum));
+            try {
+                // Try resolving direct downloadable stream from anidb first, then auto
+                let streams = await getStreamData(ep, scraperSession || animeTitle, {
+                    title: animeTitle,
+                    anilistId,
+                    provider: 'anidb',
+                });
+
+                let bestStream = streams.find((s) => s.url && !s.isEmbed && (s.isHls || s.url.includes('.m3u8') || s.url.includes('.mp4') || s.url.includes('/api/scraper/proxy')));
+
+                if (!bestStream) {
+                    streams = await getStreamData(ep, scraperSession || animeTitle, {
+                        title: animeTitle,
+                        anilistId,
+                        provider: 'auto',
+                    });
+                    bestStream = streams.find((s) => s.url && !s.isEmbed && (s.isHls || s.url.includes('.m3u8') || s.url.includes('.mp4') || s.url.includes('/api/scraper/proxy')));
+                }
+
+                if (!bestStream?.url) {
+                    // Fallback to any non-embed stream
+                    bestStream = streams.find((s) => s.url && !s.isEmbed) || streams[0];
+                }
+
+                if (!bestStream?.url) {
+                    throw new Error('No downloadable stream source found for this episode');
+                }
+
+                await startDownload({
+                    animeId,
+                    animeTitle: animeTitle || 'Anime',
+                    animeImage: animeImage || fallbackCoverImage || '',
+                    episodeNumber: epNum,
+                    episodeTitle: ep.title,
+                    streamUrl: bestStream.url,
+                    quality: bestStream.quality,
+                    audio: (bestStream.audio === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub',
+                    subtitles: bestStream.subtitles,
+                });
+            } catch (err) {
+                console.error(`Failed to download episode ${epNum}:`, err);
+            } finally {
+                setResolvingEpisodes((prev) => {
+                    const next = new Set(prev);
+                    next.delete(epNum);
+                    return next;
+                });
+            }
+        },
+        [animeId, animeTitle, animeImage, fallbackCoverImage, scraperSession, anilistId, startDownload]
+    );
+
+    const handleDownloadAll = useCallback(async () => {
+        const releasedEpisodes = episodes.filter((ep) => {
+            const isUnreleased = isEpisodeUnreleased(ep.airDate);
+            const epNum = getPlaybackEpisodeNumber(ep) || Number(ep.episodeNumber || 1);
+            return !isUnreleased && !isEpisodeDownloaded(
+                animeId,
+                epNum,
+                animeTitle,
+                anilistId,
+                [ep.episodeNumber, ep.playbackEpisodeNumber, ep._tmdbAbsolute]
+            );
+        });
+
+        for (const ep of releasedEpisodes) {
+            await handleDownloadEpisode(ep);
+        }
+    }, [episodes, animeId, animeTitle, anilistId, isEpisodeDownloaded, handleDownloadEpisode]);
+
+    const handleOpenFolder = useCallback(() => {
+        downloadService.openDownloadsFolder();
+    }, []);
 
     return (
         <div className="pt-2">
-            <div className="flex items-center gap-4 mb-6">
-                <h3 className="text-xl font-black text-white uppercase tracking-wider whitespace-nowrap">Episodes</h3>
-                <div className="flex-1 h-px bg-white/10" />
+            <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+                <div className="flex items-center gap-4 flex-1">
+                    <h3 className="text-xl font-black text-white uppercase tracking-wider whitespace-nowrap">
+                        Episodes {episodes.length > 0 && <span className="text-sm font-bold text-gray-500">({episodes.length})</span>}
+                    </h3>
+                    <div className="flex-1 h-px bg-white/10" />
+                </div>
+                {episodes.length > 0 && (
+                    <div className="flex items-center gap-2">
+                        {isElectron && (
+                            <button
+                                type="button"
+                                onClick={handleOpenFolder}
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs font-semibold text-gray-300 hover:text-white transition-colors border border-white/5"
+                                title="Open downloaded files on your computer"
+                            >
+                                <FolderOpen className="w-3.5 h-3.5 text-yorumi-accent" />
+                                <span>Downloads Folder</span>
+                            </button>
+                        )}
+                        <button
+                            type="button"
+                            onClick={handleDownloadAll}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs font-semibold text-gray-300 hover:text-white transition-colors border border-white/5"
+                            title="Download all released episodes"
+                        >
+                            <Download className="w-3.5 h-3.5 text-blue-400" />
+                            <span>Download All</span>
+                        </button>
+                    </div>
+                )}
             </div>
+
             {seasonChips.length > 1 && (
                 <div className="mb-6 flex flex-wrap items-center gap-3">
                     {seasonChips.map((season) => (
@@ -157,7 +375,7 @@ export default function DetailsEpisodeGrid({ episodes, watchedEpisodes, activeEp
                             aria-current={season.isActive ? 'page' : undefined}
                             className={`min-h-10 rounded-full border px-5 text-sm font-bold transition-all ${
                                 season.isActive
-                                    ? 'border-blue-300 bg-blue-500 text-white shadow-lg shadow-blue-500/20'
+                                    ? 'border-blue-400 bg-blue-600 text-white'
                                     : 'border-white/10 bg-white/[0.07] text-gray-300 hover:border-white/25 hover:bg-white/[0.11] hover:text-white'
                             } disabled:cursor-default`}
                         >
@@ -166,12 +384,14 @@ export default function DetailsEpisodeGrid({ episodes, watchedEpisodes, activeEp
                     ))}
                 </div>
             )}
+
             <div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                     {isLoading ? (
                         Array.from({ length: skeletonCount }).map((_, index) => <EpisodeCardSkeleton key={`episode-skeleton-${index}`} />)
                     ) : episodes.length > 0 ? (
                         episodes.map((ep) => {
+                            const epNum = Number(ep.episodeNumber || ep.playbackEpisodeNumber || 1);
                             const watchedKey = getEpisodeWatchKey(ep);
                             const isWatched = watchedEpisodes.has(watchedKey);
                             const activeNumbers = [
@@ -181,6 +401,22 @@ export default function DetailsEpisodeGrid({ episodes, watchedEpisodes, activeEp
                             ].filter(Boolean);
                             const isActive = Boolean(activeEpParam && activeNumbers.includes(activeEpParam));
 
+                            const isDownloaded = isEpisodeDownloaded(
+                                animeId,
+                                epNum,
+                                animeTitle,
+                                anilistId,
+                                [ep.episodeNumber, ep.playbackEpisodeNumber, ep._tmdbAbsolute]
+                            );
+                            const progressInfo = getDownloadProgress(
+                                animeId,
+                                epNum,
+                                anilistId,
+                                [ep.episodeNumber, ep.playbackEpisodeNumber, ep._tmdbAbsolute]
+                            );
+                            const isDownloading = progressInfo?.status === 'downloading' || progressInfo?.status === 'saving';
+                            const isResolving = resolvingEpisodes.has(epNum);
+
                             return (
                                 <EpisodeCard
                                     key={`${ep.tmdbSeason || 'ep'}-${ep.tmdbEpisode || ep.episodeNumber}-${ep.playbackEpisodeNumber || ''}`}
@@ -188,7 +424,18 @@ export default function DetailsEpisodeGrid({ episodes, watchedEpisodes, activeEp
                                     isWatched={isWatched}
                                     isActive={isActive}
                                     fallbackCoverImage={fallbackCoverImage}
+                                    animeId={animeId}
+                                    animeTitle={animeTitle}
+                                    animeImage={animeImage}
+                                    scraperSession={scraperSession}
+                                    anilistId={anilistId}
                                     onEpisodeClick={onEpisodeClick}
+                                    onDownload={handleDownloadEpisode}
+                                    onDeleteDownload={(num) => deleteDownload(animeId, num)}
+                                    isDownloaded={isDownloaded}
+                                    downloadProgress={progressInfo?.progress || 0}
+                                    isDownloading={isDownloading}
+                                    isResolvingDownload={isResolving}
                                 />
                             );
                         })

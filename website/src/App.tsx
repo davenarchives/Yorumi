@@ -300,7 +300,7 @@ function App() {
                       rel="noreferrer"
                       className="text-yorumi-main font-semibold text-sm tracking-wide hover:opacity-80 transition-opacity"
                     >
-                      v4.0.1
+                      v4.0.5
                     </motion.a>
                   </div>
                   
@@ -357,7 +357,7 @@ function App() {
           >
             <h2 className="text-4xl md:text-5xl font-display font-bold tracking-tight text-yorumi-text">Start Using</h2>
             <p className="text-base md:text-lg text-yorumi-muted font-normal">
-              You can download the standalone CLI package or use Yorumi directly on the web page.
+              You can download the desktop app across all macOS, Windows, and Linux platforms, use the standalone CLI, or stream directly on the web.
             </p>
           </motion.div>
 
@@ -367,10 +367,10 @@ function App() {
             <div className="bg-yorumi-card rounded-3xl p-6 md:p-8 space-y-6">
               <div className="text-sm md:text-base text-yorumi-muted">
                 <span className="font-medium text-yorumi-text">The latest stable version:</span>{' '}
-                <span className="text-yorumi-main font-semibold">v4.0.1</span>
+                <span className="text-yorumi-main font-semibold">v4.0.5</span>
               </div>
 
-              {/* Keep ONLY legit release downloads: latest .exe, source-code zip, and standalone CLI domain */}
+              {/* Release downloads: macOS (Universal, Apple Silicon, Intel), Windows, Linux, and CLI */}
               <div className="flex flex-wrap items-center gap-3">
                 <a
                   href="https://github.com/davenarchives/Yorumi/releases/latest"
@@ -379,16 +379,43 @@ function App() {
                   className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-yorumi-main/20 hover:bg-yorumi-main/30 text-yorumi-main font-semibold text-sm transition-colors border border-yorumi-main/30"
                 >
                   <Download className="w-4 h-4" />
-                  <span>Yorumi-v4.0.1.exe</span>
+                  <span>macOS Universal (.dmg)</span>
                 </a>
                 <a
-                  href="https://github.com/davenarchives/Yorumi/archive/refs/heads/main.zip"
+                  href="https://github.com/davenarchives/Yorumi/releases/latest"
                   target="_blank"
                   rel="noreferrer"
                   className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-yorumi-main/10 hover:bg-yorumi-main/20 text-yorumi-text hover:text-yorumi-main font-semibold text-sm transition-colors border border-yorumi-text/10"
                 >
                   <Download className="w-4 h-4 text-yorumi-muted" />
-                  <span>source-code.zip</span>
+                  <span>Apple Silicon (.dmg)</span>
+                </a>
+                <a
+                  href="https://github.com/davenarchives/Yorumi/releases/latest"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-yorumi-main/10 hover:bg-yorumi-main/20 text-yorumi-text hover:text-yorumi-main font-semibold text-sm transition-colors border border-yorumi-text/10"
+                >
+                  <Download className="w-4 h-4 text-yorumi-muted" />
+                  <span>Intel Mac (.dmg)</span>
+                </a>
+                <a
+                  href="https://github.com/davenarchives/Yorumi/releases/latest"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-yorumi-main/10 hover:bg-yorumi-main/20 text-yorumi-text hover:text-yorumi-main font-semibold text-sm transition-colors border border-yorumi-text/10"
+                >
+                  <Download className="w-4 h-4 text-yorumi-muted" />
+                  <span>Windows (.exe / ARM64 / Portable)</span>
+                </a>
+                <a
+                  href="https://github.com/davenarchives/Yorumi/releases/latest"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-yorumi-main/10 hover:bg-yorumi-main/20 text-yorumi-text hover:text-yorumi-main font-semibold text-sm transition-colors border border-yorumi-text/10"
+                >
+                  <Download className="w-4 h-4 text-yorumi-muted" />
+                  <span>Linux (.AppImage)</span>
                 </a>
                 <a
                   href="https://yorumi-cli.vercel.app/index.html"
@@ -397,29 +424,29 @@ function App() {
                   className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-yorumi-main/10 hover:bg-yorumi-main/20 text-yorumi-text hover:text-yorumi-main font-semibold text-sm transition-colors border border-yorumi-text/10"
                 >
                   <ExternalLink className="w-4 h-4 text-yorumi-main" />
-                  <span>yorumi-cli-v2.1.8</span>
+                  <span>yorumi-cli-v2.1.9</span>
                 </a>
               </div>
 
               <div className="border-t border-white/5 pt-6 space-y-4">
-                <div className="text-sm font-semibold text-yorumi-text">What&apos;s new in version 4.0.0?</div>
+                <div className="text-sm font-semibold text-yorumi-text">What&apos;s new in version 4.0.5?</div>
                 <div className="space-y-3">
                   <div className="flex items-center gap-2 text-sm font-bold text-yorumi-main">
                     <Sparkles className="w-4 h-4" />
-                    <span>Major Release: Light Novels Hub & AniDB Scraper Engine</span>
+                    <span>Persistent Player Engine, 120fps GPU Layout, Auto Next/Prev & Multi-Arch Builds</span>
                   </div>
                   <ul className="list-disc list-inside text-sm text-yorumi-muted space-y-1.5 pl-1">
                     <li>
-                      <span className="font-semibold text-yorumi-text">light novel:</span> Dedicated Light Novel (LN) reading hub with custom reader, chapter selector, popular/top 100 collections, bookmarks & reading progress.
+                      <span className="font-semibold text-yorumi-text">persistent video portal:</span> Single top-level portal on <span className="font-semibold text-yorumi-text">document.body</span> prevents component unmounting across all route transitions — video streams and embeds never reset to 0:00.
                     </li>
                     <li>
-                      <span className="font-semibold text-yorumi-text">anime provider:</span> Switched main anime stream engine to <span className="font-semibold text-yorumi-text">AniDB</span> with direct multi-quality HLS streaming (1080p, 720p, 360p) and Japanese Sub & English Dub audio.
+                      <span className="font-semibold text-yorumi-text">native 120fps gpu layout:</span> Page-absolute positioning for watch page player delivers fluid hardware-accelerated scrolling with zero JS delay and zero bounce.
                     </li>
                     <li>
-                      <span className="font-semibold text-yorumi-text">desktop bundle:</span> Standalone Electron `.exe` build with 100% embedded Express backend scraper (no local or external backend host required).
+                      <span className="font-semibold text-yorumi-text">automatic next & prev episodes:</span> Controls automatically calculate adjacent episodes and auto-load the next episode with the sleeping GIF loading animation.
                     </li>
                     <li>
-                      <span className="font-semibold text-yorumi-text">player:</span> Direct quality switching, stream proxies, and fixed player position stability on episode changes.
+                      <span className="font-semibold text-yorumi-text">multi-arch macOS & windows builds:</span> Universal macOS .dmg (Apple Silicon M1-M4 & Intel), Windows ARM64 (Snapdragon Copilot+ PCs), Windows Portable .exe, and Linux AppImage via GitHub Actions CI/CD.
                     </li>
                   </ul>
                 </div>

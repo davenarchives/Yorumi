@@ -97,31 +97,19 @@ export default function LNCard({ ln, rank, onClick, disableTilt = false }: LNCar
         >
             {/* Image Container with 3D Transform */}
             <div
-                className="relative aspect-[2/3] rounded-xl overflow-hidden mb-2.5 shadow-lg border border-white/5 bg-[#141414] transition-all duration-75 ease-out"
+                className="relative aspect-[2/3] rounded-xl overflow-hidden mb-2.5 bg-[#141414] transition-all duration-75 ease-out"
                 style={{
                     transform: disableTilt
                         ? 'none'
                         : `rotateX(${rotation.x}deg) rotateY(${rotation.y}deg) scale3d(${isHovered ? 1.05 : 1}, ${isHovered ? 1.05 : 1}, 1)`,
                     transformStyle: 'preserve-3d',
-                    boxShadow: isHovered
-                        ? '0 20px 40px -5px rgba(0,0,0,0.5), 0 10px 20px -5px rgba(0,0,0,0.3)'
-                        : 'none',
                 }}
             >
-                {/* Glare Overlay */}
-                <div
-                    className="absolute inset-0 z-30 pointer-events-none mix-blend-overlay transition-opacity duration-300"
-                    style={{
-                        background: `radial-gradient(circle at ${glare.x}% ${glare.y}%, rgba(255,255,255,0.35) 0%, transparent 80%)`,
-                        opacity: disableTilt ? 0 : glare.opacity,
-                    }}
-                />
-
                 <img src={cover} alt={displayTitle} className="w-full h-full object-cover" loading="lazy" />
 
                 {/* Rank Badge (Top Left) */}
                 {rank ? (
-                    <div className="absolute top-2 left-2 z-10 px-2 py-0.5 bg-amber-400 text-black font-black text-xs rounded-md shadow-md">
+                    <div className="absolute top-2 left-2 z-10 px-2 py-0.5 bg-amber-400 text-black font-black text-xs rounded-md">
                         #{rank}
                     </div>
                 ) : null}
@@ -129,7 +117,7 @@ export default function LNCard({ ln, rank, onClick, disableTilt = false }: LNCar
                 {/* Top Right: Star Rating */}
                 {ln.score ? (
                     <div className="absolute top-2 right-2 z-10">
-                        <span className="bg-black/70 backdrop-blur-md text-amber-400 px-2 py-0.5 rounded-md text-xs font-extrabold flex items-center gap-1 border border-white/10">
+                        <span className="bg-black/70 backdrop-blur-md text-amber-400 px-2 py-0.5 rounded-md text-xs font-extrabold flex items-center gap-1">
                             <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
                             {ln.score.toFixed(1)}
                         </span>
@@ -151,7 +139,7 @@ export default function LNCard({ ln, rank, onClick, disableTilt = false }: LNCar
             {/* Hover Tooltip Popover (Identical to Manga Card Popover) */}
             {isHovered && (
                 <div
-                    className={`pointer-events-none absolute top-2 z-[60] hidden w-[260px] rounded-2xl bg-[#181824] p-4 text-white shadow-[0_18px_40px_rgba(0,0,0,0.6)] border border-white/10 lg:block ${
+                    className={`pointer-events-none absolute top-2 z-[60] hidden w-[260px] rounded-2xl bg-[#181824] p-4 text-white shadow-xl lg:block ${
                         popupSide === 'left' ? 'right-[calc(100%+16px)]' : 'left-[calc(100%+16px)]'
                     }`}
                 >

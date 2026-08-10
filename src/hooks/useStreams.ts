@@ -4,6 +4,7 @@ import type { Episode } from '../types/anime';
 import type { StreamLink } from '../types/stream';
 import { animeService } from '../services/animeService';
 import { getStreamData, getMappedQuality } from '../utils/streamUtils';
+import { downloadService, isDownloadTitleMatch } from '../services/downloadService';
 
 const getSourceKey = (stream: StreamLink) => {
     const server = String(stream.server || '').trim().toLowerCase();
@@ -53,7 +54,6 @@ const STREAM_SERVER_OPTIONS: Array<{ key: StreamServerKey; label: string }> = [
 export function useStreams(scraperSession: string | null, animeTitle?: string, animeMetadata?: StreamLookupMetadata) {
     const [currentEpisode, setCurrentEpisode] = useState<Episode | null>(null);
     const [allStreams, setAllStreams] = useState<StreamLink[]>([]);
-    const [streams, setStreams] = useState<StreamLink[]>([]);
     const [selectedStreamIndex, setSelectedStreamIndex] = useState<number>(0);
     const [isAutoQuality, setIsAutoQuality] = useState(true);
     const [selectedAudio, setSelectedAudio] = useState<'sub' | 'dub'>('sub');
@@ -65,7 +65,6 @@ export function useStreams(scraperSession: string | null, animeTitle?: string, a
     const activeLoadRequestRef = useRef(0);
     const previousServerRef = useRef<StreamServerKey>('anidb');
 
-    const currentStream = streams[selectedStreamIndex] || null;
     const normalizeDirectScraperSession = (value: unknown) => {
         const normalized = String(value || '')
             .trim()
@@ -106,47 +105,113 @@ export function useStreams(scraperSession: string | null, animeTitle?: string, a
         return 'sub';
     };
     const scoreStream = useCallback((stream: StreamLink) => {
+        const isOffline = stream.provider === 'Offline Storage' ||
+            stream.server === 'offline' ||
+            Boolean(stream.url?.startsWith('blob:')) ||
+            Boolean(stream.url?.includes('/api/scraper/local-file'));
+        if (isOffline) {
+            return 100_000_000;
+        }
+
         const quality = parseInt(String(stream.quality || '0'), 10) || 0;
         const url = String(stream.url || '');
         const directUrl = String(stream.directUrl || '');
         const hasDirectUrl = Boolean(directUrl);
         const isHls = Boolean(stream.isHls) || url.includes('.m3u8') || directUrl.includes('.m3u8');
-        const isIframeLike = /vidsrc|vidstream|megacloud|embed|kwik/i.test(url) || !isHls;
+        const isSelectedServerEmbed = (selectedServer === 'vidsrc' || selectedServer === 'vidking' || selectedServer === 'videasy') &&
+            (stream.provider === selectedServer || stream.server?.toLowerCase().includes(selectedServer));
+        const isIframeLike = (!isSelectedServerEmbed) && (/vidsrc|vidstream|megacloud|embed|kwik/i.test(url) || !isHls);
 
         return (isHls ? 1_000_000 : 0)
             + (hasDirectUrl ? 100_000 : 0)
             - (isIframeLike ? 1_000_000 : 0)
             + quality;
-    }, []);
+    }, [selectedServer]);
 
     const ensureStreamDataForServer = useCallback((episode: Episode, server: StreamServerKey): Promise<StreamLink[]> => {
         const activeSession = normalizeDirectScraperSession(scraperSession);
-        // Fallback to provider name as a pseudo-session if activeSession is empty,
-        // since the backend can resolve streams using just the anime title now.
         const effectiveSession = activeSession || server;
         if (!effectiveSession && !animeTitle) return Promise.resolve([]);
+
         const cacheKey = getEpisodeCacheKey(server, episode);
         if (!streamCache.current.has(cacheKey)) {
-            const promise = getStreamData(episode, effectiveSession, {
-                provider: server,
-                title: animeTitle,
-                titles: metadataTitlesKey ? metadataTitlesKey.split('|') : undefined,
-                year: metadataYear,
-                format: metadataFormat,
-                anilistId: animeMetadata?.anilistId,
-            })
-                .then((data) => {
+            const promise = (async () => {
+                const targetId = animeMetadata?.anilistId ? String(animeMetadata.anilistId) : (scraperSession || animeTitle || '');
+                const epNum = Number(episode.episodeNumber || (episode as any).playbackEpisodeNumber || (episode as any)._tmdbAbsolute || 1);
+                const altEpNums = [
+                    episode.episodeNumber,
+                    (episode as any).playbackEpisodeNumber,
+                    (episode as any)._tmdbAbsolute
+                ];
+
+                let offlineStream: StreamLink | null = null;
+                try {
+                    let offline = await downloadService.getDownload(targetId, epNum, animeTitle, animeMetadata?.anilistId, altEpNums);
+                    if (!offline) {
+                        const allDownloads = await downloadService.getDownloads();
+                        const epNums = altEpNums.map(n => Number(n)).filter(n => Number.isFinite(n) && n > 0);
+                        const anilistStr = animeMetadata?.anilistId ? String(animeMetadata.anilistId).trim().toLowerCase() : '';
+                        const targetStr = targetId.trim().toLowerCase();
+
+                        offline = allDownloads.find((d) => {
+                            const dEp = Number(d.episodeNumber);
+                            if (!epNums.includes(dEp)) return false;
+                            const dAnimeId = String(d.animeId || '').trim().toLowerCase();
+                            const dKey = String(d.id || '').toLowerCase();
+
+                            if (d.id === episode.session) return true;
+                            if (targetStr && (dAnimeId === targetStr || dKey.startsWith(`${targetStr}_ep_`))) return true;
+                            if (anilistStr && (dAnimeId === anilistStr || dKey.startsWith(`${anilistStr}_ep_`))) return true;
+                            if (animeTitle && isDownloadTitleMatch(d.animeTitle, animeTitle)) {
+                                const isNum = (s: string) => /^\d+$/.test(s.trim());
+                                if (isNum(anilistStr) && isNum(dAnimeId) && dAnimeId !== anilistStr) return false;
+                                return true;
+                            }
+                            return false;
+                        }) || null;
+                    }
+                    const hasOfflineMedia = Boolean(
+                        (offline?.filePath && (offline.fileSize || 0) > 0) ||
+                        (offline?.videoBlob && offline.videoBlob.size > 0)
+                    );
+                    if (offline && hasOfflineMedia) {
+                        const resolved = await downloadService.getOfflineStream(offline);
+                        if (resolved?.url) {
+                            offlineStream = resolved;
+                        }
+                    }
+                } catch (e) {
+                    console.warn('Error checking offline download:', e);
+                }
+
+                if (offlineStream) {
+                    return [offlineStream];
+                }
+
+                if (!navigator.onLine) {
+                    return [];
+                }
+
+                try {
+                    const data = await getStreamData(episode, effectiveSession, {
+                        provider: server,
+                        title: animeTitle,
+                        titles: metadataTitlesKey ? metadataTitlesKey.split('|') : undefined,
+                        year: metadataYear,
+                        format: metadataFormat,
+                        anilistId: animeMetadata?.anilistId,
+                    });
                     if (!Array.isArray(data) || data.length === 0) {
                         streamCache.current.delete(cacheKey);
                         return [];
                     }
                     return data;
-                })
-                .catch(e => {
-                    console.error('Failed to load stream', e);
+                } catch (error) {
+                    console.error('Error fetching stream:', error);
                     streamCache.current.delete(cacheKey);
                     return [];
-                });
+                }
+            })();
             streamCache.current.set(cacheKey, promise);
         }
         return streamCache.current.get(cacheKey)!;
@@ -216,16 +281,12 @@ export function useStreams(scraperSession: string | null, animeTitle?: string, a
         return Array.from(dedupedBySourceQuality.values());
     }, [scoreStream]);
 
-    useEffect(() => {
-        if (allStreams.length === 0) {
-            setStreams([]);
-            return;
-        }
-        const nextStreams = filterStreams(allStreams, selectedAudio);
-        setStreams(nextStreams);
-        setSelectedStreamIndex(0);
-        setIsAutoQuality(true);
+    const streams = useMemo(() => {
+        if (allStreams.length === 0) return [];
+        return filterStreams(allStreams, selectedAudio);
     }, [allStreams, selectedAudio, filterStreams]);
+
+    const currentStream = streams[selectedStreamIndex] || null;
 
     const loadStream = useCallback(async (episode: Episode, isServerSwitch = false) => {
         const requestId = activeLoadRequestRef.current + 1;
@@ -240,7 +301,6 @@ export function useStreams(scraperSession: string | null, animeTitle?: string, a
             streamCache.current.clear();
             setCurrentEpisode(episode);
             setAllStreams([]);
-            setStreams([]);
             setSelectedStreamIndex(0);
             // Proactively prefetch all other server streams in background so switching is instant.
             STREAM_SERVER_OPTIONS.forEach(({ key }) => {
@@ -264,7 +324,6 @@ export function useStreams(scraperSession: string | null, animeTitle?: string, a
                         const nextAudio = cachedData.some((s) => normalizeAudio(s.audio) === selectedAudio)
                             ? selectedAudio
                             : (cachedData.some((s) => normalizeAudio(s.audio) === 'sub') ? 'sub' : 'dub');
-                        const nextStreams = filterStreams(cachedData, nextAudio);
 
                         const actualProvider = String(cachedData[0].provider || cachedData[0].server || '').trim().toLowerCase();
                         const isValidServer = STREAM_SERVER_OPTIONS.some(s => s.key === actualProvider);
@@ -275,7 +334,6 @@ export function useStreams(scraperSession: string | null, animeTitle?: string, a
 
                         setSelectedAudio(nextAudio);
                         setAllStreams(cachedData);
-                        setStreams(nextStreams);
                         setSelectedStreamIndex(0);
                         setIsAutoQuality(true);
                         setCurrentEpisode(episode);
@@ -283,14 +341,12 @@ export function useStreams(scraperSession: string | null, animeTitle?: string, a
                         // Cached but empty — evict and fall through to fresh fetch
                         streamCache.current.delete(cacheKey);
                         setAllStreams([]);
-                        setStreams([]);
                         setSelectedStreamIndex(0);
                         setCurrentEpisode(episode);
                     }
                 } catch {
                     streamCache.current.delete(cacheKey);
                     setAllStreams([]);
-                    setStreams([]);
                     setSelectedStreamIndex(0);
                     setCurrentEpisode(episode);
                 } finally {
@@ -306,7 +362,6 @@ export function useStreams(scraperSession: string | null, animeTitle?: string, a
             setStreamLoading(true);
             setCurrentEpisode(episode);
             setAllStreams([]);
-            setStreams([]);
             setSelectedStreamIndex(0);
         }
 
@@ -320,42 +375,35 @@ export function useStreams(scraperSession: string | null, animeTitle?: string, a
                 const nextAudio = streamData.some((s) => normalizeAudio(s.audio) === selectedAudio)
                     ? selectedAudio
                     : (streamData.some((s) => normalizeAudio(s.audio) === 'sub') ? 'sub' : 'dub');
-                const nextStreams = filterStreams(streamData, nextAudio);
-
-                if (resolved.server !== selectedServer) {
-                    previousServerRef.current = resolved.server;
-                    setSelectedServer(resolved.server);
-                }
-
-                const actualProvider = String(streamData[0].provider || streamData[0].server || '').trim().toLowerCase();
-                const isValidServer = STREAM_SERVER_OPTIONS.some(s => s.key === actualProvider);
-                if (actualProvider && actualProvider !== resolved.server && isValidServer) {
-                    previousServerRef.current = actualProvider as StreamServerKey;
-                    setSelectedServer(actualProvider as StreamServerKey);
-                }
-
                 setSelectedAudio(nextAudio);
                 setAllStreams(streamData);
-                setStreams(nextStreams);
                 setSelectedStreamIndex(0);
                 setIsAutoQuality(true);
             } else {
                 streamCache.current.delete(getEpisodeCacheKey(selectedServer, episode));
                 setAllStreams([]);
-                setStreams([]);
             }
         } catch (e) {
             if (activeLoadRequestRef.current !== requestId) {
                 return;
             }
-            console.error('Failed to load stream', e);
+            console.error('Failed to load stream:', e);
+            streamCache.current.delete(getEpisodeCacheKey(selectedServer, episode));
+            setAllStreams([]);
         } finally {
             if (activeLoadRequestRef.current === requestId) {
                 setStreamLoading(false);
                 setServerSwitchLoading(false);
             }
         }
-    }, [ensureStreamDataForServer, resolveStreamDataWithFallback, selectedServer, selectedAudio, filterStreams, getEpisodeCacheKey]);
+    }, [
+        ensureStreamDataForServer,
+        filterStreams,
+        selectedAudio,
+        selectedServer,
+        resolveStreamDataWithFallback,
+        getEpisodeCacheKey,
+    ]);
 
     useEffect(() => {
         if (previousServerRef.current === selectedServer) return;
@@ -405,7 +453,6 @@ export function useStreams(scraperSession: string | null, animeTitle?: string, a
         activeLoadRequestRef.current += 1;
         setCurrentEpisode(null);
         setAllStreams([]);
-        setStreams([]);
         setSelectedStreamIndex(0);
         setSelectedAudio('sub');
         setSelectedServer('anidb');
@@ -436,17 +483,15 @@ export function useStreams(scraperSession: string | null, animeTitle?: string, a
     }, [scraperSession, selectedServer]);
 
     const handleServerChange = useCallback((server: StreamServerKey) => {
-        const shouldForceReload = server === selectedServer;
         setSelectedServer(server);
         setSelectedStreamIndex(0);
         setIsAutoQuality(true);
         setShowQualityMenu(false);
-        if (shouldForceReload && currentEpisode) {
+        if (currentEpisode) {
             streamCache.current.delete(getEpisodeCacheKey(server, currentEpisode));
-            loadStream(currentEpisode);
+            loadStream(currentEpisode, true);
         }
-    }, [currentEpisode, loadStream, selectedServer, getEpisodeCacheKey]);
-
+    }, [currentEpisode, loadStream, getEpisodeCacheKey]);
 
     return {
         // State

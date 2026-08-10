@@ -1,6 +1,7 @@
 import type { StreamLink } from '../types/stream';
 import type { Episode } from '../types/anime';
 import { animeService } from '../services/animeService';
+import { getPlaybackEpisodeNumber } from './episodeWatchKey';
 
 /**
  * Maps numerical quality to standard quality labels
@@ -35,7 +36,7 @@ export const getStreamData = async (
         anilistId?: number;
     }
 ): Promise<StreamLink[]> => {
-    const playbackEpisodeNumber = Number(episode._tmdbAbsolute || episode.episodeNumber || 0) || undefined;
+    const playbackEpisodeNumber = getPlaybackEpisodeNumber(episode as Parameters<typeof getPlaybackEpisodeNumber>[0]) || Number(episode.episodeNumber) || undefined;
     const data = await animeService.getStreams(scraperSession, episode.session, {
         ...options,
         episodeNumber: playbackEpisodeNumber,

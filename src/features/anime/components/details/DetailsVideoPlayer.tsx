@@ -66,6 +66,7 @@ export default function DetailsVideoPlayer({ animeId, animeTitle, onClose, isWat
         setAutoNextEnabled,
         setAutoSkipEnabled,
         setSelectedServer,
+        handleServerChange,
         setSelectedAudio,
         canPrevEpisode,
         canNextEpisode,
@@ -110,22 +111,32 @@ export default function DetailsVideoPlayer({ animeId, animeTitle, onClose, isWat
         onSetAutoQuality: setAutoQuality,
         selectedServer,
         serverOptions,
-        onServerChange: setSelectedServer,
+        onServerChange: handleServerChange,
         isWide: isExpanded,
         onToggleWide: toggleExpand,
+        animeId,
+        animeTitle,
+        animeImage: currentEpisode?.snapshot || fallbackEpisode?.snapshot || '',
+        episodeNumber: Number(epNum || currentEpisode?.episodeNumber || 1),
+        episodeTitle: cleanCurrentTitle || currentEpisode?.title,
     }), [
+        animeId,
+        animeTitle,
         availableAudios,
         autoNextEnabled,
         autoSkipEnabled,
         canNextEpisode,
         canPrevEpisode,
+        cleanCurrentTitle,
         currentEpisode,
         currentStream,
         epNum,
+        fallbackEpisode,
         handleNextEp,
         handlePlaybackProgress,
         handlePrevEp,
         handleQualityChange,
+        handleServerChange,
         handleStreamError,
         isAutoQuality,
         isExpanded,
@@ -150,10 +161,33 @@ export default function DetailsVideoPlayer({ animeId, animeTitle, onClose, isWat
         toggleExpand,
     ]);
 
+    const watchState = useMemo(() => ({
+        ...(location.state && typeof location.state === 'object' ? (location.state as Record<string, unknown>) : {}),
+        preventScrollTop: true,
+        anime: (location.state as any)?.anime || ({
+            id: animeId,
+            title: animeTitle,
+            images: { jpg: { large_image_url: playerProps.animeImage || '', image_url: playerProps.animeImage || '' } }
+        }),
+    }), [location.state, animeId, animeTitle, playerProps.animeImage]);
+
     useEffect(() => {
         if (error) return;
-        registerPlayer(playerProps, `${location.pathname}${location.search}`);
-    }, [error, location.pathname, location.search, playerProps, registerPlayer]);
+        registerPlayer(playerProps, `${location.pathname}${location.search}`, watchState);
+    }, [error, location.pathname, location.search, playerProps, registerPlayer, watchState]);
+
+    const displayTitle = (() => {
+        const rawEpTitle = (cleanCurrentTitle || currentEpisode?.title || '').trim();
+        const isGeneric = !rawEpTitle || /^episode\s+\d+$/i.test(rawEpTitle) || /^untitled$/i.test(rawEpTitle);
+        
+        if (animeTitle && !isGeneric) {
+            return `${animeTitle} • ${rawEpTitle}`;
+        }
+        if (!isGeneric) {
+            return rawEpTitle;
+        }
+        return animeTitle || `Episode ${epNum}`;
+    })();
 
     if (error) {
         return (
@@ -173,7 +207,7 @@ export default function DetailsVideoPlayer({ animeId, animeTitle, onClose, isWat
                     </span>
                     <div className="flex flex-col">
                         <h2 className="text-xl font-bold text-white truncate max-w-xl">
-                            {cleanCurrentTitle || `Episode ${epNum}`}
+                            {displayTitle}
                         </h2>
                     </div>
                 </div>
@@ -209,8 +243,6 @@ export default function DetailsVideoPlayer({ animeId, animeTitle, onClose, isWat
 
             {/* Video Container Layout */}
             <div className="relative w-full flex items-center justify-center mt-4 py-4 md:py-8 overflow-visible">
-                
-                {/* Previous Episode Background (Left) */}
                 {prevEpisode && (
                     <div 
                         className="absolute -left-4 md:-left-12 lg:-left-20 xl:-left-24 z-10 w-[85%] aspect-video cursor-pointer overflow-hidden group/prev rounded-3xl opacity-60 hover:opacity-100 transition-all duration-300"

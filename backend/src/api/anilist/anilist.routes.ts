@@ -422,10 +422,10 @@ const buildHomeFastPayload = async () => {
             5500,
             [] as any[]
         ),
-        withTimeout(anilistService.getTrendingAnime(1, 10), 4000, { media: [] }),
-        withTimeout(anilistService.getPopularThisSeason(1, 10), 4000, { media: [] }),
-        withTimeout(anilistService.getPopularThisMonth(1, 10), 4000, { media: [] }),
-        withTimeout(anilistService.getTopAnime(1, 18), 4000, { media: [], pageInfo: { lastPage: 1, currentPage: 1, hasNextPage: false } }),
+        withTimeout(anilistService.getTrendingAnime(1, 30), 4000, { media: [] }),
+        withTimeout(anilistService.getPopularThisSeason(1, 24), 4000, { media: [] }),
+        withTimeout(anilistService.getPopularThisMonth(1, 24), 4000, { media: [] }),
+        withTimeout(anilistService.getTopAnime(1, 24), 4000, { media: [], pageInfo: { lastPage: 1, currentPage: 1, hasNextPage: false } }),
     ]);
     console.log(`[Spotlight] Source: AniList native (${Array.isArray(spotlightRaw) ? spotlightRaw.length : 0} items)`);
     const latestRawItems = Array.isArray(latestEpisodesRaw) ? latestEpisodesRaw : [];

@@ -82,14 +82,37 @@ export class AnikotoScraper implements VideoSource {
 
             if (candidates.length === 0) return null;
 
-            let chosenSlug = candidates[0].slug;
             const normSearch = normalizeTitle(searchTitle);
+            const asksSeason2 = /\b(season 2|s2|2nd season|season2)\b/i.test(searchTitle);
+            const asksMovie = /\b(movie|film)\b/i.test(searchTitle);
+
+            let bestCandidate = candidates[0];
+            let bestScore = -999;
+
             for (const c of candidates) {
-                if (normalizeTitle(c.titleEn) === normSearch || normalizeTitle(c.titleJp) === normSearch) {
-                    chosenSlug = c.slug;
-                    break;
+                let score = 0;
+                const enNorm = normalizeTitle(c.titleEn);
+                const jpNorm = normalizeTitle(c.titleJp);
+
+                if (enNorm === normSearch || jpNorm === normSearch) score += 1000;
+                else if (enNorm.startsWith(normSearch) || jpNorm.startsWith(normSearch)) score += 500;
+                else if (enNorm.includes(normSearch) || jpNorm.includes(normSearch)) score += 200;
+
+                const isS2 = /\b(season 2|s2|2nd season|season2)\b/i.test(c.titleEn);
+                const isMovie = /\b(movie|film)\b/i.test(c.titleEn);
+                const isMini = /\b(mini|special|recap|chibi)\b/i.test(c.titleEn);
+
+                if (isS2 && !asksSeason2) score -= 300;
+                if (isMovie && !asksMovie) score -= 300;
+                if (isMini) score -= 400;
+
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestCandidate = c;
                 }
             }
+
+            const chosenSlug = bestCandidate.slug;
 
             // Get show ID
             const watchPage = await axios.get(`${BASE}/watch/${chosenSlug}`, { headers: { ...H, Referer: `${BASE}/` } }).then(r => r.data).catch(() => '');
@@ -173,10 +196,12 @@ export class AnikotoScraper implements VideoSource {
                                 referer = `${origin}/`;
                                 if (sources.tracks) {
                                     for (const t of sources.tracks) {
-                                        subtitles.push({
-                                            url: t.file,
-                                            lang: t.label || 'Unknown',
-                                        });
+                                        if (t.file) {
+                                            subtitles.push({
+                                                url: t.file,
+                                                lang: t.label || 'Unknown',
+                                            });
+                                        }
                                     }
                                 }
                             } else {
@@ -191,10 +216,43 @@ export class AnikotoScraper implements VideoSource {
 
             if (!m3u8 && !dubM3u8) return null;
 
+            const variants: Array<{ quality: string; url: string }> = [];
+            if (m3u8) {
+                try {
+                    const masterRes = await axios.get<string>(m3u8, {
+                        headers: { ...H, Referer: referer || SPOOF_REF },
+                        timeout: 5000,
+                    });
+                    const lines = String(masterRes.data || '').split(/\r?\n/);
+                    for (let i = 0; i < lines.length; i++) {
+                        const line = lines[i].trim();
+                        if (!line.startsWith('#EXT-X-STREAM-INF')) continue;
+                        const resMatch = line.match(/RESOLUTION=\d+x(\d+)/i)?.[1];
+                        const bw = Number(line.match(/BANDWIDTH=(\d+)/i)?.[1] || 0);
+                        let nextUrl = '';
+                        for (let j = i + 1; j < lines.length; j++) {
+                            const candidate = lines[j].trim();
+                            if (!candidate || candidate.startsWith('#')) continue;
+                            nextUrl = candidate;
+                            break;
+                        }
+                        if (nextUrl && !/EXT-X-I-FRAME/i.test(nextUrl)) {
+                            const abs = nextUrl.startsWith('http') ? nextUrl : new URL(nextUrl, m3u8).href;
+                            const q = resMatch ? `${resMatch}p` : (bw >= 2500000 ? '720p' : '360p');
+                            if (!variants.find(v => v.url === abs)) {
+                                variants.push({ quality: q, url: abs });
+                            }
+                        }
+                    }
+                } catch {
+                    // ignore
+                }
+            }
+
             return {
                 m3u8: m3u8 || dubM3u8,
                 dubM3u8: dubM3u8 || undefined,
-                variants: [],
+                variants,
                 subtitles,
                 source: this.id,
                 episode,

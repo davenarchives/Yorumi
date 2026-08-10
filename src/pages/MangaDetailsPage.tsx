@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { Check, Plus, Play } from 'lucide-react';
 import { useManga } from '../hooks/useManga';
 import { useReadList } from '../hooks/useReadList';
+import { useContinueReading } from '../hooks/useContinueReading';
 import { slugify } from '../utils/slugify';
 import type { Manga, MangaChapter } from '../types/manga';
 import type { Anime } from '../types/anime';
@@ -10,6 +11,7 @@ import DetailsCharacters from '../features/anime/components/details/DetailsChara
 import { useTitleLanguage } from '../context/TitleLanguageContext';
 import { getDisplayTitle } from '../utils/titleLanguage';
 import type { ReadListItem } from '../utils/storage';
+import ChapterViewToggle, { useChapterViewMode, type ChapterViewMode } from '../components/ui/ChapterViewToggle';
 
 const normalizeMangaRouteId = (value: unknown) =>
     String(value || '')
@@ -20,11 +22,13 @@ const normalizeMangaRouteId = (value: unknown) =>
 const ChapterList = ({
     chapters,
     readChapters,
-    onChapterClick
+    onChapterClick,
+    viewMode = 'list'
 }: {
     chapters: MangaChapter[],
     readChapters: Set<string>,
-    onChapterClick: (ch: MangaChapter) => void
+    onChapterClick: (ch: MangaChapter) => void,
+    viewMode?: ChapterViewMode
 }) => {
     const [searchQuery, setSearchQuery] = useState('');
     const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
@@ -47,7 +51,7 @@ const ChapterList = ({
     const currentChapters = sortedChapters.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
 
     return (
-        <div className="mt-6 bg-[#111] rounded-2xl p-4 sm:p-6 shadow-xl ring-1 ring-white/5">
+        <div className="mt-6 bg-[#111] rounded-2xl p-4 sm:p-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
                 <h3 className="text-xl font-black text-white">{chapters.length} Chapters</h3>
                 <button 
@@ -68,65 +72,109 @@ const ChapterList = ({
                         placeholder="Search chapters..." 
                         value={searchQuery}
                         onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
-                        className="w-full bg-[#1a1a1a] text-white pl-11 pr-4 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-yorumi-manga/50 transition-all border border-white/5"
+                        className="w-full bg-[#1a1a1a] text-white pl-11 pr-4 py-3 rounded-xl focus:outline-none focus:bg-[#222] transition-all"
                     />
                 </div>
             </div>
 
-            <div className="flex flex-col space-y-1">
-                {currentChapters.map((ch, index) => {
-                    const isRead = readChapters.has(ch.id);
-                    
-                    // Split "Chapter 123: The Title" or similar
-                    const titleMatch = ch.title.match(/^(Chapter\s+[\d.]+)(?:\s*[:-]\s*(.*))?/i);
-                    const chapterNumStr = titleMatch ? titleMatch[1] : ch.title;
-                    const subtitleStr = titleMatch && titleMatch[2] ? titleMatch[2] : '';
+            {viewMode === 'grid' ? (
+                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10 gap-2.5">
+                    {currentChapters.map((ch, index) => {
+                        const isRead = readChapters.has(ch.id);
+                        
+                        const titleMatch = ch.title.match(/^(Arc\s+\d+[\s–—,-]*(?:Chapter\s*)?[\d.]+|Vol(?:ume)?\s*[\d.]+\s*(?:Chapter\s*)?[\d.]+|Chapter\s+[\d.]+|Ch\.\s*[\d.]+)(?:\s*[:–—,-]\s*["'«]?(.*?)["'»]?)?$/i);
+                        const mainStr = titleMatch ? titleMatch[1].trim() : ch.title.split(/[:–—]/)[0].trim();
+                        const subMatch = titleMatch ? titleMatch[2] : (ch.title.includes(':') || ch.title.includes('–') ? ch.title.split(/[:–—]/).slice(1).join(' ').trim() : '');
+                        const subtitleStr = subMatch ? subMatch.replace(/^["'«]|["'»]$/g, '').trim() : '';
 
-                    return (
-                        <button
-                            key={`${ch.id}-${index}`}
-                            onClick={() => onChapterClick(ch)}
-                            className={`flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-4 rounded-xl transition-all duration-200 text-left group
-                                ${isRead ? 'opacity-50' : ''} hover:bg-[#1a1a1a] active:scale-[0.99] cursor-pointer border border-transparent hover:border-white/5`}
-                        >
-                            <div className="flex flex-col min-w-0">
-                                <span className={`font-black text-lg ${isRead ? 'text-gray-400' : 'text-white group-hover:text-yorumi-manga'} transition-colors`}>
-                                    {chapterNumStr}
+                        return (
+                            <button
+                                key={`${ch.id}-${index}`}
+                                onClick={() => onChapterClick(ch)}
+                                title={ch.title}
+                                className={`aspect-square flex flex-col items-center justify-center p-2 rounded-xl transition-all duration-200 text-center group
+                                    ${isRead ? 'opacity-50 bg-[#141414]' : 'bg-[#1a1a1a] hover:bg-[#252525]'} active:scale-95 cursor-pointer`}
+                            >
+                                <span className={`font-semibold text-xs sm:text-sm leading-tight ${isRead ? 'text-gray-400' : 'text-gray-200 group-hover:text-yorumi-manga'} transition-colors line-clamp-2`}>
+                                    {mainStr}
                                 </span>
                                 {subtitleStr && (
-                                    <span className="text-gray-400 text-sm truncate mt-0.5">
+                                    <span className="text-[10px] text-gray-400 truncate w-full mt-1 px-0.5 font-normal">
                                         {subtitleStr}
                                     </span>
                                 )}
-                            </div>
-                            {ch.uploadDate && (
-                                <span className="text-gray-500 text-sm font-semibold shrink-0">
-                                    {ch.uploadDate}
-                                </span>
-                            )}
-                        </button>
-                    );
-                })}
-                {currentChapters.length === 0 && (
-                    <div className="text-center py-8 text-gray-500">
-                        No chapters found matching "{searchQuery}"
-                    </div>
-                )}
-            </div>
+                            </button>
+                        );
+                    })}
+                    {currentChapters.length === 0 && (
+                        <div className="col-span-full text-center py-8 text-gray-500">
+                            No chapters found matching "{searchQuery}"
+                        </div>
+                    )}
+                </div>
+            ) : (
+                <div className="flex flex-col space-y-1">
+                    {currentChapters.map((ch, index) => {
+                        const isRead = readChapters.has(ch.id);
+                        
+                        const titleMatch = ch.title.match(/^(Arc\s+\d+[\s–—,-]*(?:Chapter\s*)?[\d.]+|Vol(?:ume)?\s*[\d.]+\s*(?:Chapter\s*)?[\d.]+|Chapter\s+[\d.]+|Ch\.\s*[\d.]+)(?:\s*[:–—,-]\s*["'«]?(.*?)["'»]?)?$/i);
+                        const mainStr = titleMatch ? titleMatch[1].trim() : ch.title.split(/[:–—]/)[0].trim();
+                        const subMatch = titleMatch ? titleMatch[2] : (ch.title.includes(':') || ch.title.includes('–') ? ch.title.split(/[:–—]/).slice(1).join(' ').trim() : '');
+                        const subtitleStr = subMatch ? subMatch.replace(/^["'«]|["'»]$/g, '').trim() : '';
+
+                        return (
+                            <button
+                                key={`${ch.id}-${index}`}
+                                onClick={() => onChapterClick(ch)}
+                                className={`flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3.5 rounded-xl transition-all duration-200 text-left group
+                                    ${isRead ? 'opacity-50' : ''} hover:bg-[#1a1a1a] active:scale-[0.99] cursor-pointer`}
+                            >
+                                <div className="flex flex-col min-w-0">
+                                    <span className={`font-semibold text-base ${isRead ? 'text-gray-400' : 'text-gray-200 group-hover:text-yorumi-manga'} transition-colors`}>
+                                        {mainStr}
+                                    </span>
+                                    {subtitleStr && (
+                                        <span className="text-gray-400 text-xs sm:text-sm font-normal truncate mt-0.5">
+                                            {subtitleStr}
+                                        </span>
+                                    )}
+                                </div>
+                                {ch.uploadDate && (
+                                    <span className="text-gray-500 text-xs font-medium shrink-0">
+                                        {ch.uploadDate}
+                                    </span>
+                                )}
+                            </button>
+                        );
+                    })}
+                    {currentChapters.length === 0 && (
+                        <div className="text-center py-8 text-gray-500">
+                            No chapters found matching "{searchQuery}"
+                        </div>
+                    )}
+                </div>
+            )}
 
             {totalPages > 1 && (
-                <div className="flex flex-col items-center gap-4 mt-8 pt-6 border-t border-white/5">
-                    <div className="flex flex-wrap justify-center gap-2">
-                        {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
-                            <button
-                                key={p}
-                                onClick={() => setPage(p)}
-                                className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-colors flex-shrink-0
-                                    ${page === p ? 'bg-yorumi-manga text-white' : 'bg-white/5 text-gray-400 hover:bg-white/15 hover:text-white'}`}
-                            >
-                                {p}
-                            </button>
-                        ))}
+                <div className="flex items-center justify-between pt-4 border-t border-white/5">
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => setPage(p => Math.max(1, p - 1))}
+                            disabled={page === 1}
+                            className="px-4 py-2 bg-[#111] border border-white/10 rounded-xl text-xs font-bold text-gray-300 disabled:opacity-30 hover:bg-white/5 transition-colors"
+                        >
+                            Previous
+                        </button>
+                        <span className="text-xs font-bold text-gray-400">
+                            Page {page} of {totalPages}
+                        </span>
+                        <button
+                            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                            disabled={page === totalPages}
+                            className="px-4 py-2 bg-[#111] border border-white/10 rounded-xl text-xs font-bold text-gray-300 disabled:opacity-30 hover:bg-white/5 transition-colors"
+                        >
+                            Next
+                        </button>
                     </div>
                     <span className="text-xs font-semibold text-gray-500 uppercase tracking-widest">
                         Showing {(page - 1) * ITEMS_PER_PAGE + 1} - {Math.min(page * ITEMS_PER_PAGE, sortedChapters.length)} of {sortedChapters.length}
@@ -137,15 +185,13 @@ const ChapterList = ({
     );
 };
 
-
-
 export default function MangaDetailsPage() {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
     const location = useLocation();
     const routeManga = (location.state as { manga?: Manga } | null)?.manga ?? null;
+    const [viewMode, setViewMode] = useChapterViewMode();
 
-    // Use the useManga hook logic locally for this page
     const {
         selectedManga,
         mangaChapters,
@@ -156,6 +202,7 @@ export default function MangaDetailsPage() {
     } = useManga();
 
     const { isInReadList, addToReadList, removeFromReadList } = useReadList();
+    const { continueReadingList } = useContinueReading();
     const { language } = useTitleLanguage();
 
     const currentRouteId = normalizeMangaRouteId(id);
@@ -176,12 +223,22 @@ export default function MangaDetailsPage() {
             ? routeManga
             : selectedManga || routeManga;
 
+    const currentProgress = useMemo(() => {
+        const targetId = normalizeMangaRouteId(id);
+        const targetTitle = (displayManga?.title || '').toLowerCase().trim();
+        return continueReadingList.find((p) => {
+            if (normalizeMangaRouteId(p.mangaId) === targetId) return true;
+            if (targetTitle && (p.mangaTitle || '').toLowerCase().trim() === targetTitle) return true;
+            return false;
+        });
+    }, [continueReadingList, id, displayManga?.title]);
+
     // Navigate to reader page with path-based URL
     const handleChapterClick = useCallback((chapter: MangaChapter) => {
         if (!displayManga) return;
 
         const title = slugify(displayManga.title || 'manga');
-        const chapterMatch = chapter.title.match(/Chapter\s+(\d+)/i);
+        const chapterMatch = chapter.title.match(/Chapter\s+(\d+[.]?\d*)/i);
         const chapterNum = chapterMatch ? chapterMatch[1] : '1';
         navigate(`/manga/read/${title}/${id}/c${chapterNum}`, { state: { manga: displayManga } });
     }, [displayManga, id, navigate]);
@@ -384,15 +441,27 @@ export default function MangaDetailsPage() {
                             <button
                                 onClick={() => {
                                     if (mangaChapters.length > 0) {
-                                        const firstChapter = mangaChapters[mangaChapters.length - 1];
-                                        handleChapterClick(firstChapter);
+                                        const startChapter = currentProgress
+                                            ? mangaChapters.find((c) => {
+                                                if (c.id === currentProgress.chapterId) return true;
+                                                const match = c.title.match(/Chapter\s+(\d+[.]?\d*)/i);
+                                                return match && match[1] === currentProgress.chapterNumber;
+                                            }) || mangaChapters[mangaChapters.length - 1]
+                                            : mangaChapters[mangaChapters.length - 1];
+                                        handleChapterClick(startChapter);
                                     }
                                 }}
-                                disabled={mangaChaptersLoading}
-                                className="h-10 px-6 bg-[#1a1a1a] hover:bg-white/10 text-white text-sm font-bold rounded-xl transition-colors flex items-center gap-2 whitespace-nowrap"
+                                disabled={mangaChaptersLoading || mangaChapters.length === 0}
+                                className="h-10 px-6 bg-[#1a1a1a] hover:bg-white/10 text-white text-sm font-bold rounded-xl transition-colors flex items-center gap-2 whitespace-nowrap disabled:opacity-50"
                             >
                                 <Play className="w-4 h-4 fill-current" />
-                                <span>{mangaChaptersLoading ? 'Loading...' : 'Read'}</span>
+                                <span>
+                                    {mangaChaptersLoading
+                                        ? 'Loading...'
+                                        : currentProgress
+                                            ? `Ch. ${currentProgress.chapterNumber}`
+                                            : 'Read'}
+                                </span>
                             </button>
                             
                             <div className="relative">
@@ -425,6 +494,7 @@ export default function MangaDetailsPage() {
                                     <div className="flex items-center gap-4 mb-6">
                                         <h3 className="text-xl font-black text-white uppercase tracking-wider whitespace-nowrap">Chapters</h3>
                                         <div className="flex-1 h-px bg-white/10" />
+                                        <ChapterViewToggle viewMode={viewMode} onViewModeChange={setViewMode} />
                                     </div>
                                     {mangaChaptersLoading ? (
                                         <div className="mt-6 bg-[#111] rounded-2xl p-4 sm:p-6 shadow-xl ring-1 ring-white/5 animate-pulse">
@@ -451,6 +521,7 @@ export default function MangaDetailsPage() {
                                             chapters={mangaChapters}
                                             readChapters={readChapters}
                                             onChapterClick={handleChapterClick}
+                                            viewMode={viewMode}
                                         />
                                     ) : (
                                         <div className="text-gray-500 text-center py-4 space-y-2">

@@ -22,3 +22,4 @@ const getResolvedApiBase = () => {
 };
 
 export const API_BASE = getResolvedApiBase();
+export const API_ORIGIN = API_BASE.replace(/\/+$/, '').replace(/\/api$/i, '');

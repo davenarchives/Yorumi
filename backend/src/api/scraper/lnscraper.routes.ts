@@ -37,10 +37,11 @@ router.post('/resolve', async (req, res) => {
 router.get('/details/:id(*)', async (req, res) => {
     try {
         const id = req.params.id;
+        const refresh = req.query.refresh === 'true';
         if (!id) {
             return res.status(400).json({ success: false, error: 'Novel ID is required' });
         }
-        const details = await lnService.getNovelDetails(id);
+        const details = await lnService.getNovelDetails(id, refresh);
         if (!details) {
             return res.status(404).json({ success: false, error: 'Novel details not found' });
         }

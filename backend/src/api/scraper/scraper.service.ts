@@ -526,7 +526,7 @@ class ScraperService {
         const provider = String(options?.provider || 'auto').trim().toLowerCase() || 'auto';
         
         // ── Custom Video Sources (video-sources.ts) ─────────────────────────
-        if (provider === 'vidsrc' || provider === 'vidking' || provider === 'anidb' || provider === 'videasy' || provider === 'reanime' || provider === 'anineko' || provider === 'anikoto') {
+        if (provider === 'vidsrc' || provider === 'vidking' || provider === 'anidb' || provider === 'anikoto' || provider === 'videasy' || provider === 'reanime' || provider === 'anineko') {
             const title = String(options?.title || this.queryFromSessionSlug(animeSession)).trim();
             const parsedAnilistId = parseInt(animeSession, 10);
             const anilistId = options?.anilistId || (!isNaN(parsedAnilistId) && parsedAnilistId > 0 ? parsedAnilistId : undefined);
@@ -554,14 +554,16 @@ class ScraperService {
                 const referer = streamResponse.referer || '';
                 const actualSource = String(streamResponse.source || provider).trim().toLowerCase();
                 let proxyMedia = '';
-                if (actualSource === 'anineko') proxyMedia = '&proxyMedia=1&maskCheck=1';
+                if (actualSource === 'anineko' || actualSource === 'anidb') proxyMedia = '&proxyMedia=1';
                 
                 let masterUrl = streamResponse.m3u8;
-                if ((actualSource === 'anineko' || actualSource === 'anikoto' || actualSource === 'anidb') && masterUrl.startsWith('http')) {
+                if ((actualSource === 'anineko' || actualSource === 'anidb') && masterUrl.startsWith('http')) {
                     masterUrl = `/api/scraper/proxy?url=${encodeURIComponent(masterUrl)}&referer=${encodeURIComponent(referer)}${proxyMedia}`;
                 }
+                // Don't double-wrap: if the source already returned a proxied /api/... path, use it as-is
                 
                 const serverName = actualSource === 'anidb' ? 'AniDB' : actualSource === 'videasy' ? 'Videasy' : actualSource === 'vidking' ? 'VidKing' : actualSource === 'vidsrc' ? 'VidSrc' : actualSource.toUpperCase();
+                const isEmbedSource = !isHls && (/embed/i.test(masterUrl) || actualSource === 'vidsrc' || actualSource === 'vidking' || actualSource === 'videasy');
 
                 const streamsList: any[] = [{
                     quality: 'auto',
@@ -570,7 +572,9 @@ class ScraperService {
                     server: serverName,
                     url: masterUrl,
                     isHls: isHls,
+                    isEmbed: isEmbedSource,
                     referer: referer,
+                    duration: streamResponse.duration,
                     subtitles: streamResponse.subtitles || [],
                     directUrl: streamResponse.m3u8
                 }];
@@ -587,6 +591,7 @@ class ScraperService {
                         server: serverName,
                         url: dubMasterUrl,
                         isHls: true,
+                        isEmbed: false,
                         referer: referer,
                         subtitles: streamResponse.subtitles || [],
                         directUrl: streamResponse.dubM3u8
@@ -635,10 +640,10 @@ class ScraperService {
 
                 return streamsList;
             }
-            return [];
+            // If custom provider has no direct stream, seamlessly fall back to AllManga so playback never fails
         }
         // ── AllManga provider ──────────────────────────────────────────────
-        if (provider === 'allmanga' || provider === 'auto' || this.isAllMangaSession(animeSession)) {
+        if (provider === 'allmanga' || provider === 'auto' || provider === 'anidb' || provider === 'anikoto' || this.isAllMangaSession(animeSession)) {
             let title = String(options?.title || this.queryFromSessionSlug(animeSession)).trim();
             const episodeNumber = Number(options?.episodeNumber || this.parseEpisodeNumber(epSession));
             let showId = AllMangaScraper.fromSession(animeSession);

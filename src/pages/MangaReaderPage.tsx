@@ -4,6 +4,7 @@ import { useManga } from '../hooks/useManga';
 import { slugify } from '../utils/slugify';
 import MangaReaderModal from '../features/manga/components/MangaReaderModal';
 import type { MangaChapter } from '../types/manga';
+import sleepingGif from '../assets/sleeping.gif';
 
 export default function MangaReaderPage() {
     const { id, chapter } = useParams<{ title: string; id: string; chapter: string }>();
@@ -40,12 +41,13 @@ export default function MangaReaderPage() {
     // Auto-load chapter when chapters are available
     useEffect(() => {
         if (mangaChapters.length > 0 && chapter && !currentMangaChapter) {
-            // Find chapter by number (chapter param is like "c4" from URL, strip the 'c' prefix)
-            const chapterNumStr = chapter.startsWith('c') ? chapter.slice(1) : chapter;
-            const chapterNum = parseInt(chapterNumStr);
+            // Find chapter by number (chapter param is like "c4" or "c2.1" from URL, strip the 'c' prefix)
+            const chapterNumStr = (chapter.startsWith('c') ? chapter.slice(1) : chapter).trim();
+            const chapterNum = parseFloat(chapterNumStr);
             const targetChapter = mangaChapters.find(ch => {
-                const match = ch.title.match(/Chapter\s+(\d+)/i);
-                return match && parseInt(match[1]) === chapterNum;
+                const match = ch.title.match(/Chapter\s+(\d+[.]?\d*)/i);
+                if (!match) return false;
+                return match[1] === chapterNumStr || (Number.isFinite(chapterNum) && parseFloat(match[1]) === chapterNum);
             });
 
             if (targetChapter) {
@@ -62,7 +64,7 @@ export default function MangaReaderPage() {
     const handleLoadChapter = (ch: MangaChapter) => {
         if (selectedManga) {
             const title = slugify(selectedManga.title || 'manga');
-            const chapterMatch = ch.title.match(/Chapter\s+(\d+)/i);
+            const chapterMatch = ch.title.match(/Chapter\s+(\d+[.]?\d*)/i);
             const chapterNum = chapterMatch ? chapterMatch[1] : '1';
             navigate(`/manga/read/${title}/${id}/c${chapterNum}`, { replace: true, state: { manga: selectedManga } });
         }
@@ -80,36 +82,12 @@ export default function MangaReaderPage() {
         }
     };
 
-    // Show loading while manga or chapters are loading
-    if (mangaLoading || mangaChaptersLoading) {
+    // Show loading while manga, chapters, or chapter pages are loading
+    if (mangaLoading || mangaChaptersLoading || !selectedManga || (!currentMangaChapter && mangaChapters.length > 0)) {
         return (
-            <div className="fixed inset-0 z-[130] md:z-[90] flex items-center justify-center bg-black/95 backdrop-blur-md">
-                <div className="w-12 h-12 border-4 border-red-600/30 border-t-red-600 rounded-full animate-spin shadow-[0_0_15px_rgba(220,38,38,0.5)]" />
-            </div>
-        );
-    }
-
-    if (!selectedManga) {
-        return (
-            <div className="min-h-screen flex flex-col items-center justify-center bg-[#0a0a0a] text-white gap-4">
-                <div className="text-6xl font-black text-white/10">!</div>
-                <h1 className="text-2xl font-bold">Manga Not Found</h1>
-                <p className="text-gray-400">We couldn't load the details for this manga.</p>
-                <button
-                    onClick={() => navigate('/manga')}
-                    className="px-6 py-3 bg-white/10 hover:bg-white/20 rounded-full font-bold transition-colors mt-4"
-                >
-                    Go to Search
-                </button>
-            </div>
-        );
-    }
-
-    // Show loading while waiting for chapter to load
-    if (!currentMangaChapter && mangaChapters.length > 0) {
-        return (
-            <div className="fixed inset-0 z-[130] md:z-[90] flex items-center justify-center bg-black/95 backdrop-blur-md">
-                <div className="w-12 h-12 border-4 border-red-600/30 border-t-red-600 rounded-full animate-spin shadow-[0_0_15px_rgba(220,38,38,0.5)]" />
+            <div className="fixed inset-0 z-[130] md:z-[90] flex flex-col items-center justify-center gap-4 bg-black/95 backdrop-blur-md text-center">
+                <img src={sleepingGif} alt="Loading..." className="w-32 h-32 object-contain animate-bounce" />
+                <p className="text-yorumi-manga font-bold text-base tracking-wide animate-pulse">Loading chapter content...</p>
             </div>
         );
     }

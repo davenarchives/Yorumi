@@ -704,7 +704,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
                 setTrendingLoading(true);
             }
             try {
-                const tData = await animeService.getTrendingAnime(1, 10);
+                const tData = await animeService.getTrendingAnime(1, 24);
                 if (tData?.data) {
                     setTrendingAnime(tData.data);
                     writeHomeCache('trending', tData.data);
@@ -747,7 +747,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
                 setPopularSeasonLoading(true);
             }
             try {
-                const pData = await animeService.getPopularThisSeason(1, 10);
+                const pData = await animeService.getPopularThisSeason(1, 24);
                 if (pData?.data) {
                     setPopularSeason(pData.data);
                     writeHomeCache('popular-season', pData.data);
@@ -766,7 +766,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
                 setPopularMonthLoading(true);
             }
             try {
-                const pData = await animeService.getPopularThisMonth(1, 10);
+                const pData = await animeService.getPopularThisMonth(1, 24);
                 if (pData?.data) {
                     setPopularMonth(pData.data);
                     writeHomeCache('popular-month', pData.data);
@@ -788,9 +788,9 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
             }
             try {
                 const [day, week, month] = await Promise.all([
-                    animeService.getTrendingAnime(1, 10),
-                    animeService.getPopularThisSeason(1, 10),
-                    animeService.getPopularThisMonth(1, 10)
+                    animeService.getTrendingAnime(1, 24),
+                    animeService.getPopularThisSeason(1, 24),
+                    animeService.getPopularThisMonth(1, 24)
                 ]);
                 if (day?.data) setTopTenToday(day.data);
                 if (week?.data) setTopTenWeek(week.data);

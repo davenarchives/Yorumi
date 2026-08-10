@@ -28,14 +28,23 @@ const isEmptyData = (data: any) => {
     return false;
 };
 
+const setLocalStorageWithCleanup = (key: string, value: string) => {
+    try {
+        localStorage.setItem(key, value);
+    } catch (e) {
+        localStorage.clear();
+        localStorage.setItem(key, value);
+    }
+};
+
 const readPersistedCache = (key: string, ttl: number) => {
     try {
         const raw = localStorage.getItem(`${PERSISTED_CACHE_PREFIX}:${key}`);
         if (!raw) return null;
         const parsed = JSON.parse(raw) as { data: any; timestamp: number };
         if (!parsed || typeof parsed.timestamp !== 'number') return null;
-        if (Date.now() - parsed.timestamp > ttl || isEmptyData(parsed.data)) {
-            localStorage.removeItem(`${PERSISTED_CACHE_PREFIX}:${key}`);
+        const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
+        if (!isOffline && ttl !== Infinity && Date.now() - parsed.timestamp > ttl && !isEmptyData(parsed.data)) {
             return null;
         }
         return parsed.data;
@@ -46,11 +55,9 @@ const readPersistedCache = (key: string, ttl: number) => {
 
 const writePersistedCache = (key: string, data: any, timestamp: number) => {
     try {
-        if (!key.startsWith('manga_details_') && !key.startsWith('chapters_') && !key.startsWith('manga-unified:')) {
-            localStorage.setItem(`${PERSISTED_CACHE_PREFIX}:${key}`, JSON.stringify({ data, timestamp }));
-        }
+        setLocalStorageWithCleanup(`${PERSISTED_CACHE_PREFIX}:${key}`, JSON.stringify({ data, timestamp }));
     } catch {
-        // Ignore storage errors.
+        // Ignore quota limits
     }
 };
 
@@ -68,12 +75,10 @@ try {
 }
 
 const getCached = (key: string, ttl: number) => {
-    const cached = responseCache.get(key);
-    if (cached) {
-        if (Date.now() - cached.timestamp < ttl && !isEmptyData(cached.data)) {
-            return cached.data;
-        }
-        responseCache.delete(key);
+    const memory = responseCache.get(key);
+    const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
+    if (memory && !isEmptyData(memory.data) && (isOffline || ttl === Infinity || Date.now() - memory.timestamp < ttl)) {
+        return memory.data;
     }
 
     const persisted = readPersistedCache(key, ttl);
@@ -108,6 +113,13 @@ const fetchWithCache = async <T>(cacheKey: string, ttl: number, fetcher: () => P
                 setCached(cacheKey, result);
             }
             return result;
+        })
+        .catch((err) => {
+            const staleCache = getCached(cacheKey, Infinity);
+            if (staleCache && !isEmptyData(staleCache)) {
+                return staleCache as T;
+            }
+            throw err;
         })
         .finally(() => {
             inFlightRequests.delete(cacheKey);

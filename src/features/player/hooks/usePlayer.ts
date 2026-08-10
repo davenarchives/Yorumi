@@ -6,6 +6,7 @@ import type { Anime, Episode } from '../../../types/anime';
 import { storage } from '../../../utils/storage';
 import { getEpisodeWatchKey } from '../../../utils/episodeWatchKey';
 import { fetchSkipTimestamps, type SkipTimestamp } from '../../../services/skipTimestamps';
+import { downloadService } from '../../../services/downloadService';
 
 const AUTO_NEXT_STORAGE_KEY = 'yorumi:auto-next-enabled';
 const AUTO_SKIP_STORAGE_KEY = 'yorumi:auto-skip-enabled';
@@ -98,12 +99,45 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string, 
     });
     const [skipTimestamps, setSkipTimestamps] = useState<SkipTimestamp[]>([]);
     const [skipTimestampsLoading, setSkipTimestampsLoading] = useState(false);
+    const [offlineEpisode, setOfflineEpisode] = useState<Episode | null>(null);
     const epNumParam = searchParams.get('ep') || '1';
     const resumeAtSeconds = (() => {
         const raw = searchParams.get('t');
         if (!raw) return 0;
         const parsed = Number(raw);
         return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 0;
+    })();
+
+    const parseEpisodeNumber = (value: unknown): number => {
+        if (typeof value === 'number' && Number.isFinite(value)) return value;
+        const raw = String(value ?? '').trim();
+        const direct = Number(raw);
+        if (Number.isFinite(direct)) return direct;
+        const match = raw.match(/(\d+(?:\.\d+)?)/);
+        return match ? Number(match[1]) : NaN;
+    };
+
+    const decodeSlugTitle = (slug?: string) =>
+        String(slug || '')
+            .replace(/-/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+
+    const savedWatchPosition = (() => {
+        try {
+            const epNum = parseEpisodeNumber(epNumParam) || 1;
+            const targetId = String(animeId || '').trim();
+            const targetTitle = decodeSlugTitle(animeSlugTitle);
+            const match = storage.getContinueWatching().find((item) => {
+                if (Number(item.episodeNumber) !== epNum) return false;
+                if (targetId && String(item.animeId) === targetId) return true;
+                if (targetTitle && item.animeTitle && item.animeTitle.toLowerCase().includes(targetTitle.toLowerCase())) return true;
+                return false;
+            });
+            return match?.positionSeconds || match?.timestamp || 0;
+        } catch {
+            return 0;
+        }
     })();
     
     // Watch time persistence
@@ -135,14 +169,6 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string, 
     };
     const selectedTmdbRouteId = getTmdbRouteId(selectedAnime);
 
-    const parseEpisodeNumber = (value: unknown): number => {
-        if (typeof value === 'number' && Number.isFinite(value)) return value;
-        const raw = String(value ?? '').trim();
-        const direct = Number(raw);
-        if (Number.isFinite(direct)) return direct;
-        const match = raw.match(/(\d+(?:\.\d+)?)/);
-        return match ? Number(match[1]) : NaN;
-    };
     const getPlaybackEpisodeNumber = (episode: Episode | null | undefined): number => {
         const absolute = parseEpisodeNumber(episode?._tmdbAbsolute);
         if (Number.isFinite(absolute) && absolute > 0) return absolute;
@@ -174,11 +200,6 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string, 
         const total = (hours * 3600) + (minutes * 60) + seconds;
         return Number.isFinite(total) && total > 0 ? total : null;
     };
-    const decodeSlugTitle = (slug?: string) =>
-        String(slug || '')
-            .replace(/-/g, ' ')
-            .replace(/\s+/g, ' ')
-            .trim();
 
     const clearScheduledStreamRetry = useCallback(() => {
         if (streamRetryTimeoutRef.current) {
@@ -212,23 +233,34 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string, 
 
     // --- Effects ---
 
-    // Clear streams on mount/id change
+    // Clear streams on mount/id change, preserving active stream if it's the same playing episode
     useEffect(() => {
-        clearStreams();
-        setHasSeenEpisodeFetchStart(false);
-        setEpisodesResolved(false);
-        setIsPlayerReady(false);
-        setStreamExhausted(false);
-        setStartAtOverrideSeconds(null);
-        watchSessionStartedAtRef.current = null;
-        lastPlaybackSecondRef.current = null;
-        lastDurationSecondRef.current = 0;
-        lastSavedProgressRef.current = { at: 0, second: -1 };
-        streamFetchRetryKeyRef.current = '';
-        autoLoadAttemptKeyRef.current = '';
-        streamFailureStateRef.current = { key: '', attempts: 0 };
-        resetScheduledStreamRetry();
-    }, [animeId, clearStreams, resetScheduledStreamRetry]);
+        const currentEpNum = currentEpisode ? getPlaybackEpisodeNumber(currentEpisode) : null;
+        const targetEpNum = parseEpisodeNumber(epNumParam);
+        const isSamePlayingEpisode = Boolean(
+            currentStream?.url &&
+            currentEpisode &&
+            Number.isFinite(targetEpNum) &&
+            currentEpNum === targetEpNum
+        );
+
+        if (!isSamePlayingEpisode) {
+            clearStreams();
+            setHasSeenEpisodeFetchStart(false);
+            setEpisodesResolved(false);
+            setIsPlayerReady(false);
+            setStreamExhausted(false);
+            setStartAtOverrideSeconds(null);
+            watchSessionStartedAtRef.current = null;
+            lastPlaybackSecondRef.current = null;
+            lastDurationSecondRef.current = 0;
+            lastSavedProgressRef.current = { at: 0, second: -1 };
+            streamFetchRetryKeyRef.current = '';
+            autoLoadAttemptKeyRef.current = '';
+            streamFailureStateRef.current = { key: '', attempts: 0 };
+            resetScheduledStreamRetry();
+        }
+    }, [animeId, epNumParam, clearStreams, resetScheduledStreamRetry]);
 
     useEffect(() => {
         streamFetchRetryKeyRef.current = '';
@@ -293,27 +325,50 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string, 
         }
     }, [animeId, animeSlugTitle, location.state, selectedAnime?.id, selectedAnime?.mal_id, selectedAnime?.scraperId, selectedTmdbRouteId]);
 
+    // Offline episode fallback resolution when network details fail/unavailable
+    useEffect(() => {
+        if (episodes.length === 0 && animeId) {
+            const epNum = parseEpisodeNumber(epNumParam) || 1;
+            const fallbackTitle = decodeSlugTitle(animeSlugTitle) || location.state?.animeTitle;
+            const targetDownloadId = location.state?.downloadId;
+            downloadService.getDownload(String(animeId), epNum, fallbackTitle).then(async (downloaded) => {
+                if (!downloaded && targetDownloadId) {
+                    const allDownloads = await downloadService.getDownloads();
+                    downloaded = allDownloads.find((d) => d.id === targetDownloadId) || null;
+                }
+                if (downloaded) {
+                    setOfflineEpisode({
+                        session: downloaded.id,
+                        episodeNumber: String(downloaded.episodeNumber),
+                        title: downloaded.episodeTitle || `Episode ${downloaded.episodeNumber}`,
+                        snapshot: downloaded.animeImage,
+                    });
+                }
+            });
+        }
+    }, [animeId, epNumParam, animeSlugTitle, episodes.length, location.state]);
+
     // Auto-load Episode
     useEffect(() => {
-        // STRICT GUARD: Match URL ID with Context Anime ID
-        // This prevents race condition where previous anime state triggers a load for the new page
         const currentId = String(animeId);
         const currentSession = extractDirectScraperSession(currentId);
-        const animeMatch = selectedAnime &&
+        const animeMatch = (selectedAnime &&
             (
                 String(selectedAnime.id) === currentId ||
                 String(selectedAnime.mal_id) === currentId ||
                 selectedTmdbRouteId === currentId ||
                 (!!currentSession && extractDirectScraperSession(selectedAnime.scraperId) === currentSession)
-            );
+            )) || !!offlineEpisode;
 
-        if (!scraperSession && !selectedAnime?.title) return;
+        if (!scraperSession && !selectedAnime?.title && !offlineEpisode) return;
 
         const playableEpisodes = episodes.length > 0
             ? episodes
             : fallbackEpisode
                 ? [fallbackEpisode]
-                : [];
+                : offlineEpisode
+                    ? [offlineEpisode]
+                    : [];
 
         if (playableEpisodes.length > 0 && animeMatch) {
             let targetEp: Episode | undefined;
@@ -339,28 +394,20 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string, 
 
             if (targetEp) {
                 const isAlreadyCurrent = currentEpisode && getPlaybackEpisodeNumber(currentEpisode) === getPlaybackEpisodeNumber(targetEp);
-                if (isAlreadyCurrent && currentStream) return;
-
-                const attemptKey = `${String(animeId || '')}:${String(targetEp.session || targetEp.episodeNumber || '')}`;
-                if (autoLoadAttemptKeyRef.current === attemptKey) {
-                    return;
-                }
-                autoLoadAttemptKeyRef.current = attemptKey;
+                if (isAlreadyCurrent && (currentStream || streamLoading || serverSwitchLoading)) return;
 
                 const targetEpisodeNumber = getPlaybackEpisodeNumber(targetEp);
+                const currentEpParamNumber = parseEpisodeNumber(epNumParam);
                 const targetWatchKey = getEpisodeWatchKey(targetEp);
                 if (targetWatchKey) markEpisodeComplete(targetWatchKey);
-                // Update URL if we defaulted to a different episode or resolved 'latest'
-                if (String(targetEpisodeNumber) !== epNumParam) {
+                if (String(targetEpisodeNumber) !== epNumParam && currentEpParamNumber !== targetEpisodeNumber) {
                     setSearchParams({ ep: String(targetEpisodeNumber) }, { replace: true, state: getEpisodeNavigationState() });
                 }
                 setIsPlayerReady(false);
                 loadStream(targetEp);
             }
         }
-    }, [episodes, fallbackEpisode, epNumParam, currentStream,
-
-        scraperSession, selectedServer]);
+    }, [episodes, fallbackEpisode, epNumParam, currentStream, streamLoading, serverSwitchLoading, scraperSession, selectedServer]);
 
     // Episode-change bookkeeping.
     useEffect(() => {
@@ -422,12 +469,7 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string, 
         episodeDurationSeconds,
     ]);
 
-    // NOTE: Adjacent-episode prefetching has been intentionally disabled to prevent
-    // excessive Vercel serverless CPU usage. Each prefetch call spins up a Puppeteer
-    // browser instance on the backend, which causes rapid CPU spikes on every episode load.
-
     // When loading finishes with no stream result, retry with backoff
-    // instead of dropping the player into a dead-end state after one miss.
     useEffect(() => {
         if (!currentEpisode) {
             resetScheduledStreamRetry();
@@ -468,9 +510,7 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string, 
             bustEpisodeCache(currentEpisode.session);
             loadStream(currentEpisode);
         }, delay);
-    }, [currentEpisode, currentStream,
-
-        scraperSession, bustEpisodeCache, loadStream, resetScheduledStreamRetry]);
+    }, [currentEpisode, currentStream, scraperSession, bustEpisodeCache, loadStream, resetScheduledStreamRetry]);
 
     useEffect(() => {
         return () => {
@@ -683,11 +723,30 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string, 
         : null;
 
     const handlePrevEp = () => {
-        if (prevEpisode) handleEpisodeClick(prevEpisode);
+        if (prevEpisode) {
+            handleEpisodeClick(prevEpisode);
+        } else if (episodeNumber > 1) {
+            const prevNum = Math.floor(episodeNumber) - 1;
+            const targetEp: Episode = {
+                episodeNumber: String(prevNum),
+                session: `instant:${prevNum}`,
+            };
+            handleEpisodeClick(targetEp);
+        }
     };
 
     const handleNextEp = () => {
-        if (nextEpisode) handleEpisodeClick(nextEpisode);
+        if (nextEpisode) {
+            handleEpisodeClick(nextEpisode);
+        } else {
+            const currentNum = Number.isFinite(episodeNumber) && episodeNumber > 0 ? Math.floor(episodeNumber) : 1;
+            const nextNum = currentNum + 1;
+            const targetEp: Episode = {
+                episodeNumber: String(nextNum),
+                session: `instant:${nextNum}`,
+            };
+            handleEpisodeClick(targetEp);
+        }
     };
 
     // Derived State
@@ -729,7 +788,7 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string, 
         watchedEpisodes,
         episodesResolved,
         epNum: epNumParam,
-        resumeAtSeconds: startAtOverrideSeconds ?? resumeAtSeconds,
+        resumeAtSeconds: startAtOverrideSeconds ?? (resumeAtSeconds > 0 ? resumeAtSeconds : savedWatchPosition),
         cleanCurrentTitle,
 
         // Loading States
@@ -752,8 +811,8 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string, 
         showQualityMenu,
         selectedStreamIndex,
         skipTimestamps,
-        canPrevEpisode: Boolean(prevEpisode),
-        canNextEpisode: Boolean(nextEpisode),
+        canPrevEpisode: Boolean(prevEpisode) || (Number.isFinite(episodeNumber) && episodeNumber > 1),
+        canNextEpisode: Boolean(nextEpisode) || (Number.isFinite(episodeNumber) && episodeNumber >= 1),
 
         // Actions
         toggleExpand,
@@ -768,6 +827,7 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string, 
         setAutoNextEnabled,
         setAutoSkipEnabled,
         setSelectedServer,
+        handleServerChange: applyServerChange,
         setSelectedAudio,
         handlePlaybackProgress,
         handleStreamError,

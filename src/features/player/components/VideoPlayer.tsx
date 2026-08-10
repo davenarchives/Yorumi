@@ -3,7 +3,7 @@ import Hls from 'hls.js';
 import { Maximize, X, Globe, CheckCircle2, Circle } from 'lucide-react';
 import LoadingSpinner from '../../../components/ui/LoadingSpinner';
 import type { StreamLink, SubtitleTrack } from '../../../types/stream';
-import { API_BASE } from '../../../config/api';
+import { API_BASE, API_ORIGIN } from '../../../config/api';
 import CustomVideoControls from './CustomVideoControls';
 import type { StreamServerKey } from '../../../hooks/useStreams';
 import { shouldSkipIntro, shouldSkipOutro, type SkipTimestamp } from '../../../services/skipTimestamps';
@@ -14,6 +14,70 @@ const NATIVE_LOAD_TIMEOUT_MS = 20_000;
 const MEDIA_STALL_TIMEOUT_MS = 14_000;
 const HAVE_FUTURE_DATA = 3;
 const isElectron = typeof window !== 'undefined' && (window.location.protocol === 'file:' || Boolean((window as any).electron || (window as any).electronAPI));
+
+class CustomHlsLoader extends (Hls.DefaultConfig.loader as any) {
+    constructor(config: any) {
+        super(config);
+    }
+
+    load(context: any, config: any, callbacks: any) {
+        if (typeof context?.url === 'string' && (context.url.startsWith('blob:') || context.url.includes('/api/scraper/local-file'))) {
+            const startTime = performance.now();
+            fetch(context.url)
+                .then(async (res) => {
+                    if (!res.ok) {
+                        throw new Error(`Failed to fetch media: ${res.status}`);
+                    }
+                    if (context.responseType === 'arraybuffer') {
+                        const data = await res.arrayBuffer();
+                        const now = performance.now();
+                        callbacks.onSuccess(
+                            {
+                                url: context.url,
+                                data,
+                            },
+                            {
+                                trequest: startTime,
+                                tfirst: now,
+                                tload: now,
+                                loaded: data.byteLength,
+                                total: data.byteLength,
+                            },
+                            context,
+                            null
+                        );
+                    } else {
+                        const data = await res.text();
+                        const now = performance.now();
+                        callbacks.onSuccess(
+                            {
+                                url: context.url,
+                                data,
+                            },
+                            {
+                                trequest: startTime,
+                                tfirst: now,
+                                tload: now,
+                                loaded: data.length,
+                                total: data.length,
+                            },
+                            context,
+                            null
+                        );
+                    }
+                })
+                .catch((err) => {
+                    callbacks.onError(
+                        { code: 404, text: err?.message || 'Blob fetch failed' },
+                        context,
+                        null
+                    );
+                });
+            return;
+        }
+        super.load(context, config, callbacks);
+    }
+}
 
 type ThemedWebViewElement = HTMLWebViewElement & {
     insertCSS: (css: string) => Promise<string>;
@@ -60,6 +124,11 @@ export interface VideoPlayerProps {
     onPlaybackStateChange?: (state: { isPlaying: boolean }) => void;
     isWide?: boolean;
     onToggleWide?: () => void;
+    animeId?: string;
+    animeTitle?: string;
+    animeImage?: string;
+    episodeNumber?: number;
+    episodeTitle?: string;
 }
 
 export default function VideoPlayer(props: VideoPlayerProps) {
@@ -179,22 +248,31 @@ export default function VideoPlayer(props: VideoPlayerProps) {
         if (!streamUrl) return streamUrl;
         let url = streamUrl;
         if (!streamUrl.includes('/api/scraper/embed') && /^https?:\/\/([^/]+\.)?kwik\./i.test(streamUrl)) {
-            url = `${apiOrigin}/api/scraper/embed?url=${encodeURIComponent(streamUrl)}`;
+            url = `${API_ORIGIN}/api/scraper/embed?url=${encodeURIComponent(streamUrl)}`;
         } else if (url.startsWith('/api/')) {
-            url = `${apiOrigin}${url}`;
+            url = `${API_ORIGIN}${url}`;
         }
         return url;
-    }, [apiOrigin, streamUrl]);
+    }, [streamUrl]);
+
+    const isOfflineStream = useMemo(() => {
+        return Boolean(
+            streamUrl?.startsWith('blob:') ||
+            streamUrl?.includes('/api/scraper/local-file') ||
+            streams[selectedStreamIndex]?.provider === 'Offline Storage'
+        );
+    }, [streamUrl, streams, selectedStreamIndex]);
 
     const shouldUseNativeVideo = useMemo(() => {
         if (!resolvedStreamUrl) return false;
+        if (selectedServer === 'anidb') return true;
         if (isEmbed) return false;
         if (isHls || /\.m3u8/i.test(resolvedStreamUrl)) return true;
         if (/\/api\/scraper\/embed\?/i.test(resolvedStreamUrl)) return false;
         if (/\/api\/scraper\/proxy\?/i.test(resolvedStreamUrl)) return true;
         if (/\.(mp4|webm|mkv)(?:[?#]|$)/i.test(resolvedStreamUrl)) return true;
         return /fast4speed\.rsvp|googlevideo\.com|okcdn\.ru|ok\.ru/i.test(resolvedStreamUrl);
-    }, [isHls, isEmbed, resolvedStreamUrl]);
+    }, [isHls, isEmbed, resolvedStreamUrl, selectedServer]);
 
     useEffect(() => {
         onLoadRef.current = onLoad;
@@ -249,7 +327,8 @@ export default function VideoPlayer(props: VideoPlayerProps) {
 
     useEffect(() => {
         const video = videoRef.current;
-        if (!video || !shouldUseNativeVideo) return;
+        const isHlsStream = Boolean(isHls) || /\.m3u8/i.test(resolvedStreamUrl || '');
+        if (!video || !shouldUseNativeVideo || isHlsStream) return;
         const sourceChanged = lastResolvedStreamUrlRef.current !== resolvedStreamUrl;
         lastResolvedStreamUrlRef.current = resolvedStreamUrl;
         
@@ -262,22 +341,40 @@ export default function VideoPlayer(props: VideoPlayerProps) {
         if (!sourceChanged || !resolvedStreamUrl) return;
 
         const isSameEpisode = lastTimeRef.current.session === episodeSession;
-        const start = isSameEpisode && lastTimeRef.current.time > 0 
-            ? lastTimeRef.current.time 
+        const start = (isSameEpisode && lastTimeRef.current.time > 0)
+            ? lastTimeRef.current.time
             : Number(startAtRef.current || 0);
 
         const applyStart = () => {
-            if (start > 0 && Number.isFinite(video.duration) && start < video.duration - 1) {
-                video.currentTime = start;
+            if (start > 0) {
+                try {
+                    video.currentTime = start;
+                } catch (e) {
+                    console.warn('Failed setting currentTime:', e);
+                }
             }
             video.play().catch((err) => {
                 console.warn('Autoplay failed or was blocked:', err);
             });
         };
 
+        const handleStartSync = () => {
+            if (start > 0 && Math.abs(video.currentTime - start) > 1.5) {
+                try {
+                    video.currentTime = start;
+                } catch {}
+            }
+        };
+
         if (video.readyState >= 1) applyStart();
         video.addEventListener('loadedmetadata', applyStart, { once: true });
-        return () => video.removeEventListener('loadedmetadata', applyStart);
+        video.addEventListener('canplay', handleStartSync, { once: true });
+        video.addEventListener('durationchange', handleStartSync, { once: true });
+        return () => {
+            video.removeEventListener('loadedmetadata', applyStart);
+            video.removeEventListener('canplay', handleStartSync);
+            video.removeEventListener('durationchange', handleStartSync);
+        };
     }, [resolvedStreamUrl, shouldUseNativeVideo]);
 
     useEffect(() => {
@@ -545,6 +642,9 @@ export default function VideoPlayer(props: VideoPlayerProps) {
 
         const markAdvanced = () => {
             const currentTime = Number.isFinite(video.currentTime) ? video.currentTime : 0;
+            if (currentTime > 0) {
+                lastTimeRef.current = { session: episodeSession, time: currentTime };
+            }
             if (currentTime > lastTime + 0.2 || video.readyState >= HAVE_FUTURE_DATA) {
                 lastTime = Math.max(lastTime, currentTime);
                 lastAdvancedAt = Date.now();
@@ -647,7 +747,7 @@ export default function VideoPlayer(props: VideoPlayerProps) {
         hlsRef.current?.destroy();
         hlsRef.current = null;
 
-        if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        if (!resolvedStreamUrl.startsWith('blob:') && video.canPlayType('application/vnd.apple.mpegurl')) {
             video.src = resolvedStreamUrl;
             return;
         }
@@ -661,6 +761,8 @@ export default function VideoPlayer(props: VideoPlayerProps) {
         const hls = new Hls({
             enableWorker: true,
             lowLatencyMode: false,
+            fLoader: CustomHlsLoader as any,
+            pLoader: CustomHlsLoader as any,
             startLevel: -1,            // auto-select quality via ABR
             abrEwmaDefaultEstimate: 5_000_000, // assume ~5Mbps initially so ABR picks 720p+ by default
             manifestLoadingTimeOut: 15_000,
@@ -691,18 +793,46 @@ export default function VideoPlayer(props: VideoPlayerProps) {
         hls.on(Hls.Events.MANIFEST_PARSED, (_, data) => {
             const parsed = (data?.levels || hls.levels || []).map((lvl: any) => lvl.height).filter(Boolean);
             setHlsLevels(parsed);
-            // HLS stream ready — start playback now that segments are available.
-            const isSameEpisode = lastTimeRef.current.session === episodeSession;
-            const start = isSameEpisode && lastTimeRef.current.time > 0 
-                ? lastTimeRef.current.time 
-                : Number(startAtRef.current || 0);
-                
-            if (start > 0 && Number.isFinite(video.duration) && start < video.duration - 1) {
-                video.currentTime = start;
+
+            const applyStartAndPlay = () => {
+                const isSameEpisode = lastTimeRef.current.session === episodeSession;
+                const start = (isSameEpisode && lastTimeRef.current.time > 0)
+                    ? lastTimeRef.current.time
+                    : Number(startAtRef.current || 0);
+
+                if (start > 0) {
+                    try {
+                        video.currentTime = start;
+                    } catch (e) {
+                        console.warn('Failed setting currentTime:', e);
+                    }
+                }
+
+                video.play().catch((err) => {
+                    console.warn('HLS autoplay failed or was blocked, trying muted play:', err);
+                    video.muted = true;
+                    video.play().catch((e) => {
+                        console.warn('Muted autoplay also blocked:', e);
+                    });
+                });
+            };
+
+            const handleHlsStartSync = () => {
+                const start = Number(startAtRef.current || 0);
+                if (start > 0 && Math.abs(video.currentTime - start) > 1.5) {
+                    try {
+                        video.currentTime = start;
+                    } catch {}
+                }
+            };
+
+            if (video.readyState >= 1) {
+                applyStartAndPlay();
+            } else {
+                video.addEventListener('loadedmetadata', applyStartAndPlay, { once: true });
             }
-            video.play().catch((err) => {
-                console.warn('HLS autoplay failed or was blocked:', err);
-            });
+            video.addEventListener('canplay', handleHlsStartSync, { once: true });
+            video.addEventListener('durationchange', handleHlsStartSync, { once: true });
         });
         hls.on(Hls.Events.ERROR, (_, data) => {
             if (data.fatal) {
@@ -814,7 +944,7 @@ export default function VideoPlayer(props: VideoPlayerProps) {
     return (
         <div className={`watch-player-shell w-full max-w-full h-full max-h-full relative bg-[#0b0c0f] group transition-all duration-300 overflow-hidden rounded-none shadow-none outline-none ${displayMode === 'mini' ? 'rounded-xl shadow-2xl shadow-black/70' : 'md:rounded-2xl md:shadow-2xl md:shadow-black/80'}`}>
 
-            {resolvedStreamUrl ? (
+            {(resolvedStreamUrl && !isLoading && !isServerSwitching) ? (
                 <div className="relative w-full max-w-full h-full bg-black flex items-center justify-center z-10 overflow-hidden rounded-none md:rounded-2xl">
                     <div className="w-full h-full max-w-full max-h-full flex items-center justify-center bg-black overflow-hidden rounded-none md:rounded-2xl">
                         {shouldUseNativeVideo ? (
@@ -824,8 +954,9 @@ export default function VideoPlayer(props: VideoPlayerProps) {
                                     src={isHls || /\.m3u8/i.test(resolvedStreamUrl) ? undefined : resolvedStreamUrl}
                                     className="w-full h-full bg-black cursor-pointer object-contain"
                                     onClick={() => {
-                                        if (videoRef.current?.paused) videoRef.current.play();
-                                        else videoRef.current?.pause();
+                                        if (!videoRef.current || !resolvedStreamUrl) return;
+                                        if (videoRef.current.paused) videoRef.current.play().catch(() => {});
+                                        else videoRef.current.pause();
                                     }}
                                     onPlay={() => onPlaybackStateChange?.({ isPlaying: true })}
                                     onPause={() => onPlaybackStateChange?.({ isPlaying: false })}
@@ -851,6 +982,7 @@ export default function VideoPlayer(props: VideoPlayerProps) {
                                 <CustomVideoControls
                                     streamKey={`${episodeSession ?? ''}::${resolvedStreamUrl ?? ''}`}
                                     videoRef={videoRef}
+                                    initialDuration={Number(streams?.[selectedStreamIndex]?.duration || 0)}
                                     onNextEpisode={onNextEpisode}
                                     onPrevEpisode={onPrevEpisode}
                                     hasNextEpisode={hasNextEpisode}
@@ -878,6 +1010,11 @@ export default function VideoPlayer(props: VideoPlayerProps) {
                                     onToggleWide={onToggleWide}
                                     hlsLevels={hlsLevels}
                                     onHlsQualitySelect={handleHlsQualitySelect}
+                                    animeId={props.animeId}
+                                    animeTitle={props.animeTitle}
+                                    animeImage={props.animeImage}
+                                    episodeNumber={props.episodeNumber}
+                                    episodeTitle={props.episodeTitle}
                                 />
                             </>
                         ) : (
@@ -935,7 +1072,7 @@ export default function VideoPlayer(props: VideoPlayerProps) {
                         )}
                     </div>
                 </div>
-            ) : isLoading ? (
+            ) : (!resolvedStreamUrl || isLoading || isServerSwitching) && !streamExhausted ? (
                 <div className="absolute inset-0 bg-black z-20 flex items-center justify-center">
                     <style>{`
                         @keyframes animeSubtleFloat {
@@ -969,29 +1106,36 @@ export default function VideoPlayer(props: VideoPlayerProps) {
             {/* Header Controls — ALWAYS visible regardless of loading/stream state */}
             {displayMode !== 'mini' && !isFullscreen && (
                 <div 
-                    className={`absolute top-0 left-0 right-0 p-4 sm:p-6 transition-opacity duration-300 z-[2147483647] flex items-center justify-between pointer-events-none ${showServerMenu || !resolvedStreamUrl || !shouldUseNativeVideo ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                    className={`absolute top-0 left-0 right-0 p-4 sm:p-6 transition-opacity duration-300 z-[2147483647] flex items-center justify-between pointer-events-none ${showServerMenu || !resolvedStreamUrl || !shouldUseNativeVideo || isLoading || isServerSwitching ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
                 >
-                    {/* Left: Server Menu */}
+                    {/* Left: Server Menu or Offline Badge */}
                     <div className="pointer-events-auto relative">
-                        <button
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                setShowServerMenu(!showServerMenu);
-                            }}
-                            className="flex items-center gap-2 rounded-full watch-control-glass px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-white shadow-[0_8px_28px_rgba(0,0,0,0.28)] transition-all hover:bg-white/20 active:scale-95 border border-white/10"
-                        >
-                            {isServerSwitching || (isLoading && !resolvedStreamUrl) ? (
-                                <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/20 border-t-white" />
-                            ) : (
-                                <Globe className="h-3.5 w-3.5 text-white/90" />
-                            )}
-                            <span>{getServerDisplayName(selectedServer)}</span>
-                        </button>
+                        {isOfflineStream ? (
+                            <div className="flex items-center gap-2 rounded-full watch-control-glass px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-green-400 shadow-[0_8px_28px_rgba(0,0,0,0.28)]">
+                                <CheckCircle2 className="h-3.5 w-3.5 text-green-400" />
+                                <span>Downloaded (Offline)</span>
+                            </div>
+                        ) : (
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setShowServerMenu(!showServerMenu);
+                                }}
+                                className="flex items-center gap-2 rounded-full watch-control-glass px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-white shadow-[0_8px_28px_rgba(0,0,0,0.28)] transition-all hover:bg-white/20 active:scale-95"
+                            >
+                                {isServerSwitching || (isLoading && !resolvedStreamUrl) ? (
+                                    <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/20 border-t-white" />
+                                ) : (
+                                    <Globe className="h-3.5 w-3.5 text-white/90" />
+                                )}
+                                <span>{getServerDisplayName(selectedServer)}</span>
+                            </button>
+                        )}
                         
-                        {showServerMenu && (
+                        {!isOfflineStream && showServerMenu && (
                             <>
                                 <div className="fixed inset-0 z-40" onClick={() => setShowServerMenu(false)} />
-                                <div className="absolute left-0 mt-2 w-36 rounded-xl bg-[#1A1A1A]/95 p-1.5 shadow-2xl backdrop-blur-xl border border-white/10 flex flex-col gap-0.5 z-50">
+                                <div className="absolute left-0 mt-2 w-36 rounded-xl bg-[#1A1A1A]/95 p-1.5 shadow-2xl backdrop-blur-xl flex flex-col gap-0.5 z-50">
                                     {serverOptions.map((server) => {
                                         const isSelected = selectedServer === server.key;
                                         const name = getServerDisplayName(server.key);

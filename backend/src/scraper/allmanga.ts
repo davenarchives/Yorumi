@@ -899,23 +899,67 @@ export class AllMangaScraper {
     }
 
     private async fetchAnidbUrl(url: string): Promise<string> {
+        const ANIDB_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/121.0';
         try {
             const res = await axios.get(url, {
-                headers: { 'User-Agent': USER_AGENT, Accept: 'application/json', Referer: 'https://anidb.app/' },
-                timeout: 3000,
+                headers: { 'User-Agent': ANIDB_UA, Accept: 'application/json', Referer: 'https://anidb.app/' },
+                timeout: 5000,
             });
             return typeof res.data === 'string' ? res.data : JSON.stringify(res.data);
         } catch {
-            return '';
+            // Failover to curl for Cloudflare challenge bypass
+            try {
+                const curlCmd = process.platform === 'win32' ? 'curl.exe' : 'curl';
+                const args = ['-sL', '-A', ANIDB_UA, '-e', 'https://anidb.app/', '--max-time', '10', url];
+                const { stdout } = await execFileAsync(curlCmd, args);
+                return stdout || '';
+            } catch {
+                return '';
+            }
         }
     }
 
+    private cleanAnidbQuery(query: string): string {
+        return String(query || '')
+            .toLowerCase()
+            .replace(/\b(season|part|cour|nd|rd|th|st)\s*\d+\b/gi, ' ')
+            .replace(/[^a-z0-9\s]/gi, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+    }
+
     private async searchAnidb(query: string): Promise<string | undefined> {
-        const q = encodeURIComponent(query.trim());
-        const page = await this.fetchAnidbUrl(`https://anidb.app/search/suggestions?q=${q}`);
-        if (!page) return undefined;
-        const match = page.match(/anime\/[a-z0-9-]+-(\d+)/i);
-        return match ? match[1] : undefined;
+        const clean = this.cleanAnidbQuery(query);
+        const q = encodeURIComponent(clean);
+        
+        // 1. Try browse endpoint (primary search in ani-cli)
+        const browsePage = await this.fetchAnidbUrl(`https://anidb.app/browse?q=${q}`);
+        if (browsePage) {
+            const cardMatches = [...browsePage.matchAll(/(?:href=["'](?:https?:\/\/anidb\.app)?\/anime\/([a-z0-9-]+-(\d+))["'][^>]*?(?:title=["']([^"']+)["']|alt=["']([^"']+)["'])?|(?:title=["']([^"']+)["']|alt=["']([^"']+)["'])[^>]*?href=["'](?:https?:\/\/anidb\.app)?\/anime\/([a-z0-9-]+-(\d+))["'])/gi)];
+            if (cardMatches.length > 0) {
+                for (const match of cardMatches) {
+                    const slug = match[1] || match[7];
+                    const id = match[2] || match[8];
+                    const cardTitle = match[3] || match[4] || match[5] || match[6] || '';
+                    const cleanCard = this.cleanAnidbQuery(cardTitle);
+                    if (cleanCard && (cleanCard === clean || cleanCard.includes(clean) || clean.includes(cleanCard))) {
+                        return id || slug?.split('-').pop();
+                    }
+                }
+                const firstSlug = cardMatches[0][1] || cardMatches[0][7];
+                const firstId = cardMatches[0][2] || cardMatches[0][8];
+                return firstId || firstSlug?.split('-').pop();
+            }
+        }
+
+        // 2. Fallback to suggestions endpoint
+        const suggPage = await this.fetchAnidbUrl(`https://anidb.app/search/suggestions?q=${q}`);
+        if (suggPage) {
+            const match = suggPage.match(/\/anime\/[a-z0-9-]+-(\d+)/i) || suggPage.match(/\/anime\/(\d+)/i);
+            if (match) return match[1];
+        }
+
+        return undefined;
     }
 
     private async getAnidbStreamLink(title: string, episodeNumber: number, audio: TranslationType): Promise<string | undefined> {
@@ -927,7 +971,7 @@ export class AllMangaScraper {
         try {
             const epData = JSON.parse(epJsonStr);
             const epList = Array.isArray(epData) ? epData : (epData.episodes || epData.data || []);
-            const targetEp = epList.find((e: any) => String(e.number) === String(episodeNumber));
+            const targetEp = epList.find((e: any) => Number(e.number) === Number(episodeNumber)) || epList[0];
             if (!targetEp?.id) return undefined;
 
             const langJsonStr = await this.fetchAnidbUrl(`https://anidb.app/api/frontend/episode/${targetEp.id}/languages`);
@@ -935,12 +979,13 @@ export class AllMangaScraper {
             const langData = JSON.parse(langJsonStr);
             const langList = Array.isArray(langData) ? langData : (langData.languages || langData.data || []);
             const pref = audio === 'dub' ? 'eng' : 'jpn';
-            const targetLang = langList.find((l: any) => l.code === pref) || langList[0];
+            const targetLang = langList.find((l: any) => l.code === pref || String(l.name || '').toLowerCase().includes(pref === 'eng' ? 'english' : 'japan')) || langList[0];
             if (!targetLang?.embed_url) return undefined;
 
-            const embedPage = await this.fetchAnidbUrl(targetLang.embed_url);
-            const m3u8Match = embedPage.match(/file:\s*['"]([^'"]+)['"]/);
-            return m3u8Match ? m3u8Match[1] : undefined;
+            const embedUrl = String(targetLang.embed_url).replace(/\\/g, '');
+            const embedPage = await this.fetchAnidbUrl(embedUrl);
+            const m3u8Match = embedPage.match(/(?:file|src)\s*:\s*["']([^"']+\.m3u8[^"']*)["']/i) || embedPage.match(/["'](https?:\/\/[^"']+\.m3u8[^"']*)["']/i);
+            return m3u8Match ? m3u8Match[1].replace(/\\/g, '') : undefined;
         } catch {
             return undefined;
         }
