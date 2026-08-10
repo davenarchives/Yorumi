@@ -113,23 +113,19 @@
         {
           "target": "dmg",
           "arch": [
-            "universal",
-            "arm64",
-            "x64"
+            "universal"
           ]
         },
         {
           "target": "zip",
           "arch": [
-            "universal",
-            "arm64",
-            "x64"
+            "universal"
           ]
         }
       ],
       "icon": "public/yorumi-icon.png",
       "category": "public.app-category.entertainment",
-      "hardenedRuntime": true,
+      "hardenedRuntime": false,
       "gatekeeperAssess": false,
       "darkModeSupport": true,
       "minimumSystemVersion": "10.15.0"

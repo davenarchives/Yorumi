@@ -14,7 +14,7 @@ const hasPlatformArg = userArgs.some((arg) =>
   platformFlags.some((flag) => arg.toLowerCase().startsWith(flag.toLowerCase()))
 );
 
-const builderArgs = [electronBuilderCli];
+const builderArgs = [electronBuilderCli, '--publish', 'never'];
 
 // Only use local electronDist if building for current local platform without explicit target overrides
 if (!hasPlatformArg && fs.existsSync(path.join(root, electronDist))) {
