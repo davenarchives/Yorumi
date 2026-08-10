@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type SyntheticEvent } from 'react';
 import Hls from 'hls.js';
 import { Maximize, X, Globe, CheckCircle2, Circle } from 'lucide-react';
-import LoadingSpinner from '../../../components/ui/LoadingSpinner';
 import type { StreamLink, SubtitleTrack } from '../../../types/stream';
 import { API_BASE, API_ORIGIN } from '../../../config/api';
 import CustomVideoControls from './CustomVideoControls';
@@ -22,8 +21,9 @@ class CustomHlsLoader extends (Hls.DefaultConfig.loader as any) {
 
     load(context: any, config: any, callbacks: any) {
         if (typeof context?.url === 'string' && (context.url.startsWith('blob:') || context.url.includes('/api/scraper/local-file'))) {
+            const targetUrl = context.url.startsWith('/api/') ? `${API_ORIGIN}${context.url}` : context.url;
             const startTime = performance.now();
-            fetch(context.url)
+            fetch(targetUrl)
                 .then(async (res) => {
                     if (!res.ok) {
                         throw new Error(`Failed to fetch media: ${res.status}`);
@@ -179,7 +179,6 @@ export default function VideoPlayer(props: VideoPlayerProps) {
     const startAtRef = useRef(startAtSeconds);
     const videoRef = useRef<HTMLVideoElement | null>(null);
     const webviewRef = useRef<ThemedWebViewElement | null>(null);
-    const lastResolvedStreamUrlRef = useRef<string | undefined>(undefined);
     const hlsRef = useRef<Hls | null>(null);
     const iframeLoadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const iframeReadyNotifiedRef = useRef(false);
@@ -188,7 +187,6 @@ export default function VideoPlayer(props: VideoPlayerProps) {
     const autoSkipPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const autoNextTriggerKeyRef = useRef('');
     const lastTimeRef = useRef<{ session?: string; time: number }>({ time: 0 });
-    const apiOrigin = API_BASE.replace(/\/+$/, '').replace(/\/api$/i, '');
     const [showServerMenu, setShowServerMenu] = useState(false);
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [hlsLevels, setHlsLevels] = useState<number[]>([]);
@@ -267,6 +265,7 @@ export default function VideoPlayer(props: VideoPlayerProps) {
 
     const shouldUseNativeVideo = useMemo(() => {
         if (!resolvedStreamUrl) return false;
+        if (isOfflineStream) return true;
         if (selectedServer === 'anidb') return true;
         if (isEmbed) return false;
         if (isHls || /\.m3u8/i.test(resolvedStreamUrl)) return true;
@@ -274,7 +273,7 @@ export default function VideoPlayer(props: VideoPlayerProps) {
         if (/\/api\/scraper\/proxy\?/i.test(resolvedStreamUrl)) return true;
         if (/\.(mp4|webm|mkv)(?:[?#]|$)/i.test(resolvedStreamUrl)) return true;
         return /fast4speed\.rsvp|googlevideo\.com|okcdn\.ru|ok\.ru/i.test(resolvedStreamUrl);
-    }, [isHls, isEmbed, resolvedStreamUrl, selectedServer]);
+    }, [isHls, isEmbed, isOfflineStream, resolvedStreamUrl, selectedServer]);
 
     useEffect(() => {
         onLoadRef.current = onLoad;
@@ -326,66 +325,6 @@ export default function VideoPlayer(props: VideoPlayerProps) {
             nativeLoadTimeoutRef.current = null;
         }
     }, []);
-
-    useEffect(() => {
-        const video = videoRef.current;
-        const isHlsStream = Boolean(isHls) || /\.m3u8/i.test(resolvedStreamUrl || '');
-        if (!video || !shouldUseNativeVideo || isHlsStream) return;
-        const sourceChanged = lastResolvedStreamUrlRef.current !== resolvedStreamUrl;
-        lastResolvedStreamUrlRef.current = resolvedStreamUrl;
-        
-        if (sourceChanged && !resolvedStreamUrl) {
-            video.removeAttribute('src');
-            video.load();
-            return;
-        }
-        
-        if (!sourceChanged || !resolvedStreamUrl) return;
-
-        const isSameEpisode = lastTimeRef.current.session === episodeSession;
-        const start = (isSameEpisode && lastTimeRef.current.time > 0)
-            ? lastTimeRef.current.time
-            : Number(startAtRef.current || 0);
-
-        const applyStart = () => {
-            let validStart = start;
-            if (Number.isFinite(video.duration) && video.duration > 0 && validStart >= video.duration - 5) {
-                validStart = 0;
-            }
-            if (validStart > 0) {
-                try {
-                    video.currentTime = validStart;
-                } catch (e) {
-                    console.warn('Failed setting currentTime:', e);
-                }
-            }
-            video.play().catch((err) => {
-                console.warn('Autoplay failed or was blocked:', err);
-            });
-        };
-
-        const handleStartSync = () => {
-            let validStart = start;
-            if (Number.isFinite(video.duration) && video.duration > 0 && validStart >= video.duration - 5) {
-                validStart = 0;
-            }
-            if (validStart > 0 && Math.abs(video.currentTime - validStart) > 1.5) {
-                try {
-                    video.currentTime = validStart;
-                } catch {}
-            }
-        };
-
-        if (video.readyState >= 1) applyStart();
-        video.addEventListener('loadedmetadata', applyStart, { once: true });
-        video.addEventListener('canplay', handleStartSync, { once: true });
-        video.addEventListener('durationchange', handleStartSync, { once: true });
-        return () => {
-            video.removeEventListener('loadedmetadata', applyStart);
-            video.removeEventListener('canplay', handleStartSync);
-            video.removeEventListener('durationchange', handleStartSync);
-        };
-    }, [resolvedStreamUrl, shouldUseNativeVideo]);
 
     useEffect(() => {
         clearIframeLoadTimeout();
@@ -736,28 +675,63 @@ export default function VideoPlayer(props: VideoPlayerProps) {
                 hlsRef.current.destroy();
                 hlsRef.current = null;
             }
-            video.src = resolvedStreamUrl;
+            if (video.src !== resolvedStreamUrl) {
+                video.src = resolvedStreamUrl;
+            }
             
             const isSameEpisode = lastTimeRef.current.session === episodeSession;
             const start = isSameEpisode && lastTimeRef.current.time > 0 
                 ? lastTimeRef.current.time 
                 : Number(startAtRef.current || 0);
 
-            const handleLoadedMetadata = () => {
+            const applyStart = () => {
                 let validStart = start;
                 if (Number.isFinite(video.duration) && video.duration > 0 && validStart >= video.duration - 5) {
                     validStart = 0;
                 }
                 if (validStart > 0) {
-                    video.currentTime = validStart;
+                    try {
+                        video.currentTime = validStart;
+                    } catch (e) {
+                        console.warn('Failed setting currentTime:', e);
+                    }
                 } else {
-                    video.currentTime = 0;
+                    try {
+                        video.currentTime = 0;
+                    } catch (e) {
+                        console.warn('Failed resetting currentTime to 0:', e);
+                    }
                 }
                 video.play().catch(e => console.warn('Native video autoplay blocked:', e));
-                video.removeEventListener('loadedmetadata', handleLoadedMetadata);
             };
-            video.addEventListener('loadedmetadata', handleLoadedMetadata);
-            return;
+
+            const handleStartSync = () => {
+                let validStart = start;
+                if (Number.isFinite(video.duration) && video.duration > 0 && validStart >= video.duration - 5) {
+                    validStart = 0;
+                }
+                if (validStart > 0 && Math.abs(video.currentTime - validStart) > 1.5) {
+                    try {
+                        video.currentTime = validStart;
+                    } catch (e) {
+                        console.warn('Failed syncing currentTime:', e);
+                    }
+                }
+            };
+
+            if (video.readyState >= 1) {
+                applyStart();
+            } else {
+                video.addEventListener('loadedmetadata', applyStart, { once: true });
+            }
+            video.addEventListener('canplay', handleStartSync, { once: true });
+            video.addEventListener('durationchange', handleStartSync, { once: true });
+
+            return () => {
+                video.removeEventListener('loadedmetadata', applyStart);
+                video.removeEventListener('canplay', handleStartSync);
+                video.removeEventListener('durationchange', handleStartSync);
+            };
         }
 
         hlsRef.current?.destroy();
@@ -838,7 +812,9 @@ export default function VideoPlayer(props: VideoPlayerProps) {
                 if (start > 0 && Math.abs(video.currentTime - start) > 1.5) {
                     try {
                         video.currentTime = start;
-                    } catch {}
+                    } catch (e) {
+                        console.warn('Failed syncing HLS currentTime:', e);
+                    }
                 }
             };
 
@@ -872,7 +848,7 @@ export default function VideoPlayer(props: VideoPlayerProps) {
                 hlsRef.current = null;
             }
         };
-    }, [isHls, resolvedStreamUrl, shouldUseNativeVideo]);
+    }, [episodeSession, isHls, resolvedStreamUrl, shouldUseNativeVideo]);
 
     const handleNativeEnded = useCallback((event: SyntheticEvent<HTMLVideoElement>) => {
         const video = event.currentTarget;

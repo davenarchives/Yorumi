@@ -954,7 +954,8 @@ router.get('/local-file', (req, res) => {
         const range = req.headers.range;
 
         const isTs = filePath.endsWith('.ts');
-        const contentType = isTs ? 'video/mp2t' : 'video/mp4';
+        const isWebm = filePath.endsWith('.webm');
+        const contentType = isTs ? 'video/mp2t' : isWebm ? 'video/webm' : 'video/mp4';
 
         res.setHeader('Access-Control-Allow-Origin', '*');
         res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');

@@ -127,14 +127,14 @@ export function useDownloads() {
 
             for (const ep of epNums) {
                 if (strId) {
-                    const k1 = downloadService.getEpisodeKey(strId, ep, animeTitle);
-                    const k2 = downloadService.getEpisodeKey(strId, ep);
+                    const k1 = downloadService.getEpisodeKey(strId, ep);
+                    const k2 = downloadService.getLegacyEpisodeKey(strId, ep, animeTitle);
                     if (activeDownloads.has(k1)) return activeDownloads.get(k1);
                     if (activeDownloads.has(k2)) return activeDownloads.get(k2);
                 }
                 if (strAnilist) {
-                    const k1 = downloadService.getEpisodeKey(strAnilist, ep, animeTitle);
-                    const k2 = downloadService.getEpisodeKey(strAnilist, ep);
+                    const k1 = downloadService.getEpisodeKey(strAnilist, ep);
+                    const k2 = downloadService.getLegacyEpisodeKey(strAnilist, ep, animeTitle);
                     if (activeDownloads.has(k1)) return activeDownloads.get(k1);
                     if (activeDownloads.has(k2)) return activeDownloads.get(k2);
                 }
@@ -163,27 +163,32 @@ export function useDownloads() {
             audio?: 'sub' | 'dub';
             subtitles?: SubtitleTrack[];
         }) => {
-            const key = downloadService.getEpisodeKey(params.animeId, params.episodeNumber, params.animeTitle);
+            const key = downloadService.getEpisodeKey(params.animeId, params.episodeNumber);
+            const legacyKey = downloadService.getLegacyEpisodeKey(params.animeId, params.episodeNumber, params.animeTitle);
 
-            activeDownloadsMap.set(key, {
+            const initialProg: ActiveDownloadProgress = {
                 animeId: params.animeId,
                 episodeNumber: params.episodeNumber,
                 progress: 0,
                 status: 'downloading',
                 receivedBytes: 0,
                 totalBytes: 0,
-            });
+            };
+            activeDownloadsMap.set(key, initialProg);
+            activeDownloadsMap.set(legacyKey, initialProg);
             notifyListeners();
 
             try {
                 const downloaded = await downloadService.downloadStream(params, (progress) => {
                     activeDownloadsMap.set(key, progress);
+                    activeDownloadsMap.set(legacyKey, progress);
                     notifyListeners();
                 });
 
                 // Clear from active after completion delay
                 setTimeout(() => {
                     activeDownloadsMap.delete(key);
+                    activeDownloadsMap.delete(legacyKey);
                     notifyListeners();
                 }, 1500);
 
@@ -192,6 +197,7 @@ export function useDownloads() {
                 console.error('Download failed:', error);
                 setTimeout(() => {
                     activeDownloadsMap.delete(key);
+                    activeDownloadsMap.delete(legacyKey);
                     notifyListeners();
                 }, 3000);
                 throw error;

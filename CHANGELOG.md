@@ -2,6 +2,12 @@
 
 ## [4.0.5] - 2026-08-10
 
+- **Offline Download & Playback Engine Fixes ([VideoPlayer.tsx](file:///c:/Github%20Repos/Yorumi/src/features/player/components/VideoPlayer.tsx), [downloadService.ts](file:///c:/Github%20Repos/Yorumi/src/services/downloadService.ts), [useDownloads.ts](file:///c:/Github%20Repos/Yorumi/src/hooks/useDownloads.ts), [DetailsEpisodeGrid.tsx](file:///c:/Github%20Repos/Yorumi/src/features/anime/components/details/DetailsEpisodeGrid.tsx))**:
+  - Fixed offline playback black screen and `0:00 / 0:00` freeze by ensuring `shouldUseNativeVideo` evaluates to `true` for all offline media and consolidating native HTML5 `<video>` lifecycle effects to prevent double-assigning `video.src` and interrupting browser buffering.
+  - Unified episode download keys across Web (IndexedDB) and Electron desktop environments, fixing real-time download progress tracking and deletion.
+  - Upgraded episode grid download resolution to search across all stream providers (`anidb`, `auto`, `videasy`, `vidsrc`, `vidking`) and extract direct streams reliably.
+  - Enhanced `/api/scraper/local-file` byte-range and MIME-type handling for instant seeking and smooth playback.
+
 - **Persistent Single-Instance Video Player & Zero-Reset Portal Transitions ([PersistentPlayerContext.tsx](file:///c:/Github%20Repos/Yorumi/src/features/player/context/PersistentPlayerContext.tsx))**:
   - Mounted `<VideoPlayer>` inside a single persistent portal attached directly to `document.body`.
   - Switching display modes between watch page full mode and Mini Player mode (`/manga`, `/library`, `/ln`, `/anime`, Back button) no longer unmounts the `<VideoPlayer>` component tree, native HTML5 `<video>`, or embed `iframe`s.

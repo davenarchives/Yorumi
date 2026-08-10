@@ -1,6 +1,7 @@
 import { memo, useState, useCallback } from 'react';
 import { CircleCheckBig, Download, Loader2, FolderOpen } from 'lucide-react';
 import type { Episode, Anime } from '../../../../types/anime';
+import type { StreamLink } from '../../../../types/stream';
 import { getEpisodeWatchKey, getPlaybackEpisodeNumber } from '../../../../utils/episodeWatchKey';
 import { useDownloads } from '../../../../hooks/useDownloads';
 import { downloadService } from '../../../../services/downloadService';
@@ -255,32 +256,36 @@ export default function DetailsEpisodeGrid({
 
             setResolvingEpisodes((prev) => new Set(prev).add(epNum));
             try {
-                // Try resolving direct downloadable stream from anidb first, then auto
-                let streams = await getStreamData(ep, scraperSession || animeTitle, {
-                    title: animeTitle,
-                    anilistId,
-                    provider: 'anidb',
-                });
+                // Try resolving stream across providers: anidb -> auto -> videasy -> vidsrc -> vidking
+                const providers = ['anidb', 'auto', 'videasy', 'vidsrc', 'vidking'];
+                let bestStream: StreamLink | undefined;
 
-                let bestStream = streams.find((s) => s.url && !s.isEmbed && (s.isHls || s.url.includes('.m3u8') || s.url.includes('.mp4') || s.url.includes('/api/scraper/proxy')));
+                for (const provider of providers) {
+                    try {
+                        const streams = await getStreamData(ep, scraperSession || animeTitle, {
+                            title: animeTitle,
+                            anilistId,
+                            provider,
+                        });
 
-                if (!bestStream) {
-                    streams = await getStreamData(ep, scraperSession || animeTitle, {
-                        title: animeTitle,
-                        anilistId,
-                        provider: 'auto',
-                    });
-                    bestStream = streams.find((s) => s.url && !s.isEmbed && (s.isHls || s.url.includes('.m3u8') || s.url.includes('.mp4') || s.url.includes('/api/scraper/proxy')));
+                        const candidate = streams.find(
+                            (s) => (s.directUrl || s.url) && !s.isEmbed && (s.isHls || (s.url && (s.url.includes('.m3u8') || s.url.includes('.mp4') || s.url.includes('/api/scraper/proxy'))))
+                        ) || streams.find((s) => (s.directUrl || s.url) && !s.isEmbed) || streams.find((s) => s.directUrl || s.url);
+
+                        if (candidate?.url || candidate?.directUrl) {
+                            bestStream = candidate;
+                            break;
+                        }
+                    } catch {
+                        // continue to next provider
+                    }
                 }
 
-                if (!bestStream?.url) {
-                    // Fallback to any non-embed stream
-                    bestStream = streams.find((s) => s.url && !s.isEmbed) || streams[0];
-                }
-
-                if (!bestStream?.url) {
+                if (!bestStream?.url && !bestStream?.directUrl) {
                     throw new Error('No downloadable stream source found for this episode');
                 }
+
+                const streamDownloadUrl = bestStream.directUrl || bestStream.url;
 
                 await startDownload({
                     animeId,
@@ -288,7 +293,7 @@ export default function DetailsEpisodeGrid({
                     animeImage: animeImage || fallbackCoverImage || '',
                     episodeNumber: epNum,
                     episodeTitle: ep.title,
-                    streamUrl: bestStream.url,
+                    streamUrl: streamDownloadUrl,
                     quality: bestStream.quality,
                     audio: (bestStream.audio === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub',
                     subtitles: bestStream.subtitles,

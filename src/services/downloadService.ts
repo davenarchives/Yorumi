@@ -239,7 +239,12 @@ export function isDownloadTitleMatch(t1?: string, t2?: string): boolean {
 }
 
 export const downloadService = {
-    getEpisodeKey(animeId: string, episodeNumber: number, title?: string): string {
+    getEpisodeKey(animeId: string, episodeNumber: number, _title?: string): string {
+        const strId = String(animeId || '').trim();
+        return `${strId}_ep_${episodeNumber}`;
+    },
+
+    getLegacyEpisodeKey(animeId: string, episodeNumber: number, title?: string): string {
         const source = (title || animeId || 'anime').trim();
         const slug = source
             .toLowerCase()
@@ -315,9 +320,10 @@ export const downloadService = {
 
             // 1. Direct key match
             const key = this.getEpisodeKey(strAnimeId, Number(episodeNumber), title);
+            const legacySlugKey = this.getLegacyEpisodeKey(strAnimeId, Number(episodeNumber), title);
             const legacyKey = `${strAnimeId.trim()}_ep_${episodeNumber}`;
             const direct = downloads.find(
-                (d) => d.id === key || d.id === legacyKey || (epNums.includes(Number(d.episodeNumber)) && String(d.animeId).trim().toLowerCase() === targetId)
+                (d) => d.id === key || d.id === legacyKey || d.id === legacySlugKey || (epNums.includes(Number(d.episodeNumber)) && String(d.animeId).trim().toLowerCase() === targetId)
             );
             if (direct) return direct;
 
@@ -364,6 +370,7 @@ ${rawFileUrl}
                 const playlistBlob = new Blob([playlistText], { type: 'application/x-mpegurl' });
                 streamUrl = URL.createObjectURL(playlistBlob);
             } else {
+                isHls = false;
                 streamUrl = rawFileUrl;
             }
         } else if (downloaded?.videoBlob && downloaded.videoBlob.size > 0) {
@@ -386,6 +393,7 @@ ${rawBlobUrl}
                     const playlistBlob = new Blob([playlistText], { type: 'application/x-mpegurl' });
                     streamUrl = URL.createObjectURL(playlistBlob);
                 } else {
+                    isHls = false;
                     streamUrl = rawBlobUrl;
                 }
             } catch (e) {
@@ -403,6 +411,7 @@ ${rawBlobUrl}
             provider: 'Offline Storage',
             server: 'anidb',
             subtitles: downloaded.subtitles,
+            duration: downloaded.duration,
         };
     },
 
@@ -477,8 +486,11 @@ ${rawBlobUrl}
             let unsubscribe: ((event: unknown, progress: ActiveDownloadProgress) => void) | null = null;
             if (onProgress && window.electronAPI.onDownloadProgress) {
                 unsubscribe = window.electronAPI.onDownloadProgress((p: ActiveDownloadProgress) => {
-                    const key = this.getEpisodeKey(params.animeId, params.episodeNumber);
-                    if (p && `${String(p.animeId).trim()}_ep_${p.episodeNumber}` === key) {
+                    if (!p) return;
+                    const matchesEp = Number(p.episodeNumber) === Number(params.episodeNumber);
+                    const pId = String(p.animeId || '').trim().toLowerCase();
+                    const targetId = String(params.animeId || '').trim().toLowerCase();
+                    if (matchesEp && (pId === targetId || !pId || !targetId || pId.includes(targetId) || targetId.includes(pId))) {
                         onProgress(p);
                     }
                 });
