@@ -15,6 +15,7 @@ import ScrollRestoration from './components/layout/ScrollRestoration';
 import UpdateModal from './components/modals/UpdateModal';
 import OTAUpdateModal from './components/modals/OTAUpdateModal';
 import OfflineBanner from './components/shared/OfflineBanner';
+import discordRPCService from './services/discordRPCService';
 
 function App() {
     const location = useLocation();
@@ -44,6 +45,22 @@ function App() {
         if (!location.pathname.startsWith('/search')) {
             setSearchQuery('');
             setSearchResults([]);
+        }
+
+        const path = location.pathname;
+        let pageLabel = 'Home';
+        if (path === '/') pageLabel = 'Home';
+        else if (path.startsWith('/library')) pageLabel = 'Library';
+        else if (path.startsWith('/anime')) pageLabel = 'Anime Catalog';
+        else if (path.startsWith('/manga')) pageLabel = 'Manga Catalog';
+        else if (path.startsWith('/ln') && !path.startsWith('/read-ln')) pageLabel = 'Light Novels';
+        else if (path.startsWith('/profile')) pageLabel = 'Profile';
+        else if (path.startsWith('/genre')) pageLabel = 'Genres';
+        else if (path.startsWith('/yumi')) pageLabel = 'Yumi AI';
+        else if (path.startsWith('/search')) pageLabel = 'Search';
+
+        if (!path.startsWith('/watch') && !path.startsWith('/read-ln')) {
+            discordRPCService.setBrowsing(pageLabel);
         }
     }, [location.pathname, setSearchQuery, setSearchResults]);
 
