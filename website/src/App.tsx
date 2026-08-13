@@ -443,10 +443,10 @@ function App() {
                       <span className="font-semibold text-yorumi-text">sequential manga page loader:</span> High-priority eager loading for Page 1 followed by strict sequential preloading ($1 \rightarrow 50$) with layout height skeletons to eliminate scroll jumping.
                     </li>
                     <li>
-                      <span className="font-semibold text-yorumi-text">anidb turbo scraper pipeline:</span> Fast `curl`-first fetch strategy with 24-hour Redis `animeId` caching and parallel embed resolution cut AniDB stream loading from 30s to <1s.
+                      <span className="font-semibold text-yorumi-text">anidb turbo scraper pipeline:</span> Fast `curl`-first fetch strategy with 24-hour Redis `animeId` caching and parallel embed resolution cut AniDB stream loading from 30s to under 1s.
                     </li>
                     <li>
-                      <span className="font-semibold text-yorumi-text">official material cc badge:</span> Standardized `<CCIcon />` vector badge component across all Anime and Manga cards, hero spotlights, and Top 10 sidebars.
+                      <span className="font-semibold text-yorumi-text">official material cc badge:</span> Standardized CCIcon vector badge component across all Anime and Manga cards, hero spotlights, and Top 10 sidebars.
                     </li>
                   </ul>
                 </div>
