@@ -1,5 +1,58 @@
 # Changelog
 
+## [4.0.9] - 2026-08-13
+
+- **Discord Rich Presence (RPC) Integration ([main.js](file:///c:/Github%20Repos/Yorumi/dist-electron/main.js), [preload.mjs](file:///c:/Github%20Repos/Yorumi/dist-electron/preload.mjs), [electron.d.ts](file:///c:/Github%20Repos/Yorumi/src/types/electron.d.ts), [discordRPCService.ts](file:///c:/Github%20Repos/Yorumi/src/services/discordRPCService.ts))**:
+  - Integrated full Discord Rich Presence into Electron main process, automatically broadcasting real-time Anime watching, Manga reading, and Light Novel reading activity to Discord user cards.
+  - Displays dynamic episode and chapter details, page numbers, and live elapsed timers with automatic reconnect throttling to prevent app lag.
+  - Supports custom Discord Application IDs via `DISCORD_CLIENT_ID` environment variables with default fallback ID `1532608064174166097`.
+  - Configured high-resolution Yorumi cat logo asset keys (`'yorumi'`) for Manga, Light Novels, and Page Browsing, and dynamic cover poster thumbnails for Anime playback.
+
+- **Sequential Manga Page Loader ([PageViewer.tsx](file:///c:/Github%20Repos/Yorumi/src/features/manga/components/MangaReaderModal/PageViewer.tsx))**:
+  - Built high-priority eager loading for Page 1 (`loading="eager"`, `fetchPriority="high"`, `decoding="sync"`).
+  - Implemented strict sequential background preloading ($1 \rightarrow 2 \rightarrow 3 \dots 50$) so pages load in exact numerical order without network race conditions.
+  - Added baseline height container placeholders to eliminate layout shift (CLS) and scroll jumping while images render.
+
+- **Resilient Light Novel Reader Engine ([LNReaderPage.tsx](file:///c:/Github%20Repos/Yorumi/src/pages/LNReaderPage.tsx))**:
+  - Fixed a React `useEffect` dependency race condition that was resetting state and causing an infinite loading spinner when novel metadata loaded in parallel with chapter text.
+  - Stabilized component refs (`novelDetailsRef`, `passedLNRef`, `saveLNProgressRef`) to ensure chapter fetching completes reliably across online and offline cached chapters.
+
+- **AniDB Turbo Scraper Pipeline ([video-sources.ts](file:///c:/Github%20Repos/Yorumi/backend/src/api/anime/video-sources.ts), [allmanga.ts](file:///c:/Github%20Repos/Yorumi/backend/src/scraper/allmanga.ts))**:
+  - Swapped `fetchAnidbText` and `fetchAnidbUrl` to use a `curl`-first fetch strategy with a 4-second hard timeout, bypassing Cloudflare anti-bot delays instantly (~300ms instead of 16-60s).
+  - Added 24-hour Redis `animeId` caching (`anidb:animeid:${searchTitle}`), skipping search suggestion round-trips for subsequent episode playback.
+  - Parallelized JPN (sub) and ENG (dub) embed playlist resolutions with `Promise.all`.
+
+- **Official Closed Captions (CC) Badge Component ([CCIcon.tsx](file:///c:/Github%20Repos/Yorumi/src/components/ui/CCIcon.tsx))**:
+  - Replaced corrupted vector SVG paths with official Material Design `<CCIcon />` across Spotlight Hero carousels, Anime & Manga cards, and Top 10 sidebars.
+
+## [4.0.7] - 2026-08-12
+
+- **Structured Disk Downloads & Physical Directory Organization ([main.js](file:///c:/Github%20Repos/Yorumi/dist-electron/main.js), [preload.mjs](file:///c:/Github%20Repos/Yorumi/dist-electron/preload.mjs), [electron.d.ts](file:///c:/Github%20Repos/Yorumi/src/types/electron.d.ts), [downloadService.ts](file:///c:/Github%20Repos/Yorumi/src/services/downloadService.ts), [mangaDownloadService.ts](file:///c:/Github%20Repos/Yorumi/src/services/mangaDownloadService.ts), [lnDownloadService.ts](file:///c:/Github%20Repos/Yorumi/src/services/lnDownloadService.ts))**:
+  - Organized physical downloads into clean dedicated subdirectories:
+    - `downloads/Anime/[Anime Title]/Episode X.mp4`
+    - `downloads/Manga/[Manga Title]/Chapter X/page_001.jpg`
+    - `downloads/LightNovels/[Novel Title]/Chapter X.txt`
+  - Added automatic startup migration (`organizeLegacyDownloads()`) in Electron that relocates loose `.mp4` and `.ts` files from the root `downloads/` directory into their respective `downloads/Anime/[Title]/` subfolders while updating manifest paths seamlessly.
+  - Implemented physical disk writing for Manga (`saveMangaDisk`) and Light Novels (`saveLNDisk`) in Electron so offline chapters are written to disk as well as stored in IndexedDB.
+  - Upgraded `openDownloadsFolder(category)` to open category-specific directories (`downloads/Anime`, `downloads/Manga`, `downloads/LightNovels`) directly when clicked from Anime, Manga, or Light Novel pages.
+
+## [4.0.6] - 2026-08-12
+
+- **Korean (KR) & Chinese (CN) Web Novels & Hybrid Metadata Catalog ([lnService.ts](file:///c:/Github%20Repos/Yorumi/src/services/lnService.ts), [lnData.ts](file:///c:/Github%20Repos/Yorumi/src/services/lnData.ts), [LNPage.tsx](file:///c:/Github%20Repos/Yorumi/src/pages/LNPage.tsx), [PopularKoreanNovels.tsx](file:///c:/Github%20Repos/Yorumi/src/features/ln/components/PopularKoreanNovels.tsx), [PopularChineseNovels.tsx](file:///c:/Github%20Repos/Yorumi/src/features/ln/components/PopularChineseNovels.tsx))**:
+  - Added full support for **Korean Web Novels** (e.g. *Solo Leveling*, *Omniscient Reader's Viewpoint*, *The Beginning After the End*, *Second Life Ranker*, *Nano Machine*, *Trash of the Count's Family*, *Return of the Mount Hua Sect*, *The Greatest Estate Developer*, *SSS-Class Suicide Hunter*) and **Chinese Web Novels / Xianxia / Wuxia** (e.g. *Lord of the Mysteries*, *Reverend Insanity*, *Martial Peak*, *Grandmaster of Demonic Cultivation*, *Heaven Official's Blessing*, *Coiling Dragon*, *Battle Through the Heavens*, *Renegade Immortal*, *The King's Avatar*, *Release That Witch*).
+  - Introduced dedicated **Origin Filter Pills** (`All Novels`, `🇰🇷 Korean`, `🇨🇳 Chinese`, `🇯🇵 Japanese`) on the Light Novel hub (`/ln`).
+  - Added origin and country badge indicators (`KR (WN)`, `CN (WN)`, `LN`) to novel cards ([LNCard.tsx](file:///c:/Github%20Repos/Yorumi/src/features/ln/components/LNCard.tsx)) and global search modal previews ([SearchModal.tsx](file:///c:/Github%20Repos/Yorumi/src/components/shared/SearchModal.tsx)).
+  - Upgraded Light Novel search to execute parallel multi-source discovery across AniList GraphQL (`format: NOVEL`), curated web novel datasets, and live backend scraper endpoints (`/ln/search`), automatically normalizing, deduplicating, and formatting non-Japanese web novels.
+  - Standardized Light Novel section headers with subtle horizontal divider lines (`────`) and chevron carousel controls matching Manga and Anime design language, removing the vertical colored indicator pills.
+  - Aligned **Top 100 Light Novels** ([Top100LN.tsx](file:///c:/Github%20Repos/Yorumi/src/features/ln/components/Top100LN.tsx)) with the full multi-column grid layout and header design matching Top 100 Manga.
+  - Implemented auto-hiding of the top navigation header and bottom chapter bar on scroll in the Manga Reader ([MangaReaderModal/index.tsx](file:///c:/Github%20Repos/Yorumi/src/features/manga/components/MangaReaderModal/index.tsx)).
+  - Styled the "Back to Top" chevron arrow to match the dark background across Manga Reader ([PageViewer.tsx](file:///c:/Github%20Repos/Yorumi/src/features/manga/components/MangaReaderModal/PageViewer.tsx)) and global floating button ([ScrollToTop.tsx](file:///c:/Github%20Repos/Yorumi/src/components/ui/ScrollToTop.tsx)).
+  - Enabled parallel concurrent downloading in **Download All** ([DetailsEpisodeGrid.tsx](file:///c:/Github%20Repos/Yorumi/src/features/anime/components/details/DetailsEpisodeGrid.tsx)) so all released episodes resolve and download simultaneously with live progress bars.
+  - Added full offline **Download and "Download All" support for Manga** ([mangaDownloadService.ts](file:///c:/Github%20Repos/Yorumi/src/services/mangaDownloadService.ts), [useMangaDownloads.ts](file:///c:/Github%20Repos/Yorumi/src/hooks/useMangaDownloads.ts), [MangaDetailsPage.tsx](file:///c:/Github%20Repos/Yorumi/src/pages/MangaDetailsPage.tsx), [useManga.ts](file:///c:/Github%20Repos/Yorumi/src/hooks/useManga.ts)) with IndexedDB storage (`yorumi_manga_downloads_v1`), parallel chapter page image caching, live progress indicators, and seamless offline reader fallback.
+  - Added full offline **Download and "Download All" support for Light Novels** ([lnDownloadService.ts](file:///c:/Github%20Repos/Yorumi/src/services/lnDownloadService.ts), [useLNDownloads.ts](file:///c:/Github%20Repos/Yorumi/src/hooks/useLNDownloads.ts), [LNDetailsPage.tsx](file:///c:/Github%20Repos/Yorumi/src/pages/LNDetailsPage.tsx), [LNReaderPage.tsx](file:///c:/Github%20Repos/Yorumi/src/pages/LNReaderPage.tsx)) with IndexedDB storage (`yorumi_ln_downloads_v1`), formatted chapter text caching, and offline reader fallback.
+  - Positioned **Chapter View Toggle** (`List` / `Grid`) directly beside the `Chapters` title on Manga and Light Novel details pages, with `Downloads Folder` (Electron) and `Download All` buttons placed at the far right end of the header row.
+  - Added dedicated **Downloads Carousels** to both the Manga and Light Novel tabs on the **Library Page** ([LibraryPage.tsx](file:///c:/Github%20Repos/Yorumi/src/pages/LibraryPage.tsx)), allowing users to view, manage, delete, and launch offline manga and light novel downloads identically to Anime.
+
 ## [4.0.5] - 2026-08-10
 
 - **Offline Download & Playback Engine Fixes ([VideoPlayer.tsx](file:///c:/Github%20Repos/Yorumi/src/features/player/components/VideoPlayer.tsx), [downloadService.ts](file:///c:/Github%20Repos/Yorumi/src/services/downloadService.ts), [useDownloads.ts](file:///c:/Github%20Repos/Yorumi/src/hooks/useDownloads.ts), [DetailsEpisodeGrid.tsx](file:///c:/Github%20Repos/Yorumi/src/features/anime/components/details/DetailsEpisodeGrid.tsx))**:

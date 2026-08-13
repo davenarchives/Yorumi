@@ -300,7 +300,7 @@ function App() {
                       rel="noreferrer"
                       className="text-yorumi-main font-semibold text-sm tracking-wide hover:opacity-80 transition-opacity"
                     >
-                      v4.0.5
+                      v4.0.9
                     </motion.a>
                   </div>
                   
@@ -367,7 +367,7 @@ function App() {
             <div className="bg-yorumi-card rounded-3xl p-6 md:p-8 space-y-6">
               <div className="text-sm md:text-base text-yorumi-muted">
                 <span className="font-medium text-yorumi-text">The latest stable version:</span>{' '}
-                <span className="text-yorumi-main font-semibold">v4.0.5</span>
+                <span className="text-yorumi-main font-semibold">v4.0.9</span>
               </div>
 
               {/* Release downloads: macOS (Universal, Apple Silicon, Intel), Windows, Linux, and CLI */}
@@ -429,24 +429,24 @@ function App() {
               </div>
 
               <div className="border-t border-white/5 pt-6 space-y-4">
-                <div className="text-sm font-semibold text-yorumi-text">What&apos;s new in version 4.0.5?</div>
+                <div className="text-sm font-semibold text-yorumi-text">What&apos;s new in version 4.0.9?</div>
                 <div className="space-y-3">
                   <div className="flex items-center gap-2 text-sm font-bold text-yorumi-main">
                     <Sparkles className="w-4 h-4" />
-                    <span>Persistent Player Engine, 120fps GPU Layout, Auto Next/Prev & Multi-Arch Builds</span>
+                    <span>Discord Rich Presence, Sequential Manga Loader, AniDB Turbo Fetcher & Official CC Badge</span>
                   </div>
                   <ul className="list-disc list-inside text-sm text-yorumi-muted space-y-1.5 pl-1">
                     <li>
-                      <span className="font-semibold text-yorumi-text">persistent video portal:</span> Single top-level portal on <span className="font-semibold text-yorumi-text">document.body</span> prevents component unmounting across all route transitions — video streams and embeds never reset to 0:00.
+                      <span className="font-semibold text-yorumi-text">discord rich presence:</span> Full Electron IPC integration broadcasting current Anime watching, Manga reading, and Light Novel reading progress directly to your Discord activity card with live elapsed timers.
                     </li>
                     <li>
-                      <span className="font-semibold text-yorumi-text">native 120fps gpu layout:</span> Page-absolute positioning for watch page player delivers fluid hardware-accelerated scrolling with zero JS delay and zero bounce.
+                      <span className="font-semibold text-yorumi-text">sequential manga page loader:</span> High-priority eager loading for Page 1 followed by strict sequential preloading ($1 \rightarrow 50$) with layout height skeletons to eliminate scroll jumping.
                     </li>
                     <li>
-                      <span className="font-semibold text-yorumi-text">automatic next & prev episodes:</span> Controls automatically calculate adjacent episodes and auto-load the next episode with the sleeping GIF loading animation.
+                      <span className="font-semibold text-yorumi-text">anidb turbo scraper pipeline:</span> Fast `curl`-first fetch strategy with 24-hour Redis `animeId` caching and parallel embed resolution cut AniDB stream loading from 30s to <1s.
                     </li>
                     <li>
-                      <span className="font-semibold text-yorumi-text">multi-arch macOS & windows builds:</span> Universal macOS .dmg (Apple Silicon M1-M4 & Intel), Windows ARM64 (Snapdragon Copilot+ PCs), Windows Portable .exe, and Linux AppImage via GitHub Actions CI/CD.
+                      <span className="font-semibold text-yorumi-text">official material cc badge:</span> Standardized `<CCIcon />` vector badge component across all Anime and Manga cards, hero spotlights, and Top 10 sidebars.
                     </li>
                   </ul>
                 </div>
