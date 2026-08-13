@@ -7,6 +7,7 @@ import { useTitleLanguage } from '../../../context/TitleLanguageContext';
 import { getDisplayTitle } from '../../../utils/titleLanguage';
 import { getDisplayImageUrl } from '../../../utils/image';
 import { AnimatePresence, m } from 'framer-motion';
+import CCIcon from '../../../components/ui/CCIcon';
 
 interface SpotlightHeroProps {
     animeList: Anime[];
@@ -281,7 +282,7 @@ const SpotlightHero: React.FC<SpotlightHeroProps> = ({ animeList, isLoading = fa
                                             </span>
                                         ) : (activeAnime.latestEpisode || activeAnime.episodes) ? (
                                             <span className="flex items-center justify-center gap-1.5 bg-[#22c55e] text-white px-3 h-8 rounded-lg backdrop-blur-sm text-sm font-bold">
-                                                <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M19 4H5a2 2 0 00-2 2v12a2 2 0 002 2h14a2 2 0 002-2V6a2 2 0 00-2-2zm-8 7H9.5v-.5h-2v3h2V13H18v2h-5V9h5v2z" /></svg>
+                                                <CCIcon className="w-3.5 h-3.5" />
                                                 {activeAnime.latestEpisode || activeAnime.episodes}
                                             </span>
                                         ) : (

@@ -4,6 +4,7 @@ import type { Manga } from '../../../types/manga';
 import { useTitleLanguage } from '../../../context/TitleLanguageContext';
 import { getDisplayTitle } from '../../../utils/titleLanguage';
 import { cardItemVariants, pressMotion } from '../../../utils/motion';
+import CCIcon from '../../../components/ui/CCIcon';
 
 interface MangaCardProps {
     manga: Manga;
@@ -150,7 +151,7 @@ const MangaCard: React.FC<MangaCardProps> = ({ manga, onClick, onMouseEnter, inL
                     </span>
                     {(manga.chapters || manga.volumes) ? (
                         <span className="bg-[#22c55e] text-white px-2 py-1 rounded text-xs font-bold flex items-center gap-1">
-                            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M19 4H5a2 2 0 00-2 2v12a2 2 0 002 2h14a2 2 0 002-2V6a2 2 0 00-2-2zm-8 7H9.5v-.5h-2v3h2V13H11v2H6V9h5v2zm7 0h-1.5v-.5h-2v3h2V13H18v2h-5V9h5v2z" /></svg>
+                            <CCIcon className="w-3 h-3" />
                             {manga.chapters || manga.volumes}
                         </span>
                     ) : (

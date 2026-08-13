@@ -4,6 +4,7 @@ import { useTitleLanguage } from '../../../context/TitleLanguageContext';
 import { getDisplayTitle } from '../../../utils/titleLanguage';
 import TopTenSkeleton from './TopTenSkeleton';
 import { CLOUDINARY_SHARED_ASSETS } from '../../../config/cloudinaryAssets';
+import CCIcon from '../../../components/ui/CCIcon';
 
 interface TopTenSidebarProps {
     today: Anime[];
@@ -91,7 +92,7 @@ export default function TopTenSidebar({ today, week, month, isLoading = false, o
                                     </div>
                                     <div className="mt-1.5 flex items-center gap-1.5">
                                         <span className="inline-flex h-6 items-center gap-1 bg-[#22c55e] text-white text-[10px] font-bold px-1.5 rounded-md">
-                                            <svg className="w-3 h-3 shrink-0" fill="currentColor" viewBox="0 0 24 24"><path d="M19 4H5a2 2 0 00-2 2v12a2 2 0 002 2h14a2 2 0 002-2V6a2 2 0 00-2-2zm-8 7H9.5v-.5h-2v3h2V13H11v2H6V9h5v2zm7 0h-1.5v-.5h-2v3h2V13H18v2h-5V9h5v2z" /></svg>
+                                            <CCIcon className="w-3 h-3 shrink-0" />
                                             {anime.episodes || anime.latestEpisode || '—'}
                                         </span>
                                         <span className="inline-flex h-6 items-center gap-1 bg-[#facc15] text-black text-[10px] font-bold px-1.5 rounded-md">
