@@ -17,8 +17,8 @@ const hasPlatformArg = userArgs.some((arg) =>
 
 const builderArgs = [electronBuilderCli, '--publish', 'never'];
 
-// Use local electronDist if available to prevent Windows zip unpack EPERM locks
-if (fs.existsSync(path.join(root, electronDist)) && !builderArgs.some((arg) => arg.includes('electronDist'))) {
+// Only use local electronDist when building for local host platform without target overrides
+if (!hasPlatformArg && fs.existsSync(path.join(root, electronDist))) {
   builderArgs.push(`--config.electronDist=${electronDist}`);
 }
 
