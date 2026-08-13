@@ -22939,7 +22939,7 @@ var __toESM2 = (mod, isNodeMode, target) => (target = mod != null ? __create2(__
   value: mod,
   enumerable: true
 }) : target, mod));
-var __require = /* @__PURE__ */ (0, import_node_module.createRequire)(import_meta.url);
+var __require = typeof require !== "undefined" ? require : (0, import_node_module.createRequire)(import_meta.url || __filename);
 var require_blockStats = /* @__PURE__ */ __commonJSMin((exports2, module2) => {
   var { app: app$4 } = __require("electron");
   var path$4 = __require("path");
