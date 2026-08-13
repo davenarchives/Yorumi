@@ -28,17 +28,22 @@ console.log(`[Yorumi Desktop Build] Running electron-builder with args:`, userAr
 
 console.log('[Yorumi Desktop Build] Bundling dist-electron/main.js with esbuild...');
 try {
+  const entryFile = fs.existsSync(path.join(root, 'dist-electron', 'main.bundle.js'))
+    ? path.join(root, 'dist-electron', 'main.bundle.js')
+    : path.join(root, 'dist-electron', 'main.js');
+
   esbuild.buildSync({
-    entryPoints: [path.join(root, 'dist-electron', 'main.js')],
+    entryPoints: [entryFile],
     bundle: true,
     platform: 'node',
     target: 'node18',
-    format: 'esm',
+    format: 'cjs',
     external: ['electron'],
-    outfile: path.join(root, 'dist-electron', 'main.js'),
+    outfile: path.join(root, 'dist-electron', 'main.cjs'),
     allowOverwrite: true,
   });
-  console.log('[Yorumi Desktop Build] Successfully bundled dist-electron/main.js!');
+  fs.copyFileSync(path.join(root, 'dist-electron', 'main.cjs'), path.join(root, 'dist-electron', 'main.js'));
+  console.log('[Yorumi Desktop Build] Successfully bundled dist-electron/main.cjs!');
 } catch (err) {
   console.error('[Yorumi Desktop Build] Failed to bundle dist-electron/main.js:', err);
   process.exit(1);

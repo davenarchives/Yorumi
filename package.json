@@ -4,7 +4,7 @@
   "version": "4.0.9",
   "description": "Yorumi - Anime & Manga Streamer",
   "author": "davenarchives",
-  "main": "dist-electron/main.js",
+  "main": "dist-electron/main.cjs",
   "type": "module",
   "scripts": {
     "dev": "concurrently \"npm run dev --prefix backend\" \"vite\" \"wait-on tcp:5173 && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron .\"",
