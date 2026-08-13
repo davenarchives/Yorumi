@@ -2662,8 +2662,61 @@ const cp = __require("child_process");
 const downloadsDir = () => path.join(app.getPath("userData"), "downloads");
 const downloadsManifestFile = () => path.join(downloadsDir(), "manifest.json");
 
+function sanitizeFolderName(name) {
+	return String(name || "Unknown")
+		.replace(/[\\/:*?"<>|]/g, "_")
+		.replace(/\s+/g, " ")
+		.trim();
+}
+
+function organizeLegacyDownloads() {
+	try {
+		const dir = downloadsDir();
+		if (!fs.existsSync(dir)) return;
+
+		const animeDir = path.join(dir, "Anime");
+		const mangaDir = path.join(dir, "Manga");
+		const lnDir = path.join(dir, "LightNovels");
+		if (!fs.existsSync(animeDir)) fs.mkdirSync(animeDir, { recursive: true });
+		if (!fs.existsSync(mangaDir)) fs.mkdirSync(mangaDir, { recursive: true });
+		if (!fs.existsSync(lnDir)) fs.mkdirSync(lnDir, { recursive: true });
+
+		const manifest = getNativeDownloadsManifest();
+		let manifestUpdated = false;
+
+		const entries = fs.readdirSync(dir, { withFileTypes: true });
+		for (const entry of entries) {
+			if (entry.isFile() && entry.name.match(/\.(mp4|ts)$/i) && !entry.name.startsWith("manifest")) {
+				const oldPath = path.join(dir, entry.name);
+				const keyMatch = entry.name.match(/^(.+?)_ep_(\d+)/i);
+				let showTitle = "Unsorted Anime";
+				if (keyMatch) {
+					const item = manifest.find((m) => m.id?.toLowerCase() === `${keyMatch[1]}_ep_${keyMatch[2]}`.toLowerCase() || m.animeId === keyMatch[1]);
+					if (item && item.animeTitle) showTitle = sanitizeFolderName(item.animeTitle);
+				}
+				const targetSubfolder = path.join(animeDir, showTitle);
+				if (!fs.existsSync(targetSubfolder)) fs.mkdirSync(targetSubfolder, { recursive: true });
+				const newPath = path.join(targetSubfolder, entry.name);
+				try {
+					fs.renameSync(oldPath, newPath);
+					const item = manifest.find((m) => m.filePath === oldPath);
+					if (item) {
+						item.filePath = newPath;
+						manifestUpdated = true;
+					}
+				} catch {}
+			}
+		}
+		if (manifestUpdated) {
+			saveNativeDownloadsManifest(manifest);
+		}
+	} catch (e) {
+		console.warn("Error organizing legacy downloads:", e);
+	}
+}
+
 /**
- * Bootstrap: scan downloadsDir for any .ts or .mp4 files that are NOT yet
+ * Bootstrap: scan downloadsDir recursively for any .ts or .mp4 files that are NOT yet
  * tracked in the manifest, register them immediately (so they appear in the
  * library right away), and then kick off async FFmpeg transmux for .ts files.
  */
@@ -2672,70 +2725,73 @@ function bootstrapOrphanedDownloads() {
 	if (_bootstrapDone) return;
 	_bootstrapDone = true;
 	try {
+		organizeLegacyDownloads();
 		const dir = downloadsDir();
 		if (!fs.existsSync(dir)) return;
+
 		const existing = getNativeDownloadsManifest();
 		const trackedKeys = new Set(existing.map((d) => String(d.id || "").toLowerCase()));
 		const trackedPaths = new Set(existing.map((d) => String(d.filePath || "").toLowerCase()));
-		const entries = fs.readdirSync(dir);
 		const newItems = [];
 		const tsToTransmux = [];
 
-		for (const entry of entries) {
-			if (!entry.match(/\.(ts|mp4)$/i)) continue;
-			const fullPath = path.join(dir, entry);
+		const scanFiles = (targetDir) => {
+			if (!fs.existsSync(targetDir)) return;
+			const entries = fs.readdirSync(targetDir, { withFileTypes: true });
+			for (const entry of entries) {
+				const fullPath = path.join(targetDir, entry.name);
+				if (entry.isDirectory()) {
+					scanFiles(fullPath);
+				} else if (entry.isFile() && entry.name.match(/\.(ts|mp4)$/i) && !entry.name.startsWith("manifest")) {
+					if (trackedPaths.has(fullPath.toLowerCase())) continue;
+					const isTs = entry.name.endsWith(".ts");
+					if (isTs) {
+						const mp4Path = fullPath.replace(/\.ts$/i, ".mp4");
+						if (fs.existsSync(mp4Path) && fs.statSync(mp4Path).size > 0) continue;
+					} else {
+						const tsPath = fullPath.replace(/\.mp4$/i, ".ts");
+						if (fs.existsSync(tsPath)) {
+							try { fs.unlinkSync(tsPath); } catch {}
+						}
+					}
+					const keyMatch = entry.name.match(/^(.+?)_ep_(\d+)/i);
+					if (!keyMatch) continue;
+					const animeId = keyMatch[1];
+					const episodeNumber = parseInt(keyMatch[2], 10);
+					const key = `${animeId}_ep_${episodeNumber}`;
 
-			// Skip already-tracked paths
-			if (trackedPaths.has(fullPath.toLowerCase())) continue;
+					if (trackedKeys.has(key.toLowerCase())) continue;
 
-			// Check if there's already an MP4 version (preferred)
-			const isTs = entry.endsWith(".ts");
-			if (isTs) {
-				const mp4Path = fullPath.replace(/\.ts$/i, ".mp4");
-				if (fs.existsSync(mp4Path) && fs.statSync(mp4Path).size > 0) {
-					// MP4 already exists — just skip the TS file, the MP4 will be picked up
-					continue;
-				}
-			} else {
-				// MP4 file: check if TS counterpart exists and skip it
-				const tsPath = fullPath.replace(/\.mp4$/i, ".ts");
-				if (fs.existsSync(tsPath)) {
-					try { fs.unlinkSync(tsPath); } catch {}
+					let stat;
+					try { stat = fs.statSync(fullPath); } catch { continue; }
+
+					const folderName = path.basename(targetDir);
+					const inferredTitle = folderName !== "downloads" && folderName !== "Anime" ? folderName : animeId;
+
+					const item = {
+						id: key,
+						animeId,
+						animeTitle: inferredTitle,
+						animeImage: "",
+						episodeNumber,
+						episodeTitle: `Episode ${episodeNumber}`,
+						quality: "HD",
+						audio: "sub",
+						fileSize: stat.size,
+						filePath: fullPath,
+						isHls: isTs,
+						duration: 0,
+						downloadedAt: stat.mtimeMs || Date.now(),
+					};
+					newItems.push(item);
+					trackedKeys.add(key.toLowerCase());
+					trackedPaths.add(fullPath.toLowerCase());
+					if (isTs) tsToTransmux.push({ item, tsPath: fullPath });
 				}
 			}
+		};
 
-			// Parse key from filename e.g. "37854_ep_1.ts" -> animeId=37854, ep=1
-			const keyMatch = entry.match(/^(.+?)_ep_(\d+)/i);
-			if (!keyMatch) continue;
-			const animeId = keyMatch[1];
-			const episodeNumber = parseInt(keyMatch[2], 10);
-			const key = `${animeId}_ep_${episodeNumber}`;
-
-			if (trackedKeys.has(key.toLowerCase())) continue;
-
-			let stat;
-			try { stat = fs.statSync(fullPath); } catch { continue; }
-
-			const item = {
-				id: key,
-				animeId,
-				animeTitle: animeId,
-				animeImage: "",
-				episodeNumber,
-				episodeTitle: `Episode ${episodeNumber}`,
-				quality: "HD",
-				audio: "sub",
-				fileSize: stat.size,
-				filePath: fullPath,
-				isHls: isTs,
-				duration: 0,
-				downloadedAt: stat.mtimeMs || Date.now(),
-			};
-			newItems.push(item);
-			trackedKeys.add(key.toLowerCase());
-			trackedPaths.add(fullPath.toLowerCase());
-			if (isTs) tsToTransmux.push({ item, tsPath: fullPath });
-		}
+		scanFiles(dir);
 
 		if (newItems.length > 0) {
 			saveNativeDownloadsManifest([...existing, ...newItems]);
@@ -2750,7 +2806,7 @@ function bootstrapOrphanedDownloads() {
 					const mp4Path = tsPath.replace(/\.ts$/i, ".mp4");
 					try {
 						await new Promise((resolve) => {
-							const proc = cp.spawn(ffmpeg, ["-y", "-i", tsPath, "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-ac", "2", "-movflags", "+faststart", mp4Path], { windowsHide: true, shell: true });
+							const proc = cp.spawn(ffmpeg, ["-y", "-i", tsPath, "-map", "0:v:0?", "-map", "0:a:0?", "-ignore_unknown", "-c:v", "copy", "-c:a", "aac", "-profile:a", "aac_low", "-b:a", "128k", "-movflags", "+faststart", mp4Path], { windowsHide: true, shell: false });
 							proc.on("close", (code) => {
 								if (code === 0 && fs.existsSync(mp4Path) && fs.statSync(mp4Path).size > 0) {
 									try { fs.unlinkSync(tsPath); } catch {}
@@ -2792,7 +2848,7 @@ function findFfmpegExecutable() {
 	];
 	for (const c of candidates) {
 		try {
-			const res = cp.spawnSync(c, ["-version"], { windowsHide: true, shell: true, timeout: 3000 });
+			const res = cp.spawnSync(c, ["-version"], { windowsHide: true, shell: false, timeout: 3000 });
 			if (res.status === 0) { _cachedFfmpegBin = c; return c; }
 		} catch {}
 	}
@@ -2809,7 +2865,7 @@ function migrateExistingTsDownloads(items) {
 			if (item && item.filePath && item.filePath.endsWith(".ts") && fs.existsSync(item.filePath)) {
 				const mp4Path = item.filePath.replace(/\.ts$/i, ".mp4");
 				try {
-					const res = cp.spawnSync(ffmpeg, ["-y", "-i", item.filePath, "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-ac", "2", "-movflags", "+faststart", mp4Path], { windowsHide: true, shell: true });
+					const res = cp.spawnSync(ffmpeg, ["-y", "-i", item.filePath, "-map", "0:v:0?", "-map", "0:a:0?", "-ignore_unknown", "-c:v", "copy", "-c:a", "aac", "-profile:a", "aac_low", "-b:a", "128k", "-movflags", "+faststart", mp4Path], { windowsHide: true, shell: false });
 					if (res.status === 0 && fs.existsSync(mp4Path) && fs.statSync(mp4Path).size > 0) {
 						try { fs.unlinkSync(item.filePath); } catch {}
 						item.filePath = mp4Path;
@@ -2919,11 +2975,78 @@ ipcMain.handle("delete-local-download", (_, { animeId, episodeNumber }) => {
 	return true;
 });
 
-ipcMain.handle("open-downloads-folder", () => {
-	const dir = downloadsDir();
-	if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+ipcMain.handle("open-downloads-folder", (_, category) => {
+	organizeLegacyDownloads();
+	let dir = downloadsDir();
+	if (category && typeof category === "string") {
+		const sub = path.join(dir, category);
+		if (!fs.existsSync(sub)) fs.mkdirSync(sub, { recursive: true });
+		dir = sub;
+	} else {
+		if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+	}
 	shell.openPath(dir);
 	return true;
+});
+
+ipcMain.handle("save-manga-chapter-disk", async (_, { mangaTitle, chapterTitle, pages }) => {
+	try {
+		const mangaFolder = path.join(downloadsDir(), "Manga", sanitizeFolderName(mangaTitle), sanitizeFolderName(chapterTitle));
+		if (!fs.existsSync(mangaFolder)) fs.mkdirSync(mangaFolder, { recursive: true });
+		if (Array.isArray(pages)) {
+			for (let i = 0; i < pages.length; i++) {
+				const p = pages[i];
+				if (!p || !p.buffer) continue;
+				const pageNumStr = String(p.pageNumber || (i + 1)).padStart(3, "0");
+				const ext = p.ext || ".jpg";
+				const filePath = path.join(mangaFolder, `page_${pageNumStr}${ext}`);
+				const buf = Buffer.from(p.buffer);
+				fs.writeFileSync(filePath, buf);
+			}
+		}
+		return { ok: true, path: mangaFolder };
+	} catch (err) {
+		console.error("Failed saving manga chapter to disk:", err);
+		return { ok: false, error: String(err) };
+	}
+});
+
+ipcMain.handle("save-ln-chapter-disk", async (_, { novelTitle, chapterTitle, content }) => {
+	try {
+		const lnFolder = path.join(downloadsDir(), "LightNovels", sanitizeFolderName(novelTitle));
+		if (!fs.existsSync(lnFolder)) fs.mkdirSync(lnFolder, { recursive: true });
+		const filename = `${sanitizeFolderName(chapterTitle)}.txt`;
+		const filePath = path.join(lnFolder, filename);
+		fs.writeFileSync(filePath, content || "", "utf-8");
+		return { ok: true, path: filePath };
+	} catch (err) {
+		console.error("Failed saving LN chapter to disk:", err);
+		return { ok: false, error: String(err) };
+	}
+});
+
+ipcMain.handle("delete-manga-chapter-disk", async (_, { mangaTitle, chapterTitle }) => {
+	try {
+		const mangaFolder = path.join(downloadsDir(), "Manga", sanitizeFolderName(mangaTitle), sanitizeFolderName(chapterTitle));
+		if (fs.existsSync(mangaFolder)) {
+			fs.rmSync(mangaFolder, { recursive: true, force: true });
+		}
+		return true;
+	} catch {
+		return false;
+	}
+});
+
+ipcMain.handle("delete-ln-chapter-disk", async (_, { novelTitle, chapterTitle }) => {
+	try {
+		const lnFile = path.join(downloadsDir(), "LightNovels", sanitizeFolderName(novelTitle), `${sanitizeFolderName(chapterTitle)}.txt`);
+		if (fs.existsSync(lnFile)) {
+			fs.unlinkSync(lnFile);
+		}
+		return true;
+	} catch {
+		return false;
+	}
 });
 
 function resolveHlsUrl(baseUrl, relativeOrAbsolute) {
@@ -2958,13 +3081,29 @@ function resolveHlsUrl(baseUrl, relativeOrAbsolute) {
 
 ipcMain.handle("download-episode-chunked", async (event, params) => {
 	const { animeId, animeTitle, animeImage, episodeNumber, episodeTitle, streamUrl, quality, audio, subtitles } = params;
+
+	// Guard: reject if streamUrl is missing or clearly invalid
+	if (!streamUrl || typeof streamUrl !== "string" || streamUrl.trim() === "") {
+		return { error: "No stream URL provided for download" };
+	}
+	let parsedStreamUrl;
+	try {
+		parsedStreamUrl = streamUrl.startsWith("/")
+			? `http://localhost:3001${streamUrl}`
+			: streamUrl;
+		new URL(parsedStreamUrl); // validate
+	} catch {
+		return { error: `Invalid stream URL: ${streamUrl}` };
+	}
+
 	const key = `${String(animeId).trim()}_ep_${episodeNumber}`;
-	const dir = downloadsDir();
-	if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+	const animeFolder = path.join(downloadsDir(), "Anime", sanitizeFolderName(animeTitle));
+	if (!fs.existsSync(animeFolder)) fs.mkdirSync(animeFolder, { recursive: true });
 	
 	const targetBase = key.replace(/[^a-zA-Z0-9_-]/g, "_");
-	const mp4Path = path.join(dir, `${targetBase}.mp4`);
-	const tmpTsPath = path.join(dir, `${targetBase}.tmp.ts`);
+	const mp4Path = path.join(animeFolder, `${targetBase}.mp4`);
+	const tmpTsPath = path.join(animeFolder, `${targetBase}.tmp.ts`);
+
 
 	const sendProgress = (progress, receivedBytes, totalBytes, status, error) => {
 		try {
@@ -3017,10 +3156,13 @@ ipcMain.handle("download-episode-chunked", async (event, params) => {
 					"-loglevel", "info",
 					"-headers", headersStr,
 					"-i", realUrl,
+					"-map", "0:v:0?",
+					"-map", "0:a:0?",
+					"-ignore_unknown",
 					"-c:v", "copy",
 					"-c:a", "aac",
-					"-b:a", "192k",
-					"-ac", "2",
+					"-profile:a", "aac_low",
+					"-b:a", "128k",
 					"-movflags", "+faststart",
 					mp4Path
 				];
@@ -3028,7 +3170,7 @@ ipcMain.handle("download-episode-chunked", async (event, params) => {
 				let totalDuration = 0;
 				let lastProgressAt = Date.now();
 				let timedOut = false;
-				const proc = cp.spawn(ffmpegBin, args, { windowsHide: true, shell: true });
+				const proc = cp.spawn(ffmpegBin, args, { windowsHide: true, shell: false });
 
 				// Kill FFmpeg if it doesn't report any duration within 20 seconds
 				// (CDN-protected streams that reject direct access will hang indefinitely)
@@ -3211,8 +3353,8 @@ ipcMain.handle("download-episode-chunked", async (event, params) => {
 					const transmuxOk = await new Promise((resolve) => {
 						const proc = cp.spawn(
 							ffmpegBin,
-							["-y", "-i", tmpTsPath, "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-ac", "2", "-movflags", "+faststart", mp4Path],
-							{ windowsHide: true, shell: true }
+							["-y", "-i", tmpTsPath, "-map", "0:v:0?", "-map", "0:a:0?", "-ignore_unknown", "-c:v", "copy", "-c:a", "aac", "-profile:a", "aac_low", "-b:a", "128k", "-movflags", "+faststart", mp4Path],
+							{ windowsHide: true, shell: false }
 						);
 						proc.on("close", (code) => {
 							resolve(code === 0 && fs.existsSync(mp4Path) && fs.statSync(mp4Path).size > 0);
@@ -3224,17 +3366,17 @@ ipcMain.handle("download-episode-chunked", async (event, params) => {
 						totalBytes = fs.statSync(mp4Path).size;
 						finalFilePath = mp4Path;
 					} else {
-						const tsFallback = path.join(dir, `${targetBase}.ts`);
+						const tsFallback = path.join(animeFolder, `${targetBase}.ts`);
 						try { fs.renameSync(tmpTsPath, tsFallback); } catch {}
 						finalFilePath = tsFallback;
 					}
 				} catch {
-					const tsFallback = path.join(dir, `${targetBase}.ts`);
+					const tsFallback = path.join(animeFolder, `${targetBase}.ts`);
 					try { fs.renameSync(tmpTsPath, tsFallback); } catch {}
 					finalFilePath = tsFallback;
 				}
 			} else if (fs.existsSync(tmpTsPath)) {
-				const tsFallback = path.join(dir, `${targetBase}.ts`);
+				const tsFallback = path.join(animeFolder, `${targetBase}.ts`);
 				try { fs.renameSync(tmpTsPath, tsFallback); } catch {}
 				finalFilePath = tsFallback;
 			}
@@ -3323,4 +3465,132 @@ ipcMain.on("player-stopped", () => {
 	const mw = mainWindow;
 	if (mw && !mw.isDestroyed()) mw.webContents.executeJavaScript("if(typeof gc==='function') gc();").catch(() => {});
 });
+
+// --- Discord Rich Presence (RPC) Integration ---
+let discordRpcClient = null;
+let discordRpcConnected = false;
+let currentDiscordClientId = process.env.DISCORD_CLIENT_ID || process.env.VITE_DISCORD_CLIENT_ID || '1532608064174166097';
+let lastPresenceData = null;
+let lastDiscordLoginAttempt = 0;
+
+function initDiscordRPC(clientId) {
+	if (clientId) {
+		currentDiscordClientId = clientId;
+	}
+	if (!currentDiscordClientId) return;
+
+	const now = Date.now();
+	if (now - lastDiscordLoginAttempt < 5000 && !clientId) return;
+	lastDiscordLoginAttempt = now;
+
+	try {
+		const DiscordRPC = __require('discord-rpc');
+		if (discordRpcClient) {
+			try {
+				discordRpcClient.destroy().catch(() => {});
+			} catch {}
+			discordRpcClient = null;
+			discordRpcConnected = false;
+		}
+
+		discordRpcClient = new DiscordRPC.Client({ transport: 'ipc' });
+
+		discordRpcClient.on('ready', () => {
+			discordRpcConnected = true;
+			console.log('[Discord RPC] Connected to Discord as Client ID:', currentDiscordClientId);
+			if (lastPresenceData) {
+				setDiscordActivity(lastPresenceData);
+			}
+		});
+
+		discordRpcClient.on('disconnected', () => {
+			discordRpcConnected = false;
+			console.log('[Discord RPC] Disconnected from Discord');
+		});
+
+		discordRpcClient.login({ clientId: currentDiscordClientId }).catch((err) => {
+			discordRpcConnected = false;
+			console.log('[Discord RPC] Could not connect to Discord:', err.message || err);
+		});
+	} catch (err) {
+		console.log('[Discord RPC] Error initializing discord-rpc:', err.message || err);
+	}
+}
+
+function setDiscordActivity(presenceData) {
+	lastPresenceData = presenceData;
+	if (!discordRpcClient || !discordRpcConnected) {
+		initDiscordRPC();
+		return false;
+	}
+
+	try {
+		let largeKey = presenceData.largeImageKey || 'yorumi';
+		if (largeKey.startsWith('http://')) {
+			largeKey = largeKey.replace('http://', 'https://');
+		}
+
+		let smallKey = presenceData.smallImageKey || 'yorumi';
+		if (smallKey.startsWith('http://')) {
+			smallKey = smallKey.replace('http://', 'https://');
+		}
+
+		const activity = {
+			details: presenceData.details || 'Yorumi Anime & Manga Streamer',
+			state: presenceData.state || undefined,
+			largeImageKey: largeKey,
+			largeImageText: presenceData.largeImageText || 'Yorumi',
+			smallImageKey: smallKey,
+			smallImageText: presenceData.smallImageText || 'Yorumi',
+			instance: false,
+		};
+
+		if (presenceData.startTimestamp) {
+			activity.startTimestamp = presenceData.startTimestamp;
+		}
+		if (presenceData.endTimestamp) {
+			activity.endTimestamp = presenceData.endTimestamp;
+		}
+
+		discordRpcClient.setActivity(activity).catch((err) => {
+			console.log('[Discord RPC] Failed to set activity:', err.message || err);
+		});
+		return true;
+	} catch (err) {
+		console.log('[Discord RPC] Error setting activity:', err.message || err);
+		return false;
+	}
+}
+
+function clearDiscordActivity() {
+	lastPresenceData = null;
+	if (discordRpcClient && discordRpcConnected) {
+		try {
+			discordRpcClient.clearActivity().catch(() => {});
+		} catch {}
+	}
+}
+
+ipcMain.handle('update-discord-presence', (_event, presenceData) => {
+	return setDiscordActivity(presenceData);
+});
+
+ipcMain.handle('clear-discord-presence', () => {
+	clearDiscordActivity();
+	return true;
+});
+
+ipcMain.handle('set-discord-client-id', (_event, clientId) => {
+	if (clientId && clientId !== currentDiscordClientId) {
+		currentDiscordClientId = clientId;
+		initDiscordRPC(clientId);
+		return true;
+	}
+	return false;
+});
+
+app.whenReady().then(() => {
+	initDiscordRPC();
+});
+
 export {};

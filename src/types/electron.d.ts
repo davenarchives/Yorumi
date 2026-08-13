@@ -30,9 +30,27 @@ export interface ElectronAPI {
     getLocalDownloads: () => Promise<DownloadedEpisode[]>;
     getLocalDownload: (args: { animeId: string; episodeNumber: number; title?: string; anilistId?: number | string; alternateEpNumbers?: (number | string | undefined)[] }) => Promise<DownloadedEpisode | null>;
     deleteLocalDownload: (args: { animeId: string; episodeNumber: number }) => Promise<boolean>;
-    openDownloadsFolder: () => Promise<boolean>;
+    openDownloadsFolder: (category?: 'Anime' | 'Manga' | 'LightNovels') => Promise<boolean>;
+    saveMangaDisk?: (params: { mangaTitle: string; chapterTitle: string; pages: { pageNumber: number; buffer: ArrayBuffer; ext?: string }[] }) => Promise<{ ok: boolean; path?: string }>;
+    saveLNDisk?: (params: { novelTitle: string; chapterTitle: string; content: string }) => Promise<{ ok: boolean; path?: string }>;
+    deleteMangaDisk?: (params: { mangaTitle: string; chapterTitle: string }) => Promise<boolean>;
+    deleteLNDisk?: (params: { novelTitle: string; chapterTitle: string }) => Promise<boolean>;
     onDownloadProgress: (cb: (progress: ActiveDownloadProgress) => void) => (event: unknown, progress: ActiveDownloadProgress) => void;
     offDownloadProgress: (handler: unknown) => void;
+    updateDiscordPresence?: (presence: DiscordPresenceOptions) => Promise<boolean>;
+    clearDiscordPresence?: () => Promise<boolean>;
+    setDiscordClientId?: (clientId: string) => Promise<boolean>;
+}
+
+export interface DiscordPresenceOptions {
+    details?: string;
+    state?: string;
+    largeImageKey?: string;
+    largeImageText?: string;
+    smallImageKey?: string;
+    smallImageText?: string;
+    startTimestamp?: number;
+    endTimestamp?: number;
 }
 
 declare global {
