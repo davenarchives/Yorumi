@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { ChevronUp } from 'lucide-react';
 import type { MangaPage, MangaChapter } from '../../../../types/manga';
 import sleepingGif from '../../../../assets/sleeping.gif';
@@ -36,6 +36,31 @@ export default function PageViewer({
 }: PageViewerProps) {
     const [showScrollTop, setShowScrollTop] = useState(false);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+    // Sequential image preloader: loads Page 1 first, then Page 2, 3... 50 in strict order
+    useEffect(() => {
+        if (!pages || pages.length === 0) return;
+        let isCancelled = false;
+
+        const preloadSequentially = (index: number) => {
+            if (isCancelled || index >= pages.length) return;
+            const img = new Image();
+            img.src = pages[index].imageUrl;
+            img.onload = () => {
+                if (!isCancelled) preloadSequentially(index + 1);
+            };
+            img.onerror = () => {
+                if (!isCancelled) preloadSequentially(index + 1);
+            };
+        };
+
+        // Page 1 is fetched first, followed by remaining pages in order
+        preloadSequentially(0);
+
+        return () => {
+            isCancelled = true;
+        };
+    }, [pages]);
 
     const handleNextPage = () => {
         if (pageIndex < pages.length - 1) {
@@ -87,16 +112,20 @@ export default function PageViewer({
                         // LONGSTRIP MODE
                         <div className="flex flex-col items-center pb-8 min-h-full" onClick={onContentClick}>
                             {pages.map((page, index) => (
-                                <img
+                                <div
                                     key={`${page.pageNumber}-${index}`}
-                                    src={page.imageUrl}
-                                    alt={`Page ${page.pageNumber}`}
-                                    className="transition-all duration-200 block shadow-2xl"
-                                    style={{ width: `${zoomLevel}%`, maxWidth: '100%' }}
-                                    loading={index < 2 ? 'eager' : 'lazy'}
-                                    decoding="async"
-                                    fetchPriority={index === 0 ? 'high' : 'auto'}
-                                />
+                                    className="w-full flex justify-center min-h-[300px] bg-black/10 relative"
+                                >
+                                    <img
+                                        src={page.imageUrl}
+                                        alt={`Page ${page.pageNumber}`}
+                                        className="transition-opacity duration-300 block shadow-2xl"
+                                        style={{ width: `${zoomLevel}%`, maxWidth: '100%' }}
+                                        loading={index === 0 ? 'eager' : 'lazy'}
+                                        decoding={index === 0 ? 'sync' : 'async'}
+                                        fetchPriority={index === 0 ? 'high' : 'auto'}
+                                    />
+                                </div>
                             ))}
 
                             {/* Chapter Navigation at Bottom */}
@@ -182,7 +211,7 @@ export default function PageViewer({
             {/* Scroll to Top Button */}
             <button
                 onClick={scrollToTop}
-                className={`absolute right-6 z-40 w-12 h-12 rounded-full bg-yorumi-manga text-white shadow-lg flex items-center justify-center transition-all duration-300 hover:bg-yorumi-manga/90 hover:scale-110 active:scale-95 ${
+                className={`absolute right-6 z-40 w-12 h-12 rounded-full bg-yorumi-manga text-black shadow-lg flex items-center justify-center transition-all duration-300 hover:bg-yorumi-manga/90 hover:scale-110 active:scale-95 ${
                     showScrollTop ? 'opacity-100 pointer-events-auto translate-y-0' : 'opacity-0 pointer-events-none translate-y-4'
                 }`}
                 style={{ bottom: isHeaderVisible ? '6rem' : '1.5rem' }}

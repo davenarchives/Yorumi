@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { lnService } from '../services/lnService';
+import { lnDownloadService } from '../services/lnDownloadService';
 import type { LNChapterContent, LNReaderSettings, LightNovel, LNChapter } from '../types/ln';
 import { useContinueLNReading } from '../hooks/useContinueLNReading';
 import { useTitleLanguage } from '../context/TitleLanguageContext';
 import { getDisplayTitle } from '../utils/titleLanguage';
 import { slugify } from '../utils/slugify';
 import sleepingGif from '../assets/sleeping.gif';
+import discordRPCService from '../services/discordRPCService';
 import {
     ArrowLeft,
     ChevronLeft,
@@ -74,6 +76,19 @@ export default function LNReaderPage() {
         return loadedChapters[loadedChapters.length - 1] || null;
     }, [loadedChapters]);
 
+    useEffect(() => {
+        const novelTitle = novelDetails?.title || passedLN?.title || slugTitle;
+        if (novelTitle && activeChapter) {
+            discordRPCService.setReadingLightNovel(
+                novelTitle,
+                activeChapter.title || activeChapter.id || 'Current Chapter'
+            );
+        }
+        return () => {
+            discordRPCService.setBrowsing('Light Novels');
+        };
+    }, [novelDetails?.title, passedLN?.title, slugTitle, activeChapter]);
+
     const handleContentClick = () => {
         setIsHeaderVisible((prev) => {
             if (prev) {
@@ -94,6 +109,13 @@ export default function LNReaderPage() {
             return updated;
         });
     };
+
+    const novelDetailsRef = useRef(novelDetails);
+    novelDetailsRef.current = novelDetails;
+    const passedLNRef = useRef(passedLN);
+    passedLNRef.current = passedLN;
+    const saveLNProgressRef = useRef(saveLNProgress);
+    saveLNProgressRef.current = saveLNProgress;
 
     // Load novel chapters for the dropdown menu
     useEffect(() => {
@@ -136,17 +158,44 @@ export default function LNReaderPage() {
         }
         window.scrollTo({ top: 0, behavior: 'smooth' });
 
-        lnService
-            .getChapterContent(chapterId)
-            .then((data) => {
+        const loadContent = async () => {
+            try {
+                // Check offline download first
+                if (novelId) {
+                    const cached = await lnDownloadService.getChapter(novelId, chapterId).catch(() => null);
+                    if (cached && cached.content && mounted) {
+                        const data: LNChapterContent = {
+                            id: cached.chapterId,
+                            novelId: cached.novelId,
+                            title: cached.chapterTitle,
+                            chapterNumber: Number(cached.chapterNumber || 1),
+                            content: cached.content,
+                            prevChapterId: cached.prevChapterId,
+                            nextChapterId: cached.nextChapterId,
+                        };
+                        setLoadedChapters([data]);
+                        saveLNProgressRef.current({
+                            novelId,
+                            novelTitle: passedLNRef.current?.title || novelDetailsRef.current?.title || slugTitle || 'Novel',
+                            coverImage: passedLNRef.current?.images?.jpg?.large_image_url || novelDetailsRef.current?.cover || '',
+                            chapterId: data.id,
+                            chapterNumber: data.chapterNumber,
+                            chapterTitle: data.title,
+                        });
+                        setLoading(false);
+                        return;
+                    }
+                }
+
+                const data = await lnService.getChapterContent(chapterId);
                 if (mounted) {
                     if (data) {
                         setLoadedChapters([data]);
                         if (novelId) {
-                            saveLNProgress({
+                            saveLNProgressRef.current({
                                 novelId,
-                                novelTitle: passedLN?.title || novelDetails?.title || slugTitle || 'Novel',
-                                coverImage: passedLN?.images?.jpg?.large_image_url || novelDetails?.cover || '',
+                                novelTitle: passedLNRef.current?.title || novelDetailsRef.current?.title || slugTitle || 'Novel',
+                                coverImage: passedLNRef.current?.images?.jpg?.large_image_url || novelDetailsRef.current?.cover || '',
                                 chapterId: data.id,
                                 chapterNumber: data.chapterNumber,
                                 chapterTitle: data.title,
@@ -157,19 +206,21 @@ export default function LNReaderPage() {
                     }
                     setLoading(false);
                 }
-            })
-            .catch((err) => {
+            } catch (err) {
                 if (mounted) {
                     console.error('LN Reader fetch error:', err);
                     setError('Error loading chapter content.');
                     setLoading(false);
                 }
-            });
+            }
+        };
+
+        loadContent();
 
         return () => {
             mounted = false;
         };
-    }, [chapterId, novelId]);
+    }, [chapterId, novelId, slugTitle]);
 
     // Load next chapter for Infinite Scroll
     const loadNextChapter = useCallback(async () => {
@@ -189,6 +240,36 @@ export default function LNReaderPage() {
 
         setLoadingNext(true);
         try {
+            // Check offline download first
+            if (novelId) {
+                const cached = await lnDownloadService.getChapter(novelId, nextId);
+                if (cached && cached.content) {
+                    const nextData: LNChapterContent = {
+                        id: cached.chapterId,
+                        novelId: cached.novelId,
+                        title: cached.chapterTitle,
+                        chapterNumber: Number(cached.chapterNumber || 1),
+                        content: cached.content,
+                        prevChapterId: cached.prevChapterId,
+                        nextChapterId: cached.nextChapterId,
+                    };
+                    setLoadedChapters((prev) => {
+                        if (prev.some((c) => String(c.id) === String(nextData.id))) return prev;
+                        return [...prev, nextData];
+                    });
+                    saveLNProgressRef.current({
+                        novelId,
+                        novelTitle: passedLNRef.current?.title || novelDetailsRef.current?.title || slugTitle || 'Novel',
+                        coverImage: passedLNRef.current?.images?.jpg?.large_image_url || novelDetailsRef.current?.cover || '',
+                        chapterId: nextData.id,
+                        chapterNumber: nextData.chapterNumber,
+                        chapterTitle: nextData.title,
+                    });
+                    setLoadingNext(false);
+                    return;
+                }
+            }
+
             const nextData = await lnService.getChapterContent(nextId);
             if (nextData) {
                 setLoadedChapters((prev) => {
@@ -196,10 +277,10 @@ export default function LNReaderPage() {
                     return [...prev, nextData];
                 });
                 if (novelId) {
-                    saveLNProgress({
+                    saveLNProgressRef.current({
                         novelId,
-                        novelTitle: passedLN?.title || novelDetails?.title || slugTitle || 'Novel',
-                        coverImage: passedLN?.images?.jpg?.large_image_url || novelDetails?.cover || '',
+                        novelTitle: passedLNRef.current?.title || novelDetailsRef.current?.title || slugTitle || 'Novel',
+                        coverImage: passedLNRef.current?.images?.jpg?.large_image_url || novelDetailsRef.current?.cover || '',
                         chapterId: nextData.id,
                         chapterNumber: nextData.chapterNumber,
                         chapterTitle: nextData.title,

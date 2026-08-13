@@ -7,6 +7,7 @@ import PageViewer from './PageViewer';
 import MangaInfoSidebar from './MangaInfoSidebar';
 import { useTitleLanguage } from '../../../../context/TitleLanguageContext';
 import { getDisplayTitle } from '../../../../utils/titleLanguage';
+import discordRPCService from '../../../../services/discordRPCService';
 
 type FullscreenElement = HTMLDivElement & {
     webkitRequestFullscreen?: () => Promise<void> | void;
@@ -62,6 +63,29 @@ export default function MangaReaderModal({
     const readerRootRef = useRef<HTMLDivElement>(null);
     const fullscreenAttemptedRef = useRef(false);
     const { saveProgress } = useContinueReading();
+
+    // Discord Rich Presence update for Manga Reading
+    useEffect(() => {
+        if (isOpen && manga) {
+            const title = getDisplayTitle(manga as unknown as Record<string, unknown>, language) || 'Manga';
+            const chapterLabel = currentChapter ? (currentChapter.title || `Chapter ${currentChapter.id}`) : 'Reading';
+            const coverImage = manga?.images?.jpg?.large_image_url
+                || manga?.images?.jpg?.image_url
+                || (manga as any)?.cover
+                || (manga as any)?.image;
+            discordRPCService.setReadingManga(
+                title,
+                chapterLabel,
+                pages.length > 0 ? pageIndex + 1 : undefined,
+                pages.length > 0 ? pages.length : undefined
+            );
+        }
+        return () => {
+            if (isOpen) {
+                discordRPCService.setBrowsing('Manga');
+            }
+        };
+    }, [isOpen, manga, currentChapter, pages.length, pageIndex, language]);
 
     // Save progress on chapter change
     useEffect(() => {
@@ -132,8 +156,16 @@ export default function MangaReaderModal({
     const nextChapter = currentChapterIndex !== -1 && currentChapterIndex > 0
         ? chapters[currentChapterIndex - 1] : null;
 
-    const handleScroll = () => {
-        // Disabled: Headers only show/hide on click now
+    const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+        const currentScrollY = e.currentTarget.scrollTop;
+        const diff = currentScrollY - lastScrollY.current;
+
+        // Hide top and bottom bars when scrolling
+        if (Math.abs(diff) > 5) {
+            setIsHeaderVisible(false);
+            closeSidebars();
+        }
+        lastScrollY.current = currentScrollY;
     };
 
     const handleContentClick = () => {

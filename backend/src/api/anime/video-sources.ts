@@ -381,18 +381,23 @@ class AniDBSource implements VideoSource {
             
             if (!searchTitle) return null;
 
-            let animeId: string | null = null;
+            const cacheKeyAnimeId = `anidb:animeid:${searchTitle}`;
+            let animeId: string | null = await cacheGet<string>(cacheKeyAnimeId).catch(() => null);
             
-            // 1. Try suggestions endpoint FIRST — resilient fetch with curl failover bypasses Cloudflare
-            const suggHtml = await fetchAnidbText(`https://anidb.app/search/suggestions?q=${encodeURIComponent(searchTitle)}`);
-            animeId = this.parseAnimeIdFromSuggestions(suggHtml, rawTitle);
-            logger.info(`[anidb-scraper] Suggestions search for "${searchTitle}" → animeId: ${animeId}`);
-
-            // 2. Fallback to browse endpoint
             if (!animeId) {
-                const browseHtml = await fetchAnidbText(`https://anidb.app/browse?q=${encodeURIComponent(searchTitle)}`);
-                animeId = this.parseAnimeIdFromSuggestions(browseHtml, rawTitle);
-                logger.info(`[anidb-scraper] Browse fallback for "${searchTitle}" → animeId: ${animeId}`);
+                const suggHtml = await fetchAnidbText(`https://anidb.app/search/suggestions?q=${encodeURIComponent(searchTitle)}`);
+                animeId = this.parseAnimeIdFromSuggestions(suggHtml, rawTitle);
+                logger.info(`[anidb-scraper] Suggestions search for "${searchTitle}" → animeId: ${animeId}`);
+
+                if (!animeId) {
+                    const browseHtml = await fetchAnidbText(`https://anidb.app/browse?q=${encodeURIComponent(searchTitle)}`);
+                    animeId = this.parseAnimeIdFromSuggestions(browseHtml, rawTitle);
+                    logger.info(`[anidb-scraper] Browse fallback for "${searchTitle}" → animeId: ${animeId}`);
+                }
+
+                if (animeId) {
+                    await cacheSet(cacheKeyAnimeId, animeId, 24 * 60 * 60).catch(() => {});
+                }
             }
 
             if (!animeId) {
@@ -400,7 +405,6 @@ class AniDBSource implements VideoSource {
                 return null;
             }
 
-            // 3. Get episodes list
             const epJsonStr = await fetchAnidbText(`https://anidb.app/api/frontend/anime/${animeId}/episodes`);
             let epData: any = null;
             try { epData = JSON.parse(epJsonStr); } catch {}
@@ -414,7 +418,6 @@ class AniDBSource implements VideoSource {
                 return null;
             }
 
-            // 4. Get embed URLs per language
             const langJsonStr = await fetchAnidbText(`https://anidb.app/api/frontend/episode/${epId}/languages`);
             let langData: any = null;
             try { langData = JSON.parse(langJsonStr); } catch {}
@@ -431,21 +434,18 @@ class AniDBSource implements VideoSource {
             let variants: Array<{ quality: string; url: string }> = [];
             let dubVariants: Array<{ quality: string; url: string }> = [];
 
-            // 5. Extract m3u8 from embed pages
-            if (jpnEmbed) {
-                const resolved = await this.resolveEmbedPlaylist(jpnEmbed);
-                if (resolved) {
-                    masterM3u8 = resolved.preferredM3u8;
-                    variants = resolved.variants;
-                }
-            }
+            const [jpnRes, engRes] = await Promise.all([
+                jpnEmbed ? this.resolveEmbedPlaylist(jpnEmbed) : Promise.resolve(null),
+                engEmbed ? this.resolveEmbedPlaylist(engEmbed) : Promise.resolve(null),
+            ]);
 
-            if (engEmbed) {
-                const resolved = await this.resolveEmbedPlaylist(engEmbed);
-                if (resolved) {
-                    dubM3u8 = resolved.preferredM3u8;
-                    dubVariants = resolved.variants;
-                }
+            if (jpnRes) {
+                masterM3u8 = jpnRes.preferredM3u8;
+                variants = jpnRes.variants;
+            }
+            if (engRes) {
+                dubM3u8 = engRes.preferredM3u8;
+                dubVariants = engRes.variants;
             }
 
             if (masterM3u8) {
@@ -460,17 +460,17 @@ class AniDBSource implements VideoSource {
                     subtitles: [],
                     source: this.id,
                     episode,
-                    duration: (metadata?.duration ? Number(metadata.duration) * 60 : 1440),
                     title: epTitle,
                     referer,
-                    variants,
-                    dubVariants,
+                    dubReferer: dubM3u8 ? referer : undefined,
+                    variants: variants.length > 0 ? variants : undefined,
+                    dubVariants: dubVariants.length > 0 ? dubVariants : undefined,
                 };
             }
 
             logger.warn(`[anidb-scraper] No m3u8 extracted from embed for anime ${animeId} ep ${episode}`);
-        } catch (error) {
-            logger.warn(`[anidb-scraper] AniDB scraping failed for episode ${episode}`, error);
+        } catch (error: any) {
+            logger.error(`[anidb-scraper] Error resolving AniDB stream: ${error?.message || error}`);
         }
 
         return null;
@@ -478,10 +478,20 @@ class AniDBSource implements VideoSource {
 }
 
 async function fetchAnidbText(url: string, customHeaders?: Record<string, string>): Promise<string> {
-    const ANIDB_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/121.0';
+    const ANIDB_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0';
     const ANIDB_REF = 'https://anidb.app/';
 
-    // 1. Try axios first
+    try {
+        const curlCmd = process.platform === 'win32' ? 'curl.exe' : 'curl';
+        const args = ['-sL', '-A', ANIDB_UA, '-e', ANIDB_REF, '--max-time', '4', url];
+        const { stdout } = await execFileAsync(curlCmd, args);
+        if (stdout && stdout.trim().length > 0) {
+            return stdout;
+        }
+    } catch {
+        // Fall back to fast axios
+    }
+
     try {
         const res = await axios.get<string>(url, {
             headers: {
@@ -490,24 +500,15 @@ async function fetchAnidbText(url: string, customHeaders?: Record<string, string
                 Referer: ANIDB_REF,
                 ...(customHeaders || {}),
             },
-            timeout: 6000,
+            timeout: 2000,
         });
         if (typeof res.data === 'string') return res.data;
         if (res.data) return JSON.stringify(res.data);
-    } catch {
-        // Fall back to curl failover (same strategy as ani-cli) if Cloudflare challenge or 403 occurs
-    }
-
-    // 2. Failover to curl / curl-impersonate
-    try {
-        const curlCmd = process.platform === 'win32' ? 'curl.exe' : 'curl';
-        const args = ['-sL', '-A', ANIDB_UA, '-e', ANIDB_REF, '--max-time', '10', url];
-        const { stdout } = await execFileAsync(curlCmd, args);
-        return stdout || '';
     } catch (err: any) {
         logger.warn(`[anidb-scraper] fetchAnidbText failed for ${url}: ${err?.message || err}`);
-        return '';
     }
+
+    return '';
 }
 
 // Default sources for auto-fallback (only sources that return playable HLS/video URLs)

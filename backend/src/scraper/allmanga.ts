@@ -901,21 +901,24 @@ export class AllMangaScraper {
     private async fetchAnidbUrl(url: string): Promise<string> {
         const ANIDB_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/121.0';
         try {
+            const curlCmd = process.platform === 'win32' ? 'curl.exe' : 'curl';
+            const args = ['-sL', '-A', ANIDB_UA, '-e', 'https://anidb.app/', '--max-time', '4', url];
+            const { stdout } = await execFileAsync(curlCmd, args);
+            if (stdout && stdout.trim().length > 0) {
+                return stdout;
+            }
+        } catch {
+            // Failover to axios
+        }
+
+        try {
             const res = await axios.get(url, {
                 headers: { 'User-Agent': ANIDB_UA, Accept: 'application/json', Referer: 'https://anidb.app/' },
-                timeout: 5000,
+                timeout: 2000,
             });
             return typeof res.data === 'string' ? res.data : JSON.stringify(res.data);
         } catch {
-            // Failover to curl for Cloudflare challenge bypass
-            try {
-                const curlCmd = process.platform === 'win32' ? 'curl.exe' : 'curl';
-                const args = ['-sL', '-A', ANIDB_UA, '-e', 'https://anidb.app/', '--max-time', '10', url];
-                const { stdout } = await execFileAsync(curlCmd, args);
-                return stdout || '';
-            } catch {
-                return '';
-            }
+            return '';
         }
     }
 

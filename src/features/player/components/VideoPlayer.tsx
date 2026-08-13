@@ -7,6 +7,7 @@ import CustomVideoControls from './CustomVideoControls';
 import type { StreamServerKey } from '../../../hooks/useStreams';
 import { shouldSkipIntro, shouldSkipOutro, type SkipTimestamp } from '../../../services/skipTimestamps';
 import sleepingGif from '../../../assets/sleeping.gif';
+import discordRPCService from '../../../services/discordRPCService';
 
 const IFRAME_LOAD_TIMEOUT_MS = 18_000;
 const NATIVE_LOAD_TIMEOUT_MS = 20_000;
@@ -190,6 +191,20 @@ export default function VideoPlayer(props: VideoPlayerProps) {
     const [showServerMenu, setShowServerMenu] = useState(false);
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [hlsLevels, setHlsLevels] = useState<number[]>([]);
+
+    useEffect(() => {
+        if (props.animeTitle && props.episodeNumber) {
+            discordRPCService.setWatchingAnime(
+                props.animeTitle,
+                props.episodeNumber,
+                props.episodeTitle,
+                props.animeImage
+            );
+        }
+        return () => {
+            discordRPCService.setBrowsing('Anime');
+        };
+    }, [props.animeTitle, props.episodeNumber, props.episodeTitle, props.animeImage]);
 
     const handleHlsQualitySelect = useCallback((quality: string) => {
         if (!hlsRef.current) return false;
