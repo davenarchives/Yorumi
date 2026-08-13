@@ -237,6 +237,15 @@ export default function SearchModal({ isOpen, onClose, type }: SearchModalProps)
                                             } else if (itemType === 'MANGA' || itemType === 'MANHWA' || itemType === 'MANHUA') {
                                                 badgeClass = 'border-[#7a3b8c] text-[#c961e5]';
                                                 badgeText = itemType;
+                                            } else if (itemType.includes('KR')) {
+                                                badgeClass = 'border-amber-500/50 text-amber-400 bg-amber-500/10';
+                                                badgeText = 'KR (WN)';
+                                            } else if (itemType.includes('CN')) {
+                                                badgeClass = 'border-red-500/50 text-red-400 bg-red-500/10';
+                                                badgeText = 'CN (WN)';
+                                            } else if (type === 'ln' || itemType === 'NOVEL') {
+                                                badgeClass = 'border-amber-400/50 text-amber-300 bg-amber-400/10';
+                                                badgeText = 'LN';
                                             }
 
                                             // Try to extract year from date

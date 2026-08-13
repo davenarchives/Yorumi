@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { Manga, MangaChapter, MangaPage } from '../types/manga';
 import { mangaService } from '../services/mangaService';
+import { mangaDownloadService } from '../services/mangaDownloadService';
 import { token_set_ratio, token_sort_ratio } from 'fuzzball';
 import { storage } from '../utils/storage';
 import { useReadList } from './useReadList';
@@ -512,7 +513,19 @@ export function useManga() {
         try {
             let pages: MangaPage[] = [];
 
-            if (chapterPagesCache.current.has(chapter.url)) {
+            // Check if downloaded offline in IndexedDB
+            const mangaKey = selectedManga?.id || selectedManga?.mal_id || '';
+            if (mangaKey) {
+                const downloaded = await mangaDownloadService.getChapter(mangaKey, chapter.id);
+                if (downloaded && downloaded.pages && downloaded.pages.length > 0) {
+                    pages = downloaded.pages.map((p) => ({
+                        pageNumber: p.pageNumber,
+                        imageUrl: p.imageUrl,
+                    }));
+                }
+            }
+
+            if (pages.length === 0 && chapterPagesCache.current.has(chapter.url)) {
                 // Get from cache
                 const cachedPages = await chapterPagesCache.current.get(chapter.url)!;
 
@@ -530,7 +543,7 @@ export function useManga() {
                         chapterPagesCache.current.set(chapter.url, Promise.resolve(data.pages));
                     }
                 }
-            } else {
+            } else if (pages.length === 0) {
                 // Fetch fresh
                 const data = await mangaService.getChapterPages(chapter.url);
                 if (data?.pages && data.pages.length > 0) {

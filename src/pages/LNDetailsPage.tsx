@@ -7,8 +7,10 @@ import { useContinueLNReading } from '../hooks/useContinueLNReading';
 import { useTitleLanguage } from '../context/TitleLanguageContext';
 import { getDisplayTitle } from '../utils/titleLanguage';
 import { slugify } from '../utils/slugify';
-import { Play, Plus, Check, Search, Star } from 'lucide-react';
+import { Play, Plus, Check, Search, Star, Download, Loader2, CircleCheckBig, FolderOpen } from 'lucide-react';
 import ChapterViewToggle, { useChapterViewMode, type ChapterViewMode } from '../components/ui/ChapterViewToggle';
+import { useLNDownloads } from '../hooks/useLNDownloads';
+import { downloadService } from '../services/downloadService';
 
 // Chapter Grid Component matching Manga details format
 const LNChapterList = ({
@@ -16,16 +18,26 @@ const LNChapterList = ({
     readChapters,
     onChapterClick,
     viewMode = 'list',
+    onViewModeChange,
+    novelId,
+    novelTitle,
+    novelImage,
 }: {
     chapters: LNChapter[];
     readChapters: Set<string>;
     onChapterClick: (ch: LNChapter) => void;
     viewMode?: ChapterViewMode;
+    onViewModeChange?: (mode: ChapterViewMode) => void;
+    novelId?: string;
+    novelTitle?: string;
+    novelImage?: string;
 }) => {
     const [searchQuery, setSearchQuery] = useState('');
     const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
     const [page, setPage] = useState(1);
     const ITEMS_PER_PAGE = 50;
+
+    const { isChapterDownloaded, getDownloadProgress, startDownload, downloadAll, deleteDownload } = useLNDownloads();
 
     const filteredChapters = useMemo(() => {
         return chapters.filter((ch) =>
@@ -48,15 +60,19 @@ const LNChapterList = ({
         <div className="mt-6 bg-[#111] rounded-2xl p-4 sm:p-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
                 <h3 className="text-xl font-black text-white">{chapters.length} Chapters</h3>
-                <button
-                    onClick={() => {
-                        setSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'));
-                        setPage(1);
-                    }}
-                    className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-xl text-sm font-bold text-gray-300 transition-colors flex items-center gap-2"
-                >
-                    {sortOrder === 'asc' ? '↓ Oldest First' : '↑ Newest First'}
-                </button>
+                <div className="flex items-center gap-2">
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+                            setPage(1);
+                        }}
+                        className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-xl text-sm font-bold text-gray-300 transition-colors flex items-center gap-2 cursor-pointer"
+                    >
+                        {sortOrder === 'asc' ? '↓ Oldest First' : '↑ Newest First'}
+                    </button>
+                    {onViewModeChange && <ChapterViewToggle viewMode={viewMode} onViewModeChange={onViewModeChange} />}
+                </div>
             </div>
 
             <div className="mb-6">
@@ -81,6 +97,9 @@ const LNChapterList = ({
                 <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10 gap-2.5">
                     {currentChapters.map((ch, index) => {
                         const isRead = readChapters.has(String(ch.id));
+                        const isDownloaded = isChapterDownloaded(novelId, ch.id);
+                        const progress = getDownloadProgress(novelId, ch.id);
+                        const isDownloading = progress?.status === 'downloading';
 
                         const titleMatch = ch.title.match(/^(Arc\s+\d+[\s–—,-]*(?:Chapter\s*)?[\d.]+|Vol(?:ume)?\s*[\d.]+\s*(?:Chapter\s*)?[\d.]+|Chapter\s+[\d.]+|Ch\.\s*[\d.]+)(?:\s*[:–—,-]\s*["'«]?(.*?)["'»]?)?$/i);
                         const mainStr = titleMatch ? titleMatch[1].trim() : ch.title.split(/[:–—]/)[0].trim();
@@ -92,7 +111,7 @@ const LNChapterList = ({
                                 key={`${ch.id}-${index}`}
                                 onClick={() => onChapterClick(ch)}
                                 title={ch.title}
-                                className={`aspect-square flex flex-col items-center justify-center p-2 rounded-xl transition-all duration-200 text-center group
+                                className={`relative aspect-square flex flex-col items-center justify-center p-2 rounded-xl transition-all duration-200 text-center group
                                     ${isRead ? 'opacity-50 bg-[#141414]' : 'bg-[#1a1a1a] hover:bg-[#252525]'} active:scale-95 cursor-pointer`}
                             >
                                 <span className={`font-semibold text-xs sm:text-sm leading-tight ${isRead ? 'text-gray-400' : 'text-gray-200 group-hover:text-amber-400'} transition-colors line-clamp-2`}>
@@ -103,6 +122,13 @@ const LNChapterList = ({
                                         {subtitleStr}
                                     </span>
                                 )}
+                                <div className="absolute top-1.5 right-1.5" onClick={(e) => e.stopPropagation()}>
+                                    {isDownloading ? (
+                                        <Loader2 className="w-3 h-3 animate-spin text-amber-400" />
+                                    ) : isDownloaded ? (
+                                        <CircleCheckBig className="w-3 h-3 text-amber-400" />
+                                    ) : null}
+                                </div>
                             </button>
                         );
                     })}
@@ -116,6 +142,9 @@ const LNChapterList = ({
                 <div className="flex flex-col space-y-1">
                     {currentChapters.map((ch, index) => {
                         const isRead = readChapters.has(String(ch.id));
+                        const isDownloaded = isChapterDownloaded(novelId, ch.id);
+                        const progress = getDownloadProgress(novelId, ch.id);
+                        const isDownloading = progress?.status === 'downloading';
 
                         const titleMatch = ch.title.match(/^(Arc\s+\d+[\s–—,-]*(?:Chapter\s*)?[\d.]+|Vol(?:ume)?\s*[\d.]+\s*(?:Chapter\s*)?[\d.]+|Chapter\s+[\d.]+|Ch\.\s*[\d.]+)(?:\s*[:–—,-]\s*["'«]?(.*?)["'»]?)?$/i);
                         const mainStr = titleMatch ? titleMatch[1].trim() : ch.title.split(/[:–—]/)[0].trim();
@@ -123,7 +152,7 @@ const LNChapterList = ({
                         const subtitleStr = subMatch ? subMatch.replace(/^["'«]|["'»]$/g, '').trim() : '';
 
                         return (
-                            <button
+                            <div
                                 key={`${ch.id}-${index}`}
                                 onClick={() => onChapterClick(ch)}
                                 className={`flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3.5 rounded-xl transition-all duration-200 text-left group
@@ -139,12 +168,56 @@ const LNChapterList = ({
                                         </span>
                                     )}
                                 </div>
-                                {ch.releaseDate && (
-                                    <span className="text-gray-500 text-xs font-medium shrink-0">
-                                        {ch.releaseDate}
-                                    </span>
-                                )}
-                            </button>
+                                <div className="flex items-center gap-3 shrink-0" onClick={(e) => e.stopPropagation()}>
+                                    {ch.releaseDate && (
+                                        <span className="text-gray-500 text-xs font-medium shrink-0">
+                                            {ch.releaseDate}
+                                        </span>
+                                    )}
+                                    <button
+                                        type="button"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            if (isDownloaded) {
+                                                if (novelId) deleteDownload(novelId, ch.id);
+                                            } else if (!isDownloading) {
+                                                startDownload({
+                                                    novelId: novelId || '',
+                                                    novelTitle: novelTitle || 'Novel',
+                                                    novelImage: novelImage || '',
+                                                    chapter: ch,
+                                                });
+                                            }
+                                        }}
+                                        disabled={isDownloading}
+                                        className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+                                            isDownloaded
+                                                ? 'text-amber-400 hover:bg-red-500/20 hover:text-red-400'
+                                                : isDownloading
+                                                ? 'text-amber-400 hover:bg-white/10'
+                                                : 'text-gray-500 hover:text-white hover:bg-white/10 opacity-70 group-hover:opacity-100'
+                                        }`}
+                                        title={
+                                            isDownloaded
+                                                ? 'Downloaded for offline (Click to delete)'
+                                                : isDownloading
+                                                ? `Downloading ${progress?.progress || 0}%`
+                                                : 'Download chapter'
+                                        }
+                                    >
+                                        {isDownloading ? (
+                                            <div className="flex items-center gap-1 text-[11px] font-bold text-amber-400">
+                                                <Loader2 className="w-4 h-4 animate-spin" />
+                                                <span>{progress?.progress || 0}%</span>
+                                            </div>
+                                        ) : isDownloaded ? (
+                                            <CircleCheckBig className="w-4 h-4 text-amber-400" />
+                                        ) : (
+                                            <Download className="w-4 h-4" />
+                                        )}
+                                    </button>
+                                </div>
+                            </div>
                         );
                     })}
                     {currentChapters.length === 0 && (
@@ -194,6 +267,13 @@ export default function LNDetailsPage() {
 
     const { isInLNReadList, toggleLNReadList } = useLNReadList();
     const { continueReadingList } = useContinueLNReading();
+    const { downloads: lnDownloads, downloadAll: downloadAllLN } = useLNDownloads();
+
+    const isElectron = typeof window !== 'undefined' && Boolean(window.electronAPI?.openDownloadsFolder);
+
+    const handleOpenFolder = useCallback(() => {
+        downloadService.openDownloadsFolder('LightNovels');
+    }, []);
 
     const currentProgress = useMemo(() => {
         if (!id) return null;
@@ -280,6 +360,40 @@ export default function LNDetailsPage() {
     const cover = ln?.images?.jpg?.large_image_url || ln?.images?.jpg?.image_url || '';
     const lnId = String(ln?.id || id);
 
+    const matchingLNDownloads = useMemo(() => {
+        if (!id && !ln) return [];
+        const targetTitle = (displayTitle || '').toLowerCase().trim();
+        return lnDownloads.filter((d) => {
+            if (String(d.novelId) === String(id) || String(d.novelId) === String(lnId)) return true;
+            if (targetTitle && d.novelTitle.toLowerCase().trim() === targetTitle) return true;
+            return false;
+        });
+    }, [lnDownloads, id, lnId, displayTitle, ln]);
+
+    const downloadedLNChapters: LNChapter[] = useMemo(() => {
+        return matchingLNDownloads.map((d) => ({
+            id: d.chapterId,
+            number: Number(d.chapterNumber || 1),
+            title: d.chapterTitle,
+            url: d.chapterId,
+        }));
+    }, [matchingLNDownloads]);
+
+    const effectiveChapters = chapters.length > 0 ? chapters : downloadedLNChapters;
+
+    const handleDownloadAllLN = useCallback(() => {
+        const novelId = lnId || id || '';
+        if (!novelId) return;
+        downloadAllLN(
+            {
+                id: novelId,
+                title: displayTitle || 'Novel',
+                image: cover || '',
+            },
+            effectiveChapters
+        );
+    }, [lnId, id, displayTitle, cover, downloadAllLN, effectiveChapters]);
+
     const handleChapterClick = useCallback((ch: LNChapter) => {
         navigate(`/ln/read/${slugify(displayTitle)}/${lnId}/${encodeURIComponent(ch.id)}`, {
             state: { chapter: ch, ln },
@@ -363,7 +477,7 @@ export default function LNDetailsPage() {
                     <div className="flex-1 text-center md:text-left space-y-4">
                         <div className="space-y-1">
                             <span className="text-[11px] font-black uppercase tracking-widest text-amber-400">
-                                {ln.type || 'NOVEL'}
+                                {ln.countryOfOrigin === 'KR' ? '🇰🇷 Korean Web Novel' : ln.countryOfOrigin === 'CN' ? '🇨🇳 Chinese Web Novel' : (ln.type || 'Light Novel')}
                             </span>
                             <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-black text-white uppercase tracking-tight leading-tight">
                                 {displayTitle}
@@ -471,10 +585,37 @@ export default function LNDetailsPage() {
                 {/* Chapters Section */}
                 <div className="w-full mt-6">
                     <div id="chapters-section" className="pt-2">
-                        <div className="flex items-center gap-4 mb-6">
-                            <h3 className="text-xl font-black text-white uppercase tracking-wider whitespace-nowrap">Chapters</h3>
-                            <div className="flex-1 h-px bg-white/10" />
-                            <ChapterViewToggle viewMode={viewMode} onViewModeChange={setViewMode} />
+                        <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+                            <div className="flex items-center gap-4 flex-1">
+                                <h3 className="text-xl font-black text-white uppercase tracking-wider whitespace-nowrap">
+                                    Chapters {effectiveChapters.length > 0 && <span className="text-sm font-bold text-gray-500">({effectiveChapters.length})</span>}
+                                </h3>
+                                <div className="flex-1 h-px bg-white/10" />
+                            </div>
+                            {effectiveChapters.length > 0 && (
+                                <div className="flex items-center gap-2">
+                                    {isElectron && (
+                                        <button
+                                            type="button"
+                                            onClick={handleOpenFolder}
+                                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs font-semibold text-gray-300 hover:text-white transition-colors border border-white/5 cursor-pointer"
+                                            title="Open downloaded files on your computer"
+                                        >
+                                            <FolderOpen className="w-3.5 h-3.5 text-amber-400" />
+                                            <span>Downloads Folder</span>
+                                        </button>
+                                    )}
+                                    <button
+                                        type="button"
+                                        onClick={handleDownloadAllLN}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs font-semibold text-gray-300 hover:text-white transition-colors border border-white/5 cursor-pointer"
+                                        title="Download all chapters for offline reading"
+                                    >
+                                        <Download className="w-3.5 h-3.5 text-amber-400" />
+                                        <span>Download All</span>
+                                    </button>
+                                </div>
+                            )}
                         </div>
                         {loadingChapters ? (
                             <div className="mt-6 bg-[#111] rounded-2xl p-4 sm:p-6 shadow-xl ring-1 ring-white/5 animate-pulse">
@@ -496,12 +637,16 @@ export default function LNDetailsPage() {
                                     ))}
                                 </div>
                             </div>
-                        ) : chapters.length > 0 ? (
+                        ) : effectiveChapters.length > 0 ? (
                             <LNChapterList
-                                chapters={chapters}
+                                chapters={effectiveChapters}
                                 readChapters={readChapters}
                                 onChapterClick={handleChapterClick}
                                 viewMode={viewMode}
+                                onViewModeChange={setViewMode}
+                                novelId={lnId}
+                                novelTitle={displayTitle}
+                                novelImage={cover}
                             />
                         ) : (
                             <div className="text-gray-500 text-center py-4 space-y-2">

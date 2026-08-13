@@ -154,13 +154,13 @@ export const searchApi = {
     async getLNPreview(query: string, language: TitleLanguage) {
         const { lnService } = await import('../../services/lnService');
         const items = await lnService.searchNovels(query);
-        return items.slice(0, 5).map((item) => ({
+        return items.slice(0, 8).map((item) => ({
             id: item.id,
             title: getDisplayTitle(item as unknown as Record<string, unknown>, language),
             subtitle: item.author || getSecondaryTitle(item as unknown as Record<string, unknown>, language),
-            image: item.images?.jpg?.image_url || '',
-            date: '',
-            type: item.type || 'NOVEL',
+            image: item.images?.jpg?.large_image_url || item.images?.jpg?.image_url || '',
+            date: item.countryOfOrigin === 'KR' ? 'Korean WN' : item.countryOfOrigin === 'CN' ? 'Chinese WN' : 'Japanese LN',
+            type: item.countryOfOrigin === 'KR' ? 'KR (WN)' : item.countryOfOrigin === 'CN' ? 'CN (WN)' : (item.type || 'NOVEL'),
             duration: null,
             score: item.score,
             url: `/ln/details/${item.id}`,

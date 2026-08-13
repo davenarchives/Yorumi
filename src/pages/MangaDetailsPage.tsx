@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { Check, Plus, Play } from 'lucide-react';
+import { Check, Plus, Play, Download, Loader2, CircleCheckBig, Trash2, FolderOpen } from 'lucide-react';
 import { useManga } from '../hooks/useManga';
 import { useReadList } from '../hooks/useReadList';
 import { useContinueReading } from '../hooks/useContinueReading';
+import { useMangaDownloads } from '../hooks/useMangaDownloads';
+import { downloadService } from '../services/downloadService';
 import { slugify } from '../utils/slugify';
 import type { Manga, MangaChapter } from '../types/manga';
 import type { Anime } from '../types/anime';
@@ -23,17 +25,27 @@ const ChapterList = ({
     chapters,
     readChapters,
     onChapterClick,
-    viewMode = 'list'
+    viewMode = 'list',
+    onViewModeChange,
+    manga,
 }: {
     chapters: MangaChapter[],
     readChapters: Set<string>,
     onChapterClick: (ch: MangaChapter) => void,
-    viewMode?: ChapterViewMode
+    viewMode?: ChapterViewMode,
+    onViewModeChange?: (mode: ChapterViewMode) => void,
+    manga?: Manga | null,
 }) => {
     const [searchQuery, setSearchQuery] = useState('');
     const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
     const [page, setPage] = useState(1);
     const ITEMS_PER_PAGE = 50;
+
+    const { isChapterDownloaded, getDownloadProgress, startDownload, deleteDownload } = useMangaDownloads();
+
+    const mangaId = manga?.id || manga?.mal_id || '';
+    const mangaTitle = manga?.title || 'Manga';
+    const mangaImage = manga?.images?.jpg?.large_image_url || manga?.images?.jpg?.image_url || '';
 
     // Filter by search query
     const filteredChapters = chapters.filter(ch => 
@@ -54,12 +66,15 @@ const ChapterList = ({
         <div className="mt-6 bg-[#111] rounded-2xl p-4 sm:p-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
                 <h3 className="text-xl font-black text-white">{chapters.length} Chapters</h3>
-                <button 
-                    onClick={() => { setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc'); setPage(1); }}
-                    className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-xl text-sm font-bold text-gray-300 transition-colors flex items-center gap-2"
-                >
-                    {sortOrder === 'desc' ? '↑ Newest' : '↓ Oldest'}
-                </button>
+                <div className="flex items-center gap-2">
+                    <button 
+                        onClick={() => { setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc'); setPage(1); }}
+                        className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-xl text-sm font-bold text-gray-300 transition-colors flex items-center gap-2 cursor-pointer"
+                    >
+                        {sortOrder === 'desc' ? '↑ Newest' : '↓ Oldest'}
+                    </button>
+                    {onViewModeChange && <ChapterViewToggle viewMode={viewMode} onViewModeChange={onViewModeChange} />}
+                </div>
             </div>
             
             <div className="mb-6">
@@ -81,6 +96,9 @@ const ChapterList = ({
                 <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10 gap-2.5">
                     {currentChapters.map((ch, index) => {
                         const isRead = readChapters.has(ch.id);
+                        const isDownloaded = isChapterDownloaded(mangaId, ch.id);
+                        const progress = getDownloadProgress(mangaId, ch.id);
+                        const isDownloading = progress?.status === 'downloading';
                         
                         const titleMatch = ch.title.match(/^(Arc\s+\d+[\s–—,-]*(?:Chapter\s*)?[\d.]+|Vol(?:ume)?\s*[\d.]+\s*(?:Chapter\s*)?[\d.]+|Chapter\s+[\d.]+|Ch\.\s*[\d.]+)(?:\s*[:–—,-]\s*["'«]?(.*?)["'»]?)?$/i);
                         const mainStr = titleMatch ? titleMatch[1].trim() : ch.title.split(/[:–—]/)[0].trim();
@@ -92,7 +110,7 @@ const ChapterList = ({
                                 key={`${ch.id}-${index}`}
                                 onClick={() => onChapterClick(ch)}
                                 title={ch.title}
-                                className={`aspect-square flex flex-col items-center justify-center p-2 rounded-xl transition-all duration-200 text-center group
+                                className={`relative aspect-square flex flex-col items-center justify-center p-2 rounded-xl transition-all duration-200 text-center group
                                     ${isRead ? 'opacity-50 bg-[#141414]' : 'bg-[#1a1a1a] hover:bg-[#252525]'} active:scale-95 cursor-pointer`}
                             >
                                 <span className={`font-semibold text-xs sm:text-sm leading-tight ${isRead ? 'text-gray-400' : 'text-gray-200 group-hover:text-yorumi-manga'} transition-colors line-clamp-2`}>
@@ -103,6 +121,13 @@ const ChapterList = ({
                                         {subtitleStr}
                                     </span>
                                 )}
+                                <div className="absolute top-1.5 right-1.5" onClick={(e) => e.stopPropagation()}>
+                                    {isDownloading ? (
+                                        <Loader2 className="w-3 h-3 animate-spin text-yorumi-manga" />
+                                    ) : isDownloaded ? (
+                                        <CircleCheckBig className="w-3 h-3 text-emerald-400" />
+                                    ) : null}
+                                </div>
                             </button>
                         );
                     })}
@@ -116,6 +141,9 @@ const ChapterList = ({
                 <div className="flex flex-col space-y-1">
                     {currentChapters.map((ch, index) => {
                         const isRead = readChapters.has(ch.id);
+                        const isDownloaded = isChapterDownloaded(mangaId, ch.id);
+                        const progress = getDownloadProgress(mangaId, ch.id);
+                        const isDownloading = progress?.status === 'downloading';
                         
                         const titleMatch = ch.title.match(/^(Arc\s+\d+[\s–—,-]*(?:Chapter\s*)?[\d.]+|Vol(?:ume)?\s*[\d.]+\s*(?:Chapter\s*)?[\d.]+|Chapter\s+[\d.]+|Ch\.\s*[\d.]+)(?:\s*[:–—,-]\s*["'«]?(.*?)["'»]?)?$/i);
                         const mainStr = titleMatch ? titleMatch[1].trim() : ch.title.split(/[:–—]/)[0].trim();
@@ -123,7 +151,7 @@ const ChapterList = ({
                         const subtitleStr = subMatch ? subMatch.replace(/^["'«]|["'»]$/g, '').trim() : '';
 
                         return (
-                            <button
+                            <div
                                 key={`${ch.id}-${index}`}
                                 onClick={() => onChapterClick(ch)}
                                 className={`flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3.5 rounded-xl transition-all duration-200 text-left group
@@ -139,12 +167,60 @@ const ChapterList = ({
                                         </span>
                                     )}
                                 </div>
-                                {ch.uploadDate && (
-                                    <span className="text-gray-500 text-xs font-medium shrink-0">
-                                        {ch.uploadDate}
-                                    </span>
-                                )}
-                            </button>
+                                <div className="flex items-center gap-3 shrink-0" onClick={(e) => e.stopPropagation()}>
+                                    {ch.uploadDate && (
+                                        <span className="text-gray-500 text-xs font-medium shrink-0">
+                                            {ch.uploadDate}
+                                        </span>
+                                    )}
+                                    <button
+                                        type="button"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            if (isDownloaded) {
+                                                deleteDownload(mangaId, ch.id);
+                                            } else if (!isDownloading) {
+                                                startDownload({
+                                                    mangaId,
+                                                    mangaTitle,
+                                                    mangaImage,
+                                                    chapter: ch,
+                                                });
+                                            }
+                                        }}
+                                        disabled={isDownloading}
+                                        className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+                                            isDownloaded
+                                                ? 'text-emerald-400 hover:bg-red-500/20 hover:text-red-400'
+                                                : isDownloading
+                                                ? 'text-yorumi-manga hover:bg-white/10'
+                                                : 'text-gray-500 hover:text-white hover:bg-white/10 opacity-70 group-hover:opacity-100'
+                                        }`}
+                                        title={
+                                            isDownloaded
+                                                ? 'Downloaded for offline (Click to delete)'
+                                                : isDownloading
+                                                ? `Downloading ${progress?.progress || 0}%`
+                                                : 'Download chapter'
+                                        }
+                                    >
+                                        {isDownloading ? (
+                                            <div className="flex items-center gap-1 text-[11px] font-bold text-yorumi-manga">
+                                                <Loader2 className="w-4 h-4 animate-spin" />
+                                                <span>
+                                                    {progress?.downloadedPages && progress?.totalPages
+                                                        ? `${progress.downloadedPages}/${progress.totalPages}`
+                                                        : `${progress?.progress || 0}%`}
+                                                </span>
+                                            </div>
+                                        ) : isDownloaded ? (
+                                            <CircleCheckBig className="w-4 h-4 text-emerald-400" />
+                                        ) : (
+                                            <Download className="w-4 h-4" />
+                                        )}
+                                    </button>
+                                </div>
+                            </div>
                         );
                     })}
                     {currentChapters.length === 0 && (
@@ -204,6 +280,13 @@ export default function MangaDetailsPage() {
     const { isInReadList, addToReadList, removeFromReadList } = useReadList();
     const { continueReadingList } = useContinueReading();
     const { language } = useTitleLanguage();
+    const { downloads: mangaDownloads, downloadAll: downloadAllManga } = useMangaDownloads();
+
+    const isElectron = typeof window !== 'undefined' && Boolean(window.electronAPI?.openDownloadsFolder);
+
+    const handleOpenFolder = useCallback(() => {
+        downloadService.openDownloadsFolder('Manga');
+    }, []);
 
     const currentRouteId = normalizeMangaRouteId(id);
     const selectedMatchesCurrentRoute = Boolean(selectedManga) && [
@@ -222,6 +305,41 @@ export default function MangaDetailsPage() {
         : routeMatchesCurrentRoute
             ? routeManga
             : selectedManga || routeManga;
+
+    const matchingMangaDownloads = useMemo(() => {
+        if (!id && !displayManga) return [];
+        const targetId = normalizeMangaRouteId(id);
+        const targetTitle = (displayManga?.title || '').toLowerCase().trim();
+        return mangaDownloads.filter((d) => {
+            if (normalizeMangaRouteId(d.mangaId) === targetId) return true;
+            if (targetTitle && d.mangaTitle.toLowerCase().trim() === targetTitle) return true;
+            return false;
+        });
+    }, [mangaDownloads, id, displayManga]);
+
+    const downloadedChapters: MangaChapter[] = useMemo(() => {
+        return matchingMangaDownloads.map((d) => ({
+            id: d.chapterId,
+            title: d.chapterTitle,
+            url: d.chapterUrl || d.id,
+            uploadDate: 'Offline',
+        }));
+    }, [matchingMangaDownloads]);
+
+    const effectiveChapters = mangaChapters.length > 0 ? mangaChapters : downloadedChapters;
+
+    const handleDownloadAllManga = useCallback(() => {
+        const mangaId = displayManga?.id || displayManga?.mal_id || id || '';
+        if (!mangaId) return;
+        downloadAllManga(
+            {
+                id: mangaId,
+                title: displayManga?.title || 'Manga',
+                image: displayManga?.images?.jpg?.large_image_url || displayManga?.images?.jpg?.image_url || '',
+            },
+            effectiveChapters
+        );
+    }, [displayManga, id, downloadAllManga, effectiveChapters]);
 
     const currentProgress = useMemo(() => {
         const targetId = normalizeMangaRouteId(id);
@@ -491,10 +609,37 @@ export default function MangaDetailsPage() {
                 <div className="w-full mt-6">
                                 {/* Chapters Section */}
                                 <div id="chapters-section" className="pt-2">
-                                    <div className="flex items-center gap-4 mb-6">
-                                        <h3 className="text-xl font-black text-white uppercase tracking-wider whitespace-nowrap">Chapters</h3>
-                                        <div className="flex-1 h-px bg-white/10" />
-                                        <ChapterViewToggle viewMode={viewMode} onViewModeChange={setViewMode} />
+                                    <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+                                        <div className="flex items-center gap-4 flex-1">
+                                            <h3 className="text-xl font-black text-white uppercase tracking-wider whitespace-nowrap">
+                                                Chapters {effectiveChapters.length > 0 && <span className="text-sm font-bold text-gray-500">({effectiveChapters.length})</span>}
+                                            </h3>
+                                            <div className="flex-1 h-px bg-white/10" />
+                                        </div>
+                                        {effectiveChapters.length > 0 && (
+                                            <div className="flex items-center gap-2">
+                                                {isElectron && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleOpenFolder}
+                                                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs font-semibold text-gray-300 hover:text-white transition-colors border border-white/5 cursor-pointer"
+                                                        title="Open downloaded files on your computer"
+                                                    >
+                                                        <FolderOpen className="w-3.5 h-3.5 text-yorumi-manga" />
+                                                        <span>Downloads Folder</span>
+                                                    </button>
+                                                )}
+                                                <button
+                                                    type="button"
+                                                    onClick={handleDownloadAllManga}
+                                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs font-semibold text-gray-300 hover:text-white transition-colors border border-white/5 cursor-pointer"
+                                                    title="Download all chapters for offline reading"
+                                                >
+                                                    <Download className="w-3.5 h-3.5 text-yorumi-manga" />
+                                                    <span>Download All</span>
+                                                </button>
+                                            </div>
+                                        )}
                                     </div>
                                     {mangaChaptersLoading ? (
                                         <div className="mt-6 bg-[#111] rounded-2xl p-4 sm:p-6 shadow-xl ring-1 ring-white/5 animate-pulse">
@@ -516,12 +661,14 @@ export default function MangaDetailsPage() {
                                                 ))}
                                             </div>
                                         </div>
-                                    ) : mangaChapters.length > 0 ? (
+                                    ) : effectiveChapters.length > 0 ? (
                                         <ChapterList
-                                            chapters={mangaChapters}
+                                            chapters={effectiveChapters}
                                             readChapters={readChapters}
                                             onChapterClick={handleChapterClick}
                                             viewMode={viewMode}
+                                            onViewModeChange={setViewMode}
+                                            manga={displayManga}
                                         />
                                     ) : (
                                         <div className="text-gray-500 text-center py-4 space-y-2">

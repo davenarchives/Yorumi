@@ -3,6 +3,8 @@ import LNSpotlight from '../features/ln/components/LNSpotlight';
 import LatestLNUpdates from '../features/ln/components/LatestLNUpdates';
 import AllTimePopularLN from '../features/ln/components/AllTimePopularLN';
 import Top100LN from '../features/ln/components/Top100LN';
+import PopularKoreanNovels from '../features/ln/components/PopularKoreanNovels';
+import PopularChineseNovels from '../features/ln/components/PopularChineseNovels';
 import type { LightNovel } from '../types/ln';
 
 export default function LNPage() {
@@ -18,6 +20,12 @@ export default function LNPage() {
             <LNSpotlight onLNClick={handleLNClick} />
 
             <div className="w-full max-w-7xl mx-auto px-8 md:px-14 z-10 relative mt-8">
+                {/* Popular Korean Web Novels */}
+                <PopularKoreanNovels onLNClick={handleLNClick} />
+
+                {/* Popular Chinese Web Novels */}
+                <PopularChineseNovels onLNClick={handleLNClick} />
+
                 {/* Latest LN Updates */}
                 <LatestLNUpdates onLNClick={handleLNClick} />
 

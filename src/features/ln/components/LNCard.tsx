@@ -125,13 +125,19 @@ export default function LNCard({ ln, rank, onClick, disableTilt = false }: LNCar
                 ) : null}
 
                 {/* Bottom Left: Type + Status Badges */}
-                <div className="absolute bottom-2 left-2 flex gap-1.5 z-10">
-                    <span className="bg-white/20 backdrop-blur-sm text-white px-2 py-0.5 rounded text-[10px] font-extrabold uppercase">
-                        {ln.type || 'NOVEL'}
+                <div className="absolute bottom-2 left-2 flex flex-wrap gap-1.5 z-10 max-w-[90%]">
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold uppercase ${
+                        ln.countryOfOrigin === 'KR'
+                            ? 'bg-amber-500 text-black shadow-sm'
+                            : ln.countryOfOrigin === 'CN'
+                            ? 'bg-red-600 text-white shadow-sm'
+                            : 'bg-white/20 backdrop-blur-sm text-white'
+                    }`}>
+                        {ln.countryOfOrigin === 'KR' ? 'KR (WN)' : ln.countryOfOrigin === 'CN' ? 'CN (WN)' : (ln.type || 'NOVEL')}
                     </span>
                     <span className="bg-black/60 backdrop-blur-sm text-gray-300 px-2 py-0.5 rounded text-[10px] font-bold uppercase flex items-center gap-1">
-                        <span className={`w-1.5 h-1.5 rounded-full ${ln.status === 'FINISHED' ? 'bg-blue-400' : 'bg-green-400'}`} />
-                        {ln.status || 'ONGOING'}
+                        <span className={`w-1.5 h-1.5 rounded-full ${ln.status === 'FINISHED' || ln.status === 'Completed' ? 'bg-blue-400' : 'bg-green-400'}`} />
+                        {ln.status === 'Completed' || ln.status === 'FINISHED' ? 'COMPLETED' : 'ONGOING'}
                     </span>
                 </div>
             </div>
@@ -155,7 +161,7 @@ export default function LNCard({ ln, rank, onClick, disableTilt = false }: LNCar
                     <div className="space-y-2.5">
                         {/* Line 1: Year / Status */}
                         <p className="text-sm font-extrabold tracking-wide text-gray-200">
-                            {ln.year || (ln.status === 'FINISHED' ? 'FINISHED' : 'Ongoing')}
+                            {ln.year || (ln.status === 'FINISHED' || ln.status === 'Completed' ? 'Completed' : 'Ongoing')}
                         </p>
 
                         {/* Line 2: Author */}
@@ -165,7 +171,7 @@ export default function LNCard({ ln, rank, onClick, disableTilt = false }: LNCar
 
                         {/* Line 3: Format • Chapters */}
                         <p className="text-sm font-semibold text-gray-400 uppercase tracking-wider">
-                            {ln.type || 'NOVEL'}{ln.chapters ? ` • ${ln.chapters} ch` : ''}
+                            {ln.countryOfOrigin === 'KR' ? 'Korean Web Novel' : ln.countryOfOrigin === 'CN' ? 'Chinese Web Novel' : 'Japanese Light Novel'}{ln.chapters ? ` • ${ln.chapters} ch` : ''}
                         </p>
 
                         {/* Line 4: Genres */}

@@ -315,22 +315,42 @@ export default function DetailsEpisodeGrid({
         const releasedEpisodes = episodes.filter((ep) => {
             const isUnreleased = isEpisodeUnreleased(ep.airDate);
             const epNum = getPlaybackEpisodeNumber(ep) || Number(ep.episodeNumber || 1);
-            return !isUnreleased && !isEpisodeDownloaded(
-                animeId,
-                epNum,
-                animeTitle,
-                anilistId,
-                [ep.episodeNumber, ep.playbackEpisodeNumber, ep._tmdbAbsolute]
-            );
+            const activeNumbers = [ep.episodeNumber, ep.playbackEpisodeNumber, ep._tmdbAbsolute];
+            const downloaded = isEpisodeDownloaded(animeId, epNum, animeTitle, anilistId, activeNumbers);
+            const progress = getDownloadProgress(animeId, epNum, anilistId, activeNumbers, animeTitle);
+            const isDownloading = progress?.status === 'downloading' || progress?.status === 'saving';
+            const isResolving = resolvingEpisodes.has(epNum);
+            return !isUnreleased && !downloaded && !isDownloading && !isResolving;
         });
 
-        for (const ep of releasedEpisodes) {
-            await handleDownloadEpisode(ep);
-        }
-    }, [episodes, animeId, animeTitle, anilistId, isEpisodeDownloaded, handleDownloadEpisode]);
+        if (releasedEpisodes.length === 0) return;
+
+        // Mark all episodes as resolving immediately so all cards reflect loading state simultaneously
+        const epNums = releasedEpisodes
+            .map((ep) => getPlaybackEpisodeNumber(ep) || Number(ep.episodeNumber || 1))
+            .filter(Boolean);
+
+        setResolvingEpisodes((prev) => {
+            const next = new Set(prev);
+            epNums.forEach((n) => next.add(n));
+            return next;
+        });
+
+        // Trigger all episode downloads in parallel
+        await Promise.allSettled(releasedEpisodes.map((ep) => handleDownloadEpisode(ep)));
+    }, [
+        episodes,
+        animeId,
+        animeTitle,
+        anilistId,
+        isEpisodeDownloaded,
+        getDownloadProgress,
+        resolvingEpisodes,
+        handleDownloadEpisode,
+    ]);
 
     const handleOpenFolder = useCallback(() => {
-        downloadService.openDownloadsFolder();
+        downloadService.openDownloadsFolder('Anime');
     }, []);
 
     return (
@@ -378,10 +398,10 @@ export default function DetailsEpisodeGrid({
                             disabled={season.isActive}
                             title={season.title}
                             aria-current={season.isActive ? 'page' : undefined}
-                            className={`min-h-10 rounded-full border px-5 text-sm font-bold transition-all ${
+                            className={`min-h-10 rounded-full px-5 text-sm font-bold transition-all ${
                                 season.isActive
-                                    ? 'border-blue-400 bg-blue-600 text-white'
-                                    : 'border-white/10 bg-white/[0.07] text-gray-300 hover:border-white/25 hover:bg-white/[0.11] hover:text-white'
+                                    ? 'bg-blue-600 text-white'
+                                    : 'bg-white/[0.07] text-gray-300 hover:bg-white/[0.11] hover:text-white'
                             } disabled:cursor-default`}
                         >
                             {season.label}

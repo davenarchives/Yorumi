@@ -12,6 +12,8 @@ import { useReadList } from '../hooks/useReadList';
 import { useWatchList } from '../hooks/useWatchList';
 import { useLNReadList } from '../hooks/useLNReadList';
 import { useDownloads } from '../hooks/useDownloads';
+import { useMangaDownloads } from '../hooks/useMangaDownloads';
+import { useLNDownloads } from '../hooks/useLNDownloads';
 import { formatFileSize } from '../services/downloadService';
 import { slugify } from '../utils/slugify';
 import type { WatchListItem } from '../utils/storage';
@@ -58,6 +60,8 @@ export default function LibraryPage() {
     const { readList, removeFromReadList } = useReadList();
     const { readList: lnReadList, toggleLNReadList } = useLNReadList();
     const { downloads, deleteDownload } = useDownloads();
+    const { downloads: mangaDownloads, deleteDownload: deleteMangaDownload } = useMangaDownloads();
+    const { downloads: lnDownloads, deleteDownload: deleteLNDownload } = useLNDownloads();
     const navigate = useNavigate();
 
     const filteredWatching = continueWatchingList;
@@ -295,11 +299,11 @@ export default function LibraryPage() {
                     {/* Manga Tab */}
                     {activeTab === 'manga' && (
                         <div className="space-y-8">
-                            {filteredReading.length === 0 && filteredReadList.length === 0 ? (
+                            {filteredReading.length === 0 && filteredReadList.length === 0 && mangaDownloads.length === 0 ? (
                                 <div className="flex flex-col items-center justify-center py-24 rounded-2xl border border-dashed border-white/10 text-gray-500 bg-white/5">
                                     <BookOpen className="w-10 h-10 text-gray-600 mb-3" />
                                     <p className="text-base font-semibold text-white/80">No manga in your library yet</p>
-                                    <p className="text-xs text-gray-400 mt-1">Start reading manga or bookmark titles to see them here.</p>
+                                    <p className="text-xs text-gray-400 mt-1">Start reading manga, bookmark titles, or download chapters to see them here.</p>
                                 </div>
                             ) : (
                                 <>
@@ -354,6 +358,90 @@ export default function LibraryPage() {
                                             ))}
                                         </Carousel>
                                     )}
+
+                                    {mangaDownloads.length > 0 && (
+                                        <Carousel title={`Downloads (${mangaDownloads.length})`} variant="portrait">
+                                            {(() => {
+                                                const map = new Map<string, { mangaId: string; mangaTitle: string; mangaImage: string; items: typeof mangaDownloads }>();
+                                                mangaDownloads.forEach((item) => {
+                                                    const key = String(item.mangaId || item.mangaTitle || '').trim();
+                                                    if (!map.has(key)) {
+                                                        map.set(key, {
+                                                            mangaId: item.mangaId,
+                                                            mangaTitle: item.mangaTitle,
+                                                            mangaImage: item.mangaImage,
+                                                            items: [],
+                                                        });
+                                                    }
+                                                    const group = map.get(key)!;
+                                                    group.items.push(item);
+                                                });
+
+                                                return Array.from(map.values()).map((group) => (
+                                                    <div
+                                                        key={group.mangaId}
+                                                        className="relative group h-full cursor-pointer"
+                                                        onClick={() => {
+                                                            navigate(`/manga/details/${encodeURIComponent(group.mangaId)}`, {
+                                                                state: {
+                                                                    fromDownloads: true,
+                                                                    mangaTitle: group.mangaTitle,
+                                                                    manga: {
+                                                                        id: group.mangaId,
+                                                                        title: group.mangaTitle,
+                                                                        images: {
+                                                                            jpg: {
+                                                                                image_url: group.mangaImage,
+                                                                                large_image_url: group.mangaImage,
+                                                                            },
+                                                                        },
+                                                                    },
+                                                                },
+                                                            });
+                                                        }}
+                                                    >
+                                                        <div className="relative aspect-[3/4] rounded-xl overflow-hidden mb-3 shadow-lg border border-white/5 transition-colors cursor-pointer">
+                                                            {group.mangaImage && (
+                                                                <img
+                                                                    src={group.mangaImage}
+                                                                    alt={group.mangaTitle}
+                                                                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                                                                />
+                                                            )}
+                                                            <div className="absolute inset-0 bg-black/40 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                                                                <div className="w-10 h-10 rounded-full bg-yorumi-manga/90 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg transform scale-90 group-hover:scale-100 duration-200">
+                                                                    <BookOpen className="w-4 h-4 text-white ml-0.5" />
+                                                                </div>
+                                                            </div>
+                                                            <div className="absolute top-2 left-2 flex flex-col gap-1 z-10">
+                                                                <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-yorumi-manga text-white backdrop-blur">
+                                                                    {group.items.length} {group.items.length === 1 ? 'CHAPTER' : 'CHAPTERS'}
+                                                                </span>
+                                                            </div>
+                                                            <button
+                                                                className="absolute top-2 right-2 p-1.5 rounded-full bg-black/60 backdrop-blur hover:bg-red-500/80 text-white/80 hover:text-white transition-all opacity-0 group-hover:opacity-100 z-10"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    group.items.forEach((ch) => deleteMangaDownload(group.mangaId, ch.chapterId));
+                                                                }}
+                                                                title="Delete all downloads for this manga"
+                                                            >
+                                                                <Trash2 className="w-3.5 h-3.5" />
+                                                            </button>
+                                                        </div>
+                                                        <div className="px-1">
+                                                            <h4 className="text-sm font-bold text-white/90 truncate group-hover:text-yorumi-manga transition-colors">
+                                                                {group.mangaTitle}
+                                                            </h4>
+                                                            <p className="text-xs text-gray-400 font-medium truncate mt-0.5">
+                                                                {group.items.length} {group.items.length === 1 ? 'Chapter' : 'Chapters'} • Offline
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                ));
+                                            })()}
+                                        </Carousel>
+                                    )}
                                 </>
                             )}
                         </div>
@@ -362,11 +450,11 @@ export default function LibraryPage() {
                     {/* Light Novels Tab */}
                     {activeTab === 'ln' && (
                         <div className="space-y-8">
-                            {filteredLN.length === 0 && filteredLNList.length === 0 ? (
+                            {filteredLN.length === 0 && filteredLNList.length === 0 && lnDownloads.length === 0 ? (
                                 <div className="flex flex-col items-center justify-center py-24 rounded-2xl border border-dashed border-white/10 text-gray-500 bg-white/5">
                                     <BookText className="w-10 h-10 text-gray-600 mb-3" />
                                     <p className="text-base font-semibold text-white/80">No light novels in your library yet</p>
-                                    <p className="text-xs text-gray-400 mt-1">Start reading light novels or bookmark them to see them here.</p>
+                                    <p className="text-xs text-gray-400 mt-1">Start reading light novels, bookmark them, or download chapters to see them here.</p>
                                 </div>
                             ) : (
                                 <>
@@ -418,6 +506,90 @@ export default function LibraryPage() {
                                                     </div>
                                                 </div>
                                             ))}
+                                        </Carousel>
+                                    )}
+
+                                    {lnDownloads.length > 0 && (
+                                        <Carousel title={`Downloads (${lnDownloads.length})`} variant="portrait">
+                                            {(() => {
+                                                const map = new Map<string, { novelId: string; novelTitle: string; novelImage: string; items: typeof lnDownloads }>();
+                                                lnDownloads.forEach((item) => {
+                                                    const key = String(item.novelId || item.novelTitle || '').trim();
+                                                    if (!map.has(key)) {
+                                                        map.set(key, {
+                                                            novelId: item.novelId,
+                                                            novelTitle: item.novelTitle,
+                                                            novelImage: item.novelImage,
+                                                            items: [],
+                                                        });
+                                                    }
+                                                    const group = map.get(key)!;
+                                                    group.items.push(item);
+                                                });
+
+                                                return Array.from(map.values()).map((group) => (
+                                                    <div
+                                                        key={group.novelId}
+                                                        className="relative group h-full cursor-pointer"
+                                                        onClick={() => {
+                                                            navigate(`/ln/details/${encodeURIComponent(group.novelId)}`, {
+                                                                state: {
+                                                                    fromDownloads: true,
+                                                                    novelTitle: group.novelTitle,
+                                                                    ln: {
+                                                                        id: group.novelId,
+                                                                        title: group.novelTitle,
+                                                                        images: {
+                                                                            jpg: {
+                                                                                image_url: group.novelImage,
+                                                                                large_image_url: group.novelImage,
+                                                                            },
+                                                                        },
+                                                                    },
+                                                                },
+                                                            });
+                                                        }}
+                                                    >
+                                                        <div className="relative aspect-[3/4] rounded-xl overflow-hidden mb-3 shadow-lg border border-white/5 transition-colors cursor-pointer">
+                                                            {group.novelImage && (
+                                                                <img
+                                                                    src={group.novelImage}
+                                                                    alt={group.novelTitle}
+                                                                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                                                                />
+                                                            )}
+                                                            <div className="absolute inset-0 bg-black/40 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                                                                <div className="w-10 h-10 rounded-full bg-amber-400/90 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg transform scale-90 group-hover:scale-100 duration-200">
+                                                                    <BookText className="w-4 h-4 text-black ml-0.5" />
+                                                                </div>
+                                                            </div>
+                                                            <div className="absolute top-2 left-2 flex flex-col gap-1 z-10">
+                                                                <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-amber-400 text-black backdrop-blur">
+                                                                    {group.items.length} {group.items.length === 1 ? 'CHAPTER' : 'CHAPTERS'}
+                                                                </span>
+                                                            </div>
+                                                            <button
+                                                                className="absolute top-2 right-2 p-1.5 rounded-full bg-black/60 backdrop-blur hover:bg-red-500/80 text-white/80 hover:text-white transition-all opacity-0 group-hover:opacity-100 z-10"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    group.items.forEach((ch) => deleteLNDownload(group.novelId, ch.chapterId));
+                                                                }}
+                                                                title="Delete all downloads for this novel"
+                                                            >
+                                                                <Trash2 className="w-3.5 h-3.5" />
+                                                            </button>
+                                                        </div>
+                                                        <div className="px-1">
+                                                            <h4 className="text-sm font-bold text-white/90 truncate group-hover:text-amber-400 transition-colors">
+                                                                {group.novelTitle}
+                                                            </h4>
+                                                            <p className="text-xs text-gray-400 font-medium truncate mt-0.5">
+                                                                {group.items.length} {group.items.length === 1 ? 'Chapter' : 'Chapters'} • Offline
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                ));
+                                            })()}
                                         </Carousel>
                                     )}
                                 </>

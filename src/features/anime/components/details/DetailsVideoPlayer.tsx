@@ -180,13 +180,10 @@ export default function DetailsVideoPlayer({ animeId, animeTitle, onClose, isWat
         const rawEpTitle = (cleanCurrentTitle || currentEpisode?.title || '').trim();
         const isGeneric = !rawEpTitle || /^episode\s+\d+$/i.test(rawEpTitle) || /^untitled$/i.test(rawEpTitle);
         
-        if (animeTitle && !isGeneric) {
-            return `${animeTitle} • ${rawEpTitle}`;
-        }
         if (!isGeneric) {
             return rawEpTitle;
         }
-        return animeTitle || `Episode ${epNum}`;
+        return `Episode ${epNum}`;
     })();
 
     if (error) {

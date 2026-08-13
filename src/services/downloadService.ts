@@ -455,11 +455,11 @@ ${rawBlobUrl}
         });
     },
 
-    async openDownloadsFolder(): Promise<boolean> {
+    async openDownloadsFolder(category?: 'Anime' | 'Manga' | 'LightNovels'): Promise<boolean> {
         const isElectron = typeof window !== 'undefined' && Boolean(window.electronAPI?.openDownloadsFolder);
         if (isElectron && window.electronAPI) {
             try {
-                return await window.electronAPI.openDownloadsFolder();
+                return await window.electronAPI.openDownloadsFolder(category);
             } catch (error) {
                 console.error('Failed to open downloads folder:', error);
             }

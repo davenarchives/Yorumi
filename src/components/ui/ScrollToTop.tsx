@@ -46,8 +46,8 @@ export default function ScrollToTop({ threshold = 400, className = '', activeTab
         });
     };
 
-    const bgColor = activeTab === 'ln' ? 'bg-amber-400 text-black font-extrabold' : activeTab === 'manga' ? 'bg-yorumi-manga text-white' : 'bg-yorumi-accent text-white';
-    const hoverColor = activeTab === 'ln' ? 'hover:bg-amber-300 hover:scale-110' : activeTab === 'manga' ? 'hover:bg-yorumi-manga/90' : 'hover:bg-yorumi-accent/90';
+    const bgColor = activeTab === 'ln' ? 'bg-amber-400 text-black' : activeTab === 'manga' ? 'bg-yorumi-manga text-black' : 'bg-yorumi-accent text-black';
+    const hoverColor = activeTab === 'ln' ? 'hover:bg-amber-300' : activeTab === 'manga' ? 'hover:bg-yorumi-manga/90' : 'hover:bg-yorumi-accent/90';
 
     return (
         <m.button
@@ -58,7 +58,7 @@ export default function ScrollToTop({ threshold = 400, className = '', activeTab
                 fixed bottom-6 right-6 z-50
                 w-12 h-12 rounded-full
                 ${bgColor}
-                text-white shadow-lg
+                shadow-lg
                 flex items-center justify-center
                 transition-all duration-300 ease-out
                 hover:scale-110 ${hoverColor}

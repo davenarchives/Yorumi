@@ -22,6 +22,8 @@ export interface LightNovel {
     author?: string;
     genres?: { mal_id: number; name: string }[];
     synonyms?: string[];
+    countryOfOrigin?: 'JP' | 'KR' | 'CN' | string;
+    source?: string;
     scraper_id?: string;
     bannerImage?: string;
     relations?: {

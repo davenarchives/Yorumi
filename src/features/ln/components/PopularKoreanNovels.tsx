@@ -5,12 +5,12 @@ import { lnService } from '../../../services/lnService';
 import type { LightNovel } from '../../../types/ln';
 import LNCard from './LNCard';
 
-interface LatestLNUpdatesProps {
+interface PopularKoreanNovelsProps {
     onLNClick: (id: string, autoRead?: boolean, lnData?: LightNovel) => void;
 }
 
-export default function LatestLNUpdates({ onLNClick }: LatestLNUpdatesProps) {
-    const [lns, setLns] = useState<LightNovel[]>([]);
+export default function PopularKoreanNovels({ onLNClick }: PopularKoreanNovelsProps) {
+    const [novels, setNovels] = useState<LightNovel[]>([]);
     const [loading, setLoading] = useState(true);
     const [emblaRef, emblaApi] = useEmblaCarousel({
         align: 'start',
@@ -20,10 +20,10 @@ export default function LatestLNUpdates({ onLNClick }: LatestLNUpdatesProps) {
 
     useEffect(() => {
         let mounted = true;
-        lnService.getLatestUpdates()
+        lnService.getPopularKoreanNovels()
             .then((data) => {
                 if (mounted) {
-                    setLns(data);
+                    setNovels(data);
                     setLoading(false);
                 }
             })
@@ -58,13 +58,13 @@ export default function LatestLNUpdates({ onLNClick }: LatestLNUpdatesProps) {
         );
     }
 
-    if (lns.length === 0) return null;
+    if (novels.length === 0) return null;
 
     return (
         <section className="mb-12">
             <div className="flex items-center gap-4 mb-6">
                 <h2 className="text-xl sm:text-2xl font-black text-white tracking-wide uppercase leading-none whitespace-nowrap">
-                    Latest Updates
+                    Popular Korean Novels
                 </h2>
                 <div className="flex-1 h-px bg-white/10" />
 
@@ -92,14 +92,15 @@ export default function LatestLNUpdates({ onLNClick }: LatestLNUpdatesProps) {
                 <div className="flex gap-4">
                     <div className="flex-1 overflow-hidden" ref={emblaRef}>
                         <div className="flex gap-4">
-                            {lns.map((ln) => (
+                            {novels.map((novel, idx) => (
                                 <div
-                                    key={ln.id}
+                                    key={novel.id}
                                     className="flex-[0_0_160px] md:flex-[0_0_210px] lg:flex-[0_0_230px]"
                                 >
                                     <LNCard
-                                        ln={ln}
-                                        onClick={(selectedLN) => onLNClick(String(selectedLN.id), false, selectedLN)}
+                                        ln={novel}
+                                        rank={idx + 1}
+                                        onClick={(selected) => onLNClick(String(selected.id), false, selected)}
                                         disableTilt
                                     />
                                 </div>

@@ -180,7 +180,7 @@ class LNService {
 
     async getChapterContent(chapterId: string) {
         const cacheKey = `ln:chapter:${hashKey(chapterId)}`;
-        const cached = await cacheGet<any>(chapterId).catch(() => null);
+        const cached = await cacheGet<any>(cacheKey).catch(() => null);
         if (cached) return cached;
 
         let content: novelScraper.NovelChapterContent | null = null;
