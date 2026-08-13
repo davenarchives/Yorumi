@@ -902,7 +902,7 @@ export class AllMangaScraper {
         const ANIDB_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/121.0';
         try {
             const curlCmd = process.platform === 'win32' ? 'curl.exe' : 'curl';
-            const args = ['-sL', '-A', ANIDB_UA, '-e', 'https://anidb.app/', '--max-time', '4', url];
+            const args = ['-sL', '--compressed', '-A', ANIDB_UA, '-e', 'https://anidb.app/', '--max-time', '2', url];
             const { stdout } = await execFileAsync(curlCmd, args);
             if (stdout && stdout.trim().length > 0) {
                 return stdout;
@@ -935,8 +935,12 @@ export class AllMangaScraper {
         const clean = this.cleanAnidbQuery(query);
         const q = encodeURIComponent(clean);
         
-        // 1. Try browse endpoint (primary search in ani-cli)
-        const browsePage = await this.fetchAnidbUrl(`https://anidb.app/browse?q=${q}`);
+        // Fetch browse and suggestions in parallel for speed
+        const [browsePage, suggPage] = await Promise.all([
+            this.fetchAnidbUrl(`https://anidb.app/browse?q=${q}`),
+            this.fetchAnidbUrl(`https://anidb.app/search/suggestions?q=${q}`),
+        ]);
+
         if (browsePage) {
             const cardMatches = [...browsePage.matchAll(/(?:href=["'](?:https?:\/\/anidb\.app)?\/anime\/([a-z0-9-]+-(\d+))["'][^>]*?(?:title=["']([^"']+)["']|alt=["']([^"']+)["'])?|(?:title=["']([^"']+)["']|alt=["']([^"']+)["'])[^>]*?href=["'](?:https?:\/\/anidb\.app)?\/anime\/([a-z0-9-]+-(\d+))["'])/gi)];
             if (cardMatches.length > 0) {
@@ -955,8 +959,6 @@ export class AllMangaScraper {
             }
         }
 
-        // 2. Fallback to suggestions endpoint
-        const suggPage = await this.fetchAnidbUrl(`https://anidb.app/search/suggestions?q=${q}`);
         if (suggPage) {
             const match = suggPage.match(/\/anime\/[a-z0-9-]+-(\d+)/i) || suggPage.match(/\/anime\/(\d+)/i);
             if (match) return match[1];

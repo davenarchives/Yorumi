@@ -531,13 +531,15 @@ class ScraperService {
             const parsedAnilistId = parseInt(animeSession, 10);
             const anilistId = options?.anilistId || (!isNaN(parsedAnilistId) && parsedAnilistId > 0 ? parsedAnilistId : undefined);
 
-            const tmdbTarget = await tmdbService.resolveMediaTarget({ 
-                title, 
-                titles: options?.titles, 
-                year: options?.year, 
-                format: options?.format,
-                anilistId,
-            }).catch(() => null);
+            const tmdbTarget = provider === 'anidb'
+                ? null
+                : await tmdbService.resolveMediaTarget({ 
+                    title, 
+                    titles: options?.titles, 
+                    year: options?.year, 
+                    format: options?.format,
+                    anilistId,
+                }).catch(() => null);
 
             const episodeNumber = Number(options?.episodeNumber || this.parseEpisodeNumber(epSession)) || 1;
             const { animeVideoSources } = require('../anime/video-sources');

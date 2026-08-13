@@ -375,28 +375,39 @@ class AniDBSource implements VideoSource {
 
     async getStream(anilistId: number, episode: number, options?: { title?: string, tmdbId?: number, format?: string, anilistId?: number }): Promise<StreamResponse | null> {
         try {
-            const metadata = options?.tmdbId ? await streambertAnimeService.getMetadata(options.tmdbId).catch(() => null) : null;
-            const rawTitle = options?.title || metadata?.title?.romaji || metadata?.title?.english || metadata?.title?.native || '';
+            const rawTitle = options?.title || '';
             const searchTitle = this.cleanSearchQuery(rawTitle);
             
             if (!searchTitle) return null;
 
             const cacheKeyAnimeId = `anidb:animeid:${searchTitle}`;
-            let animeId: string | null = await cacheGet<string>(cacheKeyAnimeId).catch(() => null);
+            const cacheKeyAnilistId = anilistId ? `anidb:animeid:anilist:${anilistId}` : null;
+            
+            let animeId: string | null = animeIdMemoryCache.get(cacheKeyAnimeId) || (cacheKeyAnilistId ? animeIdMemoryCache.get(cacheKeyAnilistId) : null) || null;
+            if (!animeId) {
+                animeId = await cacheGet<string>(cacheKeyAnimeId).catch(() => null);
+                if (!animeId && cacheKeyAnilistId) {
+                    animeId = await cacheGet<string>(cacheKeyAnilistId).catch(() => null);
+                }
+            }
             
             if (!animeId) {
-                const suggHtml = await fetchAnidbText(`https://anidb.app/search/suggestions?q=${encodeURIComponent(searchTitle)}`);
-                animeId = this.parseAnimeIdFromSuggestions(suggHtml, rawTitle);
-                logger.info(`[anidb-scraper] Suggestions search for "${searchTitle}" → animeId: ${animeId}`);
+                const [suggHtml, browseHtml] = await Promise.all([
+                    fetchAnidbText(`https://anidb.app/search/suggestions?q=${encodeURIComponent(searchTitle)}`),
+                    fetchAnidbText(`https://anidb.app/browse?q=${encodeURIComponent(searchTitle)}`),
+                ]);
 
-                if (!animeId) {
-                    const browseHtml = await fetchAnidbText(`https://anidb.app/browse?q=${encodeURIComponent(searchTitle)}`);
-                    animeId = this.parseAnimeIdFromSuggestions(browseHtml, rawTitle);
-                    logger.info(`[anidb-scraper] Browse fallback for "${searchTitle}" → animeId: ${animeId}`);
-                }
+                animeId = this.parseAnimeIdFromSuggestions(suggHtml, rawTitle) || this.parseAnimeIdFromSuggestions(browseHtml, rawTitle);
 
                 if (animeId) {
-                    await cacheSet(cacheKeyAnimeId, animeId, 24 * 60 * 60).catch(() => {});
+                    animeIdMemoryCache.set(cacheKeyAnimeId, animeId);
+                    if (cacheKeyAnilistId) animeIdMemoryCache.set(cacheKeyAnilistId, animeId);
+
+                    const TTL = 30 * 24 * 60 * 60; // 30 days
+                    await Promise.all([
+                        cacheSet(cacheKeyAnimeId, animeId, TTL).catch(() => {}),
+                        cacheKeyAnilistId ? cacheSet(cacheKeyAnilistId, animeId, TTL).catch(() => {}) : Promise.resolve(),
+                    ]);
                 }
             }
 
@@ -405,9 +416,18 @@ class AniDBSource implements VideoSource {
                 return null;
             }
 
-            const epJsonStr = await fetchAnidbText(`https://anidb.app/api/frontend/anime/${animeId}/episodes`);
+            const cacheKeyEpList = `anidb:episodes:${animeId}`;
+            let epJsonStr: string | null = epMemoryCache.get(cacheKeyEpList) || await cacheGet<string>(cacheKeyEpList).catch(() => null);
+            if (!epJsonStr) {
+                epJsonStr = await fetchAnidbText(`https://anidb.app/api/frontend/anime/${animeId}/episodes`);
+                if (epJsonStr && epJsonStr.length > 10) {
+                    epMemoryCache.set(cacheKeyEpList, epJsonStr);
+                    await cacheSet(cacheKeyEpList, epJsonStr, 24 * 60 * 60).catch(() => {});
+                }
+            }
+
             let epData: any = null;
-            try { epData = JSON.parse(epJsonStr); } catch {}
+            try { epData = JSON.parse(epJsonStr || ''); } catch {}
             const epList = epData?.episodes || (Array.isArray(epData) ? epData : []);
             
             const targetEp = epList.find((e: any) => Number(e.number || e.episode) === episode) || epList[0];
@@ -418,9 +438,18 @@ class AniDBSource implements VideoSource {
                 return null;
             }
 
-            const langJsonStr = await fetchAnidbText(`https://anidb.app/api/frontend/episode/${epId}/languages`);
+            const cacheKeyLangList = `anidb:languages:${epId}`;
+            let langJsonStr: string | null = langMemoryCache.get(cacheKeyLangList) || await cacheGet<string>(cacheKeyLangList).catch(() => null);
+            if (!langJsonStr) {
+                langJsonStr = await fetchAnidbText(`https://anidb.app/api/frontend/episode/${epId}/languages`);
+                if (langJsonStr && langJsonStr.length > 5) {
+                    langMemoryCache.set(cacheKeyLangList, langJsonStr);
+                    await cacheSet(cacheKeyLangList, langJsonStr, 12 * 60 * 60).catch(() => {});
+                }
+            }
+
             let langData: any = null;
-            try { langData = JSON.parse(langJsonStr); } catch {}
+            try { langData = JSON.parse(langJsonStr || ''); } catch {}
             const embeds = langData?.languages || (Array.isArray(langData) ? langData : []);
 
             let jpnEmbed = embeds.find((e: any) => e.code === 'jpn' || String(e.name || '').toLowerCase().includes('japan'))?.embed_url || embeds[0]?.embed_url;
@@ -452,7 +481,8 @@ class AniDBSource implements VideoSource {
                 logger.info(`[anidb-scraper] Got m3u8 for anime ${animeId} ep ${episode}: ${masterM3u8.substring(0, 80)}...`);
                 const referer = 'https://anidb.app/';
 
-                const epTitle = await getEpisodeTitle(options?.anilistId || (targetEp ? anilistId : 0), episode);
+                // Use title from targetEp if present to avoid extra streambert metadata network lookup
+                const epTitle = targetEp?.title || targetEp?.name || undefined;
 
                 return {
                     m3u8: masterM3u8,
@@ -477,38 +507,58 @@ class AniDBSource implements VideoSource {
     }
 }
 
+// In-memory caches to eliminate IPC/Redis latency on warm hits
+const animeIdMemoryCache = new Map<string, string>();
+const epMemoryCache = new Map<string, string>();
+const langMemoryCache = new Map<string, string>();
+const inflightFetchCache = new Map<string, Promise<string>>();
+
 async function fetchAnidbText(url: string, customHeaders?: Record<string, string>): Promise<string> {
-    const ANIDB_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0';
-    const ANIDB_REF = 'https://anidb.app/';
+    if (inflightFetchCache.has(url)) {
+        return inflightFetchCache.get(url)!;
+    }
 
-    try {
-        const curlCmd = process.platform === 'win32' ? 'curl.exe' : 'curl';
-        const args = ['-sL', '-A', ANIDB_UA, '-e', ANIDB_REF, '--max-time', '4', url];
-        const { stdout } = await execFileAsync(curlCmd, args);
-        if (stdout && stdout.trim().length > 0) {
-            return stdout;
+    const promise = (async () => {
+        const ANIDB_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0';
+        const ANIDB_REF = 'https://anidb.app/';
+
+        try {
+            const curlCmd = process.platform === 'win32' ? 'curl.exe' : 'curl';
+            const args = ['-sL', '--compressed', '-A', ANIDB_UA, '-e', ANIDB_REF, '--max-time', '2', url];
+            const { stdout } = await execFileAsync(curlCmd, args);
+            if (stdout && stdout.trim().length > 0) {
+                return stdout;
+            }
+        } catch {
+            // Fall back to fast axios
         }
-    } catch {
-        // Fall back to fast axios
-    }
 
+        try {
+            const res = await axios.get<string>(url, {
+                headers: {
+                    'User-Agent': ANIDB_UA,
+                    Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,application/json,*/*;q=0.8',
+                    Referer: ANIDB_REF,
+                    ...(customHeaders || {}),
+                },
+                timeout: 2000,
+            });
+            if (typeof res.data === 'string') return res.data;
+            if (res.data) return JSON.stringify(res.data);
+        } catch (err: any) {
+            logger.warn(`[anidb-scraper] fetchAnidbText failed for ${url}: ${err?.message || err}`);
+        }
+
+        return '';
+    })();
+
+    inflightFetchCache.set(url, promise);
     try {
-        const res = await axios.get<string>(url, {
-            headers: {
-                'User-Agent': ANIDB_UA,
-                Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,application/json,*/*;q=0.8',
-                Referer: ANIDB_REF,
-                ...(customHeaders || {}),
-            },
-            timeout: 2000,
-        });
-        if (typeof res.data === 'string') return res.data;
-        if (res.data) return JSON.stringify(res.data);
-    } catch (err: any) {
-        logger.warn(`[anidb-scraper] fetchAnidbText failed for ${url}: ${err?.message || err}`);
+        const result = await promise;
+        return result;
+    } finally {
+        inflightFetchCache.delete(url);
     }
-
-    return '';
 }
 
 // Default sources for auto-fallback (only sources that return playable HLS/video URLs)
@@ -523,14 +573,14 @@ const streamableSources: VideoSource[] = [
 const allSources: VideoSource[] = [...streamableSources];
 
 function orderedSources(requested: string) {
-    // Default / auto / anidb — use streamable sources
-    if (!requested || requested === 'auto' || requested === 'anidb') return streamableSources;
+    if (requested === 'anidb') return [streamableSources[0]]; // Only try AniDB when explicit
+    if (!requested || requested === 'auto') return streamableSources;
     const source = allSources.find((item) => item.id === requested);
     return source ? [source, ...streamableSources.filter(s => s.id !== requested)] : streamableSources;
 }
 
 export const animeVideoSources = {
-    async getStream(anilistId: number, episode: number, requestedSource = 'anidb', options?: { title?: string, tmdbId?: number }, nocache = false): Promise<StreamResponse | null> {
+    async getStream(anilistId: number, episode: number, requestedSource = 'anidb', options?: { title?: string, tmdbId?: number, format?: string }, nocache = false): Promise<StreamResponse | null> {
         const sourceId = String(requestedSource || 'anidb').trim().toLowerCase();
         const cacheKey = `anime:stream:v109:${anilistId}:${episode}:${sourceId}`;
         if (!nocache) {
@@ -538,8 +588,7 @@ export const animeVideoSources = {
             if (cached) return cached;
         }
 
-        const metadata = options?.tmdbId ? await streambertAnimeService.getMetadata(options.tmdbId) : null;
-        const isMovie = metadata?.format === 'MOVIE';
+        const isMovie = String(options?.format || '').toUpperCase() === 'MOVIE';
         const ttl = isMovie ? 300 : STREAM_TTL_SECONDS;
 
         const sourcesToTry = orderedSources(sourceId);
