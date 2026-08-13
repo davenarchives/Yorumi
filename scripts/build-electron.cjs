@@ -1,6 +1,7 @@
 const { spawnSync } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
+const esbuild = require('esbuild');
 
 const root = process.cwd();
 const electronBuilderCli = require.resolve('electron-builder/cli.js');
@@ -25,6 +26,24 @@ builderArgs.push(...userArgs);
 
 console.log(`[Yorumi Desktop Build] Running electron-builder with args:`, userArgs.join(' ') || '(default platform)');
 
+console.log('[Yorumi Desktop Build] Bundling dist-electron/main.js with esbuild...');
+try {
+  esbuild.buildSync({
+    entryPoints: [path.join(root, 'dist-electron', 'main.js')],
+    bundle: true,
+    platform: 'node',
+    target: 'node18',
+    format: 'esm',
+    external: ['electron'],
+    outfile: path.join(root, 'dist-electron', 'main.js'),
+    allowOverwrite: true,
+  });
+  console.log('[Yorumi Desktop Build] Successfully bundled dist-electron/main.js!');
+} catch (err) {
+  console.error('[Yorumi Desktop Build] Failed to bundle dist-electron/main.js:', err);
+  process.exit(1);
+}
+
 const result = spawnSync(
   process.execPath,
   builderArgs,
@@ -44,4 +63,3 @@ if (result.status !== 0) {
 }
 
 console.log('[Yorumi Desktop Build] Packaging complete!');
-

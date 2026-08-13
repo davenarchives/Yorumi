@@ -2,7 +2,9 @@
 
 ## [4.0.9] - 2026-08-13
 
-- **Discord Rich Presence (RPC) Integration ([main.js](file:///c:/Github%20Repos/Yorumi/dist-electron/main.js), [preload.mjs](file:///c:/Github%20Repos/Yorumi/dist-electron/preload.mjs), [electron.d.ts](file:///c:/Github%20Repos/Yorumi/src/types/electron.d.ts), [discordRPCService.ts](file:///c:/Github%20Repos/Yorumi/src/services/discordRPCService.ts))**:
+- **Discord Rich Presence (RPC) Integration ([main.js](file:///c:/Github%20Repos/Yorumi/dist-electron/main.js), [build-electron.cjs](file:///c:/Github%20Repos/Yorumi/scripts/build-electron.cjs), [preload.mjs](file:///c:/Github%20Repos/Yorumi/dist-electron/preload.mjs), [electron.d.ts](file:///c:/Github%20Repos/Yorumi/src/types/electron.d.ts), [discordRPCService.ts](file:///c:/Github%20Repos/Yorumi/src/services/discordRPCService.ts))**:
+  - Fixed standalone `.exe` executable Discord Rich Presence failure by bundling `discord-rpc` and `electron-updater` directly into `dist-electron/main.js` using `esbuild` during Electron packaging.
+  - Eliminated missing `node_modules/discord-rpc` runtime module errors when running packaged standalone desktop releases.
   - Integrated full Discord Rich Presence into Electron main process, automatically broadcasting real-time Anime watching, Manga reading, and Light Novel reading activity to Discord user cards.
   - Displays dynamic episode and chapter details, page numbers, and live elapsed timers with automatic reconnect throttling to prevent app lag.
   - Supports custom Discord Application IDs via `DISCORD_CLIENT_ID` environment variables with default fallback ID `1532608064174166097`.
