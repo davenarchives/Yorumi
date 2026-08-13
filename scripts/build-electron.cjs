@@ -17,8 +17,8 @@ const hasPlatformArg = userArgs.some((arg) =>
 
 const builderArgs = [electronBuilderCli, '--publish', 'never'];
 
-// Only use local electronDist if building for current local platform without explicit target overrides
-if (!hasPlatformArg && fs.existsSync(path.join(root, electronDist))) {
+// Use local electronDist if available to prevent Windows zip unpack EPERM locks
+if (fs.existsSync(path.join(root, electronDist)) && !builderArgs.some((arg) => arg.includes('electronDist'))) {
   builderArgs.push(`--config.electronDist=${electronDist}`);
 }
 
@@ -47,6 +47,15 @@ try {
 } catch (err) {
   console.error('[Yorumi Desktop Build] Failed to bundle dist-electron/main.js:', err);
   process.exit(1);
+}
+
+const distAppDir = path.join(root, 'dist-app');
+if (fs.existsSync(distAppDir)) {
+  try {
+    fs.rmSync(distAppDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 500 });
+  } catch (e) {
+    console.warn('[Yorumi Desktop Build] Could not clean dist-app directory:', e.message);
+  }
 }
 
 const result = spawnSync(

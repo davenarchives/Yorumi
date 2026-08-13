@@ -53,7 +53,7 @@ var __toESM2 = (mod, isNodeMode, target) => (target = mod != null ? __create2(__
   value: mod,
   enumerable: true
 }) : target, mod));
-var __require = typeof require !== "undefined" ? require : (0, import_node_module.createRequire)(import_meta.url || __filename);
+var __require = typeof require !== "undefined" ? require : (0, import_node_module.createRequire)(typeof import_meta !== "undefined" && import_meta.url ? import_meta.url : __filename);
 var require_blockStats = /* @__PURE__ */ __commonJSMin(((exports2, module2) => {
   var { app: app$4 } = __require("electron");
   var path$4 = __require("path");
@@ -2368,9 +2368,8 @@ var import_storage = /* @__PURE__ */ __toESM2(require_storage(), 1);
 var import_downloads = /* @__PURE__ */ __toESM2(require_downloads(), 1);
 var import_allmanga = /* @__PURE__ */ __toESM2(require_allmanga(), 1);
 var import_player = /* @__PURE__ */ __toESM2(require_player(), 1);
-(0, import_module.createRequire)(import_meta.url);
-var __filename = (0, import_url.fileURLToPath)(import_meta.url);
-var __dirname = path.dirname(__filename);
+var __filename2 = typeof __filename !== "undefined" ? __filename : (typeof import_meta !== "undefined" && import_meta.url ? (0, import_url.fileURLToPath)(import_meta.url) : "");
+var __dirname2 = typeof __dirname !== "undefined" ? __dirname : path.dirname(__filename2);
 import_electron.app.commandLine.appendSwitch("js-flags", "--max-old-space-size=256 --expose-gc");
 import_electron.app.commandLine.appendSwitch("disable-features", "HardwareMediaKeyHandling,MediaSessionService,UseSandboxedXdgPortal");
 import_electron.app.commandLine.appendSwitch("enable-features", "NetworkServiceInProcess2");
