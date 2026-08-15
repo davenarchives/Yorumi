@@ -125,7 +125,7 @@ export const DocumentationGuide: React.FC<DocumentationGuideProps> = ({ activeTa
                     onClick={() => onTabChange(sec.id)}
                     className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-left text-sm font-semibold transition-all ${
                       isActive 
-                        ? 'bg-yorumi-main text-white shadow-md shadow-yorumi-main/25' 
+                        ? 'bg-yorumi-main text-white' 
                         : 'text-yorumi-text hover:bg-yorumi-main/10 hover:text-yorumi-main'
                     }`}
                   >
@@ -137,7 +137,7 @@ export const DocumentationGuide: React.FC<DocumentationGuideProps> = ({ activeTa
             </div>
           </div>
 
-          <div className="pt-4 border-t border-white/5 space-y-3 px-2">
+          <div className="pt-4 space-y-3 px-2">
             <div className="text-xs font-semibold text-yorumi-muted">Quick Links</div>
             <div className="flex flex-col gap-2 text-sm">
               <a 
@@ -166,7 +166,7 @@ export const DocumentationGuide: React.FC<DocumentationGuideProps> = ({ activeTa
         <div className="lg:col-span-7 xl:col-span-7 space-y-10 min-h-[580px] flex flex-col justify-between pt-2 lg:pt-5">
           <div className="space-y-8">
             {/* Title Header */}
-            <div className="space-y-3 pb-6 border-b border-white/5">
+            <div className="space-y-3 pb-6">
               <div className="text-sm font-bold text-yorumi-main uppercase tracking-wider">
                 {currentSection.category}
               </div>
@@ -233,7 +233,7 @@ export const DocumentationGuide: React.FC<DocumentationGuideProps> = ({ activeTa
                 <div className="space-y-3">
                   <h4 id="local-installation" className="text-xl font-bold text-yorumi-text">1. Local Installation</h4>
                   <p>Clone the repository and install dependencies for both the frontend and backend:</p>
-                  <div className="bg-yorumi-text/5 rounded-2xl p-4 font-mono text-xs md:text-sm text-yorumi-text overflow-x-auto space-y-2 border border-yorumi-text/5">
+                  <div className="bg-yorumi-text/5 rounded-2xl p-4 font-mono text-xs md:text-sm text-yorumi-text overflow-x-auto space-y-2">
                     <div>git clone https://github.com/davenarchives/yorumi.git</div>
                     <div>cd yorumi &amp;&amp; npm install</div>
                     <div>cd backend &amp;&amp; npm install &amp;&amp; cd ..</div>
@@ -279,7 +279,7 @@ export const DocumentationGuide: React.FC<DocumentationGuideProps> = ({ activeTa
                     <CheckCircle2 className="w-6 h-6 text-yorumi-main" />
                     <span>Why configure a TMDB API Key?</span>
                   </div>
-                  <p className="text-sm border-l-2 border-yorumi-main/40 pl-4 py-1">
+                  <p className="text-sm bg-yorumi-main/10 rounded-xl px-4 py-2 text-yorumi-text">
                     Without a valid TMDB key, Yorumi will fallback to standard AniList poster images. Adding your API key enables cinematic episode screenshots and logo overlays in the video player, drastically improving the UI experience.
                   </p>
                 </div>
@@ -295,7 +295,7 @@ export const DocumentationGuide: React.FC<DocumentationGuideProps> = ({ activeTa
                         <img 
                           src="/tmdb/image-2.png" 
                           alt="Create TMDB Account" 
-                          className="rounded-xl border border-yorumi-text/10 shadow-sm max-w-full cursor-pointer hover:scale-[1.02] hover:shadow-lg transition-all"
+                          className="rounded-xl max-w-full cursor-pointer hover:scale-[1.02] transition-all"
                           onClick={() => setExpandedImage('/tmdb/image-2.png')} 
                         />
                       </div>
@@ -308,7 +308,7 @@ export const DocumentationGuide: React.FC<DocumentationGuideProps> = ({ activeTa
                         <img 
                           src="/tmdb/image.png" 
                           alt="Click Settings" 
-                          className="rounded-xl border border-yorumi-text/10 shadow-sm max-w-full cursor-pointer hover:scale-[1.02] hover:shadow-lg transition-all"
+                          className="rounded-xl max-w-full cursor-pointer hover:scale-[1.02] transition-all"
                           onClick={() => setExpandedImage('/tmdb/image.png')} 
                         />
                       </div>
@@ -321,7 +321,7 @@ export const DocumentationGuide: React.FC<DocumentationGuideProps> = ({ activeTa
                         <img 
                           src="/tmdb/image-1.png" 
                           alt="Request API Key" 
-                          className="rounded-xl border border-yorumi-text/10 shadow-sm max-w-full cursor-pointer hover:scale-[1.02] hover:shadow-lg transition-all"
+                          className="rounded-xl max-w-full cursor-pointer hover:scale-[1.02] transition-all"
                           onClick={() => setExpandedImage('/tmdb/image-1.png')} 
                         />
                       </div>
@@ -334,7 +334,7 @@ export const DocumentationGuide: React.FC<DocumentationGuideProps> = ({ activeTa
                         <img 
                           src="/tmdb/image-3.png" 
                           alt="Personal use only" 
-                          className="rounded-xl border border-yorumi-text/10 shadow-sm max-w-full cursor-pointer hover:scale-[1.02] hover:shadow-lg transition-all"
+                          className="rounded-xl max-w-full cursor-pointer hover:scale-[1.02] transition-all"
                           onClick={() => setExpandedImage('/tmdb/image-3.png')} 
                         />
                       </div>
@@ -347,7 +347,7 @@ export const DocumentationGuide: React.FC<DocumentationGuideProps> = ({ activeTa
                         <img 
                           src="/tmdb/opera-snapshot.png" 
                           alt="Fill out application" 
-                          className="rounded-xl border border-yorumi-text/10 shadow-sm max-w-full cursor-pointer hover:scale-[1.02] hover:shadow-lg transition-all"
+                          className="rounded-xl max-w-full cursor-pointer hover:scale-[1.02] transition-all"
                           onClick={() => setExpandedImage('/tmdb/opera-snapshot.png')} 
                         />
                       </div>
@@ -360,7 +360,7 @@ export const DocumentationGuide: React.FC<DocumentationGuideProps> = ({ activeTa
                         <img 
                           src="/tmdb/image-5.png" 
                           alt="Copy API Key" 
-                          className="rounded-xl border border-yorumi-text/10 shadow-sm max-w-full cursor-pointer hover:scale-[1.02] hover:shadow-lg transition-all"
+                          className="rounded-xl max-w-full cursor-pointer hover:scale-[1.02] transition-all"
                           onClick={() => setExpandedImage('/tmdb/image-5.png')} 
                         />
                       </div>
@@ -436,7 +436,7 @@ export const DocumentationGuide: React.FC<DocumentationGuideProps> = ({ activeTa
                       href="https://yorumi-cli.vercel.app/index.html"
                       target="_blank"
                       rel="noreferrer"
-                      className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-yorumi-main text-white font-semibold text-sm hover:bg-yorumi-main/90 transition-colors shadow-md shadow-yorumi-main/20"
+                      className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-yorumi-main text-white font-semibold text-sm hover:bg-yorumi-main/90 transition-colors"
                     >
                       <span>Visit https://yorumi-cli.vercel.app</span>
                       <ExternalLink className="w-4 h-4" />
@@ -459,7 +459,7 @@ export const DocumentationGuide: React.FC<DocumentationGuideProps> = ({ activeTa
 
           {/* Bottom Next Section Button (Miru style) */}
           {currentSection.nextId && (
-            <div className="pt-6 border-t border-white/5 flex justify-end">
+            <div className="pt-6 flex justify-end">
               <button
                 onClick={() => onTabChange(currentSection.nextId!)}
                 className="group inline-flex items-center gap-3 bg-yorumi-card hover:bg-yorumi-main/15 text-yorumi-text hover:text-yorumi-main px-6 py-4 rounded-2xl font-semibold text-sm transition-all"
@@ -506,7 +506,7 @@ export const DocumentationGuide: React.FC<DocumentationGuideProps> = ({ activeTa
           <img 
             src={expandedImage} 
             alt="Expanded view" 
-            className="max-w-[95vw] max-h-[95vh] rounded-2xl object-contain shadow-2xl border border-white/10"
+            className="max-w-[95vw] max-h-[95vh] rounded-2xl object-contain"
           />
         </div>
       )}

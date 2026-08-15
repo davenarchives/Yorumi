@@ -7,11 +7,41 @@ import {
   Star,
   AlertTriangle,
   Download,
-  Sparkles
+  Sparkles,
+  Copy,
+  Check,
+  Terminal,
+  Laptop,
+  Globe
 } from 'lucide-react';
 import { motion, useScroll, useTransform, AnimatePresence } from 'framer-motion';
 import type { Variants } from 'framer-motion';
 import { DocumentationGuide, type DocTabId } from './Documentation';
+
+function AppleIcon({ className = "w-5 h-5" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M15.97 6.37c.62-.75 1.04-1.8 1.01-2.87-.96.04-2.12.64-2.8 1.44-.59.68-1.11 1.76-1.07 2.81 1.07.08 2.24-.63 2.86-1.38z" />
+    </svg>
+  );
+}
+
+function WindowsIcon({ className = "w-5 h-5" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.551H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-13.051-1.849" />
+    </svg>
+  );
+}
+
+function LinuxIcon({ className = "w-5 h-5" }: { className?: string }) {
+  return (
+    <svg className={className} role="img" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+      <title>Linux</title>
+      <path d="M12.504 0c-.155 0-.315.008-.48.021-4.226.333-3.105 4.807-3.17 6.298-.076 1.092-.3 1.953-1.05 3.02-.885 1.051-2.127 2.75-2.716 4.521-.278.832-.41 1.684-.287 2.489a.424.424 0 00-.11.135c-.26.268-.45.6-.663.839-.199.199-.485.267-.797.4-.313.136-.658.269-.864.68-.09.189-.136.394-.132.602 0 .199.027.4.055.536.058.399.116.728.04.97-.249.68-.28 1.145-.106 1.484.174.334.535.47.94.601.81.2 1.91.135 2.774.6.926.466 1.866.67 2.616.47.526-.116.97-.464 1.208-.946.587-.003 1.23-.269 2.26-.334.699-.058 1.574.267 2.577.2.025.134.063.198.114.333l.003.003c.391.778 1.113 1.132 1.884 1.071.771-.06 1.592-.536 2.257-1.306.631-.765 1.683-1.084 2.378-1.503.348-.199.629-.469.649-.853.023-.4-.2-.811-.714-1.376v-.097l-.003-.003c-.17-.2-.25-.535-.338-.926-.085-.401-.182-.786-.492-1.046h-.003c-.059-.054-.123-.067-.188-.135a.357.357 0 00-.19-.064c.431-1.278.264-2.55-.173-3.694-.533-1.41-1.465-2.638-2.175-3.483-.796-1.005-1.576-1.957-1.56-3.368.026-2.152.236-6.133-3.544-6.139zm.529 3.405h.013c.213 0 .396.062.584.198.19.135.33.332.438.533.105.259.158.459.166.724 0-.02.006-.04.006-.06v.105a.086.086 0 01-.004-.021l-.004-.024a1.807 1.807 0 01-.15.706.953.953 0 01-.213.335.71.71 0 00-.088-.042c-.104-.045-.198-.064-.284-.133a1.312 1.312 0 00-.22-.066c.05-.06.146-.133.183-.198.053-.128.082-.264.088-.402v-.02a1.21 1.21 0 00-.061-.4c-.045-.134-.101-.2-.183-.333-.084-.066-.167-.132-.267-.132h-.016c-.093 0-.176.03-.262.132a.8.8 0 00-.205.334 1.18 1.18 0 00-.09.4v.019c.002.089.008.179.02.267-.193-.067-.438-.135-.607-.202a1.635 1.635 0 01-.018-.2v-.02a1.772 1.772 0 01.15-.768c.082-.22.232-.406.43-.533a.985.985 0 01.594-.2zm-2.962.059h.036c.142 0 .27.048.399.135.146.129.264.288.344.465.09.199.14.4.153.667v.004c.007.134.006.2-.002.266v.08c-.03.007-.056.018-.083.024-.152.055-.274.135-.393.2.012-.09.013-.18.003-.267v-.015c-.012-.133-.04-.2-.082-.333a.613.613 0 00-.166-.267.248.248 0 00-.183-.064h-.021c-.071.006-.13.04-.186.132a.552.552 0 00-.12.27.944.944 0 00-.023.33v.015c.012.135.037.2.08.334.046.134.098.2.166.268.01.009.02.018.034.024-.07.057-.117.07-.176.136a.304.304 0 01-.131.068 2.62 2.62 0 01-.275-.402 1.772 1.772 0 01-.155-.667 1.759 1.759 0 01.08-.668 1.43 1.43 0 01.283-.535c.128-.133.26-.2.418-.2zm1.37 1.706c.332 0 .733.065 1.216.399.293.2.523.269 1.052.468h.003c.255.136.405.266.478.399v-.131a.571.571 0 01.016.47c-.123.31-.516.643-1.063.842v.002c-.268.135-.501.333-.775.465-.276.135-.588.292-1.012.267a1.139 1.139 0 01-.448-.067 3.566 3.566 0 01-.322-.198c-.195-.135-.363-.332-.612-.465v-.005h-.005c-.4-.246-.616-.512-.686-.71-.07-.268-.005-.47.193-.6.224-.135.38-.271.483-.336.104-.074.143-.102.176-.131h.002v-.003c.169-.202.436-.47.839-.601.139-.036.294-.065.466-.065zm2.8 2.142c.358 1.417 1.196 3.475 1.735 4.473.286.534.855 1.659 1.102 3.024.156-.005.33.018.513.064.646-1.671-.546-3.467-1.089-3.966-.22-.2-.232-.335-.123-.335.59.534 1.365 1.572 1.646 2.757.13.535.16 1.104.021 1.67.067.028.135.06.205.067 1.032.534 1.413.938 1.23 1.537v-.043c-.06-.003-.12 0-.18 0h-.016c.151-.467-.182-.825-1.065-1.224-.915-.4-1.646-.336-1.77.465-.008.043-.013.066-.018.135-.068.023-.139.053-.209.064-.43.268-.662.669-.793 1.187-.13.533-.17 1.156-.205 1.869v.003c-.02.334-.17.838-.319 1.35-1.5 1.072-3.58 1.538-5.348.334a2.645 2.645 0 00-.402-.533 1.45 1.45 0 00-.275-.333c.182 0 .338-.03.465-.067a.615.615 0 00.314-.334c.108-.267 0-.697-.345-1.163-.345-.467-.931-.995-1.788-1.521-.63-.4-.986-.87-1.15-1.396-.165-.534-.143-1.085-.015-1.645.245-1.07.873-2.11 1.274-2.763.107-.065.037.135-.408.974-.396.751-1.14 2.497-.122 3.854a8.123 8.123 0 01.647-2.876c.564-1.278 1.743-3.504 1.836-5.268.048.036.217.135.289.202.218.133.38.333.59.465.21.201.477.335.876.335.039.003.075.006.11.006.412 0 .73-.134.997-.268.29-.134.52-.334.74-.4h.005c.467-.135.835-.402 1.044-.7zm2.185 8.958c.037.6.343 1.245.882 1.377.588.134 1.434-.333 1.791-.765l.211-.01c.315-.007.577.01.847.268l.003.003c.208.199.305.53.391.876.085.4.154.78.409 1.066.486.527.645.906.636 1.14l.003-.007v.018l-.003-.012c-.015.262-.185.396-.498.595-.63.401-1.746.712-2.457 1.57-.618.737-1.37 1.14-2.036 1.191-.664.053-1.237-.2-1.574-.898l-.005-.003c-.21-.4-.12-1.025.056-1.69.176-.668.428-1.344.463-1.897.037-.714.076-1.335.195-1.814.12-.465.308-.797.641-.984l.045-.022zm-10.814.049h.01c.053 0 .105.005.157.014.376.055.706.333 1.023.752l.91 1.664.003.003c.243.533.754 1.064 1.189 1.637.434.598.77 1.131.729 1.57v.006c-.057.744-.48 1.148-1.125 1.294-.645.135-1.52.002-2.395-.464-.968-.536-2.118-.469-2.857-.602-.369-.066-.61-.2-.723-.4-.11-.2-.113-.602.123-1.23v-.004l.002-.003c.117-.334.03-.752-.027-1.118-.055-.401-.083-.71.043-.94.16-.334.396-.4.69-.533.294-.135.64-.202.915-.47h.002v-.002c.256-.268.445-.601.668-.838.19-.201.38-.336.663-.336zm7.159-9.074c-.435.201-.945.535-1.488.535-.542 0-.97-.267-1.28-.466-.154-.134-.28-.268-.373-.335-.164-.134-.144-.333-.074-.333.109.016.129.134.199.2.096.066.215.2.36.333.292.2.68.467 1.167.467.485 0 1.053-.267 1.398-.466.195-.135.445-.334.648-.467.156-.136.149-.267.279-.267.128.016.034.134-.147.332a8.097 8.097 0 01-.69.468zm-1.082-1.583V5.64c-.006-.02.013-.042.029-.05.074-.043.18-.027.26.004.063 0 .16.067.15.135-.006.049-.085.066-.135.066-.055 0-.092-.043-.141-.068-.052-.018-.146-.008-.163-.065zm-.551 0c-.02.058-.113.049-.166.066-.047.025-.086.068-.14.068-.05 0-.13-.02-.136-.068-.01-.066.088-.133.15-.133.08-.031.184-.047.259-.005.019.009.036.03.03.05v.02h.003z" />
+    </svg>
+  );
+}
 
 const SLIDES = [
   { id: 1, image: '/browse-animes.png', label: 'Browse Animes', description: 'Browse thousands of anime titles.' },
@@ -103,7 +133,7 @@ function AppPreviews() {
                 if (state === 'next1') handleNext();
                 if (state === 'prev1') handlePrev();
               }}
-              className="absolute inset-0 w-full h-full rounded-3xl overflow-hidden cursor-grab active:cursor-grabbing shadow-2xl"
+              className="absolute inset-0 w-full h-full rounded-3xl overflow-hidden cursor-grab active:cursor-grabbing"
             >
               <motion.div 
                 animate={{ opacity: state === 'active' ? 0 : 0.6 }}
@@ -122,7 +152,7 @@ function AppPreviews() {
             key={idx}
             onClick={() => setCurrentIndex(idx)}
             className={`h-2 rounded-full transition-all duration-500 ease-out ${
-              idx === currentIndex ? 'bg-yorumi-main w-6 shadow-[0_0_10px_rgba(var(--color-yorumi-main),0.5)]' : 'w-2 bg-yorumi-text/20 hover:bg-yorumi-text/40'
+              idx === currentIndex ? 'bg-yorumi-main w-6' : 'w-2 bg-yorumi-text/20 hover:bg-yorumi-text/40'
             }`}
           />
         ))}
@@ -136,8 +166,17 @@ function App() {
   const [isScrolled, setIsScrolled] = useState(false);
   const [starCount, setStarCount] = useState<string>('...');
   const [activeDocTab, setActiveDocTab] = useState<DocTabId>('intro');
+  const [copiedCommand, setCopiedCommand] = useState<string | null>(null);
   const { scrollY } = useScroll();
   const yImage = useTransform(scrollY, [0, 500], [0, -50]);
+
+  const handleCopy = (text: string, id: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedCommand(id);
+    setTimeout(() => {
+      setCopiedCommand((prev) => (prev === id ? null : prev));
+    }, 2000);
+  };
 
   const navigateTo = (page: 'home' | 'get-started' | 'docs', docTab?: DocTabId) => {
     setCurrentPage(page);
@@ -150,6 +189,13 @@ function App() {
 
   const handleOpenDoc = (tab: DocTabId) => {
     navigateTo('docs', tab);
+  };
+
+  const scrollToAnchor = (elementId: string) => {
+    const el = document.getElementById(elementId);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
   };
 
   useEffect(() => {
@@ -221,7 +267,7 @@ function App() {
         initial={{ y: -100 }}
         animate={{ y: 0 }}
         transition={{ type: "spring", stiffness: 100, damping: 20 }}
-        className={`fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-6 lg:px-12 py-4 transition-all duration-300 ${isScrolled ? 'bg-yorumi-bg/80 backdrop-blur-xl border-b border-yorumi-text/5 shadow-sm' : 'bg-transparent'}`}
+        className={`fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-6 lg:px-12 py-4 transition-all duration-300 ${isScrolled ? 'bg-yorumi-bg/80 backdrop-blur-xl' : 'bg-transparent'}`}
       >
         <div onClick={() => navigateTo('home')} className="flex items-center gap-3 group cursor-pointer">
           <img src="/yorumi-app-icon.png" alt="Yorumi" className="w-8 h-8 group-hover:scale-110 group-active:scale-95 transition-transform duration-300 rounded-md" />
@@ -251,8 +297,6 @@ function App() {
               </svg>
             </a>
           </div>
-          
-          <div className="w-px h-6 bg-yorumi-text/10 hidden md:block"></div>
           
           <button 
             onClick={toggleDarkMode}
@@ -313,9 +357,9 @@ function App() {
                   <button 
                     type="button"
                     onClick={() => navigateTo('get-started')}
-                    className="group flex items-center justify-center gap-2.5 bg-yorumi-main hover:bg-yorumi-main/90 text-white px-6 py-2.5 rounded-full font-semibold text-sm md:text-base tracking-wide transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] shadow-sm shadow-yorumi-main/20 cursor-pointer"
+                    className="group flex items-center justify-center gap-2.5 bg-yorumi-main hover:bg-yorumi-main/90 text-white px-6 py-2.5 rounded-full font-semibold text-sm md:text-base tracking-wide transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
                   >
-                    <span>Get Started</span>
+                    <span>Download</span>
                     <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
                   </button>
               
@@ -339,135 +383,397 @@ function App() {
             className="relative w-full h-full flex items-center justify-center lg:justify-end"
           >
             <div className="w-full max-w-[500px] transform hover:-translate-y-2 transition-all duration-700 ease-out z-10">
-              <img src="/yorumi-mascot.png" alt="Yorumi Mascot" className="w-full h-auto drop-shadow-2xl object-contain pointer-events-none" />
+              <img src="/yorumi-mascot.png" alt="Yorumi Mascot" className="w-full h-auto object-contain pointer-events-none" />
             </div>
           </motion.div>
         </div>
         </>
         )}
 
-        {/* Start Using Section (Miru style, minimal, Yorumi blue theme) */}
+        {/* Start Using Section (Antigravity 3-Platform Format with Direct Downloads & CLI) */}
         {currentPage === 'get-started' && (
         <div id="start-using" className="w-full max-w-[1400px] space-y-16">
           
+          {/* Main Download Header */}
           <motion.div 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="space-y-3"
+            className="flex flex-col md:flex-row md:items-end justify-between gap-6 pb-2"
           >
-            <h2 className="text-4xl md:text-5xl font-display font-bold tracking-tight text-yorumi-text">Start Using</h2>
-            <p className="text-base md:text-lg text-yorumi-muted font-normal">
-              You can download the desktop app across all macOS, Windows, and Linux platforms, use the standalone CLI, or stream directly on the web.
-            </p>
+            <div className="space-y-3 max-w-3xl">
+              <h2 className="text-4xl md:text-5xl lg:text-6xl font-display font-bold tracking-tight text-yorumi-text">
+                Download Yorumi
+              </h2>
+              <p className="text-base md:text-lg text-yorumi-muted font-normal">
+                Cross-platform desktop application and standalone terminal CLI for macOS, Windows, and Linux.
+              </p>
+            </div>
+
+            <a
+              href="https://github.com/davenarchives/Yorumi/releases"
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-yorumi-card hover:bg-yorumi-card/80 text-yorumi-text text-sm font-semibold transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] shrink-0 self-start md:self-auto"
+            >
+              <span>View previous releases</span>
+              <ExternalLink className="w-3.5 h-3.5 opacity-70" />
+            </a>
           </motion.div>
 
-          {/* Client Subsection */}
-          <div className="space-y-4">
-            <h3 className="text-xl font-bold text-yorumi-text">Client</h3>
-            <div className="bg-yorumi-card rounded-3xl p-6 md:p-8 space-y-6">
-              <div className="text-sm md:text-base text-yorumi-muted">
-                <span className="font-medium text-yorumi-text">The latest stable version:</span>{' '}
-                <span className="text-yorumi-main font-semibold">v4.0.9</span>
-              </div>
+          {/* Quick Anchor Filter Pills */}
+          <div className="flex flex-wrap items-center gap-2.5 pt-2 pb-2">
+            <button
+              type="button"
+              onClick={() => scrollToAnchor('yorumi-desktop')}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-yorumi-main/20 hover:bg-yorumi-main/30 text-yorumi-main font-semibold text-sm transition-all"
+            >
+              <Sparkles className="w-4 h-4" />
+              <span>Yorumi Desktop</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => scrollToAnchor('yorumi-cli')}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-yorumi-card hover:bg-yorumi-card/80 text-yorumi-text font-semibold text-sm transition-all"
+            >
+              <Terminal className="w-4 h-4 opacity-70" />
+              <span>Yorumi CLI</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => scrollToAnchor('web-selfhost')}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-yorumi-card hover:bg-yorumi-card/80 text-yorumi-text font-semibold text-sm transition-all"
+            >
+              <Globe className="w-4 h-4 opacity-70" />
+              <span>Web & Self-Host</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => scrollToAnchor('documentation')}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-yorumi-card hover:bg-yorumi-card/80 text-yorumi-text font-semibold text-sm transition-all"
+            >
+              <Laptop className="w-4 h-4 opacity-70" />
+              <span>Documentation</span>
+            </button>
+          </div>
 
-              {/* Release downloads: macOS (Universal, Apple Silicon, Intel), Windows, Linux, and CLI */}
-              <div className="flex flex-wrap items-center gap-3">
-                <a
-                  href="https://github.com/davenarchives/Yorumi/releases/latest"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-yorumi-main/20 hover:bg-yorumi-main/30 text-yorumi-main font-semibold text-sm transition-colors border border-yorumi-main/30"
-                >
-                  <Download className="w-4 h-4" />
-                  <span>macOS Universal (.dmg)</span>
-                </a>
-                <a
-                  href="https://github.com/davenarchives/Yorumi/releases/latest"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-yorumi-main/10 hover:bg-yorumi-main/20 text-yorumi-text hover:text-yorumi-main font-semibold text-sm transition-colors border border-yorumi-text/10"
-                >
-                  <Download className="w-4 h-4 text-yorumi-muted" />
-                  <span>Apple Silicon (.dmg)</span>
-                </a>
-                <a
-                  href="https://github.com/davenarchives/Yorumi/releases/latest"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-yorumi-main/10 hover:bg-yorumi-main/20 text-yorumi-text hover:text-yorumi-main font-semibold text-sm transition-colors border border-yorumi-text/10"
-                >
-                  <Download className="w-4 h-4 text-yorumi-muted" />
-                  <span>Intel Mac (.dmg)</span>
-                </a>
-                <a
-                  href="https://github.com/davenarchives/Yorumi/releases/latest"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-yorumi-main/10 hover:bg-yorumi-main/20 text-yorumi-text hover:text-yorumi-main font-semibold text-sm transition-colors border border-yorumi-text/10"
-                >
-                  <Download className="w-4 h-4 text-yorumi-muted" />
-                  <span>Windows (.exe / ARM64 / Portable)</span>
-                </a>
-                <a
-                  href="https://github.com/davenarchives/Yorumi/releases/latest"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-yorumi-main/10 hover:bg-yorumi-main/20 text-yorumi-text hover:text-yorumi-main font-semibold text-sm transition-colors border border-yorumi-text/10"
-                >
-                  <Download className="w-4 h-4 text-yorumi-muted" />
-                  <span>Linux (.AppImage)</span>
-                </a>
-                <a
-                  href="https://yorumi-cli.vercel.app/index.html"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-yorumi-main/10 hover:bg-yorumi-main/20 text-yorumi-text hover:text-yorumi-main font-semibold text-sm transition-colors border border-yorumi-text/10"
-                >
-                  <ExternalLink className="w-4 h-4 text-yorumi-main" />
-                  <span>yorumi-cli-v2.1.9</span>
-                </a>
-              </div>
+          {/* SECTION 1: Yorumi Desktop (Antigravity 3-Platform Format) */}
+          <div id="yorumi-desktop" className="space-y-8 scroll-mt-28">
+            <div className="flex items-center gap-3">
+              <h3 className="text-2xl md:text-3xl font-display font-bold text-yorumi-text">Yorumi Desktop</h3>
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-yorumi-main/15 text-yorumi-main">
+                v4.0.9
+              </span>
+            </div>
 
-              <div className="border-t border-white/5 pt-6 space-y-4">
-                <div className="text-sm font-semibold text-yorumi-text">What&apos;s new in version 4.0.9?</div>
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2 text-sm font-bold text-yorumi-main">
-                    <Sparkles className="w-4 h-4" />
-                    <span>Discord Rich Presence, Sequential Manga Loader, AniDB Turbo Fetcher & Official CC Badge</span>
+            {/* 3 Platforms Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              
+              {/* macOS Platform */}
+              <div className="bg-yorumi-card rounded-3xl p-6 md:p-8 flex flex-col justify-between space-y-6 transition-all duration-300 group h-full">
+                <div className="space-y-5">
+                  <div className="flex items-center gap-3 text-yorumi-text">
+                    <AppleIcon className="w-6 h-6 fill-current" />
+                    <h4 className="text-xl font-bold font-display">macOS</h4>
                   </div>
-                  <ul className="list-disc list-inside text-sm text-yorumi-muted space-y-1.5 pl-1">
-                    <li>
-                      <span className="font-semibold text-yorumi-text">discord rich presence:</span> Full Electron IPC integration broadcasting current Anime watching, Manga reading, and Light Novel reading progress directly to your Discord activity card with live elapsed timers.
-                    </li>
-                    <li>
-                      <span className="font-semibold text-yorumi-text">sequential manga page loader:</span> High-priority eager loading for Page 1 followed by strict sequential preloading ($1 \rightarrow 50$) with layout height skeletons to eliminate scroll jumping.
-                    </li>
-                    <li>
-                      <span className="font-semibold text-yorumi-text">anidb turbo scraper pipeline:</span> Fast `curl`-first fetch strategy with 24-hour Redis `animeId` caching and parallel embed resolution cut AniDB stream loading from 30s to under 1s.
-                    </li>
-                    <li>
-                      <span className="font-semibold text-yorumi-text">official material cc badge:</span> Standardized CCIcon vector badge component across all Anime and Manga cards, hero spotlights, and Top 10 sidebars.
-                    </li>
-                  </ul>
+
+                  <div className="space-y-3 pt-2">
+                    <a
+                      href="https://github.com/davenarchives/Yorumi/releases/latest/download/Yorumi.dmg"
+                      className="w-full flex items-center justify-center gap-2 px-5 py-3 rounded-full bg-yorumi-text text-yorumi-bg font-semibold text-sm transition-all duration-200 hover:opacity-90 active:scale-[0.98]"
+                    >
+                      <Download className="w-4 h-4" />
+                      <span>Download for Apple Silicon (.dmg)</span>
+                    </a>
+
+                    <a
+                      href="https://github.com/davenarchives/Yorumi/releases/latest/download/Yorumi.dmg"
+                      className="w-full flex items-center justify-center gap-2 px-5 py-2.5 rounded-full bg-yorumi-text/5 hover:bg-yorumi-text/10 text-yorumi-text font-semibold text-sm transition-all"
+                    >
+                      <Download className="w-4 h-4 text-yorumi-muted" />
+                      <span>Download for Intel (.dmg)</span>
+                    </a>
+
+                    <a
+                      href="https://github.com/davenarchives/Yorumi/releases/latest/download/Yorumi.zip"
+                      className="w-full flex items-center justify-center gap-2 px-5 py-2 rounded-full hover:bg-yorumi-text/5 text-yorumi-muted hover:text-yorumi-text text-xs font-medium transition-all"
+                    >
+                      <span>Download Portable (.zip)</span>
+                    </a>
+                  </div>
                 </div>
-                <div>
-                  <a
-                    href="https://github.com/davenarchives/Yorumi/releases"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1.5 text-sm font-semibold text-yorumi-main hover:underline"
-                  >
-                    <span>View changes on GitHub</span>
-                    <ExternalLink className="w-3.5 h-3.5" />
-                  </a>
+
+                <div className="pt-4 mt-auto border-t border-yorumi-text/5 space-y-1 min-h-[58px] flex flex-col justify-start">
+                  <div className="text-xs font-semibold text-yorumi-text">Minimum Requirements</div>
+                  <div className="text-xs text-yorumi-muted leading-relaxed">macOS 10.15+ (Catalina) • Apple Silicon or Intel 64-bit</div>
                 </div>
+              </div>
+
+              {/* Windows Platform */}
+              <div className="bg-yorumi-card rounded-3xl p-6 md:p-8 flex flex-col justify-between space-y-6 transition-all duration-300 group h-full">
+                <div className="space-y-5">
+                  <div className="flex items-center gap-3 text-yorumi-text">
+                    <WindowsIcon className="w-6 h-6 fill-current" />
+                    <h4 className="text-xl font-bold font-display">Windows</h4>
+                  </div>
+
+                  <div className="space-y-3 pt-2">
+                    <a
+                      href="https://github.com/davenarchives/Yorumi/releases/latest/download/Yorumi.exe"
+                      className="w-full flex items-center justify-center gap-2 px-5 py-3 rounded-full bg-yorumi-text text-yorumi-bg font-semibold text-sm transition-all duration-200 hover:opacity-90 active:scale-[0.98]"
+                    >
+                      <Download className="w-4 h-4" />
+                      <span>Download Installer (.exe)</span>
+                    </a>
+
+                    <a
+                      href="https://github.com/davenarchives/Yorumi/releases/latest/download/Yorumi.zip"
+                      className="w-full flex items-center justify-center gap-2 px-5 py-2.5 rounded-full bg-yorumi-text/5 hover:bg-yorumi-text/10 text-yorumi-text font-semibold text-sm transition-all"
+                    >
+                      <Download className="w-4 h-4 text-yorumi-muted" />
+                      <span>Download Portable (.zip)</span>
+                    </a>
+
+                    <a
+                      href="https://github.com/davenarchives/Yorumi/releases/latest"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="w-full flex items-center justify-center gap-2 px-5 py-2 rounded-full hover:bg-yorumi-text/5 text-yorumi-muted hover:text-yorumi-text text-xs font-medium transition-all"
+                    >
+                      <span>View Windows Release Assets</span>
+                    </a>
+                  </div>
+                </div>
+
+                <div className="pt-4 mt-auto border-t border-yorumi-text/5 space-y-1 min-h-[58px] flex flex-col justify-start">
+                  <div className="text-xs font-semibold text-yorumi-text">Minimum Requirements</div>
+                  <div className="text-xs text-yorumi-muted leading-relaxed">Windows 10 / 11 (64-bit or ARM64) • DirectX 11+</div>
+                </div>
+              </div>
+
+              {/* Linux Platform */}
+              <div className="bg-yorumi-card rounded-3xl p-6 md:p-8 flex flex-col justify-between space-y-6 transition-all duration-300 group h-full">
+                <div className="space-y-5">
+                  <div className="flex items-center gap-3 text-yorumi-text">
+                    <LinuxIcon className="w-6 h-6 fill-current" />
+                    <h4 className="text-xl font-bold font-display">Linux</h4>
+                  </div>
+
+                  <div className="space-y-3 pt-2">
+                    <a
+                      href="https://github.com/davenarchives/Yorumi/releases/latest/download/Yorumi.AppImage"
+                      className="w-full flex items-center justify-center gap-2 px-5 py-3 rounded-full bg-yorumi-text text-yorumi-bg font-semibold text-sm transition-all duration-200 hover:opacity-90 active:scale-[0.98]"
+                    >
+                      <Download className="w-4 h-4" />
+                      <span>Download for x64 (.AppImage)</span>
+                    </a>
+
+                    <a
+                      href="https://github.com/davenarchives/Yorumi/releases/latest/download/Yorumi.zip"
+                      className="w-full flex items-center justify-center gap-2 px-5 py-2.5 rounded-full bg-yorumi-text/5 hover:bg-yorumi-text/10 text-yorumi-text font-semibold text-sm transition-all"
+                    >
+                      <Download className="w-4 h-4 text-yorumi-muted" />
+                      <span>Download Portable (.zip)</span>
+                    </a>
+
+                    <a
+                      href="https://github.com/davenarchives/Yorumi/releases/latest"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="w-full flex items-center justify-center gap-2 px-5 py-2 rounded-full hover:bg-yorumi-text/5 text-yorumi-muted hover:text-yorumi-text text-xs font-medium transition-all"
+                    >
+                      <span>View Linux Release Assets</span>
+                    </a>
+                  </div>
+                </div>
+
+                <div className="pt-4 mt-auto border-t border-yorumi-text/5 space-y-1 min-h-[58px] flex flex-col justify-start">
+                  <div className="text-xs font-semibold text-yorumi-text">Minimum Requirements</div>
+                  <div className="text-xs text-yorumi-muted leading-relaxed">glibc 2.28+ • Ubuntu 20.04+, Fedora 34+, Arch Linux</div>
+                </div>
+              </div>
+
+            </div>
+
+            {/* What's New In Release Card */}
+            <div className="bg-yorumi-card rounded-3xl p-6 md:p-8 space-y-4">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="text-sm font-semibold text-yorumi-text">What&apos;s new in version 4.0.9?</div>
+                <a
+                  href="https://github.com/davenarchives/Yorumi/releases"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-yorumi-main hover:underline"
+                >
+                  <span>Full Changelog on GitHub</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
+
+              <div className="space-y-3 pt-2">
+                <div className="flex items-center gap-2 text-sm font-bold text-yorumi-main">
+                  <Sparkles className="w-4 h-4 shrink-0" />
+                  <span>Discord Rich Presence, Sequential Manga Loader, AniDB Turbo Fetcher & Official CC Badge</span>
+                </div>
+                <ul className="list-disc list-inside text-sm text-yorumi-muted space-y-2 pl-1 leading-relaxed">
+                  <li>
+                    <span className="font-semibold text-yorumi-text">discord rich presence:</span> Full Electron IPC integration broadcasting current Anime watching, Manga reading, and Light Novel reading progress directly to your Discord activity card with live elapsed timers.
+                  </li>
+                  <li>
+                    <span className="font-semibold text-yorumi-text">sequential manga page loader:</span> High-priority eager loading for Page 1 followed by strict sequential preloading ($1 \rightarrow 50$) with layout height skeletons to eliminate scroll jumping.
+                  </li>
+                  <li>
+                    <span className="font-semibold text-yorumi-text">anidb turbo scraper pipeline:</span> Fast `curl`-first fetch strategy with 24-hour Redis `animeId` caching and parallel embed resolution cut AniDB stream loading from 30s to under 1s.
+                  </li>
+                  <li>
+                    <span className="font-semibold text-yorumi-text">official material cc badge:</span> Standardized CCIcon vector badge component across all Anime and Manga cards, hero spotlights, and Top 10 sidebars.
+                  </li>
+                </ul>
               </div>
             </div>
           </div>
 
-          {/* Web Subsection */}
-          <div className="space-y-4 pt-4">
-            <h3 className="text-xl font-bold text-yorumi-text">Web</h3>
+          {/* SECTION 2: Yorumi CLI (Antigravity Terminal Format) */}
+          <div id="yorumi-cli" className="space-y-8 pt-4 scroll-mt-28">
+            <div className="space-y-2">
+              <div className="flex items-center gap-3">
+                <h3 className="text-2xl md:text-3xl font-display font-bold text-yorumi-text">Yorumi CLI</h3>
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-yorumi-main/15 text-yorumi-main">
+                  v2.2.0
+                </span>
+              </div>
+              <p className="text-base text-yorumi-muted max-w-2xl">
+                Work with Yorumi directly in your codebase and terminal. Build, stream, download, and enjoy anime from your terminal. Describe what you need, and Yorumi CLI handles the rest.
+              </p>
+            </div>
+
+            {/* Terminal Command Blocks */}
+            <div className="space-y-5">
+              
+              {/* macOS | Linux */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-sm font-semibold text-yorumi-text">
+                  <AppleIcon className="w-4 h-4 fill-current" />
+                  <span>macOS</span>
+                  <span className="text-yorumi-muted font-normal">|</span>
+                  <LinuxIcon className="w-4 h-4 fill-current" />
+                  <span>Linux</span>
+                </div>
+                <div className="bg-slate-100/90 dark:bg-black/40 border border-slate-300/80 dark:border-white/5 rounded-2xl p-3.5 md:p-4 flex items-center justify-between gap-4 font-mono text-xs md:text-sm">
+                  <span className="overflow-x-auto whitespace-nowrap scrollbar-none select-all text-black dark:text-slate-200 font-semibold md:font-medium tracking-tight">
+                    curl -fsSL https://raw.githubusercontent.com/davenarchives/yorumi-cli/main/install.sh | bash
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleCopy('curl -fsSL https://raw.githubusercontent.com/davenarchives/yorumi-cli/main/install.sh | bash', 'cli-unix')}
+                    className="p-2 rounded-xl bg-white dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 text-black dark:text-slate-200 border border-slate-300 dark:border-white/5 shadow-xs dark:shadow-none transition-all shrink-0 flex items-center gap-1.5 text-xs font-sans font-semibold cursor-pointer"
+                    aria-label="Copy Command"
+                  >
+                    {copiedCommand === 'cli-unix' ? (
+                      <>
+                        <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                        <span className="text-emerald-600 dark:text-emerald-400 hidden sm:inline font-semibold">Copied!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-4 h-4 text-black dark:text-slate-200" />
+                        <span className="hidden sm:inline">Copy</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Windows PowerShell */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-sm font-semibold text-yorumi-text">
+                  <WindowsIcon className="w-4 h-4 fill-current" />
+                  <span>Windows PowerShell</span>
+                </div>
+                <div className="bg-slate-100/90 dark:bg-black/40 border border-slate-300/80 dark:border-white/5 rounded-2xl p-3.5 md:p-4 flex items-center justify-between gap-4 font-mono text-xs md:text-sm">
+                  <span className="overflow-x-auto whitespace-nowrap scrollbar-none select-all text-black dark:text-slate-200 font-semibold md:font-medium tracking-tight">
+                    iwr -useb https://raw.githubusercontent.com/davenarchives/yorumi-cli/main/install.ps1 | iex
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleCopy('iwr -useb https://raw.githubusercontent.com/davenarchives/yorumi-cli/main/install.ps1 | iex', 'cli-win-ps')}
+                    className="p-2 rounded-xl bg-white dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 text-black dark:text-slate-200 border border-slate-300 dark:border-white/5 shadow-xs dark:shadow-none transition-all shrink-0 flex items-center gap-1.5 text-xs font-sans font-semibold cursor-pointer"
+                    aria-label="Copy Command"
+                  >
+                    {copiedCommand === 'cli-win-ps' ? (
+                      <>
+                        <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                        <span className="text-emerald-600 dark:text-emerald-400 hidden sm:inline font-semibold">Copied!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-4 h-4 text-black dark:text-slate-200" />
+                        <span className="hidden sm:inline">Copy</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Windows Scoop / npx */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-sm font-semibold text-yorumi-text">
+                  <Terminal className="w-4 h-4" />
+                  <span>Scoop Package Manager & npx Direct</span>
+                </div>
+                <div className="bg-slate-100/90 dark:bg-black/40 border border-slate-300/80 dark:border-white/5 rounded-2xl p-3.5 md:p-4 flex items-center justify-between gap-4 font-mono text-xs md:text-sm">
+                  <span className="overflow-x-auto whitespace-nowrap scrollbar-none select-all text-black dark:text-slate-200 font-semibold md:font-medium tracking-tight">
+                    scoop bucket add yorumi https://github.com/davenarchives/yorumi-cli && scoop install yorumi-cli
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleCopy('scoop bucket add yorumi https://github.com/davenarchives/yorumi-cli && scoop install yorumi-cli', 'cli-scoop')}
+                    className="p-2 rounded-xl bg-white dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 text-black dark:text-slate-200 border border-slate-300 dark:border-white/5 shadow-xs dark:shadow-none transition-all shrink-0 flex items-center gap-1.5 text-xs font-sans font-semibold cursor-pointer"
+                    aria-label="Copy Command"
+                  >
+                    {copiedCommand === 'cli-scoop' ? (
+                      <>
+                        <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                        <span className="text-emerald-600 dark:text-emerald-400 hidden sm:inline font-semibold">Copied!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-4 h-4 text-black dark:text-slate-200" />
+                        <span className="hidden sm:inline">Copy</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+            </div>
+
+            {/* CLI Quick Action Badges */}
+            <div className="flex flex-wrap items-center gap-4 pt-2">
+              <a
+                href="https://yorumi-cli.vercel.app/index.html"
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-yorumi-main/20 hover:bg-yorumi-main/30 text-yorumi-main font-semibold text-sm transition-all"
+              >
+                <ExternalLink className="w-4 h-4" />
+                <span>Open Yorumi CLI Portal</span>
+              </a>
+              <a
+                href="https://github.com/davenarchives/yorumi-cli"
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-yorumi-card hover:bg-yorumi-card/80 text-yorumi-text font-semibold text-sm transition-all"
+              >
+                <ExternalLink className="w-4 h-4 opacity-70" />
+                <span>GitHub Repository</span>
+              </a>
+            </div>
+          </div>
+
+          {/* SECTION 3: Web & Self-Hosting */}
+          <div id="web-selfhost" className="space-y-6 pt-4 scroll-mt-28">
+            <h3 className="text-2xl md:text-3xl font-display font-bold text-yorumi-text">Web & Self-Host</h3>
+            
             <div className="bg-yorumi-card rounded-2xl p-4 flex items-start gap-3 text-sm text-yorumi-muted">
               <AlertTriangle className="w-5 h-5 text-yorumi-main shrink-0 mt-0.5" />
               <div>
@@ -479,7 +785,7 @@ function App() {
               <button
                 type="button"
                 onClick={() => handleOpenDoc('setup')}
-                className="bg-yorumi-card hover:bg-yorumi-card/80 p-6 rounded-2xl transition-all flex flex-col justify-between group text-left"
+                className="bg-yorumi-card hover:bg-yorumi-card/80 p-6 md:p-8 rounded-3xl transition-all flex flex-col justify-between group text-left"
               >
                 <div>
                   <h4 className="text-lg font-bold text-yorumi-text mb-2 group-hover:text-yorumi-main transition-colors">Web deployment tutorial</h4>
@@ -487,7 +793,7 @@ function App() {
                     Learn how to deploy Yorumi as a modern web app (Client + Server) or self-host your own scraper backend.
                   </p>
                 </div>
-                <div className="mt-4 flex items-center gap-1.5 text-xs font-semibold text-yorumi-main">
+                <div className="mt-6 flex items-center gap-1.5 text-xs font-semibold text-yorumi-main">
                   <span>Read Tutorial</span>
                   <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5" />
                 </div>
@@ -497,7 +803,7 @@ function App() {
                 href="https://github.com/davenarchives/Yorumi"
                 target="_blank"
                 rel="noreferrer"
-                className="bg-yorumi-card hover:bg-yorumi-card/80 p-6 rounded-2xl transition-all flex flex-col justify-between group"
+                className="bg-yorumi-card hover:bg-yorumi-card/80 p-6 md:p-8 rounded-3xl transition-all flex flex-col justify-between group"
               >
                 <div>
                   <h4 className="text-lg font-bold text-yorumi-text mb-2 group-hover:text-yorumi-main transition-colors">Use instances directly</h4>
@@ -505,7 +811,7 @@ function App() {
                     You can visit the live Yorumi repository and web instance to start watching anime and reading manga immediately.
                   </p>
                 </div>
-                <div className="mt-4 flex items-center gap-1.5 text-xs font-semibold text-yorumi-main">
+                <div className="mt-6 flex items-center gap-1.5 text-xs font-semibold text-yorumi-main">
                   <span>Visit Instance</span>
                   <ExternalLink className="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5" />
                 </div>
@@ -513,14 +819,14 @@ function App() {
             </div>
           </div>
 
-          {/* Documentation Subsection */}
-          <div id="documentation" className="space-y-4 pt-4">
-            <h3 className="text-xl font-bold text-yorumi-text">Documentation</h3>
+          {/* SECTION 4: Documentation */}
+          <div id="documentation" className="space-y-6 pt-4 scroll-mt-28">
+            <h3 className="text-2xl md:text-3xl font-display font-bold text-yorumi-text">Documentation</h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <button
                 type="button"
                 onClick={() => handleOpenDoc('intro')}
-                className="bg-yorumi-card hover:bg-yorumi-card/80 p-6 rounded-2xl transition-all flex flex-col justify-between group text-left"
+                className="bg-yorumi-card hover:bg-yorumi-card/80 p-6 rounded-3xl transition-all flex flex-col justify-between group text-left"
               >
                 <div>
                   <h4 className="text-lg font-bold text-yorumi-text mb-2 group-hover:text-yorumi-main transition-colors">User Usage Documents</h4>
@@ -528,7 +834,7 @@ function App() {
                     Can help you get started with Yorumi quickly, including web mode and standalone CLI setup.
                   </p>
                 </div>
-                <div className="mt-4 flex items-center gap-1.5 text-xs font-semibold text-yorumi-main">
+                <div className="mt-6 flex items-center gap-1.5 text-xs font-semibold text-yorumi-main">
                   <span>View Guide</span>
                   <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5" />
                 </div>
@@ -537,7 +843,7 @@ function App() {
               <button
                 type="button"
                 onClick={() => handleOpenDoc('scraper')}
-                className="bg-yorumi-card hover:bg-yorumi-card/80 p-6 rounded-2xl transition-all flex flex-col justify-between group text-left"
+                className="bg-yorumi-card hover:bg-yorumi-card/80 p-6 rounded-3xl transition-all flex flex-col justify-between group text-left"
               >
                 <div>
                   <h4 className="text-lg font-bold text-yorumi-text mb-2 group-hover:text-yorumi-main transition-colors">Scraper API & Dev Documents</h4>
@@ -545,7 +851,7 @@ function App() {
                     Can help you develop and integrate with Yorumi&apos;s Express backend, Redis caching, and scraper engine.
                   </p>
                 </div>
-                <div className="mt-4 flex items-center gap-1.5 text-xs font-semibold text-yorumi-main">
+                <div className="mt-6 flex items-center gap-1.5 text-xs font-semibold text-yorumi-main">
                   <span>View API Docs</span>
                   <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5" />
                 </div>
@@ -554,7 +860,7 @@ function App() {
               <button
                 type="button"
                 onClick={() => handleOpenDoc('tmdb')}
-                className="bg-yorumi-card hover:bg-yorumi-card/80 p-6 rounded-2xl transition-all flex flex-col justify-between group text-left"
+                className="bg-yorumi-card hover:bg-yorumi-card/80 p-6 rounded-3xl transition-all flex flex-col justify-between group text-left"
               >
                 <div>
                   <div className="flex items-center justify-between mb-2">
@@ -565,7 +871,7 @@ function App() {
                     Step-by-step tutorial on how to get and configure your TMDB API key for fanart and metadata in Yorumi.
                   </p>
                 </div>
-                <div className="mt-4 flex items-center gap-1.5 text-xs font-semibold text-yorumi-main">
+                <div className="mt-6 flex items-center gap-1.5 text-xs font-semibold text-yorumi-main">
                   <span>View Tutorial</span>
                   <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5" />
                 </div>
@@ -592,7 +898,7 @@ function App() {
       </main>
 
       {/* Footer */}
-      <footer className="w-full border-t border-yorumi-text/5 mt-20 bg-yorumi-bg">
+      <footer className="w-full mt-20 bg-yorumi-bg">
         <div className="max-w-[1400px] mx-auto px-6 lg:px-12 py-10 flex flex-col md:flex-row items-center justify-between gap-6">
           <div className="flex items-center gap-3 grayscale opacity-70">
             <img src="/yorumi-app-icon.png" alt="Yorumi" className="w-6 h-6 rounded-md" />
