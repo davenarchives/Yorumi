@@ -249,11 +249,37 @@ class AllMangaSource implements VideoSource {
     }
 }
 
+function cleanHtmlEntities(str: string): string {
+    if (!str) return '';
+    let decoded = String(str);
+    for (let pass = 0; pass < 3; pass += 1) {
+        const prev = decoded;
+        decoded = decoded
+            .replace(/&amp;/gi, '&')
+            .replace(/&#0*39;|&apos;|&#x27;/gi, "'")
+            .replace(/&quot;|&#0*34;|&#x22;/gi, '"')
+            .replace(/&lt;|&#0*60;|&#x3c;/gi, '<')
+            .replace(/&gt;|&#0*62;|&#x3e;/gi, '>')
+            .replace(/&nbsp;|&#0*160;/gi, ' ')
+            .replace(/&ndash;|&#8211;/gi, '–')
+            .replace(/&mdash;|&#8212;/gi, '—')
+            .replace(/&hellip;|&#8230;/gi, '…')
+            .replace(/&#(\d+);/g, (_, dec) => {
+                try { return String.fromCodePoint(Number(dec)); } catch { return _; }
+            })
+            .replace(/&#x([0-9a-f]+);/gi, (_, hex) => {
+                try { return String.fromCodePoint(parseInt(hex, 16)); } catch { return _; }
+            });
+        if (decoded === prev) break;
+    }
+    return decoded.trim();
+}
+
 class AniDBSource implements VideoSource {
     id = 'anidb';
 
     private cleanSearchQuery(query: string): string {
-        return String(query || '')
+        return cleanHtmlEntities(String(query || ''))
             .toLowerCase()
             .replace(/\b(season|part|cour|nd|rd|th|st)\s*\d+\b/gi, ' ')
             .replace(/[^a-z0-9\s]/gi, ' ')
@@ -283,12 +309,13 @@ class AniDBSource implements VideoSource {
         while ((m = linkPattern.exec(html))) {
             const slug = m[1];
             const id = m[2];
-            // Extract readable title from alt attributes or <p> tags inside the link
             const inner = m[3];
+            const textWithoutImg = inner.replace(/<img[^>]*>/gi, '');
+            const pMatch = textWithoutImg.match(/<p[^>]*>([^<]+)<\/p>/i);
             const altMatch = inner.match(/alt=["']([^"']+)["']/i);
-            const pMatch = inner.match(/<p[^>]*>([^<]+)<\/p>/i);
-            const title = altMatch?.[1] || pMatch?.[1] || '';
-            entries.push({ slug, id, title: title.trim() });
+            const rawTitle = pMatch?.[1] || altMatch?.[1] || '';
+            const title = cleanHtmlEntities(rawTitle);
+            entries.push({ slug, id, title });
         }
 
         if (entries.length === 0) {

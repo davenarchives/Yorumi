@@ -385,7 +385,7 @@ const mappingCache = new Map<string, string>();
 const scraperSearchCache = new Map<string, { data: any[]; timestamp: number }>();
 const SCRAPER_SEARCH_TTL = 5 * 60 * 1000;
 const AZ_LIST_CACHE_TTL = 10 * 60 * 1000;
-const PERSISTED_CACHE_PREFIX = 'yorumi_api_cache_v10';
+const PERSISTED_CACHE_PREFIX = 'yorumi_api_cache_v11';
 const STREAM_CACHE_VERSION = 'v18';
 const PERSISTED_STREAM_CACHE_PREFIX = `yorumi_stream_cache_${STREAM_CACHE_VERSION}`;
 
@@ -508,8 +508,8 @@ const clearCachedStream = (key: string) => {
     }
 };
 
-const getAnimeDetailsCacheKey = (id: number | string) => `anime-details:v8:${id}`;
-const getAnimeDetailsFastCacheKey = (id: number | string) => `anime-details-fast:v17:${id}`;
+const getAnimeDetailsCacheKey = (id: number | string) => `anime-details:v9:${id}`;
+const getAnimeDetailsFastCacheKey = (id: number | string) => `anime-details-fast:v18:${id}`;
 const normalizeStreamLookupPart = (value: unknown) =>
     String(value || '')
         .trim()
@@ -953,8 +953,12 @@ export const animeService = {
         const fetchPromise = (async () => {
             try {
                 const formatParam = format ? `&format=${encodeURIComponent(format)}` : '';
-                const res = await fetch(`${API_BASE}/anime/metadata?id=${id}${formatParam}`);
-                const data = await res.json();
+                let res = await fetch(`${API_BASE}/anime/metadata?id=${id}${formatParam}`).catch(() => null);
+                let data = res && res.ok ? await res.json().catch(() => null) : null;
+                if (!data || data.error) {
+                    res = await fetch(`${API_BASE}/anime/${id}`).catch(() => null);
+                    data = res && res.ok ? await res.json().catch(() => null) : null;
+                }
                 if (!data || data.error) return { data: null };
                 const result = { data: mapAnilistToAnime(data) };
                 if (result.data) {
@@ -1000,11 +1004,12 @@ export const animeService = {
                     throw new Error('Offline');
                 }
                 const formatParam = format ? `&format=${encodeURIComponent(format)}` : '';
-                const res = await fetch(`${API_BASE}/anime/metadata?id=${id}${formatParam}`);
-                if (!res.ok) {
-                    throw new Error(`Failed to fetch fast anime details: ${res.statusText}`);
+                let res = await fetch(`${API_BASE}/anime/metadata?id=${id}${formatParam}`).catch(() => null);
+                let data = res && res.ok ? await res.json().catch(() => null) : null;
+                if (!data || data.error) {
+                    res = await fetch(`${API_BASE}/anime/${id}`).catch(() => null);
+                    data = res && res.ok ? await res.json().catch(() => null) : null;
                 }
-                const data = await res.json();
                 const mappedAnime = data && !data.error ? (mapAnilistToAnime(data) as Anime) : null;
                 
                 const result = {

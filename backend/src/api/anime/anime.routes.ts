@@ -31,14 +31,22 @@ router.use((req, res, next) => {
 
 router.get('/metadata', async (req, res) => {
     try {
-        const tmdbId = Number(req.query.tmdbId || req.query.id);
-        if (!Number.isFinite(tmdbId) || tmdbId <= 0) {
-            res.status(400).json({ error: 'Query parameter id is required' });
-            return;
+        const tmdbId = Number(req.query.tmdbId);
+        const anilistId = Number(req.query.anilistId || req.query.id);
+        const format = req.query.format ? String(req.query.format).toUpperCase() : undefined;
+
+        let metadata: any = null;
+
+        if (Number.isFinite(tmdbId) && tmdbId > 0) {
+            metadata = await streambertAnimeService.getMetadata(Math.floor(tmdbId), format).catch(() => null);
+        } else if (Number.isFinite(anilistId) && anilistId > 0) {
+            metadata = await anilistService.getAnimeById(Math.floor(anilistId)).catch(() => null);
+            if (!metadata) {
+                // Fallback to TMDB only if not found on AniList
+                metadata = await streambertAnimeService.getMetadata(Math.floor(anilistId), format).catch(() => null);
+            }
         }
 
-        const format = req.query.format ? String(req.query.format).toUpperCase() : undefined;
-        const metadata = await streambertAnimeService.getMetadata(Math.floor(tmdbId), format);
         if (!metadata) {
             res.status(404).json({ error: 'Anime not found' });
             return;
@@ -216,41 +224,56 @@ const enrichTmdbWithAnilistStudios = (tmdbMedia: any[], anilistMediaPool: any[])
 };
 
 router.get('/trending', async (req, res) => {
-    const page = animeQuery.toPositiveInt(req.query.page, 1, 500);
-    const perPage = animeQuery.toPositiveInt(req.query.perPage || req.query.limit, 10, 50);
-    const result = await streambertAnimeService.trending(page, perPage);
-    const pool = await getGlobalAnilistMediaPool();
-    res.json({
-        ...result,
-        media: enrichTmdbWithAnilistStudios(result.media || [], pool),
-    });
+    try {
+        const page = animeQuery.toPositiveInt(req.query.page, 1, 500);
+        const perPage = animeQuery.toPositiveInt(req.query.perPage || req.query.limit, 10, 50);
+        const result = await streambertAnimeService.trending(page, perPage);
+        const pool = await getGlobalAnilistMediaPool();
+        res.set('Cache-Control', 'public, max-age=120, s-maxage=300, stale-while-revalidate=600');
+        res.json({
+            ...result,
+            media: enrichTmdbWithAnilistStudios(result.media || [], pool),
+        });
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to fetch trending anime' });
+    }
 });
 
 router.get('/popular', async (req, res) => {
-    const page = animeQuery.toPositiveInt(req.query.page, 1, 500);
-    const perPage = animeQuery.toPositiveInt(req.query.perPage || req.query.limit, 10, 50);
-    const result = await streambertAnimeService.popular(page, perPage);
-    const pool = await getGlobalAnilistMediaPool();
-    res.json({
-        ...result,
-        media: enrichTmdbWithAnilistStudios(result.media || [], pool),
-    });
+    try {
+        const page = animeQuery.toPositiveInt(req.query.page, 1, 500);
+        const perPage = animeQuery.toPositiveInt(req.query.perPage || req.query.limit, 10, 50);
+        const result = await streambertAnimeService.popular(page, perPage);
+        const pool = await getGlobalAnilistMediaPool();
+        res.set('Cache-Control', 'public, max-age=120, s-maxage=300, stale-while-revalidate=600');
+        res.json({
+            ...result,
+            media: enrichTmdbWithAnilistStudios(result.media || [], pool),
+        });
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to fetch popular anime' });
+    }
 });
 
 router.get('/seasonal', async (req, res) => {
-    const now = new Date();
-    const month = now.getMonth() + 1;
-    const defaultSeason = month <= 3 ? 'WINTER' : month <= 6 ? 'SPRING' : month <= 9 ? 'SUMMER' : 'FALL';
-    const season = String(req.query.season || defaultSeason).toUpperCase();
-    const year = animeQuery.toPositiveInt(req.query.year || req.query.seasonYear, now.getFullYear(), 3000);
-    const page = animeQuery.toPositiveInt(req.query.page, 1, 500);
-    const perPage = animeQuery.toPositiveInt(req.query.perPage || req.query.limit, 10, 50);
-    const result = await streambertAnimeService.seasonal(season, year, page, perPage);
-    const pool = await getGlobalAnilistMediaPool();
-    res.json({
-        ...result,
-        media: enrichTmdbWithAnilistStudios(result.media || [], pool),
-    });
+    try {
+        const now = new Date();
+        const month = now.getMonth() + 1;
+        const defaultSeason = month <= 3 ? 'WINTER' : month <= 6 ? 'SPRING' : month <= 9 ? 'SUMMER' : 'FALL';
+        const season = String(req.query.season || defaultSeason).toUpperCase();
+        const year = animeQuery.toPositiveInt(req.query.year || req.query.seasonYear, now.getFullYear(), 3000);
+        const page = animeQuery.toPositiveInt(req.query.page, 1, 500);
+        const perPage = animeQuery.toPositiveInt(req.query.perPage || req.query.limit, 10, 50);
+        const result = await streambertAnimeService.seasonal(season, year, page, perPage);
+        const pool = await getGlobalAnilistMediaPool();
+        res.set('Cache-Control', 'public, max-age=120, s-maxage=300, stale-while-revalidate=600');
+        res.json({
+            ...result,
+            media: enrichTmdbWithAnilistStudios(result.media || [], pool),
+        });
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to fetch seasonal anime' });
+    }
 });
 
 router.get('/home-fast', async (_req, res) => {
@@ -278,7 +301,7 @@ router.get('/home-fast', async (_req, res) => {
 
         const payload = {
             spotlight: enrichedTrending.slice(0, 8),
-            latestEpisodes: [], // Scraper updates can be skipped or added later
+            latestEpisodes: [],
             trending: { ...trending, media: enrichedTrending },
             seasonal: { ...seasonal, media: enrichedSeasonal },
             monthly: { ...popular, media: enrichedPopular },

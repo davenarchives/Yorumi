@@ -1498,13 +1498,10 @@ export const anilistService = {
                 const response = await rateLimitedRequest(queryById, { id }, { cacheTtlSeconds: 3600 });
                 media = response.data?.Media;
             } catch (innerError: any) {
-                // If it's a 404, it might be a MAL ID instead of an AniList ID.
                 if (innerError?.response?.status === 404) {
-                    const byMal = await rateLimitedRequest(queryByMalId, { idMal: id }, { cacheTtlSeconds: 3600 });
-                    media = byMal.data?.Media;
-                } else {
-                    throw innerError;
+                    return null;
                 }
+                throw innerError;
             }
             
             if (!media) {
@@ -1518,8 +1515,10 @@ export const anilistService = {
                 media.relations.edges = media.relations.edges.filter((edge: any) => !edge.node?.isAdult);
             }
             return media;
-        } catch (error) {
-            console.error('Error fetching anime by ID:', error);
+        } catch (error: any) {
+            if (error?.response?.status !== 404) {
+                console.error('Error fetching anime by ID:', error?.message || error);
+            }
             return null;
         }
     },

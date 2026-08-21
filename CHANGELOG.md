@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.1.0] - 2026-08-21
+
+- **High-Throughput TMDB Core Architecture & Rate-Limit Shield ([anime.routes.ts](file:///c:/Github%20Repos/Yorumi/backend/src/api/anime/anime.routes.ts), [api.ts](file:///c:/Github%20Repos/Yorumi/src/features/search/api.ts), [AnimeDetailsPage.tsx](file:///c:/Github%20Repos/Yorumi/src/pages/AnimeDetailsPage.tsx))**:
+  - Re-architected catalog browsing, discovery feeds (Trending, Popular, Seasonal, Spotlight, Top 10), and search to be driven 80–90% by TMDB, eliminating AniList 429 rate limit exceptions permanently.
+  - Retained AniList as a lightweight, aggressively cached (7-day TTL) micro-service for split-cour/part franchise labeling, Japanese voice actors, studio badges, and real-time airing countdowns.
+  - Fixed multi-season chip selection and hero details syncing so clicking Season 1 (e.g. on *Horimiya* or *Saga of Tanya the Evil*) cleanly updates the hero banner, synopsis, poster artwork, and 16:9 episode screenshot stills.
+
 ## [4.0.9] - 2026-08-13
 
 - **Discord Rich Presence (RPC) Integration ([main.js](file:///c:/Github%20Repos/Yorumi/dist-electron/main.js), [build-electron.cjs](file:///c:/Github%20Repos/Yorumi/scripts/build-electron.cjs), [preload.mjs](file:///c:/Github%20Repos/Yorumi/dist-electron/preload.mjs), [electron.d.ts](file:///c:/Github%20Repos/Yorumi/src/types/electron.d.ts), [discordRPCService.ts](file:///c:/Github%20Repos/Yorumi/src/services/discordRPCService.ts))**:

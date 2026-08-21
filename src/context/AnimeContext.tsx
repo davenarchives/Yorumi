@@ -1242,21 +1242,27 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
                                         return match && parseFloat(match[1]) === epNum;
                                     });
 
-                                    // Strategy B: Array Index Fallback (assuming metadata is compliant and ordered)
-                                    // AniList streamingEpisodes are usually ordered 1..N
-                                    if (!meta && metaList[epNum - 1]) {
-                                        meta = metaList[epNum - 1];
+                                    // Strategy B: Array Index Fallback only if metadata count covers epNum
+                                    if (!meta && metaList.length >= epNum && metaList[epNum - 1]) {
+                                        const candidate = metaList[epNum - 1];
+                                        const match = candidate.title?.match(/Episode\s+(\d+)/i);
+                                        if (!match || parseFloat(match[1]) === epNum) {
+                                            meta = candidate;
+                                        }
                                     }
 
                                     if (meta && meta.title) {
                                         // Clean up "Episode X - Title" format
-                                        const cleanMatch = meta.title.match(/Episode\s+\d+\s*[-:]?\s*(.*)/i);
+                                        const cleanMatch = meta.title.match(/Episode\s+\d+\s*[-:]?\s*(.+)/i);
                                         if (cleanMatch && cleanMatch[1] && cleanMatch[1].trim()) {
                                             ep.title = cleanMatch[1].trim();
+                                        } else if (!/^Episode\s+\d+$/i.test(meta.title.trim())) {
+                                            ep.title = meta.title.trim();
                                         } else {
-                                            // Use full title if no prefix found or prefix is everything
-                                            ep.title = meta.title;
+                                            ep.title = `Episode ${epNum}`;
                                         }
+                                    } else {
+                                        ep.title = `Episode ${epNum}`;
                                     }
                                 }
                             }
@@ -1623,14 +1629,18 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
         } catch (err) {
             if (isStaleRequest()) return;
             console.error('Failed to fetch details', err);
-            setError('Failed to load anime details');
+            if (!currentAnime?.title && !anime?.title && !anime?.images) {
+                setError('Failed to load anime details');
+            } else {
+                setSelectedAnime(currentAnime || anime);
+            }
             setDetailsLoading(false);
             setEpisodesBackgroundLoading(false);
-            if (!anime.images) {
+            if (!anime.images && !currentAnime?.images) {
                 setEpLoading(false);
                 setEpisodesResolved(true);
             } else {
-                preloadEpisodes(currentAnime, { resetState: false, requestId, isStale: isStaleRequest }).catch(() => undefined);
+                preloadEpisodes(currentAnime || anime, { resetState: false, requestId, isStale: isStaleRequest }).catch(() => undefined);
             }
         }
     };

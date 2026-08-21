@@ -56,6 +56,7 @@ class DiscordRPCService {
         const validCover = coverImage && coverImage.startsWith('http') ? coverImage : 'yorumi';
 
         this.updatePresence({
+            type: 3, // 3 = WATCHING
             details: `Watching ${animeTitle}`,
             state: stateText,
             largeImageKey: validCover,
@@ -82,6 +83,7 @@ class DiscordRPCService {
         }
 
         this.updatePresence({
+            type: 3, // 3 = WATCHING
             details: `Reading ${mangaTitle}`,
             state: stateText,
             largeImageKey: 'yorumi',
@@ -104,6 +106,7 @@ class DiscordRPCService {
             : `${chapterTitleOrNumber}`;
 
         this.updatePresence({
+            type: 3, // 3 = WATCHING
             details: `Reading ${novelTitle}`,
             state: stateText,
             largeImageKey: 'yorumi',
@@ -122,6 +125,7 @@ class DiscordRPCService {
         }
 
         this.updatePresence({
+            type: 0, // 0 = PLAYING
             details: 'Browsing Yorumi',
             state: pageName ? `Exploring ${pageName}` : 'In App',
             largeImageKey: 'yorumi',

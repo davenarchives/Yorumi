@@ -1,6 +1,9 @@
 type AnimeRouteTarget = {
     id?: unknown;
     mal_id?: unknown;
+    tmdbId?: unknown;
+    tmdb_id?: unknown;
+    source?: unknown;
     scraperId?: unknown;
 };
 
@@ -38,11 +41,25 @@ export const getDirectScraperRouteId = (value: unknown): string => {
 };
 
 export const getAnimeDetailsRouteId = (item: AnimeRouteTarget): string | number | '' => {
+    const tmdbId = toPositiveNumber(item.tmdbId ?? item.tmdb_id);
+    const source = String(item.source || '').toLowerCase();
+    
+    if (source === 'tmdb' && tmdbId > 0) {
+        return `tmdb-${tmdbId}`;
+    }
+
     const anilistId = toPositiveNumber(item.id);
-    if (anilistId > 0) return anilistId;
+    if (anilistId > 0) {
+        if (tmdbId > 0 && anilistId === tmdbId) {
+            return `tmdb-${tmdbId}`;
+        }
+        return anilistId;
+    }
 
     const malId = toPositiveNumber(item.mal_id);
     if (malId > 0) return malId;
+
+    if (tmdbId > 0) return `tmdb-${tmdbId}`;
 
     return getDirectScraperRouteId(item.scraperId);
 };

@@ -43,6 +43,7 @@ export interface ElectronAPI {
 }
 
 export interface DiscordPresenceOptions {
+    type?: number;
     details?: string;
     state?: string;
     largeImageKey?: string;

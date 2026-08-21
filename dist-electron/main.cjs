@@ -26428,6 +26428,7 @@ function setDiscordActivity(presenceData) {
       smallKey = smallKey.replace("http://", "https://");
     }
     const activity = {
+      type: typeof presenceData.type === "number" ? presenceData.type : presenceData.type ? Number(presenceData.type) : 0,
       details: presenceData.details || "Yorumi Anime & Manga Streamer",
       state: presenceData.state || void 0,
       largeImageKey: largeKey,

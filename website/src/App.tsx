@@ -344,7 +344,7 @@ function App() {
                       rel="noreferrer"
                       className="text-yorumi-main font-semibold text-sm tracking-wide hover:opacity-80 transition-opacity"
                     >
-                      v4.0.9
+                      v4.1.0
                     </motion.a>
                   </div>
                   
@@ -461,7 +461,7 @@ function App() {
             <div className="flex items-center gap-3">
               <h3 className="text-2xl md:text-3xl font-display font-bold text-yorumi-text">Yorumi Desktop</h3>
               <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-yorumi-main/15 text-yorumi-main">
-                v4.0.9
+                v4.1.0
               </span>
             </div>
 
@@ -597,7 +597,7 @@ function App() {
             {/* What's New In Release Card */}
             <div className="bg-yorumi-card rounded-3xl p-6 md:p-8 space-y-4">
               <div className="flex items-center justify-between flex-wrap gap-2">
-                <div className="text-sm font-semibold text-yorumi-text">What&apos;s new in version 4.0.9?</div>
+                <div className="text-sm font-semibold text-yorumi-text">What&apos;s new in version 4.1.0?</div>
                 <a
                   href="https://github.com/davenarchives/Yorumi/releases"
                   target="_blank"
@@ -612,20 +612,20 @@ function App() {
               <div className="space-y-3 pt-2">
                 <div className="flex items-center gap-2 text-sm font-bold text-yorumi-main">
                   <Sparkles className="w-4 h-4 shrink-0" />
-                  <span>Discord Rich Presence, Sequential Manga Loader, AniDB Turbo Fetcher & Official CC Badge</span>
+                  <span>High-Throughput TMDB Architecture, Multi-Season Sync & Discord RPC Bundling</span>
                 </div>
                 <ul className="list-disc list-inside text-sm text-yorumi-muted space-y-2 pl-1 leading-relaxed">
                   <li>
-                    <span className="font-semibold text-yorumi-text">discord rich presence:</span> Full Electron IPC integration broadcasting current Anime watching, Manga reading, and Light Novel reading progress directly to your Discord activity card with live elapsed timers.
+                    <span className="font-semibold text-yorumi-text">tmdb core catalog & rate-limit shield:</span> Discovery feeds and catalog browsing are powered by TMDB with zero AniList 429 rate limit exceptions.
                   </li>
                   <li>
-                    <span className="font-semibold text-yorumi-text">sequential manga page loader:</span> High-priority eager loading for Page 1 followed by strict sequential preloading ($1 \rightarrow 50$) with layout height skeletons to eliminate scroll jumping.
+                    <span className="font-semibold text-yorumi-text">multi-season & hero sync:</span> Switching season chips dynamically updates hero art, poster thumbnails, synopsis, and 16:9 episode preview cards.
                   </li>
                   <li>
-                    <span className="font-semibold text-yorumi-text">anidb turbo scraper pipeline:</span> Fast `curl`-first fetch strategy with 24-hour Redis `animeId` caching and parallel embed resolution cut AniDB stream loading from 30s to under 1s.
+                    <span className="font-semibold text-yorumi-text">standalone discord rich presence:</span> Self-contained `discord-rpc` binary packaging across Windows, macOS, and Linux desktop distributions.
                   </li>
                   <li>
-                    <span className="font-semibold text-yorumi-text">official material cc badge:</span> Standardized CCIcon vector badge component across all Anime and Manga cards, hero spotlights, and Top 10 sidebars.
+                    <span className="font-semibold text-yorumi-text">optimized scraper pipeline:</span> Sub-second video stream resolution and multi-tier caching for seamless playback.
                   </li>
                 </ul>
               </div>

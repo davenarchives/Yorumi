@@ -50,11 +50,11 @@ function mapTmdbStatus(status: string | undefined): string {
     }
 }
 
-function mapTmdbToAnilistMedia(item: any, isFullDetails = false) {
+function mapTmdbToAnilistMedia(item: any, isFullDetails = false): any {
     if (!item) return null;
     return {
         id: item.id,
-        idMal: item.id,
+        tmdbId: item.id,
         title: {
             romaji: item.name || item.original_name || item.title,
             english: item.name || item.title,
@@ -108,7 +108,7 @@ export const streambertAnimeService = {
     },
 
     async getMetadata(tmdbId: number, format?: string) {
-        const cacheKey = `anime:tmdb:meta:v8:${tmdbId}:${format || 'unknown'}`;
+        const cacheKey = `anime:tmdb:meta:v9:${tmdbId}:${format || 'unknown'}`;
         const cached = await cacheGet<any>(cacheKey);
         if (cached) return cached;
 
@@ -171,18 +171,31 @@ export const streambertAnimeService = {
                     perPage: 5,
                 }).catch(() => null);
 
-                if (anilistMatch) {
-                    if (anilistMatch.nextAiringEpisode) {
-                        (media as any).nextAiringEpisode = anilistMatch.nextAiringEpisode;
-                    }
-                    if (anilistMatch.status) {
-                        media.status = anilistMatch.status;
-                    }
-                    if (anilistMatch.studios?.nodes?.length) {
-                        media.studios = anilistMatch.studios;
-                    }
-                    if (anilistMatch.episodes) {
-                        media.episodes = media.episodes || anilistMatch.episodes;
+                if (anilistMatch?.id) {
+                    const fullAnilist = await anilistService.getAnimeById(anilistMatch.id).catch(() => null);
+                    if (fullAnilist) {
+                        media.id = fullAnilist.id;
+                        media.idMal = fullAnilist.idMal || fullAnilist.id;
+                        media.relations = fullAnilist.relations || media.relations;
+                        if (fullAnilist.title) media.title = fullAnilist.title;
+                        if (fullAnilist.characters?.edges?.length) media.characters = fullAnilist.characters;
+                        if (fullAnilist.episodes) media.episodes = fullAnilist.episodes;
+                        if (fullAnilist.status) media.status = fullAnilist.status;
+                        if (fullAnilist.nextAiringEpisode) (media as any).nextAiringEpisode = fullAnilist.nextAiringEpisode;
+                        if (fullAnilist.studios?.nodes?.length) media.studios = fullAnilist.studios;
+                    } else {
+                        if (anilistMatch.nextAiringEpisode) {
+                            (media as any).nextAiringEpisode = anilistMatch.nextAiringEpisode;
+                        }
+                        if (anilistMatch.status) {
+                            media.status = anilistMatch.status;
+                        }
+                        if (anilistMatch.studios?.nodes?.length) {
+                            media.studios = anilistMatch.studios;
+                        }
+                        if (anilistMatch.episodes) {
+                            media.episodes = media.episodes || anilistMatch.episodes;
+                        }
                     }
                 }
             } catch {

@@ -5,7 +5,7 @@ const TMDB_BASE = 'https://api.themoviedb.org/3';
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p';
 const TOKEN_KEY = 'yorumi_tmdb_read_access_token';
 const SETUP_COMPLETE_KEY = 'yorumi_tmdb_setup_complete';
-const CACHE_PREFIX = 'yorumi_tmdb_cache_v2';
+const CACHE_PREFIX = 'yorumi_tmdb_cache_v3';
 const CACHE_TTL = 24 * 60 * 60 * 1000;
 
 type CachedValue<T> = {

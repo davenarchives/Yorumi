@@ -526,12 +526,13 @@ class ScraperService {
         const provider = String(options?.provider || 'auto').trim().toLowerCase() || 'auto';
         
         // ── Custom Video Sources (video-sources.ts) ─────────────────────────
-        if (provider === 'vidsrc' || provider === 'vidking' || provider === 'anidb' || provider === 'anikoto' || provider === 'videasy' || provider === 'reanime' || provider === 'anineko') {
+        if (provider === 'auto' || provider === 'vidsrc' || provider === 'vidking' || provider === 'anidb' || provider === 'anikoto' || provider === 'videasy' || provider === 'reanime' || provider === 'anineko') {
             const title = String(options?.title || this.queryFromSessionSlug(animeSession)).trim();
             const parsedAnilistId = parseInt(animeSession, 10);
             const anilistId = options?.anilistId || (!isNaN(parsedAnilistId) && parsedAnilistId > 0 ? parsedAnilistId : undefined);
+            const effectiveProvider = provider === 'auto' ? 'anidb' : provider;
 
-            const tmdbTarget = provider === 'anidb'
+            const tmdbTarget = effectiveProvider === 'anidb'
                 ? null
                 : await tmdbService.resolveMediaTarget({ 
                     title, 
@@ -544,7 +545,7 @@ class ScraperService {
             const episodeNumber = Number(options?.episodeNumber || this.parseEpisodeNumber(epSession)) || 1;
             const { animeVideoSources } = require('../anime/video-sources');
             const targetId = tmdbTarget?.tmdbId || (anilistId || 0);
-            const streamResponse = await animeVideoSources.getStream(targetId, episodeNumber, provider, {
+            const streamResponse = await animeVideoSources.getStream(targetId, episodeNumber, effectiveProvider, {
                 title,
                 tmdbId: tmdbTarget?.tmdbId,
                 format: options?.format,

@@ -60,54 +60,62 @@ export const searchApi = {
             }
         }
 
-        if (!tmdbService.hasToken()) {
-            const { data } = await animeService.searchAnime(query, 1, 6);
-            return (data as PreviewAnime[]).slice(0, 4).map((item) => ({
-                id: item.id || item.mal_id,
-                title: getDisplayTitle(item as unknown as Record<string, unknown>, language),
-                subtitle: getSecondaryTitle(item as unknown as Record<string, unknown>, language),
-                image: item.images?.jpg?.large_image_url || item.images?.jpg?.image_url || item.anilist_cover_image || '',
-                date: item.aired?.string ? item.aired.string : item.year,
-                type: item.type,
-                duration: item.duration || null,
-                score: item.score,
-                status: item.status,
-                nextAiringEpisode: item.nextAiringEpisode,
-                latestEpisode: item.latestEpisode,
-                episodes: item.episodes,
-                raw: item,
-                url: `/anime/details/${item.id || item.mal_id}`,
-                manga: item,
-            })) as SearchPreviewItem[];
+        const results = await tmdbService.searchMulti(query).catch(() => []);
+        const animeResults = results.filter(tmdbService.isAnimeContent).slice(0, 8);
+
+        if (animeResults.length > 0) {
+            return animeResults.map((item) => {
+                const isMovie = item.media_type === 'movie';
+                const dateStr = item.release_date || item.first_air_date;
+                const year = dateStr ? new Date(dateStr).getFullYear() : undefined;
+                const displayTitle = language === 'eng'
+                    ? (item.name || item.title || item.original_name || item.original_title || '')
+                    : (item.original_name || item.original_title || item.name || item.title || '');
+                const secondaryTitle = language === 'eng'
+                    ? (item.original_name || item.original_title || '')
+                    : (item.name || item.title || '');
+
+                return {
+                    id: item.id,
+                    title: displayTitle,
+                    subtitle: secondaryTitle,
+                    image: item.poster_path ? `https://image.tmdb.org/t/p/w500${item.poster_path}` : '',
+                    date: year,
+                    type: isMovie ? 'MOVIE' : 'TV',
+                    duration: null,
+                    score: item.vote_average ? Math.round(item.vote_average * 10) / 10 : undefined,
+                    url: `/anime/details/tmdb-${item.id}`,
+                    manga: item,
+                };
+            }) as SearchPreviewItem[];
         }
 
-        const results = await tmdbService.searchMulti(query);
-        const animeResults = results.filter(tmdbService.isAnimeContent).slice(0, 6);
+        try {
+            const { data } = await animeService.searchAnime(query, 1, 6);
+            if (data && data.length > 0) {
+                return (data as PreviewAnime[]).map((item) => ({
+                    id: item.id || item.mal_id,
+                    title: getDisplayTitle(item as unknown as Record<string, unknown>, language),
+                    subtitle: getSecondaryTitle(item as unknown as Record<string, unknown>, language),
+                    image: item.images?.jpg?.large_image_url || item.images?.jpg?.image_url || item.anilist_cover_image || '',
+                    date: item.aired?.string ? item.aired.string : item.year,
+                    type: item.type,
+                    duration: item.duration || null,
+                    score: item.score,
+                    status: item.status,
+                    nextAiringEpisode: item.nextAiringEpisode,
+                    latestEpisode: item.latestEpisode,
+                    episodes: item.episodes,
+                    raw: item,
+                    url: `/anime/details/${item.id || item.mal_id}`,
+                    manga: item,
+                })) as SearchPreviewItem[];
+            }
+        } catch {
+            // Fallback
+        }
 
-        return animeResults.map((item) => {
-            const isMovie = item.media_type === 'movie';
-            const dateStr = item.release_date || item.first_air_date;
-            const year = dateStr ? new Date(dateStr).getFullYear() : undefined;
-            const displayTitle = language === 'eng'
-                ? (item.name || item.title || item.original_name || item.original_title || '')
-                : (item.original_name || item.original_title || item.name || item.title || '');
-            const secondaryTitle = language === 'eng'
-                ? (item.original_name || item.original_title || '')
-                : (item.name || item.title || '');
-
-            return {
-                id: item.id,
-                title: displayTitle,
-                subtitle: secondaryTitle,
-                image: item.poster_path ? `https://image.tmdb.org/t/p/w500${item.poster_path}` : '',
-                date: year,
-                type: isMovie ? 'MOVIE' : 'TV',
-                duration: null,
-                score: item.vote_average ? item.vote_average : undefined,
-                url: `/anime/details/tmdb-${item.id}`,
-                manga: item,
-            };
-        }) as SearchPreviewItem[];
+        return [];
     },
 
     async getMangaPreview(query: string, language: TitleLanguage) {

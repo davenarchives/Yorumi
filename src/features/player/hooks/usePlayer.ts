@@ -775,7 +775,7 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string, 
         ? (metadata.find((item) => {
             const match = item.title?.match(/Episode\s+(\d+)/i);
             return match && parseFloat(match[1]) === episodeNumber;
-        }) || metadata[episodeNumber - 1] || null)
+        }) || (metadata.length >= episodeNumber && metadata[episodeNumber - 1] && (!metadata[episodeNumber - 1].title?.match(/Episode\s+(\d+)/i) || parseFloat(metadata[episodeNumber - 1].title?.match(/Episode\s+(\d+)/i)![1]) === episodeNumber) ? metadata[episodeNumber - 1] : null))
         : null;
 
     const rawTitle = currentEpisodeData?.title;
