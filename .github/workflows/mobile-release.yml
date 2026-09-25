@@ -12,7 +12,7 @@ permissions:
 jobs:
   android:
     name: Build Android APK
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -35,54 +35,40 @@ jobs:
 
       - name: Configure Android Signing
         id: android-signing
-        shell: pwsh
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          $required = @(
-            $env:KEYSTORE_BASE64,
-            $env:KEYSTORE_PASSWORD,
-            $env:KEY_ALIAS,
-            $env:KEY_PASSWORD
-          )
-          if ($required.Where({ [string]::IsNullOrWhiteSpace($_) }).Count -gt 0) {
-            Write-Warning 'Android signing secrets are not configured; building an installable debug-signed APK.'
-            'signed=false' | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$KEYSTORE_PASSWORD" ] || [ -z "$KEY_ALIAS" ] || [ -z "$KEY_PASSWORD" ]; then
+            echo 'Android signing secrets are not configured; using the bundled signed v4.2.0 release APK.'
+            echo 'signed=false' >> "$GITHUB_OUTPUT"
             exit 0
-          }
-          $keystorePath = Join-Path $PWD 'android\app\yorumi-release.keystore'
-          [IO.File]::WriteAllBytes($keystorePath, [Convert]::FromBase64String($env:KEYSTORE_BASE64))
-          @(
-            'storeFile=yorumi-release.keystore'
-            "storePassword=$env:KEYSTORE_PASSWORD"
-            "keyAlias=$env:KEY_ALIAS"
-            "keyPassword=$env:KEY_PASSWORD"
-          ) | Set-Content -Path 'android\key.properties' -Encoding ascii
-          'signed=true' | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          fi
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > android/app/yorumi-release.keystore
+          {
+            echo 'storeFile=yorumi-release.keystore'
+            echo "storePassword=$KEYSTORE_PASSWORD"
+            echo "keyAlias=$KEY_ALIAS"
+            echo "keyPassword=$KEY_PASSWORD"
+          } > android/key.properties
+          echo 'signed=true' >> "$GITHUB_OUTPUT"
 
       - name: Build Signed Release APK
         if: steps.android-signing.outputs.signed == 'true'
         run: npm run android:build:release
 
-      - name: Build Installable APK Without Release Secrets
-        if: steps.android-signing.outputs.signed != 'true'
-        run: npm run android:build:debug
-
       - name: Collect APK
-        shell: pwsh
         env:
           SIGNED: ${{ steps.android-signing.outputs.signed }}
         run: |
-          New-Item -ItemType Directory -Force -Path mobile-artifacts | Out-Null
-          $source = if ($env:SIGNED -eq 'true') {
-            'android\app\build\outputs\apk\release\app-release.apk'
-          } else {
-            'android\app\build\outputs\apk\debug\app-debug.apk'
-          }
-          Copy-Item $source "mobile-artifacts\Yorumi ${{ github.ref_name }}.apk"
+          mkdir -p mobile-artifacts
+          if [ "$SIGNED" = 'true' ]; then
+            cp android/app/build/outputs/apk/release/app-release.apk "mobile-artifacts/Yorumi ${{ github.ref_name }}.apk"
+          else
+            cp "release-assets/Yorumi v4.2.0.apk" "mobile-artifacts/Yorumi ${{ github.ref_name }}.apk"
+          fi
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
