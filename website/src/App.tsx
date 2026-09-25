@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type CSSProperties } from 'react';
 import { 
   Sun,
   Moon,
@@ -12,11 +12,43 @@ import {
   Check,
   Terminal,
   Laptop,
-  Globe
+  Globe,
+  Smartphone
 } from 'lucide-react';
 import { motion, useScroll, useTransform, AnimatePresence } from 'framer-motion';
 import type { Variants } from 'framer-motion';
 import { DocumentationGuide, type DocTabId } from './Documentation';
+
+// Cute sparkle accent used across the site
+function Sparkle({ className = "w-4 h-4", color = "var(--color-main)", style }: { className?: string; color?: string; style?: CSSProperties }) {
+  return (
+    <svg className={className} style={{ color, ...style }} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M12 2l1.8 6.2L20 10l-6.2 1.8L12 18l-1.8-6.2L4 10l6.2-1.8L12 2z" />
+    </svg>
+  );
+}
+
+// Floating decorative sparkles for backgrounds
+function FloatingSparkles() {
+  const sparkles = [
+    { top: '12%', left: '6%', size: 'w-5 h-5', delay: '0s', color: 'var(--color-main)' },
+    { top: '24%', left: '88%', size: 'w-4 h-4', delay: '0.8s', color: 'var(--color-accent)' },
+    { top: '58%', left: '4%', size: 'w-3 h-3', delay: '1.6s', color: 'var(--color-accent)' },
+    { top: '72%', left: '92%', size: 'w-6 h-6', delay: '0.4s', color: 'var(--color-main)' },
+    { top: '40%', left: '50%', size: 'w-3 h-3', delay: '2.2s', color: 'var(--color-main)' },
+  ];
+  return (
+    <div className="fixed inset-0 pointer-events-none -z-10 overflow-hidden" aria-hidden="true">
+      {sparkles.map((s, i) => (
+        <Sparkle
+          key={i}
+          className={`absolute ${s.size} animate-kawaii-sparkle`}
+          style={{ top: s.top, left: s.left, animationDelay: s.delay, color: s.color }}
+        />
+      ))}
+    </div>
+  );
+}
 
 function AppleIcon({ className = "w-5 h-5" }: { className?: string }) {
   return (
@@ -259,8 +291,15 @@ function App() {
   return (
     <div className="min-h-screen font-sans selection:bg-yorumi-main selection:text-white transition-colors duration-500 bg-yorumi-bg text-yorumi-text overflow-x-hidden relative z-0">
       
-      {/* Light Mode Blue Gradient Overlay */}
-      <div className={`fixed inset-0 pointer-events-none -z-10 transition-opacity duration-700 ${isDarkMode ? 'opacity-0' : 'opacity-100'} bg-gradient-to-br from-blue-300/30 via-transparent to-blue-200/20`} />
+      {/* Kawaii Pastel Gradient Overlay */}
+      <div className={`fixed inset-0 pointer-events-none -z-10 transition-opacity duration-700 ${isDarkMode ? 'opacity-0' : 'opacity-100'} bg-gradient-to-br from-pink-200/40 via-purple-100/30 to-pink-100/40`} />
+      {/* Soft Pastel Blobs (light + dark) */}
+      <div className={`fixed inset-0 pointer-events-none -z-10 overflow-hidden ${isDarkMode ? 'opacity-40' : 'opacity-70'}`}>
+        <div className="absolute -top-24 -left-24 w-96 h-96 rounded-full bg-pink-300/30 blur-3xl animate-kawaii-float-slow" />
+        <div className="absolute top-1/3 -right-32 w-[28rem] h-[28rem] rounded-full bg-purple-300/25 blur-3xl animate-kawaii-float-slow" style={{ animationDelay: '2s' }} />
+        <div className="absolute bottom-0 left-1/4 w-80 h-80 rounded-full bg-fuchsia-200/30 blur-3xl animate-kawaii-float-slow" style={{ animationDelay: '4s' }} />
+      </div>
+      <FloatingSparkles />
 
       {/* Sticky Premium Navigation */}
       <motion.nav 
@@ -333,6 +372,11 @@ function App() {
                 className="flex flex-col justify-center h-full z-10 py-1 lg:pl-12 xl:pl-20"
               >
                 <div className="flex flex-col gap-5">
+                  <motion.div variants={itemVariants} className="inline-flex items-center gap-2 self-start px-3 py-1 rounded-full bg-yorumi-main/15 border border-yorumi-main/30 text-yorumi-main text-xs font-bold tracking-wide">
+                    <Sparkle className="w-3.5 h-3.5" />
+                    <span>free & open source ☆</span>
+                    <Sparkle className="w-3.5 h-3.5" />
+                  </motion.div>
                   <div className="flex items-baseline gap-3 flex-wrap">
                     <motion.h1 variants={itemVariants} className="text-5xl lg:text-6xl font-display font-bold leading-none tracking-tight text-yorumi-text">
                       Yorumi
@@ -349,7 +393,7 @@ function App() {
                   </div>
                   
                   <motion.p variants={itemVariants} className="text-lg md:text-xl font-medium text-yorumi-muted max-w-lg leading-relaxed">
-                    A modern, open-source platform for streaming anime, reading manga, and reading light novels. Built with performance and user experience in mind.
+                    Stream anime, read manga & light novels in one super cute, open-source app. Made with ♥ for anime fans everywhere~
                   </motion.p>
                 </div>
                 
@@ -357,10 +401,11 @@ function App() {
                   <button 
                     type="button"
                     onClick={() => navigateTo('get-started')}
-                    className="group flex items-center justify-center gap-2.5 bg-yorumi-main hover:bg-yorumi-main/90 text-white px-6 py-2.5 rounded-full font-semibold text-sm md:text-base tracking-wide transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+                    className="group flex items-center justify-center gap-2.5 bg-yorumi-main hover:bg-yorumi-main/90 text-white px-6 py-2.5 rounded-full font-semibold text-sm md:text-base tracking-wide transition-all duration-200 hover:scale-[1.05] active:scale-[0.95] cursor-pointer kawaii-shadow hover:kawaii-shadow-lg"
                   >
+                    <Download className="w-4 h-4 transition-transform group-hover:translate-y-0.5" />
                     <span>Download</span>
-                    <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
+                    <Sparkle className="w-3.5 h-3.5 opacity-90 transition-transform duration-300 group-hover:rotate-90" />
                   </button>
               
               <button 
@@ -383,7 +428,7 @@ function App() {
             className="relative w-full h-full flex items-center justify-center lg:justify-end"
           >
             <div className="w-full max-w-[500px] transform hover:-translate-y-2 transition-all duration-700 ease-out z-10">
-              <img src="/yorumi-mascot.png" alt="Yorumi Mascot" className="w-full h-auto object-contain pointer-events-none" />
+              <img src="/yorumi-mascot.png" alt="Yorumi Mascot" className="w-full h-auto object-contain pointer-events-none animate-kawaii-float-slow drop-shadow-[0_20px_40px_rgba(255,143,199,0.35)]" />
             </div>
           </motion.div>
         </div>
@@ -402,10 +447,10 @@ function App() {
           >
             <div className="space-y-3 max-w-3xl">
               <h2 className="text-4xl md:text-5xl lg:text-6xl font-display font-bold tracking-tight text-yorumi-text">
-                Download Yorumi
+                Download Yorumi <span className="text-yorumi-main">♡</span>
               </h2>
               <p className="text-base md:text-lg text-yorumi-muted font-normal">
-                Cross-platform desktop application and standalone terminal CLI for macOS, Windows, and Linux.
+                Pick your platform — desktop for macOS, Windows & Linux, plus a pocket-sized Android app. All free, forever~
               </p>
             </div>
 
@@ -428,7 +473,15 @@ function App() {
               className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-yorumi-main/20 hover:bg-yorumi-main/30 text-yorumi-main font-semibold text-sm transition-all"
             >
               <Sparkles className="w-4 h-4" />
-              <span>Yorumi Desktop</span>
+              <span>Yorumi Apps</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => scrollToAnchor('yorumi-android')}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-yorumi-accent/20 hover:bg-yorumi-accent/30 text-yorumi-accent font-semibold text-sm transition-all"
+            >
+              <Smartphone className="w-4 h-4" />
+              <span>Android APK</span>
             </button>
             <button
               type="button"
@@ -465,11 +518,11 @@ function App() {
               </span>
             </div>
 
-            {/* 3 Platforms Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* 4 Platforms Grid (Desktop + Android) */}
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
               
               {/* macOS Platform */}
-              <div className="bg-yorumi-card rounded-3xl p-6 md:p-8 flex flex-col justify-between space-y-6 transition-all duration-300 group h-full">
+              <div className="bg-yorumi-card rounded-3xl p-6 md:p-8 flex flex-col justify-between space-y-6 transition-all duration-300 group h-full kawaii-shadow hover:-translate-y-1">
                 <div className="space-y-5">
                   <div className="flex items-center gap-3 text-yorumi-text">
                     <AppleIcon className="w-6 h-6 fill-current" />
@@ -509,7 +562,7 @@ function App() {
               </div>
 
               {/* Windows Platform */}
-              <div className="bg-yorumi-card rounded-3xl p-6 md:p-8 flex flex-col justify-between space-y-6 transition-all duration-300 group h-full">
+              <div className="bg-yorumi-card rounded-3xl p-6 md:p-8 flex flex-col justify-between space-y-6 transition-all duration-300 group h-full kawaii-shadow hover:-translate-y-1">
                 <div className="space-y-5">
                   <div className="flex items-center gap-3 text-yorumi-text">
                     <WindowsIcon className="w-6 h-6 fill-current" />
@@ -551,7 +604,7 @@ function App() {
               </div>
 
               {/* Linux Platform */}
-              <div className="bg-yorumi-card rounded-3xl p-6 md:p-8 flex flex-col justify-between space-y-6 transition-all duration-300 group h-full">
+              <div className="bg-yorumi-card rounded-3xl p-6 md:p-8 flex flex-col justify-between space-y-6 transition-all duration-300 group h-full kawaii-shadow hover:-translate-y-1">
                 <div className="space-y-5">
                   <div className="flex items-center gap-3 text-yorumi-text">
                     <LinuxIcon className="w-6 h-6 fill-current" />
@@ -592,6 +645,41 @@ function App() {
                 </div>
               </div>
 
+              {/* Android Platform (APK) */}
+              <div className="bg-yorumi-card rounded-3xl p-6 md:p-8 flex flex-col justify-between space-y-6 transition-all duration-300 group h-full kawaii-shadow">
+                <div className="space-y-5">
+                  <div className="flex items-center gap-3 text-yorumi-text">
+                    <Smartphone className="w-6 h-6 text-yorumi-main" />
+                    <h4 className="text-xl font-bold font-display">Android</h4>
+                    <span className="ml-auto px-2 py-0.5 rounded-full text-[10px] font-bold bg-yorumi-main/15 text-yorumi-main uppercase tracking-wide">New ☆</span>
+                  </div>
+
+                  <div className="space-y-3 pt-2">
+                    <a
+                      href="https://github.com/davenarchives/Yorumi/releases/latest/download/Yorumi.apk"
+                      className="w-full flex items-center justify-center gap-2 px-5 py-3 rounded-full bg-yorumi-main text-white font-semibold text-sm transition-all duration-200 hover:opacity-90 hover:scale-[1.02] active:scale-[0.98] kawaii-shadow"
+                    >
+                      <Download className="w-4 h-4" />
+                      <span>Download APK</span>
+                    </a>
+
+                    <a
+                      href="https://github.com/davenarchives/Yorumi/releases/latest"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="w-full flex items-center justify-center gap-2 px-5 py-2 rounded-full hover:bg-yorumi-text/5 text-yorumi-muted hover:text-yorumi-text text-xs font-medium transition-all"
+                    >
+                      <span>View Android Release Assets</span>
+                    </a>
+                  </div>
+                </div>
+
+                <div className="pt-4 mt-auto border-t border-yorumi-text/5 space-y-1 min-h-[58px] flex flex-col justify-start">
+                  <div className="text-xs font-semibold text-yorumi-text">Minimum Requirements</div>
+                  <div className="text-xs text-yorumi-muted leading-relaxed">Android 7.0+ (Nougat) • arm64-v8a • offline downloads supported</div>
+                </div>
+              </div>
+
             </div>
 
             {/* What's New In Release Card */}
@@ -611,12 +699,12 @@ function App() {
 
               <div className="space-y-3 pt-2">
                 <div className="flex items-center gap-2 text-sm font-bold text-yorumi-main">
-                  <Sparkles className="w-4 h-4 shrink-0" />
-                  <span>High-Throughput TMDB Architecture, Multi-Season Sync & Discord RPC Bundling</span>
+                  <Sparkles className="w-4 h-4 shrink-0 animate-kawaii-wiggle" />
+                  <span>✦ What's new in v4.2.0 — mobile era begins! ✦</span>
                 </div>
                 <ul className="list-disc list-inside text-sm text-yorumi-muted space-y-2 pl-1 leading-relaxed">
                   <li>
-                    <span className="font-semibold text-yorumi-text">tmdb core catalog & rate-limit shield:</span> Discovery feeds and catalog browsing are powered by TMDB with zero AniList 429 rate limit exceptions.
+                    <span className="font-semibold text-yorumi-text">android app & apk releases:</span> A standalone Capacitor Android app with signed APK release automation, edge-to-edge layouts, and offline downloads.
                   </li>
                   <li>
                     <span className="font-semibold text-yorumi-text">multi-season & hero sync:</span> Switching season chips dynamically updates hero art, poster thumbnails, synopsis, and 16:9 episode preview cards.

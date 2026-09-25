@@ -7,30 +7,81 @@
   --color-yorumi-card: var(--color-card);
   --color-yorumi-text: var(--color-text);
   --color-yorumi-muted: var(--color-muted);
-  --font-sans: 'Inter', sans-serif;
-  --font-display: 'Outfit', sans-serif;
+  --font-sans: 'Quicksand', 'Inter', sans-serif;
+  --font-display: 'Baloo 2', 'Outfit', sans-serif;
 }
 
 @layer base {
   :root {
-    --color-main: #00A3FF;
-    --color-accent: #3DB4F2;
-    --color-bg: #FDFBF7; /* Clean, warm off-white */
-    --color-card: #F2EFE9;
-    --color-text: #111111;
-    --color-muted: #555555;
+    --color-main: #FF8FC7;      /* Sakura pink */
+    --color-accent: #B79CED;    /* Soft lavender */
+    --color-bg: #FFF7FA;        /* Blush white */
+    --color-card: #FFFFFF;      /* Pure white cards */
+    --color-text: #4A3B47;      /* Soft plum (gentle on eyes) */
+    --color-muted: #9B8B98;     /* Muted mauve */
   }
   .dark {
-    --color-main: #00A3FF;
-    --color-accent: #3DB4F2;
-    --color-bg: #262124;
-    --color-card: #342d31;
-    --color-text: #ffffff;
-    --color-muted: #b5aab0;
+    --color-main: #FF9ECE;      /* Sakura pink (dark) */
+    --color-accent: #C3ACF0;    /* Lavender (dark) */
+    --color-bg: #2A2230;        /* Deep plum night */
+    --color-card: #372C3E;      /* Plum card */
+    --color-text: #FFF0F6;      /* Blossom white */
+    --color-muted: #C0AFC5;     /* Dusty lavender */
   }
-  
+
   body {
     background-color: var(--color-bg);
     color: var(--color-text);
   }
+}
+
+/* ---------- Kawaii animations ---------- */
+@keyframes kawaii-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-12px); }
+}
+
+@keyframes kawaii-float-slow {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-18px) rotate(3deg); }
+}
+
+@keyframes kawaii-sparkle {
+  0%, 100% { opacity: 0; transform: scale(0.5) rotate(0deg); }
+  50% { opacity: 1; transform: scale(1) rotate(20deg); }
+}
+
+@keyframes kawaii-wiggle {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(-6deg); }
+  75% { transform: rotate(6deg); }
+}
+
+.animate-kawaii-float { animation: kawaii-float 4s ease-in-out infinite; }
+.animate-kawaii-float-slow { animation: kawaii-float-slow 6s ease-in-out infinite; }
+.animate-kawaii-sparkle { animation: kawaii-sparkle 2.5s ease-in-out infinite; }
+.animate-kawaii-wiggle { animation: kawaii-wiggle 0.6s ease-in-out; }
+
+/* ---------- Kawaii utility helpers ---------- */
+.kawaii-shadow {
+  box-shadow: 0 8px 24px rgba(255, 143, 199, 0.18), 0 2px 8px rgba(183, 156, 237, 0.12);
+}
+
+.kawaii-shadow-lg {
+  box-shadow: 0 16px 48px rgba(255, 143, 199, 0.25), 0 4px 16px rgba(183, 156, 237, 0.15);
+}
+
+.dark .kawaii-shadow {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35), 0 2px 8px rgba(255, 158, 206, 0.08);
+}
+
+.dark .kawaii-shadow-lg {
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45), 0 4px 16px rgba(255, 158, 206, 0.1);
+}
+
+/* Cute dotted divider */
+.kawaii-dots {
+  background-image: radial-gradient(circle, var(--color-main) 1.5px, transparent 1.5px);
+  background-size: 12px 12px;
+  opacity: 0.35;
 }
