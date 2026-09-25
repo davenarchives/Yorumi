@@ -65,16 +65,22 @@ jobs:
         run: |
           mkdir -p mobile-artifacts
           if [ "$SIGNED" = 'true' ]; then
-            cp android/app/build/outputs/apk/release/app-release.apk "mobile-artifacts/Yorumi ${{ github.ref_name }}.apk"
+            cp android/app/build/outputs/apk/release/app-release.apk "mobile-artifacts/Yorumi.apk"
           else
-            cp "release-assets/Yorumi v4.2.0.apk" "mobile-artifacts/Yorumi ${{ github.ref_name }}.apk"
+            cp "release-assets/Yorumi.apk" "mobile-artifacts/Yorumi.apk"
           fi
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Yorumi ${{ github.ref_name }} APK
+          name: Yorumi APK
           path: mobile-artifacts/*.apk
+
+      - name: Remove Superseded APK Asset
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release delete-asset "${{ github.ref_name }}" 'Yorumi.v4.2.0.apk' --yes || true
 
       - name: Attach APK to GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
