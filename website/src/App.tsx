@@ -177,16 +177,19 @@ function AppPreviews() {
         })}
       </div>
 
-      {/* Indicators */}
-      <div className="flex gap-2.5 mt-2 z-50">
+      {/* Indicators (tap-friendly hit areas) */}
+      <div className="flex gap-1 mt-2 z-50 p-1">
         {SLIDES.map((_, idx) => (
           <button
             key={idx}
             onClick={() => setCurrentIndex(idx)}
-            className={`h-2 rounded-full transition-all duration-500 ease-out ${
+            aria-label={`Go to slide ${idx + 1}`}
+            className="p-1.5 flex items-center justify-center cursor-pointer"
+          >
+            <span className={`block h-2 rounded-full transition-all duration-500 ease-out ${
               idx === currentIndex ? 'bg-yorumi-main w-6' : 'w-2 bg-yorumi-text/20 hover:bg-yorumi-text/40'
-            }`}
-          />
+            }`} />
+          </button>
         ))}
       </div>
     </div>
@@ -339,7 +342,7 @@ function App() {
           
           <button 
             onClick={toggleDarkMode}
-            className="relative flex items-center justify-center w-8 h-8 text-yorumi-muted hover:text-yorumi-main hover:scale-110 active:scale-95 transition-all duration-300"
+            className="relative flex items-center justify-center w-10 h-10 rounded-full text-yorumi-muted hover:text-yorumi-main hover:bg-yorumi-main/10 hover:scale-110 active:scale-95 transition-all duration-300"
             aria-label="Toggle Dark Mode"
           >
             <AnimatePresence mode="wait" initial={false}>

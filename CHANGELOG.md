@@ -65,6 +65,7 @@
 
 ## [Unreleased]
 
+- Increased the website carousel indicators and dark-mode control hit areas for easier touch interaction, and added accessible slide labels.
 - Simplified the Android GitHub Release asset name to `Yorumi.apk` and remove the superseded versioned APK asset during publishing.
 - Made the existing Android npm build commands cross-platform through a shared Gradle launcher and moved APK release CI to Linux for reliable repeatable builds.
 - Added the locally release-signed and signature-verified v4.2.0 APK as the no-secret CI release artifact, ensuring the workflow never substitutes a debug build, and standardized its published filename as `Yorumi v4.2.0.apk`.
