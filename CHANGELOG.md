@@ -1,6 +1,287 @@
 # Changelog
 
+- **Standalone Android Anime support**: Wired on-device AniList anime discovery (home, trending, search, popular, A-Z lists, and full details) and HiAnime local episode/stream resolution into the Android application, enabling completely standalone anime browsing, episode discovery, and video playback on mobile without requiring a local or remote Express backend.
+- **Official Android app launcher icon and branded splash screen**: Replaced the default Capacitor app icon and splash screens with official high-resolution Yorumi adaptive foreground/background mipmap assets and legacy round/square icons across all device densities (mdpi through xxxhdpi).
+- **Sticky mobile search bar**: Fixed mobile search header failing to stick when scrolling by replacing ancestor `overflow-x-hidden` with `overflow-x-clip` and clearing residual motion transforms on page transition completion.
+- **Unified mobile details synopsis and genre chips**: Added the manga/light-novel expandable faded synopsis and centered show-more caret to anime details, standardized manga and light-novel genres on anime's compact filled pill chips, and reduced synopsis text sizing consistently across all three detail views.
+- **Direct mobile anime playback controls**: Removed the redundant download button beside the mobile Episodes heading and stopped episode selections from scrolling the underlying details page before opening the dedicated mobile player.
+- **Unified mobile chapter headings**: Matched manga and light-novel chapter headings to anime's `Episodes (count)` layout, including typography, count treatment, spacing, and the trailing divider.
+- **Reliable details-page back navigation**: Made anime, manga, and light-novel detail back actions return directly to their respective home pages, including Android system Back, instead of looping through player and query-string history entries.
+- **Unified simplified mobile media homes**: Redesigned anime, manga, and light-novel home sections with compact numbered headings, cleaner dividers, reduced side padding, and hidden mobile carousel arrows. Standardized all three spotlights on a full-bleed artwork layout with featured counters, flat metadata, simplified actions, and no floating cover thumbnail.
+- **Mobile media card and spotlight refinement**: Expanded anime All-Time Popular to twelve visible mobile entries, matched manga and light-novel carousel/grid card sizing to anime, and restored each spotlight's original chips, colors, and action styling inside the compact rounded feature-card layout with a slide counter.
+- **Swipeable mobile spotlight card layout**: Rebuilt anime, manga, and light-novel mobile spotlights around the artwork-first reference layout with top status/count badges, bottom-anchored titles and metadata, equal pill actions, and unobstructed horizontal swipe navigation.
+- **Poster-only mobile spotlights and airing countdown**: Switched mobile spotlights to sharp portrait posters without banner artwork or blur, removed frosted-glass effects from mobile controls, and added the next anime episode with a compact days/hours/minutes airing countdown.
+- **Complete anime spotlight metadata**: Added format, available episodes, rating, duration, genres, and studio to the mobile anime spotlight, with a tighter bottom-anchored layout matching the reference.
+- **Edge-to-edge mobile spotlights**: Removed the inset card radius, border-like framing, margins, and shadow from mobile spotlights, and moved the status and slide-count badges below the device safe area.
+- **Spotlight genre hydration and blur cleanup**: Removed the leading airing-badge icon, hydrated missing anime detail metadata so genre chips render before the studio, and removed remaining blur effects from Manga and LN spotlight artwork and controls.
+- **Consistent Manga/LN spotlight brightness**: Removed the extra mobile black overlay and full-height gradient from Manga and LN, matching Anime's bottom-only readability gradient, and added reliable Manga author fallback rendering after genre chips.
+- **Anime spotlight autoplay**: Added the same five-second looping autoplay behavior used by Manga and LN while preserving swipe navigation and pausing on desktop hover.
+- **Mobile Top Trending layout**: Reworked the ranking panel for phones with a larger responsive heading, stable Today/Week/Month control, taller list rows, clearer titles and ranks, and wider right-side poster thumbnails.
+- **Manga/LN spotlight metadata hierarchy**: Added CC chapter counts and star ratings to mobile Manga and LN spotlights, and moved author names above the title while keeping genre chips below it.
+- **Manga/LN spotlight detail hydration**: Active spotlight slides now fetch and merge full detail metadata when lightweight list records omit chapter counts, authors, or genres, ensuring the complete metadata row renders instead of rating alone.
+- **Compact mobile media cards**: Moved Anime, Manga, and LN titles inside their posters over a bottom visibility gradient, shifted badges above the title, removed Manga chapter/CC badges, and kept the existing below-card title presentation on desktop.
+- **Unboxed mobile card metadata**: Removed filled containers, padding, and rounded boxes from mobile Anime, Manga, and LN format/count labels, leaving only readable text and icons over the poster gradient.
+- **Compact mobile metadata pills**: Restored the card metadata containers across Anime, Manga, and LN with smaller type, tighter padding, and subtler pill sizing for a denser mobile layout.
+- **Compact below-card mobile titles**: Moved Anime, Manga, and LN titles back beneath their posters, reduced mobile title sizing, removed the title fade overlays, and returned metadata pills to the poster bottom edge.
+
+- **Android player scroll lock and proxy recovery**: Locked document scrolling while the dedicated player is mounted, added a stable loopback URL fallback when Capacitor proxy URL creation is interrupted by live reload, surfaced mobile embed-resolution errors, and purged stale empty stream results with cache namespace v25.
+
+- **Anime details/player mobile overflow cleanup**: Hid the global bottom navigation throughout anime details and playback, suppressed the details toolbar while the dedicated player is open, and constrained player header/footer controls so titles and actions cannot overlap on narrow Android screens.
+
+- **Dedicated Android anime player and resolver correction**: Moved mobile playback into a separate full-screen surface with an episode carousel sheet, stopped passing AniList IDs to the MAL-only direct stream endpoint, and bumped the stream cache namespace so valid-looking wrong-title responses cannot leave playback stuck while fetching.
+
+- **Anime details compact mobile toolbar**: Removed the redundant Series label and added the Manga/LN-style Android toolbar that transitions from transparent to solid while scrolling, with working back, episode-order, list/grid, and download-all actions.
+
+- **Android anime details redesign**: Matched anime details to the mobile Manga/LN presentation with a compact side-by-side hero, flat metadata and genre treatment, equal-width actions, horizontally scrollable seasons, and an edge-to-edge episode list with larger landscape artwork and synopsis previews.
+
+- **Mobile HLS completed-position reset**: Added duration-aware validation to HLS resume and synchronization so completed or stale near-end timestamps restart at zero instead of seeking directly to the end and triggering episode completion or auto-next.
+
+- **Mobile light-novel reader alignment**: Reworked the reader header and footer into stable responsive grids, kept previous/next controls fully on-screen with compact mobile buttons, centered the chapter selector, and displayed the selected chapter title during content loading.
+
+- **Android NovelBin chapter rate-limit recovery**: Coalesced duplicate in-flight data requests, paced native NovelBin traffic, and added bounded backoff for HTTP 429 responses instead of immediately repeating rejected chapter requests through the same-device proxy.
+
+- **Android black-screen HLS regression fix**: Prevented Android WebView's unreliable native-HLS capability result from bypassing hls.js, ensuring proxied mobile streams load their manifests, duration, and video frames through the local media proxy.
+
+- **Packaged Electron scraper runtime**: Changed the local Puppeteer and stealth-plugin imports to statically discoverable module specifiers so the production backend bundle includes provider browser fallbacks instead of looking for excluded `backend/node_modules` at runtime.
+
+- **Android anime streaming and LN chapter recovery**: The on-device media proxy now streams HLS/media response bodies instead of buffering complete segments in memory, preventing phone playback from stalling on a black frame. Failed native HTML requests now retry through the app's OkHttp proxy with an enforced desktop browser identity, allowing later NovelBin chapters to recover from mobile-fingerprint blocking.
+- **Single-language caption toggle**: The subtitle dropdown is now shown only when multiple languages are available; a single-language captions button toggles that track directly on or off.
+- **Clickable subtitle selection**: Subtitle menu choices now switch the browser text track synchronously and stop pointer events from falling through to the video controls, fixing language rows that appeared selectable but did nothing.
+- **Accurate subtitle language labels**: Removed the hardcoded English fallback for unlabeled subtitle tracks. HiAnime now reads additional provider metadata, URL language hints, and subtitle script content when needed; unknown tracks remain Unknown, and exact duplicate tracks are removed from the selector.
+- **Subtitle language selector**: The player caption button now opens a language menu with Off and every subtitle track supplied by the active provider, while continuing to default to English when available.
+- **Strict anime episode routing and stable server switching**: Removed unsafe episode-one fallbacks from HiAnime, AniDB, AllManga, and the native mobile HiAnime source, preventing missing episode matches from silently playing another episode. Provider requests are now source-strict instead of silently returning a different provider, server selection starts only one request, implausibly short/long media is rejected against known episode runtime, Fern correctly separates its labeled SUBBED and DUBBED embeds, and stream cache namespaces were bumped.
+- **Responsive subtitle position**: Raised native video captions slightly during playback and moved them farther upward whenever the progress bar and player controls are visible.
+- **Player caption control placement**: Removed the unused wide-player monitor action and moved the subtitle toggle into its place beside Settings and Fullscreen.
+- **English subtitle priority fix**: The video player now selects full English dialogue captions ahead of Thai and other subtitle tracks, while retaining non-English tracks as fallback data.
+- **Anime audio and captions correction**: Restored native subtitle track rendering in the player, prevented the persistent player from keeping an old dub URL while showing new Sub/Dub state, stopped Fern/AnimeGG from labeling its no-caption English stream as Sub, and made Sub requests search fallback servers when the current server only resolves Dub.
+- **Electron HiAnime black-screen and recovery fix**: Removed stale upstream `Content-Length` headers from rewritten HLS playlists and tied media-stream cancellation to the outgoing response. Shortened signed-stream caching from 20 to 4 minutes, fixed Frieren-to-HiAnime cache invalidation, and stopped playback recovery from silently bouncing between Sub and Dub; exhausted streams now proceed through normal server failover while preserving the user's audio choice.
+- **Sub-first audio selection fix**: Anime playback now defaults to subtitle audio on every episode/server load, keeps Sub and Dub streams strictly separated, allows the Dub switch to return to Sub when both tracks exist, and correctly labels dub-only scraper results instead of exposing the same Dub stream as a fake Sub option. Unticking a stale dub-only response now purges and refetches that episode instead of disabling the control. Stream caches were bumped to purge stale audio metadata.
+- **Cross-platform HLS proxy origin fix**: Rewrote nested playlist, subtitle, key, and media proxy references as same-origin URLs instead of hardcoded backend-origin URLs. The frontend also remaps stale `localhost:3001` proxy responses to its active API origin, preventing Android WebView from treating the phone itself as the backend and improving Electron HLS reliability.
+- **Mobile live-reload command**: Added `npm run dev:mobile`, which starts the backend and exposes Vite on the local network instead of binding only to the PC loopback interface.
+- **Android light-novel chapter fix**: Added native JSON response handling for Capacitor HTTP requests and switched NovelBin's chapter catalog request to it, preventing valid chapter responses from being converted to `"[object Object]"` and discarded on Android.
+- **Android light-novel content fix**: Native source requests now use NovelBin's accepted desktop browser header profile (its edge returns HTTP 429 to mobile-looking native requests), unwrap text payloads returned by device HTTP implementations, and use expanded chapter-content selectors for the current reader markup.
+- **Scraper misroute hardening**: Tightened manga/anime title resolution across MangaKatana, HiAnime/Frieren, AniKoto/Stark, AnimeGG/Fern, and ReAnime/Himmel so weak search results are rejected instead of routing to unrelated titles; bumped affected cache namespaces and reset player quality selection when switching sub/dub.
+- **HiAnime alternate-title resolver fix**: Backend Frieren now honors array-form alternate titles from the player request, rejects the unrelated `Wandance` result for `The World Is Dancing`, and logs the accepted title query used for successful stream resolution.
+
+## [Unreleased]
+
+- Prepared the standalone v4.2.0 release notes, synchronized desktop/Android/website version metadata, and added signed Android APK GitHub Actions release automation using the existing npm release command.
+- Made Library network-aware: online cards retain full known Anime episode and Manga/LN chapter totals and open the complete details catalog, while offline mode shows only titles with local downloads and reports their locally available episode/chapter counts.
+- Kept the sticky mobile Library header below Android's status bar using the device safe-area inset, preventing its title and media tabs from merging with system-tray icons.
+- Fixed Android anime downloads incorrectly forwarding the phone-local media proxy URL to the backend, which caused `ECONNREFUSED 127.0.0.1:18765`; HLS playlists and segments now remain on the on-device proxy path.
+- Made the complete My Library header and media-tab selector sticky on mobile with an opaque blurred surface, while preserving the existing desktop layout.
+- Fixed Android Manga chapter starvation by removing the spotlight's eight-page MangaKatana detail preload, and fixed Anime downloads by preserving the resolved stream's HLS type instead of guessing solely from native proxy URLs.
+- Unified Library navigation with the normal Anime, Manga, and Light Novel detail data paths so saved synopsis and genres render immediately and full metadata still refreshes online. Added downloaded-only titles to the mobile Library and direct offline handoff for downloaded Manga/LN chapters and Anime episodes.
+- Fixed slides seven and eight of the Manga spotlight showing Unknown metadata by rejecting incomplete MangaKatana detail responses, invalidating the affected detail cache, and progressively hydrating all eight slides with the same full details used by Electron.
+- Fixed pixelated Android Manga spotlight artwork by replacing MangaKatana hot-update thumbnails with each active title's full detail cover for both the hero background and cover presentation, matching Electron's image selection.
+- Matched the Android Manga spotlight to Electron by sourcing and ordering its eight entries exclusively from MangaKatana hot updates, while enriching each active slide without blocking the carousel. AniList no longer selects Manga spotlight titles.
+- Fixed slow and broken Android Manga home rendering by preserving valid persisted home caches, rendering AniList cards and spotlight data immediately, and progressively hydrating MangaKatana chapters in the background instead of blocking entire sections on dozens of scraper requests.
+- Changed mobile press-and-hold playback to YouTube-style behavior: holding anywhere across the entire player temporarily plays at 2x speed, immediately hides every control except a polished centered fast-forward indicator, and restores the previous speed on release. A normal video tap toggles the controls, and the old hold-to-rewind gesture is removed.
+- Centered the mobile player transport controls symmetrically.
+- Fixed search-result cards opening a black screen by normalizing Anime, Manga, and Light Novel route state before navigation and hardening anime artwork rendering against incomplete provider records.
+- Fixed undersized mobile player controls after leaving landscape by preventing Android Web Fullscreen from retaining landscape viewport scaling and waiting for portrait viewport dimensions before restoring the player layout.
+- Simplified movie details by removing the Episodes heading/count and the synthetic `1.` prefix from the single movie playback card.
+- Added movies to the mobile anime details episode section as a single playable entry, using the movie artwork and title when no normal episode record exists.
+- Replaced the Android player's hardcoded 90-degree CSS viewport rotation with the native Capacitor screen-orientation lock, synchronized fullscreen cleanup, and an unrotated dynamic-viewport layout.
+- Fixed Android manga spotlight loading by hydrating every visible spotlight entry through the in-app MangaKatana source, with a bounded request queue for stable mobile scraping.
+- Fixed missing readable chapters and chapter counts across the manga home sections by resolving visible AniList entries to MangaKatana and carrying their scraper IDs and chapter lists into navigation.
+
+- **Electron Discord RPC and Preload IPC Bridge ([preload.mjs](dist-electron/preload.mjs), [main.bundle.js](dist-electron/main.bundle.js), [main.cjs](dist-electron/main.cjs), [main.js](dist-electron/main.js))**:
+  - Restored missing `dist-electron/preload.mjs` script with CommonJS `require('electron')` sandbox bridge, resolving preload load failures and exposing `window.electronAPI` so the frontend can dispatch Discord presence updates.
+  - Added `discordRpcClient.on('error')` listener in Electron main process to safely handle unexpected socket closures or IPC disconnects without crashing.
+  - Upgraded `setDiscordActivity` to send activity payloads via `discordRpcClient.request('SET_ACTIVITY', ...)` to preserve activity types (e.g., `type: 3` for Watching, `type: 0` for Playing) and dynamic poster art on Discord user cards, with resilient fallback to `setActivity`.
+  - Re-synchronized bundled `dist-electron/main.cjs` and `dist-electron/main.js` artifacts with the source `main.bundle.js`.
+
+- **Android anime player glitch and loopback playback fix ([capacitor.config.ts](capacitor.config.ts), [MainActivity.java](android/app/src/main/java/com/yorumi/app/MainActivity.java), [LocalMediaProxyPlugin.java](android/app/src/main/java/com/yorumi/app/LocalMediaProxyPlugin.java), [VideoPlayer.tsx](src/features/player/components/VideoPlayer.tsx), [usePlayer.ts](src/features/player/hooks/usePlayer.ts), [useStreams.ts](src/hooks/useStreams.ts), [animeService.ts](src/services/animeService.ts))**:
+  - Configured `server: { androidScheme: 'http', cleartext: true }` in `capacitor.config.ts` and set `WebSettings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW)` in `MainActivity.java` to prevent WebView mixed-content security policies from blocking Hls.js segment and playlist requests to the local proxy (`http://127.0.0.1:18765`).
+  - Fixed `LocalMediaProxyPlugin.java` error response crash by replacing `Status.lookup(502)` (which returned null and caused a NPE inside NanoHTTPD) with `getStatus(502, "Bad Gateway")` and adding full CORS headers to error responses.
+  - Hardened playlist URI rewriting in `LocalMediaProxyPlugin.java` with regex matching `URI=(["'])(.*?)\1` to handle single- and double-quoted tags (`#EXT-X-KEY`, `#EXT-X-MAP`, `#EXT-X-MEDIA`) without parsing failures.
+  - Disabled Web Worker demuxing on mobile (`enableWorker: !isNativeMobile`) in `VideoPlayer.tsx`, avoiding Blob worker instantiation failures inside the mobile WebView.
+  - Extended watchdog timeout `PLAYBACK_START_WATCHDOG_MS` to 30s (from 12s) and `MEDIA_STALL_TIMEOUT_MS` to 25s (from 14s) to eliminate false timeout aborts and server hopping while buffering on mobile.
+  - Guarded the auto-load effect in `usePlayer.ts` with `autoLoadAttemptKeyRef` to prevent infinite reload/re-trigger loops, and bypassed multi-server failover loops on mobile where all servers resolve to the same local scraper.
+  - Disabled background prefetching of alternate desktop servers on mobile in `useStreams.ts` and unified the local mobile stream cache key in `animeService.ts` to prevent duplicate concurrent network storms.
+
+
+
+- **Mobile reader details cleanup ([MangaDetailsPage.tsx](src/pages/MangaDetailsPage.tsx), [LNDetailsPage.tsx](src/pages/LNDetailsPage.tsx), [MangaSpotlight.tsx](src/features/manga/components/MangaSpotlight.tsx))**:
+  - Removed mobile spotlight pagination dots and chapter-list pagination controls from manga and light-novel details.
+  - Reworked mobile details headers to show cover art beside the title, with blurred synopsis cards, show more/less synopsis controls, genre chips, chapter counts, and Start/Continue actions.
+  - Updated the mobile floating read button to collapse to an icon-only state after scrolling.
+  - Flattened mobile synopsis into an inline fade/caret treatment, removed duplicated chapter/action rows, and softened mobile title weight while keeping author/status visible.
+  - Matched manga and light-novel mobile synopsis expansion with a down-chevron control, smoother height animation, expanded full tag wrapping, and a clearer low-blur poster backdrop.
+  - Hid mobile chapter search, compacted chapter controls into icon-style actions, removed author from the mobile hero line, and added a purple sticky detail toolbar while scrolling.
+  - Replaced the overlapping floating chapter-count label with mobile floating chapter controls and smoothed the compact scrolled toolbar transition.
+  - Hid the compact mobile toolbar until scrolling and changed its actions to chapter sort, list/grid toggle, and download.
+  - Removed back-to-top floating buttons from the light-novel reader and manga page viewer.
+  - Disabled the global back-to-top button on manga/light-novel details and reader routes, and centered the collapsed mobile read FAB icon.
+  - Tuned mobile manga/light-novel details toward a Mihon-style layout with tighter title/chapter typography, larger flat genre chips, and explicit icon rows for author and status.
+
+- **Mobile spotlight chapter resolution ([mangaService.ts](src/services/mangaService.ts), [LNDetailsPage.tsx](src/pages/LNDetailsPage.tsx))**:
+  - Android/iOS manga spotlight details now resolve AniList metadata titles into MangaKatana source details and hydrate readable chapters before rendering.
+  - Light-novel spotlight details now include native/Japanese titles and synonyms when resolving NovelBin source IDs, improving chapter matches for AniList-only entries.
+
+- **Android HLS playback fix ([VideoPlayer.tsx](src/features/player/components/VideoPlayer.tsx))**:
+  - Force Android/iOS and local loopback proxy `.m3u8` streams through hls.js instead of WebView's native HLS path, preventing black-screen `0:00 / 0:00` playback.
+
+- **Backend-free Android anime metadata ([anilistAnime.ts](src/platform/sources/anilistAnime.ts), [animeService.ts](src/services/animeService.ts))**:
+  - Added direct on-device AniList queries for Android/iOS anime home data, search, details, top anime, trending, seasonal, monthly, and latest-list fallbacks.
+  - Restored mobile anime cards, metadata, and homepage sections when the APK is running without the Express backend.
+
+- **Mobile Manga & Light Novel details edge-to-edge redesign ([MangaDetailsPage.tsx](src/pages/MangaDetailsPage.tsx), [LNDetailsPage.tsx](src/pages/LNDetailsPage.tsx), [Sidebar.tsx](src/components/layout/Sidebar.tsx))**:
+  - Removed the boxed card container around chapters on mobile, replacing it with a flat, clean edge-to-edge list featuring status indicators (`•`), upload/release date and author metadata, and circular download buttons matching the Tachiyomi/Mihon reference layout.
+  - Hid the mobile bottom navigation bar on `/manga/details/:id` and `/ln/details/:id`, allowing content to scroll edge-to-edge behind the transparent Android system navigation bar.
+  - Added an elevated floating action button (FAB) at the bottom-right on mobile (`[ ▶ Resume ]` / `[ ▶ Read ]`) positioned above the system navigation bar safe area.
+  - Unified the chapter list headers into a single compact bar, eliminating redundant double headers and cleanly incorporating the sort toggle, view mode toggle, and download actions.
+  - Adjusted mobile container padding to `px-4` and ensured `safe-area-inset-bottom` padding prevents UI clipping against Android navigation buttons.
+
+- **Backend-free Android anime playback foundation ([hianime.ts](src/platform/sources/hianime.ts), [animeService.ts](src/services/animeService.ts), [LocalMediaProxyPlugin.java](android/app/src/main/java/com/yorumi/app/LocalMediaProxyPlugin.java), [MainActivity.java](android/app/src/main/java/com/yorumi/app/MainActivity.java), [build.gradle](android/app/build.gradle))**:
+  - Ported the Frieren/HiAnime stream lookup into the Android app so mobile can resolve anime episodes without the Express backend.
+  - Added a native loopback HLS proxy for Android that rewrites playlists, key URIs, subtitles, and segment URLs to `127.0.0.1`, keeping video playback local to the device WebView.
+  - Kept Electron/web on the existing backend scraper route while native mobile uses the on-device adapter boundary.
+
+- **Android edge-to-edge fullscreen & docked bottom navigation ([styles.xml](android/app/src/main/res/values/styles.xml), [MainActivity.java](android/app/src/main/java/com/yorumi/app/MainActivity.java), [ImmersiveModePlugin.java](android/app/src/main/java/com/yorumi/app/ImmersiveModePlugin.java), [Sidebar.tsx](src/components/layout/Sidebar.tsx), [App.tsx](src/App.tsx))**:
+  - Replaced Android's light theme with a dark edge-to-edge theme, eliminating the solid white status bar and solid white navigation bar on mobile.
+  - Programmatically configured transparent status/navigation bars, enforced light system icons (`setAppearanceLightStatusBars(false)` / `setAppearanceLightNavigationBars(false)`), and disabled artificial navigation bar contrast scrims on Android 10+.
+  - Docked the mobile bottom navigation bar flush to the screen bottom with `safe-area-inset-bottom` padding, creating a seamless unified dark surface across Android's 3-button or gesture navigation bar without affecting Electron/desktop.
+  - Added Material You-style active indicator pills to mobile nav tabs and scoped desktop Electron drag regions exclusively to non-mobile platforms.
+
+- **Native Android navigation and immersive manga reader ([App.tsx](src/App.tsx), [MangaReaderPage.tsx](src/pages/MangaReaderPage.tsx), [ImmersiveModePlugin.java](android/app/src/main/java/com/yorumi/app/ImmersiveModePlugin.java))**:
+  - Android's system Back button now follows React Router history and exits only from the root page.
+  - Manga reading enters native immersive mode, hides both status and navigation bars, permits transient swipe-reveal, and restores system UI when leaving.
+
+- **Working Capacitor live reload ([capacitor.config.ts](capacitor.config.ts))**:
+  - Honor `CAPACITOR_SERVER_URL` during Android sync so a development APK can load Vite from the computer over USB or Wi-Fi.
+
+- **Backend-free Android light novels ([novelbin.ts](src/platform/sources/novelbin.ts), [lnService.ts](src/services/lnService.ts))**:
+  - Ported NovelBin search, title resolution, novel metadata, full chapter lists, and sanitized chapter reading into the APK through Capacitor native HTTP.
+  - Mobile LN search now combines direct AniList discovery with the on-device readable source while Electron/web retain the existing Express scraper flow.
+
+- **Mobile bottom navigation ([Sidebar.tsx](src/components/layout/Sidebar.tsx), [App.tsx](src/App.tsx))**:
+  - Replaced the desktop sidebar at phone widths with a compact safe-area-aware navigation bar for Anime, Manga, Search, LN, and Library.
+  - Elevated Search as the central action, added route-aware active colors, reserved page space for the bar, and hide it inside immersive manga/light-novel readers.
+  - Kept the navbar and Search action visually flat with opaque solid colors and no gradients or colored glow.
+
+- **Frieren HLS playback and subtitles ([VideoPlayer.tsx](src/features/player/components/VideoPlayer.tsx), [CustomVideoControls.tsx](src/features/player/components/CustomVideoControls.tsx), [scraper.routes.ts](backend/src/api/scraper/scraper.routes.ts))**:
+  - Removed fabricated codec metadata from rewritten HLS master playlists and start playback on the lowest rendition before adaptive quality steps up.
+  - Proxy subtitle files through the backend with the source referer, attach them as native video text tracks, and expose an on/off captions control.
+  - Prefer English when providers return multiple subtitle languages and raise cues in windowed playback so controls do not cover them.
+
+- **Backend-free Android manga discovery ([anilistManga.ts](src/platform/sources/anilistManga.ts), [mangaService.ts](src/services/mangaService.ts))**:
+  - Added direct on-device AniList GraphQL queries for manga search, numeric details, top, trending, popular, manhwa, one-shot, A-Z, spotlight, and random discovery.
+  - Ported MangaKatana latest, new, directory, and hot-update lists into the local adapter, completing the manga landing page without Express.
+  - Kept all web/Electron API routes unchanged and selected local providers only on Capacitor Android/iOS.
+
+- **First fully local Android content provider ([mangakatana.ts](src/platform/sources/mangakatana.ts), [nativeHttp.ts](src/platform/nativeHttp.ts), [mangaService.ts](src/services/mangaService.ts))**:
+  - Ported MangaKatana search, details, chapter lists, and page extraction into the APK using Capacitor's native HTTP stack and browser-native DOM parsing.
+  - Android/iOS now call the local adapter directly for the MangaKatana flow while Electron/web retain their existing Express API behavior.
+  - Routed global manga search through the local provider on mobile and bypassed the unavailable backend image proxy for native-device requests.
+  - Preserved existing in-memory and persisted manga caches, request deduplication, and stale-cache fallbacks.
+
+- **Android foundation without Electron regressions ([capacitor.config.ts](capacitor.config.ts), [runtime.ts](src/platform/runtime.ts), [AppProviders.tsx](src/app/AppProviders.tsx), [api.ts](src/config/api.ts))**:
+  - Added an isolated Capacitor Android build target that packages the existing React/Vite frontend without changing the Electron backend startup or packaging flow.
+  - Added explicit web, Electron, Android, and iOS runtime detection plus hash routing for packaged mobile assets.
+  - Hid the desktop-only Exit control on native mobile and added separate Android sync/open/debug-build commands.
+  - Established the platform boundary for incrementally replacing Express endpoints with direct on-device source adapters.
+  - Added a typed local source registry and Android migration guide covering provider porting, native networking, caching, media proxying, and APK commands.
+
+- **Faster startup and smaller initial download ([AppRoutes.tsx](src/app/AppRoutes.tsx))**:
+  - Split secondary pages into route-level chunks so anime details, manga, light novel, library, profile, and Yumi code loads only when visited.
+  - Deferred the global search modal until it is opened, avoiding its UI code during normal startup.
+  - Kept the home page in the initial bundle for immediate startup and added an accessible lightweight loading state for lazy routes.
+
+## [4.1.1] - 2026-09-20
+
+- **Instant Episode Thumbnails & Titles via AniZip Integration ([episodeMetadataService.ts](file:///c:/Github/Yorumi/src/services/episodeMetadataService.ts), [AnimeDetailsPage.tsx](file:///c:/Github/Yorumi/src/pages/AnimeDetailsPage.tsx), [DetailsEpisodeGrid.tsx](file:///c:/Github/Yorumi/src/features/anime/components/details/DetailsEpisodeGrid.tsx))**:
+  - Integrated **AniZip** (`api.ani.zip`) as a zero-authentication, ~150ms episode metadata source that provides real episode titles (English, Romaji, Japanese), HD TVDB screencap thumbnails, overviews, and air dates for virtually every anime.
+  - **New `episodeMetadataService.ts`**: Client-side service with dual-layer caching (in-memory `Map` + `sessionStorage` with 7-day TTL) and request deduplication. Returns cached data synchronously on revisit for 0ms render.
+  - **Episode cards now render real titles and HD screencaps on first paint** instead of generic `Episode 1`, `Episode 2` placeholders with blank black boxes. Titles and thumbnails load within ~200ms of navigating to any anime details page.
+  - **Multi-tier fallback chain**: AniZip screencap → scraper snapshot → TMDB still → anime poster/banner. Episode cards never render as empty black boxes.
+  - **EpisodeThumbnail component upgraded**: Added pulse skeleton placeholder during image load, smooth opacity fade-in transition, and automatic fallback to anime cover art if screencap fails to load.
+  - **Parallelized season relation fetching**: The sequential 12-relation while-loop in `loadSeasonMetadata` now fetches up to 4 relations concurrently via `Promise.all`, significantly reducing metadata resolution time for multi-season franchises.
+  - **Removed premature TMDB bypass**: Multi-season anime (with `collectedItems.length > 1`) no longer unconditionally skips TMDB TV details lookup. TMDB enrichment now proceeds if an AniZip-resolved `tmdbId` is available.
+  - **AniZip thumbnails always prioritized over scraper snapshots**: Scraper snapshots (low-quality screenshots with burned-in subtitles) are now never used when AniZip data is available. Thumbnail priority: AniZip HD screencap → TMDB still → anime poster/banner.
+  - **Episode metadata resets on anime navigation**: Switching to a different anime now immediately resets `episodeMeta` state, preventing the previous anime's thumbnails from leaking into the new anime's episode cards.
+
+- **Auto-Server Failover on Playback Failure ([usePlayer.ts](file:///c:/Github/Yorumi/src/features/player/hooks/usePlayer.ts), [VideoPlayer.tsx](file:///c:/Github/Yorumi/src/features/player/components/VideoPlayer.tsx))**:
+  - When a server fails to produce a playable stream (black screen, 0:00/0:00 duration, or network error), the player now **automatically switches to the next server** in the cascade (Frieren → Stark → Fern → Himmel) until playback starts.
+  - **Playback start watchdog**: New 12-second timer detects zero-duration / no-timeupdate scenarios (broken HLS manifests, empty segments) and triggers auto-failover. Previously, these black-screen states persisted indefinitely.
+  - Only marks `streamExhausted` after all 4 servers have been tried and a full cache-bust retry round completes.
+  - Failed server tracking resets on episode change, ensuring each episode gets fresh failover opportunities.
+
 ## [4.1.0] - 2026-08-21
+
+- **Server Selector Renamed to Frieren Characters & KickAssAnime Removal ([useStreams.ts](file:///c:/Github/Yorumi/src/hooks/useStreams.ts), [VideoPlayer.tsx](file:///c:/Github/Yorumi/src/features/player/components/VideoPlayer.tsx), [animeService.ts](file:///c:/Github/Yorumi/src/services/animeService.ts), [video-sources.ts](file:///c:/Github/Yorumi/backend/src/api/anime/video-sources.ts), [scraper.service.ts](file:///c:/Github/Yorumi/backend/src/api/scraper/scraper.service.ts), [scraper.routes.ts](file:///c:/Github/Yorumi/backend/src/api/scraper/scraper.routes.ts), [DetailsEpisodeGrid.tsx](file:///c:/Github/Yorumi/src/features/anime/components/details/DetailsEpisodeGrid.tsx))**:
+  - Removed **KickAssAnime** from video sources, fallback chains, and episode resolution pipelines.
+  - Renamed the server options in the player dropdown and controls to *Frieren: Beyond Journey's End* characters:
+    - **Frieren**: Flagship server powered by HiAnime (MegaCloud HLS with soft subtitles).
+    - **Stark**: Power server powered by AniKoto (Megaplay direct HLS with comprehensive multi-language subtitles and dub).
+    - **Fern**: Rapid precision server powered by AnimeGG (direct MP4 streams across 1080p, 720p, and 480p).
+    - **Himmel**: Legendary hero server powered by ReAnime (Flixcloud direct HLS).
+  - Implemented robust bidirectional name-to-provider mapping in `src/services/animeService.ts` and `src/hooks/useStreams.ts`, ensuring scrapers remain fully operational regardless of whether queries use character aliases or canonical provider keys.
+  - Bumped stream cache keys (`v114` backend, `v19` frontend) to purge stale cache entries.
+
+- **Video Stream Providers Stability, KickAssAnime & ReAnime Fixes, and AnimeGG Integration ([scraper.routes.ts](file:///c:/Github/Yorumi/backend/src/api/scraper/scraper.routes.ts), [scraper.service.ts](file:///c:/Github/Yorumi/backend/src/api/scraper/scraper.service.ts), [kickassanime.ts](file:///c:/Github/Yorumi/backend/src/scraper/kickassanime.ts), [reanime.ts](file:///c:/Github/Yorumi/backend/src/scraper/reanime.ts), [animegg.ts](file:///c:/Github/Yorumi/backend/src/scraper/animegg.ts), [video-sources.ts](file:///c:/Github/Yorumi/backend/src/api/anime/video-sources.ts), [useStreams.ts](file:///c:/Github/Yorumi/src/hooks/useStreams.ts), [VideoPlayer.tsx](file:///c:/Github/Yorumi/src/features/player/components/VideoPlayer.tsx), [animeService.ts](file:///c:/Github/Yorumi/src/services/animeService.ts), [DetailsEpisodeGrid.tsx](file:///c:/Github/Yorumi/src/features/anime/components/details/DetailsEpisodeGrid.tsx))**:
+  - **KickAssAnime Fixes**:
+    - Resolved CORS/403 block by wrapping KickAssAnime streams in `/api/scraper/proxy` with `Referer: https://krussdomi.com/` and proxy media parameter.
+    - Fixed protocol-relative URL rewriting in `scraper.routes.ts` where `//st1.advancedairesearchlab...` was previously misidentified as origin-relative (`https://hls.krussdomi.com//st1...`), causing 404s.
+    - Added Krussdomi CDN domains (`habibikun.xyz`, `advancedairesearchlab.xyz`, `babybayw.xyz`, `narutokun.xyz`) to proxy media segment rewriting.
+    - Added manifest probe validation in `kickassanime.ts` to ensure unplayable manifests return `null` and trigger graceful fallbacks.
+  - **ReAnime Fixes & Guardrails**:
+    - Diagnosed Flixcloud anti-bot challenges and encrypted `sResp...` non-m3u8 tokens returned by upstream `fetch9.flixcloud.cc`.
+    - Added active manifest validation in `reanime.ts` and `scraper.routes.ts`: rejects non-`#EXT` responses (HTTP 502 instead of parsing raw tokens as playlists) and cleanly yields to backup providers.
+  - **AnimeGG Integration**:
+    - Integrated high-speed direct MP4 provider **AnimeGG** from `Anivexa-API` featuring full 1080p, 720p, and 480p streams with sub and dub tracks.
+    - Added full HTTP 206 Partial Content range-request streaming through the backend proxy.
+  - **Resilient Multi-Provider Fallback Cascade**:
+    - Updated `orderedSources` in `video-sources.ts` and `resolveStreamDataWithFallback` in `useStreams.ts` so selecting any server automatically falls back across `AniKoto`, `HiAnime`, and `AnimeGG` if the primary server encounters upstream downtime or Cloudflare challenges, ensuring zero playback stalls or blank player states.
+    - Purged stale cache keys with `v113` stream cache namespace.
+
+- **Anime Tab High-Speed Performance & Resilient Multi-Tier Hydration ([anime.routes.ts](file:///c:/Github/Yorumi/backend/src/api/anime/anime.routes.ts), [anilist.routes.ts](file:///c:/Github/Yorumi/backend/src/api/anilist/anilist.routes.ts), [animeService.ts](file:///c:/Github/Yorumi/src/services/animeService.ts), [AnimeContext.tsx](file:///c:/Github/Yorumi/src/context/AnimeContext.tsx))**:
+  - Resolved severe performance bottleneck where the Anime tab took several seconds or stalled with skeleton placeholders and "No titles available" compared to instant Manga and Light Novel tabs.
+  - Root-caused missing TMDB credentials causing `/api/anime/home-fast`, `/trending`, `/popular`, and `/seasonal` to return empty datasets (`media: []`), triggering a cascading 6-request waterfall of retries with artificial 1.0s and 2.5s sleep loops.
+  - Implemented automatic high-speed AniList fallbacks on `/api/anime/home-fast`, `/trending`, `/popular`, and `/seasonal` with in-memory caching (`ANIME_HOME_FAST_TTL_MS = 2 min`, `MEDIA_POOL_CACHE_TTL = 10 min`), achieving ~60ms response times.
+  - Added dual-endpoint resilience in `animeService.ts`: `getHomeFastData()` now seamlessly falls back to `/api/anilist/home-fast` if `/api/anime/home-fast` returns empty or errors.
+  - Eliminated artificial retry delays (`[0, 1000, 2500]ms`) in `fetchSpotlight` and optimized `AnimeContext.tsx` fast bundle timeout, ensuring instant local cache hydration (`readHomeCache`) on component mount and sub-second background updates.
+
+- **Top 3 Direct HLS Video Providers Overhaul ([kickassanime.ts](file:///c:/Github/Yorumi/backend/src/scraper/kickassanime.ts), [anikoto.ts](file:///c:/Github/Yorumi/backend/src/scraper/anikoto.ts), [reanime.ts](file:///c:/Github/Yorumi/backend/src/scraper/reanime.ts), [video-sources.ts](file:///c:/Github/Yorumi/backend/src/api/anime/video-sources.ts), [useStreams.ts](file:///c:/Github/Yorumi/src/hooks/useStreams.ts), [VideoPlayer.tsx](file:///c:/Github/Yorumi/src/features/player/components/VideoPlayer.tsx))**:
+  - Replaced deprecated iframe embed providers (`Videasy`, `VidSrc`, `VidKing`) with the Top 3 verified `.m3u8` HLS providers from `Anivexa-API`: **KickAssAnime**, **AniKoto**, and **ReAnime**.
+  - **KickAssAnime**: Built native queries to `https://kaa.lt/api/fsearch` and episode servers to extract direct Krussdomi master manifests up to 4K resolution (2160p, 1080p, 720p, 540p, 360p).
+  - **AniKoto**: Implemented full MegaPlay decryption engine (extracting script strings, deciphering AES-256-CBC payloads, and HMAC-SHA256 signing stream tokens using VM sandbox key extraction), delivering direct `.m3u8` master streams and multi-language VTT subtitles (English, Spanish, French, German, Italian, Portuguese, Russian, Arabic) for both SUB and DUB.
+  - **ReAnime**: Built native AniList-keyed scraper with authentic Flixcloud decryption (PBKDF2, SHA-256, AES-CBC, WASM keystream transform) returning master `.m3u8` and soft subtitles.
+  - Updated frontend player server selector and episode resolution pipelines to `HiAnime`, `KickAssAnime`, `AniKoto`, and `ReAnime`.
+
+- **Light Novel 30-Chapter Cap Resolution ([novel.ts](file:///c:/Github/Yorumi/backend/src/scraper/novel.ts))**:
+  - Fixed **NovelBin** details scraper which was capped to the first 30 chapters rendered in static HTML (`ol.almanac-chapter-list`). Now automatically queries `/ajax/chapter-list?slug={cleanSlug}`, retrieving the full index of all chapters (e.g. 304+ / 680+ chapters) in clean JSON.
+  - Fixed **AllNovelFull** details scraper which was limited to the first page of 50 chapters and pagination buttons. Now dynamically extracts `novelId` from `input#truyen-id` / `data-novel-id` and retrieves all pages via `/ajax-chapter-list?novelId={id}&page={p}` in parallel, returning the entire novel index (e.g. all 270 chapters of Solo Leveling).
+
+- **HiAnime Main Server Integration & Anime Scraper Overhaul ([hianime.ts](file:///c:/Github/Yorumi/backend/src/scraper/hianime.ts), [video-sources.ts](file:///c:/Github/Yorumi/backend/src/api/anime/video-sources.ts), [ani-cli.sh](file:///c:/Github/Yorumi/backend/ani-cli.sh), [useStreams.ts](file:///c:/Github/Yorumi/src/hooks/useStreams.ts), [VideoPlayer.tsx](file:///c:/Github/Yorumi/src/features/player/components/VideoPlayer.tsx))**:
+  - Replaced the degraded `anidb.app` server (failing with HTTP 503 Maintenance) with a native **HiAnime** (`https://hianime.at`) scraper, bringing Yorumi into 100% architectural alignment with upstream `ani-cli` v5.1.4.
+  - Implemented XOR deobfuscation (`otaku-embed-v1`) on `window.__P` payloads to extract direct high-speed HLS `.m3u8` master streams and `.vtt` subtitles for both **SUB** and **DUB** tracks.
+  - Added multi-tier in-memory and Redis caching (`v110`) for sub-millisecond warm stream resolution, intro/outro skip metadata support, and seamless fallback routing from legacy `anidb` requests to `hianime`.
+  - Fixed secondary fallback servers (`videasy`, `vidsrc`, `vidking`) by returning `isEmbed: true` on iframe embeds, preventing player crashes caused by attempting HLS playback on iframe URLs.
+  - Synchronized internal `backend/ani-cli.sh` with upstream `pystardust/ani-cli` v5.1.4.
+  - Added `HiAnime (ani-cli)` as the recommended primary server option in the frontend player controls.
+
+- **Native TypeScript Adaptive Scraper Engine ([adaptive.ts](file:///c:/Github/Yorumi/backend/src/scraper/adaptive.ts), [novel.ts](file:///c:/Github/Yorumi/backend/src/scraper/novel.ts))**:
+  - Implemented a native, zero-dependency adaptive scraping engine inspired by Scrapling's element fingerprinting algorithms, keeping Yorumi 100% native Node.js/TypeScript with zero Python microservices or external binaries.
+  - Features high-precision multi-factor similarity scoring (tag matching 25%, structural traits/links/images 30%, text metrics 25%, attribute patterns 20%) with structural penalty rules for missing required elements.
+  - Zero-overhead fast path: Primary CSS selectors execute immediately without similarity computation; adaptive similarity scoring engages strictly as a self-healing fallback when 0 elements match.
+  - Integrated `AdaptiveEngine.query` and `AdaptiveEngine.queryOne` across NovelBin, WuxiaWorld, RoyalRoad, and AllNovelFull scrapers, preventing scraper breakage when upstream websites change CSS class names or DOM layouts.
+
+- **Light Novel Multi-Source Scraper Overhaul ([novel.ts](file:///c:/Github/Yorumi/backend/src/scraper/novel.ts))**:
+  - Overhauled **NovelBin** scraper to support its new "Almanac" design layout, replacing broken legacy card selectors (`.list-novel .row`) with `a.almanac-book-row` / `a[href*="/novel-bin/"]` and chapters from `ol.almanac-chapter-list`.
+  - Fixed **AllNovelFull** search, details, and chapter content parsing to align with current DOM structure (`.con`, `h1`, `#list-chapter`, and `#chapter-content`).
+  - Restored full search results and chapter indexing across all 4 light novel sources (NovelBin, WuxiaWorld, AllNovelFull, and RoyalRoad).
+
+- **Backend Dev Server & Express 5 Route Parsing ([backend/package.json](file:///c:/Github/Yorumi/backend/package.json), [lnscraper.routes.ts](file:///c:/Github/Yorumi/backend/src/api/scraper/lnscraper.routes.ts))**:
+  - Fixed backend startup failure caused by missing `nodemon` binary by updating the `dev` script to use `npx tsx watch` with zero external binary dependency.
+  - Aligned backend `build` script with the root esbuild bundling pipeline (`dist/bundle.cjs`).
+  - Resolved `PathError: Missing parameter name at index 14: /details/:id(*)` crash by updating Light Novel route definitions to Express 5 / `path-to-regexp` v8 compatible route arrays (`['/details/:id', '/details/*id']` and `['/read/:chapterId', '/read/*chapterId']`).
+
+- **Electron Preload Script & Desktop IPC Bridge ([preload.mjs](file:///c:/Github/Yorumi/dist-electron/preload.mjs), [.gitignore](file:///c:/Github/Yorumi/.gitignore))**:
+  - Restored missing `dist-electron/preload.mjs` script implementing the `window.electronAPI` bridge via `contextBridge.exposeInMainWorld`.
+  - Resolved fatal `ENOENT` renderer initialization crash (`chrome-error://chromewebdata/`) causing a blank white screen upon launching the Electron desktop application.
+  - Exempted `dist-electron/preload.mjs` in `.gitignore` to prevent preload script loss on Git checkouts.
 
 - **High-Throughput TMDB Core Architecture & Rate-Limit Shield ([anime.routes.ts](file:///c:/Github%20Repos/Yorumi/backend/src/api/anime/anime.routes.ts), [api.ts](file:///c:/Github%20Repos/Yorumi/src/features/search/api.ts), [AnimeDetailsPage.tsx](file:///c:/Github%20Repos/Yorumi/src/pages/AnimeDetailsPage.tsx))**:
   - Re-architected catalog browsing, discovery feeds (Trending, Popular, Seasonal, Spotlight, Top 10), and search to be driven 80–90% by TMDB, eliminating AniList 429 rate limit exceptions permanently.
@@ -337,3 +618,47 @@
 ### Removed
 - **Defunct Streaming Providers**: Removed offline or deprecated providers (`Animegg`, `Animenosub`, `Reanime`, `AniNeko`) from the player server picker and backend source defaults so users only encounter active, high-speed servers.
 - **Embed Navigation Buttons**: Removed floating next/previous episode overlay buttons from embedded iframe players.
+### Android player layout
+
+- Made the anime player fill its dedicated mobile screen without rounded card corners or the separate episode footer.
+- Moved server selection, settings, captions, and fullscreen into the persistent control deck below the video image.
+- Moved lock, five-second seek, play/pause, and next-episode actions into a centered transport row over the video while keeping the lower deck focused on volume and display controls.
+- Enlarged and split the lower mobile controls between left and right edges, and removed the redundant standalone server icon while retaining server selection in Settings.
+- Made mobile controls start unlocked, auto-fade after five seconds, return on a screen tap, and collapse to a single left-side unlock action while locked; also corrected the episode-list header action size.
+- Corrected locked/unlocked icon states, kept the lock action centered, and replaced the translucent episode bottom sheet with an opaque full-screen picker whose carousel is vertically centered.
+- Prevented the persistent video portal from covering the mobile episode picker, and restored the locked padlock to its original left-side position.
+- Made Android fullscreen request landscape orientation and restore portrait on exit, while changing the episode picker to a transparent blurred overlay with safe-area spacing below the system status bar.
+- Routed Android fullscreen through the native immersive-mode bridge with forced landscape rotation, and portaled the episode picker to the document root so its cards cannot be covered by the persistent player.
+- Hardened Android fullscreen by forcing a fixed landscape orientation, invoking native immersive and browser fullscreen paths together, and only changing the fullscreen state after at least one path succeeds.
+- Portaled the complete Android player above the responsive desktop shell so landscape cannot activate the sidebar/content offset, and reapplied immersive system-bar hiding after orientation settles.
+- Replaced unreliable WebView orientation fullscreen with a deterministic phone-player mode that rotates the player surface itself to `100vh × 100vw`, fills the physical display, and keeps 16:9 video contained without the desktop shell.
+- Made the rotated movie-mode control deck fully transparent so no solid black controls strip covers the video.
+- Made video-area taps toggle the complete mobile player chrome, including the header and server badge, while preserving the five-second auto-hide behavior.
+- Changed the mobile player surface toggle from pointer-down handling to a normal touch-optimized click so controls hide with one quick tap instead of behaving like a long press.
+- Removed the redundant Watch, Save, and Back action row from mobile anime details.
+- Standardized Anime, Manga, and LN grid views as compact numbered tiles with five columns per row on phones.
+- Hardened details-page back navigation: Anime now returns through valid app history with a Home fallback, matching Manga and LN section fallbacks, and desktop/mobile actions share the same handler.
+- Pinned the mobile player lock control to a fixed left position so its location does not shift when switching between locked and unlocked states.
+- Anchored mobile Play/Pause to the exact player center, with seek actions positioned symmetrically and Next independently pinned to the right edge.
+- Matched the mobile Lock and Next Episode controls to the same icon and touch-target size.
+- Vertically aligned the pinned Lock control to the same center line as seek, Play/Pause, and Next Episode.
+- Removed green watched-state outlines from anime episode cards while retaining their subtle watched tint and green label.
+# Search
+
+- Added a mobile-only search page that searches Anime, Manga, and Light Novels together in separate swipeable rows while preserving the existing Electron/desktop search modal.
+- Positioned the mobile search header below the Android status bar and kept the bottom navigation visible on the search page.
+- Added a fallback manga catalog search and standardized all search results on the same 140px Anime, Manga, and LN cards used by the home pages.
+- Added clean full-result grids for Anime, Manga, and LN search sections without Popular, layout-toggle, or overflow controls.
+- Fixed Manga spotlight navigation to resolve and pass its readable chapter source, scraper ID, and hydrated chapter list.
+- Shortened the mobile search prompt to `Search...` and reduced Anime Top Trending heading, tab, and entry-title typography on phones.
+- Replaced the mobile player's CSS-based fake fullscreen rotation with native Android landscape immersive mode, preventing the controls from rotating inside a portrait window.
+- Added an immediate forced-rotation fallback for fullscreen: Android landscape is still requested, but devices that ignore it now rotate the player instantly, while successful native rotation automatically disables the fallback.
+- Removed the CSS fullscreen fallback and strengthened legitimate Android fullscreen with Activity-level sensor landscape plus modern and legacy immersive flags that hide the status and navigation bars.
+- Restored reliable CSS-rotated mobile fullscreen with immersive system bars, disabled the in-app floating mini player on native mobile, and added Android system Picture-in-Picture when Home is pressed during active playback.
+- Updated the mobile bottom navigation so only the current route is highlighted and its icon receives the filled active treatment, including Search.
+- Replaced artificially filled Lucide mobile-nav icons with proper Material outline/filled icon pairs for clean active states.
+- Restored the original outlined Lucide mobile-nav icons with no fill while retaining active-only tab highlighting.
+- Removed bracketed section numbering from Anime, Manga, and Light Novel home sections while preserving their headings and dividers.
+- Fixed Light Novel chapter-source identity by preserving exact scraper IDs from selected results and rejecting loosely matched NovelBin titles during fallback resolution.
+- Simplified the native-mobile Library into a two-column poster grid with overlaid titles and episode/chapter counts, while preserving the richer desktop Library layout.
+- Connected every mobile Library card to its canonical Anime, Manga, or LN details route with the correct media state payload for immediate, reliable detail loading.

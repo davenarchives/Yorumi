@@ -344,7 +344,7 @@ function App() {
                       rel="noreferrer"
                       className="text-yorumi-main font-semibold text-sm tracking-wide hover:opacity-80 transition-opacity"
                     >
-                      v4.1.0
+                      v4.2.0
                     </motion.a>
                   </div>
                   
@@ -461,7 +461,7 @@ function App() {
             <div className="flex items-center gap-3">
               <h3 className="text-2xl md:text-3xl font-display font-bold text-yorumi-text">Yorumi Desktop</h3>
               <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-yorumi-main/15 text-yorumi-main">
-                v4.1.0
+                v4.2.0
               </span>
             </div>
 
@@ -597,7 +597,7 @@ function App() {
             {/* What's New In Release Card */}
             <div className="bg-yorumi-card rounded-3xl p-6 md:p-8 space-y-4">
               <div className="flex items-center justify-between flex-wrap gap-2">
-                <div className="text-sm font-semibold text-yorumi-text">What&apos;s new in version 4.1.0?</div>
+                <div className="text-sm font-semibold text-yorumi-text">What&apos;s new in version 4.2.0?</div>
                 <a
                   href="https://github.com/davenarchives/Yorumi/releases"
                   target="_blank"
