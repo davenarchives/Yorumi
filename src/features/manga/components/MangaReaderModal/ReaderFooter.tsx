@@ -55,14 +55,21 @@ export default function ReaderFooter({
     }, [chapters]);
 
     return (
-        <footer className={`h-20 shrink-0 bg-[#0a0a0a]/90 backdrop-blur-md z-50 transition-transform duration-300 absolute bottom-0 left-0 right-0 ${isVisible ? 'translate-y-0' : 'translate-y-full'}`}>
-            <div className="w-full h-full max-w-7xl mx-auto px-8 md:px-14 flex items-center justify-between">
+        <footer
+            className={`shrink-0 bg-[#0a0a0a]/90 backdrop-blur-md z-50 transition-transform duration-300 absolute bottom-0 left-0 right-0 border-t border-white/10 ${
+                isVisible ? 'translate-y-0' : 'translate-y-full'
+            }`}
+            style={{
+                paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+            }}
+        >
+            <div className="w-full h-14 md:h-16 max-w-7xl mx-auto px-4 md:px-14 flex items-center justify-between gap-2">
                 {/* LEFT: Prev Chapter */}
                 <div className="flex-1 flex justify-start">
                     <button
                         onClick={() => prevChapter && onLoadChapter(prevChapter)}
                         disabled={!prevChapter}
-                        className="h-10 px-4 md:px-6 bg-[#1a1a1a] border border-white/5 hover:bg-white/10 text-gray-400 hover:text-white disabled:opacity-30 disabled:hover:bg-transparent flex items-center gap-2 rounded-xl transition-colors font-bold text-sm"
+                        className="h-9 md:h-10 px-3 md:px-5 bg-[#1a1a1a] border border-white/5 hover:bg-white/10 text-gray-400 hover:text-white disabled:opacity-30 disabled:hover:bg-transparent flex items-center gap-1.5 rounded-xl transition-colors font-bold text-xs md:text-sm active:scale-95"
                         title="Previous Chapter"
                     >
                         <ChevronLeft className="w-4 h-4" />
@@ -74,7 +81,7 @@ export default function ReaderFooter({
                 <div className="flex-1 flex justify-center relative">
                     {/* Popover Dropdown */}
                     {showChapters && isVisible && (
-                        <div className="absolute bottom-full mb-4 w-64 max-h-[300px] bg-[#1a1a1a] border border-white/10 rounded-xl shadow-2xl overflow-hidden flex flex-col z-[100]">
+                        <div className="absolute bottom-full mb-3 w-64 max-h-[280px] bg-[#1a1a1a] border border-white/10 rounded-xl shadow-2xl overflow-hidden flex flex-col z-[100]">
                             <div ref={dropdownRef} className="overflow-y-auto p-2 space-y-1 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:bg-white/20 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-track]:bg-transparent">
                                 {sortedChapters.map((chapter) => {
                                     const isCurrent = currentChapter?.id === chapter.id;
@@ -105,13 +112,13 @@ export default function ReaderFooter({
 
                     <button
                         onClick={onToggleChapters}
-                        className="h-10 px-4 md:px-6 bg-white/5 hover:bg-white/10 text-white flex items-center gap-2 rounded-xl transition-colors font-bold text-sm border border-white/10"
+                        className="h-9 md:h-10 px-3 md:px-5 bg-white/5 hover:bg-white/10 text-white flex items-center gap-1.5 rounded-xl transition-colors font-bold text-xs md:text-sm border border-white/10 active:scale-95"
                     >
-                        <Menu className="w-4 h-4" />
-                        <span className="truncate">
-                            {currentChapter ? getChapterText(currentChapter.title) : 'Select Chapter'}
+                        <Menu className="w-4 h-4 text-yorumi-manga" />
+                        <span className="truncate max-w-[120px] sm:max-w-[180px]">
+                            {currentChapter ? getChapterText(currentChapter.title) : 'Select'}
                         </span>
-                        <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${showChapters ? 'rotate-180' : ''}`} />
+                        <ChevronDown className={`w-3.5 h-3.5 text-gray-400 transition-transform ${showChapters ? 'rotate-180' : ''}`} />
                     </button>
                 </div>
 
@@ -120,7 +127,7 @@ export default function ReaderFooter({
                     <button
                         onClick={() => nextChapter && onLoadChapter(nextChapter)}
                         disabled={!nextChapter}
-                        className="h-10 px-4 md:px-6 bg-[#8b5cf6] hover:bg-[#7c3aed] text-white disabled:opacity-50 disabled:hover:bg-[#8b5cf6] flex items-center gap-2 rounded-xl transition-colors font-bold text-sm shadow-lg shadow-[#8b5cf6]/20"
+                        className="h-9 md:h-10 px-3 md:px-5 bg-yorumi-manga hover:bg-yorumi-manga/90 text-white disabled:opacity-30 disabled:hover:bg-yorumi-manga/50 flex items-center gap-1.5 rounded-xl transition-colors font-bold text-xs md:text-sm shadow-lg shadow-yorumi-manga/20 active:scale-95"
                         title="Next Chapter"
                     >
                         <span>Next</span>

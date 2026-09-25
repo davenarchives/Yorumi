@@ -191,6 +191,15 @@ body.watch-safe-mode {
   padding-bottom: max(env(safe-area-inset-bottom), 0.75rem);
 }
 
+/* Edge-to-edge safe area helpers for mobile */
+.safe-top {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
 @media (min-width: 768px) {
   .watch-player-shell {
     overflow: hidden;
@@ -224,3 +233,63 @@ body.watch-safe-mode {
   background: rgba(255, 255, 255, 0.35);
 }
 
+body.yorumi-player-landscape {
+  overflow: hidden !important;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body.yorumi-player-landscape .persistent-player-surface {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100dvw !important;
+  height: 100dvh !important;
+  max-width: none !important;
+  max-height: none !important;
+  transform: none !important;
+  border-radius: 0 !important;
+  z-index: 2147483647 !important;
+}
+
+body.yorumi-player-landscape .persistent-player-surface .watch-player-shell video {
+  height: 100% !important;
+}
+
+body.yorumi-player-landscape .watch-controls-deck {
+  background: transparent !important;
+  border-color: transparent !important;
+}
+
+body.yorumi-player-controls-hidden .mobile-player-header,
+body.yorumi-player-controls-hidden .watch-player-top-controls {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+@media (max-width: 767px) {
+  .media-spotlight {
+    width: 100%;
+    margin-inline: 0;
+    min-height: 500px;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .media-spotlight .spotlight-actions > button {
+    min-height: 48px;
+    flex: 1 1 0%;
+    justify-content: center;
+    border-radius: 9999px;
+  }
+
+  .numbered-media-sections > section:not(.animate-pulse) > .flex.items-center.gap-4.mb-6 > h2 {
+    font-size: 21px;
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: -0.025em;
+    text-transform: none;
+  }
+
+  .numbered-media-sections > section:not(.animate-pulse) > .flex.items-center.gap-4.mb-6 > div:last-child:not(.h-px) {
+    display: none;
+  }
+}

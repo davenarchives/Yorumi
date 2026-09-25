@@ -4,7 +4,6 @@ import type { Manga } from '../../../types/manga';
 import { useTitleLanguage } from '../../../context/TitleLanguageContext';
 import { getDisplayTitle } from '../../../utils/titleLanguage';
 import { cardItemVariants, pressMotion } from '../../../utils/motion';
-import CCIcon from '../../../components/ui/CCIcon';
 
 interface MangaCardProps {
     manga: Manga;
@@ -118,7 +117,7 @@ const MangaCard: React.FC<MangaCardProps> = ({ manga, onClick, onMouseEnter, inL
         >
             {/* Image Container with 3D Transform */}
             <div
-                className="relative aspect-[2/3] rounded-lg overflow-hidden mb-3 bg-[#141414] transition-all duration-75 ease-out"
+                className="relative aspect-[2/3] rounded-lg overflow-hidden mb-1.5 md:mb-3 bg-[#141414] transition-all duration-75 ease-out"
                 style={{
                     transform: disableTilt
                         ? 'none'
@@ -146,20 +145,9 @@ const MangaCard: React.FC<MangaCardProps> = ({ manga, onClick, onMouseEnter, inL
 
                 {/* Bottom Left: Type + Count - Always Visible */}
                 <div className="absolute bottom-2 left-2 flex gap-1.5 z-10">
-                    <span className="bg-white/20 backdrop-blur-sm text-white px-2 py-1 rounded text-xs font-bold uppercase">
+                    <span className="rounded bg-black/55 px-1.5 py-0.5 text-[10px] font-bold uppercase text-white md:bg-white/20 md:px-2 md:py-1 md:text-xs md:backdrop-blur-sm">
                         {manga.countryOfOrigin === 'KR' ? 'Manhwa' : manga.countryOfOrigin === 'CN' ? 'Manhua' : (manga.type || 'Manga')}
                     </span>
-                    {(manga.chapters || manga.volumes) ? (
-                        <span className="bg-[#22c55e] text-white px-2 py-1 rounded text-xs font-bold flex items-center gap-1">
-                            <CCIcon className="w-3 h-3" />
-                            {manga.chapters || manga.volumes}
-                        </span>
-                    ) : (
-                        <span className="bg-white/20 backdrop-blur-sm text-white px-2 py-1 rounded text-xs font-bold flex items-center gap-1.5">
-                            <span className={`w-1.5 h-1.5 rounded-full ${isOngoing ? 'bg-green-500' : 'bg-gray-500'}`}></span>
-                            <span className="uppercase text-[10px]">{isOngoing ? 'Ongoing' : manga.status}</span>
-                        </span>
-                    )}
                 </div>
 
                 {onToggleList && (
@@ -182,6 +170,7 @@ const MangaCard: React.FC<MangaCardProps> = ({ manga, onClick, onMouseEnter, inL
                         )}
                     </button>
                 )}
+
 
             </div>
 
@@ -227,7 +216,7 @@ const MangaCard: React.FC<MangaCardProps> = ({ manga, onClick, onMouseEnter, inL
             )}
 
             {/* Title Below Card */}
-            <h3 className="text-sm font-semibold text-gray-100 line-clamp-2 leading-tight group-hover:text-yorumi-manga transition-colors">
+            <h3 className="line-clamp-2 text-xs font-semibold leading-tight text-gray-100 transition-colors group-hover:text-yorumi-manga md:text-sm">
                 {displayTitle}
             </h3>
         </m.div>

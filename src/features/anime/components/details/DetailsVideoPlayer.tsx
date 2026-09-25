@@ -1,8 +1,11 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useLocation, useSearchParams } from 'react-router-dom';
 import { usePersistentPlayer } from '../../../player/context/PersistentPlayerContext';
 import { usePlayer } from '../../../player/hooks/usePlayer';
 import type { Episode } from '../../../../types/anime';
+import { isNativeMobile } from '../../../../platform/runtime';
+import { ArrowLeft, ListVideo, X } from 'lucide-react';
 
 interface DetailsVideoPlayerProps {
     animeId: string;
@@ -14,12 +17,30 @@ interface DetailsVideoPlayerProps {
     fallbackEpisode?: Episode | null;
     prevEpisode?: any;
     nextEpisode?: any;
+    episodes?: Episode[];
+    onEpisodeSelect?: (episode: Episode) => void;
 }
 
-export default function DetailsVideoPlayer({ animeId, animeTitle, onClose, isWatched, onMarkWatched, isResolvingEpisode = false, fallbackEpisode = null, prevEpisode = null, nextEpisode = null }: DetailsVideoPlayerProps) {
+export default function DetailsVideoPlayer({ animeId, animeTitle, onClose, isWatched, onMarkWatched, isResolvingEpisode = false, fallbackEpisode = null, prevEpisode = null, nextEpisode = null, episodes = [], onEpisodeSelect }: DetailsVideoPlayerProps) {
     const location = useLocation();
     const [, setSearchParams] = useSearchParams();
     const { registerPlayer, setInlinePlayerElement } = usePersistentPlayer();
+    const [showEpisodes, setShowEpisodes] = useState(false);
+
+    useEffect(() => {
+        if (!isNativeMobile()) return;
+        const previousBodyOverflow = document.body.style.overflow;
+        const previousHtmlOverflow = document.documentElement.style.overflow;
+        const previousOverscroll = document.body.style.overscrollBehavior;
+        document.body.style.overflow = 'hidden';
+        document.documentElement.style.overflow = 'hidden';
+        document.body.style.overscrollBehavior = 'none';
+        return () => {
+            document.body.style.overflow = previousBodyOverflow;
+            document.documentElement.style.overflow = previousHtmlOverflow;
+            document.body.style.overscrollBehavior = previousOverscroll;
+        };
+    }, []);
     const getEpisodeNavigationState = () => ({
         ...(location.state && typeof location.state === 'object' ? location.state as Record<string, unknown> : {}),
         preventScrollTop: true,
@@ -43,6 +64,7 @@ export default function DetailsVideoPlayer({ animeId, animeTitle, onClose, isWat
         streams,
         error,
         epNum,
+        episodeDurationSeconds,
         cleanCurrentTitle,
         resumeAtSeconds,
         streamLoading,
@@ -119,6 +141,8 @@ export default function DetailsVideoPlayer({ animeId, animeTitle, onClose, isWat
         animeImage: currentEpisode?.snapshot || fallbackEpisode?.snapshot || '',
         episodeNumber: Number(epNum || currentEpisode?.episodeNumber || 1),
         episodeTitle: cleanCurrentTitle || currentEpisode?.title,
+        expectedDurationSeconds: episodeDurationSeconds,
+        mobilePageLayout: isNativeMobile(),
     }), [
         animeId,
         animeTitle,
@@ -131,6 +155,7 @@ export default function DetailsVideoPlayer({ animeId, animeTitle, onClose, isWat
         currentEpisode,
         currentStream,
         epNum,
+        episodeDurationSeconds,
         fallbackEpisode,
         handleNextEp,
         handlePlaybackProgress,
@@ -192,6 +217,47 @@ export default function DetailsVideoPlayer({ animeId, animeTitle, onClose, isWat
                 <span className="text-red-400">{error}</span>
             </div>
         );
+    }
+
+    if (isNativeMobile()) {
+        return createPortal((
+            <div id="details-video-player" className="fixed inset-0 z-[2147483000] flex flex-col overflow-hidden overscroll-none bg-black text-white" style={{ paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+                <div className="mobile-player-header flex h-14 shrink-0 items-center gap-2 overflow-hidden px-2 transition-opacity duration-300">
+                    <button type="button" onClick={onClose} className="grid h-10 w-10 place-items-center" aria-label="Close player"><ArrowLeft className="h-5 w-5" /></button>
+                    <div className="min-w-0 flex-1 truncate text-sm font-semibold">{animeTitle}</div>
+                    <button type="button" onClick={() => setShowEpisodes(true)} className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-white active:bg-white/10" aria-label="Choose episode"><ListVideo className="h-6 w-6 stroke-[2.25]" /></button>
+                </div>
+
+                <div className="relative min-h-0 flex-1 bg-black">
+                    <div ref={setInlinePlayerElement} className="absolute inset-0 bg-black" />
+                </div>
+
+                {showEpisodes && createPortal((
+                    <div className="fixed inset-0 z-[2147483647] flex flex-col bg-black/60 backdrop-blur-xl" onClick={() => setShowEpisodes(false)}>
+                        <div className="flex h-full min-h-0 flex-col px-4 pb-8" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 1rem)' }} onClick={(event) => event.stopPropagation()}>
+                            <div className="flex shrink-0 items-center justify-between">
+                                <h3 className="text-xl font-bold">Episodes</h3>
+                                <button type="button" onClick={() => setShowEpisodes(false)} className="grid h-10 w-10 place-items-center rounded-full border border-white/20"><X className="h-5 w-5" /></button>
+                            </div>
+                            <div className="flex min-h-0 flex-1 items-center">
+                                <div className="flex w-full snap-x gap-3 overflow-x-auto py-6 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                                    {episodes.map((episode) => {
+                                        const number = String(episode._tmdbAbsolute || episode.episodeNumber || 1);
+                                        const active = number === String(epNum);
+                                        return (
+                                            <button key={episode.session || number} type="button" onClick={() => { onEpisodeSelect?.(episode); setShowEpisodes(false); }} className={`relative w-[215px] shrink-0 snap-center overflow-hidden rounded-2xl border-2 bg-[#161616] text-left ${active ? 'border-white' : 'border-transparent'}`}>
+                                                <div className="aspect-video bg-zinc-900"><img src={episode.snapshot || (episode as any).thumbnail || playerProps.animeImage} alt="" className="h-full w-full object-cover" /></div>
+                                                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black via-black/75 to-transparent px-3 pb-3 pt-8 text-sm font-semibold"><span className="mr-2 text-zinc-400">E{episode.episodeNumber}</span>{episode.title}</div>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                ), document.body)}
+            </div>
+        ), document.body);
     }
 
     return (

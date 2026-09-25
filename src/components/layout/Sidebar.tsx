@@ -1,7 +1,6 @@
-import { useState, useRef } from 'react';
+import { lazy, Suspense, useState, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { ArrowLeft, Search, Tv, BookOpen, BookText, Library, LogOut } from 'lucide-react';
-import SearchModal from '../shared/SearchModal';
 import { useContinueReading } from '../../hooks/useContinueReading';
 import { useContinueWatching } from '../../hooks/useContinueWatching';
 import { useWatchList } from '../../hooks/useWatchList';
@@ -13,6 +12,9 @@ import { slugify } from '../../utils/slugify';
 import type { ReadListItem, WatchListItem } from '../../utils/storage';
 import type { LNReadListItem } from '../../types/ln';
 import yorumiIcon from '../../assets/yorumi-icon.png';
+import { isNativeMobile } from '../../platform/runtime';
+
+const SearchModal = lazy(() => import('../shared/SearchModal'));
 
 type SavedSidebarItem =
     | (WatchListItem & { isType: 'anime' })
@@ -72,6 +74,12 @@ export default function Sidebar() {
     const [isSearchOpen, setIsSearchOpen] = useState(false);
     const [searchType, setSearchType] = useState<'anime' | 'manga' | 'ln'>('anime');
     const [hoveredCard, setHoveredCard] = useState<{title: string, top: number} | null>(null);
+    const isImmersiveRoute =
+        location.pathname.startsWith('/manga/read/') ||
+        location.pathname.startsWith('/ln/read/') ||
+        location.pathname.startsWith('/anime/details/') ||
+        location.pathname.startsWith('/manga/details/') ||
+        location.pathname.startsWith('/ln/details/');
 
     const { watchList: normalWatchList } = useWatchList();
     const { readList: normalReadList } = useReadList();
@@ -81,7 +89,7 @@ export default function Sidebar() {
     const { continueReadingList: continueLNList } = useContinueLNReading();
 
     const clickTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const [clickCount, setClickCount] = useState(0);
+    const [, setClickCount] = useState(0);
 
     const handleLogoClickInternal = () => {
         setClickCount((prev) => {
@@ -168,7 +176,7 @@ export default function Sidebar() {
 
     return (
         <>
-        <aside className="fixed left-0 top-0 h-screen w-[70px] bg-[#0a0a0a]/90 backdrop-blur-xl border-r border-white/5 flex flex-col items-center py-6 z-[100]">
+        <aside className="fixed left-0 top-0 hidden h-screen w-[70px] bg-[#0a0a0a]/90 backdrop-blur-xl border-r border-white/5 md:flex flex-col items-center py-6 z-[100]">
             <div className="flex flex-col items-center gap-3 w-full">
                 {/* Logo */}
                 <div 
@@ -252,21 +260,77 @@ export default function Sidebar() {
                 </div>
             )}
 
-            <div className="flex flex-col items-center gap-4 w-full mt-auto pt-4">
+            {!isNativeMobile() && <div className="flex flex-col items-center gap-4 w-full mt-auto pt-4">
                 <SidebarIcon 
                     icon={LogOut} 
                     title="Exit App" 
                     onClick={() => window.close()} 
                     className="text-red-500 hover:text-red-400 hover:bg-red-500/10" 
                 />
-            </div>
+            </div>}
         </aside>
+
+        {!isImmersiveRoute && (
+            <nav
+                className="fixed inset-x-0 bottom-0 z-[2147483600] flex flex-col border-t border-white/10 bg-[#111216]/95 backdrop-blur-xl shadow-[0_-8px_30px_rgba(0,0,0,0.5)] md:hidden"
+                style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+                aria-label="Primary navigation"
+            >
+                <div className="grid h-[62px] grid-cols-5 items-center px-1">
+                    <MobileNavItem
+                        icon={Tv}
+                        label="Anime"
+                        onClick={() => navigate('/')}
+                        isActive={location.pathname === '/' || location.pathname.startsWith('/anime')}
+                        activeColor="text-yorumi-accent"
+                        activePillBg="bg-yorumi-accent/20"
+                    />
+                    <MobileNavItem
+                        icon={BookOpen}
+                        label="Manga"
+                        onClick={() => navigate('/manga')}
+                        isActive={location.pathname.startsWith('/manga')}
+                        activeColor="text-yorumi-manga"
+                        activePillBg="bg-yorumi-manga/20"
+                    />
+                    <MobileNavItem
+                        icon={Search}
+                        label="Search"
+                        onClick={() => navigate('/search')}
+                        isActive={location.pathname.startsWith('/search')}
+                        activeColor="text-[#a78bfa]"
+                        activePillBg="bg-[#7c5cff]/25"
+                    />
+                    <MobileNavItem
+                        icon={BookText}
+                        label="LN"
+                        onClick={() => navigate('/ln')}
+                        isActive={location.pathname.startsWith('/ln')}
+                        activeColor="text-amber-400"
+                        activePillBg="bg-amber-400/20"
+                    />
+                    <MobileNavItem
+                        icon={Library}
+                        label="Library"
+                        onClick={() => navigate('/library')}
+                        isActive={location.pathname.startsWith('/library')}
+                        activeColor="text-yorumi-accent"
+                        activePillBg="bg-yorumi-accent/20"
+                    />
+                </div>
+            </nav>
+        )}
+
+        {isSearchOpen && (
+            <Suspense fallback={null}>
+                <SearchModal
+                    isOpen
+                    onClose={() => setIsSearchOpen(false)}
+                    type={searchType}
+                />
+            </Suspense>
+        )}
         
-        <SearchModal 
-            isOpen={isSearchOpen} 
-            onClose={() => setIsSearchOpen(false)} 
-            type={searchType} 
-        />
         {hoveredCard && (
             <div 
                 className="fixed left-[70px] bg-[#1a1a1a] text-white text-[13px] font-semibold px-3 py-1.5 rounded-md pointer-events-none whitespace-nowrap z-[150] shadow-xl border border-white/5 -translate-y-1/2"
@@ -276,6 +340,32 @@ export default function Sidebar() {
             </div>
         )}
         </>
+    );
+}
+
+interface MobileNavItemProps {
+    icon: React.ElementType;
+    label: string;
+    onClick: () => void;
+    isActive?: boolean;
+    activeColor: string;
+    activePillBg: string;
+}
+
+function MobileNavItem({ icon: Icon, label, onClick, isActive = false, activeColor, activePillBg }: MobileNavItemProps) {
+    return (
+        <button
+            onClick={onClick}
+            className="flex min-w-0 flex-col items-center justify-center gap-0.5 py-1 outline-none"
+            aria-current={isActive ? 'page' : undefined}
+        >
+            <div className={`flex items-center justify-center px-4 py-1 rounded-full transition-all duration-200 ${isActive ? `${activePillBg} ${activeColor}` : 'text-white/50'}`}>
+                <Icon className={`h-5 w-5 ${isActive ? 'stroke-[2.5]' : 'stroke-2'}`} />
+            </div>
+            <span className={`truncate text-[10.5px] tracking-tight transition-colors ${isActive ? 'text-white font-semibold' : 'text-white/50'}`}>
+                {label}
+            </span>
+        </button>
     );
 }
 

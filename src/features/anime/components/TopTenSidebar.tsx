@@ -30,28 +30,28 @@ export default function TopTenSidebar({ today, week, month, isLoading = false, o
 
     return (
         <div className="bg-transparent p-0 shadow-none border-0">
-            <div className="flex items-center gap-4 mb-4">
-                <h3 className="text-xl font-extrabold text-white tracking-wide whitespace-nowrap">Top Trending</h3>
-                <div className="flex-1 h-px bg-white/10" />
-                <div className="flex items-center gap-0 bg-[#222831] rounded-md p-0 shadow-[0_8px_20px_rgba(0,0,0,0.45)] overflow-hidden">
+            <div className="mb-4 flex min-w-0 items-center justify-between gap-2 md:gap-4">
+                <h3 className="whitespace-nowrap text-xl font-extrabold tracking-tight text-white md:text-xl md:tracking-wide">Top Trending</h3>
+                <div className="hidden h-px min-w-2 flex-1 bg-white/10 md:block" />
+                <div className="flex shrink-0 items-center gap-0 overflow-hidden rounded-md bg-[#222831] p-0 shadow-[0_8px_20px_rgba(0,0,0,0.45)]">
                     <button
                         onClick={() => setRange('today')}
                         disabled={isLoading}
-                        className={`px-3 py-1 transition-colors text-xs font-bold ${range === 'today' ? 'bg-[#3bb8ff] text-black' : 'text-gray-400 hover:text-white'} ${isLoading ? 'cursor-not-allowed opacity-60' : ''}`}
+                        className={`h-8 px-2.5 text-xs font-bold transition-colors md:h-auto md:py-1 md:text-xs ${range === 'today' ? 'bg-[#3bb8ff] text-black' : 'text-gray-400 hover:text-white'} ${isLoading ? 'cursor-not-allowed opacity-60' : ''}`}
                     >
                         Today
                     </button>
                     <button
                         onClick={() => setRange('week')}
                         disabled={isLoading}
-                        className={`px-3 py-1 transition-colors text-xs font-bold ${range === 'week' ? 'bg-[#3bb8ff] text-black' : 'text-gray-400 hover:text-white'} ${isLoading ? 'cursor-not-allowed opacity-60' : ''}`}
+                        className={`h-8 px-2.5 text-xs font-bold transition-colors md:h-auto md:py-1 md:text-xs ${range === 'week' ? 'bg-[#3bb8ff] text-black' : 'text-gray-400 hover:text-white'} ${isLoading ? 'cursor-not-allowed opacity-60' : ''}`}
                     >
                         Week
                     </button>
                     <button
                         onClick={() => setRange('month')}
                         disabled={isLoading}
-                        className={`px-3 py-1 transition-colors text-xs font-bold ${range === 'month' ? 'bg-[#3bb8ff] text-black' : 'text-gray-400 hover:text-white'} ${isLoading ? 'cursor-not-allowed opacity-60' : ''}`}
+                        className={`h-8 px-2.5 text-xs font-bold transition-colors md:h-auto md:py-1 md:text-xs ${range === 'month' ? 'bg-[#3bb8ff] text-black' : 'text-gray-400 hover:text-white'} ${isLoading ? 'cursor-not-allowed opacity-60' : ''}`}
                     >
                         Month
                     </button>
@@ -70,9 +70,9 @@ export default function TopTenSidebar({ today, week, month, isLoading = false, o
                             onClick={() => onAnimeClick(anime)}
                             className="w-full text-left group"
                         >
-                            <div className="relative flex h-[72px] items-stretch gap-2 rounded-lg bg-[#0f1116] hover:bg-[#141821] transition-colors overflow-hidden">
+                            <div className="relative flex h-[82px] items-stretch gap-2 overflow-hidden rounded-lg bg-[#0f1116] transition-colors hover:bg-[#141821] md:h-[72px]">
                                 <div className="pointer-events-none absolute inset-y-0 right-16 w-20 bg-gradient-to-l from-black/70 via-black/20 to-transparent skew-x-[-12deg] opacity-80" />
-                                <div className="relative w-14 shrink-0 flex items-center justify-center">
+                                <div className="relative flex w-16 shrink-0 items-center justify-center md:w-14">
                                     <div className="absolute left-2 top-1/2 -translate-y-1/2 opacity-90">
                                         <img
                                             src={CLOUDINARY_SHARED_ASSETS.monsterSlash}
@@ -81,13 +81,13 @@ export default function TopTenSidebar({ today, week, month, isLoading = false, o
                                             aria-hidden="true"
                                         />
                                     </div>
-                                    <div className="relative z-10 text-base font-extrabold text-white tracking-wider">
+                                    <div className="relative z-10 text-lg font-extrabold tracking-wider text-white md:text-base">
                                         {String(index + 1).padStart(2, '0')}
                                     </div>
                                 </div>
 
                                 <div className="min-w-0 flex-1 py-2 pr-1">
-                                    <div className="text-xs font-semibold text-white line-clamp-2 leading-snug">
+                                    <div className="line-clamp-2 text-xs font-semibold leading-snug text-white md:text-xs">
                                         {getDisplayTitle(anime as unknown as Record<string, unknown>, language)}
                                     </div>
                                     <div className="mt-1.5 flex items-center gap-1.5">
@@ -103,7 +103,7 @@ export default function TopTenSidebar({ today, week, month, isLoading = false, o
                                 </div>
 
                                 <div
-                                    className="relative h-full w-24 shrink-0 -mr-1 bg-center bg-cover overflow-hidden [clip-path:polygon(14%_0,100%_0,100%_100%,0_100%)]"
+                                    className="relative -mr-1 h-full w-28 shrink-0 overflow-hidden bg-cover bg-center [clip-path:polygon(14%_0,100%_0,100%_100%,0_100%)] md:w-24"
                                     style={{
                                         backgroundImage: `url(${anime.images.jpg.large_image_url || anime.images.jpg.image_url})`,
                                         maskImage: 'linear-gradient(110deg, transparent 0%, black 26%, black 100%)',

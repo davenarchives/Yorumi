@@ -89,6 +89,7 @@ const MangaSpotlight: React.FC<MangaSpotlightProps> = ({ onMangaClick }) => {
     const cachedSpotlight = mangaService.peekEnrichedSpotlight();
     const [mangas, setMangas] = useState<Manga[]>(cachedSpotlight?.data || []);
     const [loading, setLoading] = useState(!(cachedSpotlight?.data?.length));
+    const [detailsById, setDetailsById] = useState<Record<string, Manga>>({});
 
     // Embla Carousel hook with Autoplay
     const [emblaRef, emblaApi] = useEmblaCarousel({
@@ -98,6 +99,7 @@ const MangaSpotlight: React.FC<MangaSpotlightProps> = ({ onMangaClick }) => {
         Autoplay({ delay: 5000, stopOnInteraction: false, stopOnMouseEnter: true })
     ]);
     const [selectedIndex, setSelectedIndex] = useState(0);
+    const activeMangaId = String(mangas[selectedIndex]?.id || mangas[selectedIndex]?.mal_id || mangas[selectedIndex]?.scraper_id || '');
 
     const onSelect = useCallback(() => {
         if (!emblaApi) return;
@@ -105,12 +107,17 @@ const MangaSpotlight: React.FC<MangaSpotlightProps> = ({ onMangaClick }) => {
     }, [emblaApi]);
 
     useEffect(() => {
+        let cancelled = false;
         const fetchTrendingManga = async () => {
             try {
-                // Use enriched spotlight data (AniList + MangaKatana chapters)
                 const { data } = await mangaService.getEnrichedSpotlight();
-                if (data) {
+                if (data?.length) {
                     setMangas(data);
+                    setLoading(false);
+                    void mangaService.enrichVisibleManga(data, (enriched, index) => {
+                        if (cancelled) return;
+                        setMangas((current) => current.map((item, itemIndex) => itemIndex === index ? enriched : item));
+                    });
                 }
             } catch (err) {
                 console.error('Failed to fetch trending manga for spotlight', err);
@@ -120,6 +127,7 @@ const MangaSpotlight: React.FC<MangaSpotlightProps> = ({ onMangaClick }) => {
         };
 
         fetchTrendingManga();
+        return () => { cancelled = true; };
     }, []);
 
     useEffect(() => {
@@ -130,6 +138,22 @@ const MangaSpotlight: React.FC<MangaSpotlightProps> = ({ onMangaClick }) => {
             emblaApi.off('select', onSelect);
         };
     }, [emblaApi, onSelect]);
+
+    useEffect(() => {
+        const activeManga = mangas[selectedIndex];
+        const id = activeManga?.id || activeManga?.mal_id || activeManga?.scraper_id;
+        const key = String(id || '');
+        if (!id || detailsById[key]) return;
+
+        let cancelled = false;
+        void mangaService.getUnifiedMangaDetails(id).then((details) => {
+            if (!cancelled && details) setDetailsById((current) => ({ ...current, [key]: details as Manga }));
+        }).catch(() => undefined);
+        return () => { cancelled = true; };
+        // Progressive chapter hydration replaces Manga objects in-place. Keying
+        // this effect by ID prevents those updates from restarting this request.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeMangaId]);
 
     const scrollTo = useCallback((index: number) => {
         if (emblaApi) emblaApi.scrollTo(index);
@@ -175,12 +199,6 @@ const MangaSpotlight: React.FC<MangaSpotlightProps> = ({ onMangaClick }) => {
                     <div className="w-8 h-8 rounded-lg bg-white/10" />
                 </div>
 
-                <div className="absolute right-4 top-1/2 -translate-y-1/2 flex flex-col gap-2 md:hidden">
-                    {Array.from({ length: 5 }).map((_, idx) => (
-                        <div key={`manga-spotlight-dot-mobile-${idx}`} className="w-2 h-2 rounded-full bg-white/20" />
-                    ))}
-                </div>
-
                 <div className="absolute bottom-6 left-1/2 -translate-x-1/2 hidden md:flex gap-2">
                     {Array.from({ length: 5 }).map((_, idx) => (
                         <div
@@ -196,11 +214,17 @@ const MangaSpotlight: React.FC<MangaSpotlightProps> = ({ onMangaClick }) => {
     if (mangas.length === 0) return null;
 
     return (
-        <div className="relative w-full h-[50vh] md:h-[60vh] min-h-[400px] md:min-h-[480px] group bg-[#0a0a0a] overflow-hidden mb-8">
+        <div className="media-spotlight relative w-full h-[58vh] md:h-[60vh] min-h-[440px] md:min-h-[480px] group bg-[#0a0a0a] overflow-hidden mb-8">
             {/* Embla Viewport */}
             <div className="absolute inset-0 overflow-hidden" ref={emblaRef}>
                 <div className="flex h-full touch-pan-y">
                     {mangas.map((manga, index) => {
+                        const hydrated = detailsById[String(manga.id || manga.mal_id || manga.scraper_id || '')];
+                        const cover = hydrated?.images?.jpg?.large_image_url
+                            || hydrated?.images?.jpg?.image_url
+                            || manga.images?.jpg?.large_image_url
+                            || manga.images?.jpg?.image_url
+                            || '';
                         return (
                         <div key={manga.id || manga.mal_id || index} className="relative min-w-full h-full flex-[0_0_100%]">
                             {/* Background Image */}
@@ -209,15 +233,15 @@ const MangaSpotlight: React.FC<MangaSpotlightProps> = ({ onMangaClick }) => {
                                     initial={{ scale: 1.05, opacity: 0 }}
                                     animate={{ scale: 1, opacity: 0.6 }}
                                     transition={{ duration: 0.8 }}
-                                    className="absolute inset-0 bg-no-repeat bg-cover bg-center md:blur-lg md:scale-110"
+                                    className="absolute inset-0 bg-no-repeat bg-cover bg-center"
                                     style={{
-                                        backgroundImage: `url(${manga.images.jpg.large_image_url})`,
+                                        backgroundImage: cover ? `url(${cover})` : undefined,
                                     }}
                                 />
-                                <div className="absolute inset-0 bg-black/60 md:bg-black/40" />
+                                <div className="absolute inset-0 hidden bg-black/40 md:block" />
                                 {/* Gradient Overlay */}
-                                <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#0a0a0a]/60 to-[#0a0a0a]" />
-                                <div className="absolute inset-0 bg-gradient-to-r from-[#0a0a0a] via-[#0a0a0a]/80 to-transparent pointer-events-none" />
+                                <div className="absolute inset-x-0 bottom-0 h-[60%] bg-gradient-to-t from-[#0a0a0a] via-[#0a0a0a]/80 to-transparent" />
+                                <div className="absolute inset-0 hidden bg-gradient-to-r from-[#0a0a0a] via-[#0a0a0a]/80 to-transparent pointer-events-none md:block" />
                             </div>
                         </div>
                         );
@@ -226,11 +250,20 @@ const MangaSpotlight: React.FC<MangaSpotlightProps> = ({ onMangaClick }) => {
             </div>
 
             {/* Fixed Overlay Content */}
-            <div className="absolute inset-0 flex items-center z-10 pointer-events-none">
+            <div className="absolute inset-0 z-10 hidden items-center pointer-events-none md:flex">
                 <AnimatePresence>
                     {mangas[selectedIndex] && (() => {
                         const activeManga = mangas[selectedIndex];
-                        const displayTitle = getDisplayTitle(activeManga as unknown as Record<string, unknown>, language);
+                        const details = detailsById[String(activeManga.id || activeManga.mal_id || activeManga.scraper_id || '')];
+                        const displayManga = details ? {
+                            ...activeManga,
+                            ...details,
+                            title: activeManga.title || details.title,
+                            images: details.images || activeManga.images,
+                        } : activeManga;
+                        const navigationId = String(displayManga.scraper_id || displayManga.id || displayManga.mal_id);
+                        const displayTitle = getDisplayTitle(displayManga as unknown as Record<string, unknown>, language);
+                        const displayCover = displayManga.images?.jpg?.large_image_url || displayManga.images?.jpg?.image_url || '';
                         return (
                             <m.div
                                 key={selectedIndex}
@@ -238,16 +271,16 @@ const MangaSpotlight: React.FC<MangaSpotlightProps> = ({ onMangaClick }) => {
                                 animate={{ opacity: 1 }}
                                 exit={{ opacity: 0 }}
                                 transition={{ duration: 0.4, ease: "easeInOut" }}
-                                className="absolute inset-0 flex flex-col md:flex-row gap-12 items-center w-full max-w-7xl mx-auto px-8 md:px-14 mt-12"
+                                className="absolute inset-0 flex flex-col md:flex-row gap-12 items-center w-full max-w-7xl mx-auto px-5 md:px-14 mt-12"
                             >
                                 {/* Text Info (Left) */}
                                 <div className="flex-1 pointer-events-auto w-full max-w-2xl flex flex-col justify-end h-[360px] md:h-[380px]">
                                     {/* Top Section: Mobile Cover & Title */}
                                     <div className="w-full mb-4">
                                         <div className="flex items-center gap-3 mb-3">
-                                            <div className="md:hidden h-24 w-16 rounded-md overflow-hidden flex-shrink-0 relative">
+                                            <div className="hidden h-24 w-16 rounded-md overflow-hidden flex-shrink-0 relative">
                                                 <img
-                                                    src={activeManga.images.jpg.large_image_url}
+                                                    src={displayCover}
                                                     alt={displayTitle}
                                                     className="w-full h-full object-cover"
                                                 />
@@ -265,10 +298,10 @@ const MangaSpotlight: React.FC<MangaSpotlightProps> = ({ onMangaClick }) => {
                                     </div>
 
                                     {/* Middle Section: Chips */}
-                                    <div className="w-full flex items-center flex-wrap gap-4 text-white select-none mb-4">
+                                    <div className="spotlight-meta w-full flex items-center flex-wrap gap-4 text-white select-none mb-4">
                                         {/* Author Chip */}
                                         {activeManga.authors?.[0]?.name && activeManga.authors[0].name !== 'Unknown' && (
-                                            <span className="flex items-center justify-center gap-1.5 bg-white/10 px-3 h-8 rounded-lg backdrop-blur-sm text-sm font-bold">
+                                            <span className="flex items-center justify-center gap-1.5 bg-white/10 px-3 h-8 rounded-lg text-sm font-bold">
                                                 <svg className="w-4 h-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
                                                 {activeManga.authors[0].name}
                                             </span>
@@ -276,14 +309,14 @@ const MangaSpotlight: React.FC<MangaSpotlightProps> = ({ onMangaClick }) => {
 
                                         {/* Latest Chapter Chip */}
                                         {(activeManga.chapters || activeManga.volumes) && (
-                                            <span className="flex items-center justify-center gap-1.5 bg-[#22c55e] text-white px-3 h-8 rounded-lg backdrop-blur-sm text-sm font-bold">
+                                            <span className="flex items-center justify-center gap-1.5 bg-[#22c55e] text-white px-3 h-8 rounded-lg text-sm font-bold">
                                                 <CCIcon className="w-3.5 h-3.5" />
                                                 Chapter {activeManga.chapters || activeManga.volumes}
                                             </span>
                                         )}
 
                                         {/* Type/Origin Chip */}
-                                        <span className="flex items-center justify-center px-3 h-8 rounded-lg bg-yorumi-manga/20 text-yorumi-manga text-sm font-bold border border-yorumi-manga/50 uppercase backdrop-blur-sm">
+                                        <span className="flex items-center justify-center px-3 h-8 rounded-lg bg-yorumi-manga/20 text-yorumi-manga text-sm font-bold border border-yorumi-manga/50 uppercase">
                                             {activeManga.countryOfOrigin === 'KR'
                                                 ? 'Manhwa'
                                                 : activeManga.countryOfOrigin === 'CN'
@@ -300,17 +333,17 @@ const MangaSpotlight: React.FC<MangaSpotlightProps> = ({ onMangaClick }) => {
                                         </p>
                                     </div>
 
-                                    <div className="w-full flex gap-4">
+                                    <div className="spotlight-actions w-full flex gap-4">
                                         <button
-                                            onClick={() => onMangaClick((activeManga.id || activeManga.mal_id).toString(), true, activeManga)}
+                                            onClick={() => onMangaClick(navigationId, true, displayManga)}
                                             className="bg-yorumi-manga text-white px-5 py-2.5 rounded-lg font-bold hover:bg-white hover:text-yorumi-bg transition-all duration-300 flex items-center gap-2 shadow-[0_0_15px_rgba(192,132,252,0.3)] hover:shadow-[0_0_25px_rgba(192,132,252,0.5)] text-sm md:text-base"
                                         >
                                             <svg className="w-4 h-4 ml-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
                                             Read Now
                                         </button>
                                         <button
-                                            onClick={() => onMangaClick((activeManga.id || activeManga.mal_id).toString(), false, activeManga)}
-                                            className="bg-white/10 backdrop-blur-md border border-white/20 text-white px-5 py-2.5 rounded-lg font-bold hover:bg-white/20 transition-all duration-300 flex items-center gap-2 text-sm md:text-base"
+                                            onClick={() => onMangaClick(navigationId, false, displayManga)}
+                                            className="bg-white/10 border border-white/20 text-white px-5 py-2.5 rounded-lg font-bold hover:bg-white/20 transition-all duration-300 flex items-center gap-2 text-sm md:text-base"
                                         >
                                             Detail <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                                         </button>
@@ -329,7 +362,7 @@ const MangaSpotlight: React.FC<MangaSpotlightProps> = ({ onMangaClick }) => {
                                                 className="w-full h-full origin-bottom transition-transform duration-500 ease-out [transform:translateX(-40%)_translateY(-20px)_scale(0.9)_rotate(-8deg)] group-hover:[transform:translateX(-45%)_translateY(-20px)_scale(0.92)_rotate(-6deg)]"
                                             >
                                                 <div className="w-full h-full rounded-xl overflow-hidden brightness-[0.6] transition-all duration-300">
-                                                    <img src={mangas[(selectedIndex - 1 + mangas.length) % mangas.length].images.jpg.large_image_url} className="w-full h-full object-cover" alt="" />
+                                                    <img src={mangas[(selectedIndex - 1 + mangas.length) % mangas.length].images?.jpg?.large_image_url || mangas[(selectedIndex - 1 + mangas.length) % mangas.length].images?.jpg?.image_url} className="w-full h-full object-cover" alt="" />
                                                 </div>
                                             </div>
                                         </div>
@@ -337,7 +370,7 @@ const MangaSpotlight: React.FC<MangaSpotlightProps> = ({ onMangaClick }) => {
 
                                     {/* Active Card */}
                                     <div className="absolute inset-0 z-10 pointer-events-auto transition-transform duration-500 ease-out group-hover:-translate-y-4">
-                                        {activeManga.images?.jpg?.large_image_url && <SpotlightCover thumbnail={activeManga.images.jpg.large_image_url} title={displayTitle} />}
+                                        {displayCover && <SpotlightCover thumbnail={displayCover} title={displayTitle} />}
                                     </div>
 
                                     {/* Next Card */}
@@ -350,7 +383,7 @@ const MangaSpotlight: React.FC<MangaSpotlightProps> = ({ onMangaClick }) => {
                                                 className="w-full h-full origin-bottom transition-transform duration-500 ease-out [transform:translateX(40%)_translateY(-20px)_scale(0.9)_rotate(8deg)] group-hover:[transform:translateX(45%)_translateY(-20px)_scale(0.92)_rotate(6deg)]"
                                             >
                                                 <div className="w-full h-full rounded-xl overflow-hidden brightness-[0.6] transition-all duration-300">
-                                                    <img src={mangas[(selectedIndex + 1) % mangas.length].images.jpg.large_image_url} className="w-full h-full object-cover" alt="" />
+                                                    <img src={mangas[(selectedIndex + 1) % mangas.length].images?.jpg?.large_image_url || mangas[(selectedIndex + 1) % mangas.length].images?.jpg?.image_url} className="w-full h-full object-cover" alt="" />
                                                 </div>
                                             </div>
                                         </div>
@@ -364,8 +397,41 @@ const MangaSpotlight: React.FC<MangaSpotlightProps> = ({ onMangaClick }) => {
 
 
 
+            {mangas[selectedIndex] && (() => {
+                const activeManga = mangas[selectedIndex];
+                const details = detailsById[String(activeManga.id || activeManga.mal_id || activeManga.scraper_id || '')];
+                const displayManga = details ? { ...activeManga, ...details, title: activeManga.title || details.title, images: details.images || activeManga.images, chapters: details.chapters || activeManga.chapters, authors: details.authors?.length ? details.authors : activeManga.authors, author: details.author || activeManga.author, genres: details.genres?.length ? details.genres : activeManga.genres } : activeManga;
+                const navigationId = String(displayManga.scraper_id || displayManga.id || displayManga.mal_id);
+                const displayTitle = getDisplayTitle(displayManga as unknown as Record<string, unknown>, language);
+                const chapterCount = displayManga.chapters || displayManga.volumes;
+                const author = displayManga.authors?.[0]?.name || displayManga.author;
+                const rating = displayManga.score && displayManga.score > 0 ? displayManga.score.toFixed(1) : null;
+                return (
+                    <div className="pointer-events-none absolute inset-0 z-20 flex flex-col justify-between px-4 pb-4 md:hidden" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 1.25rem)' }}>
+                        <div className="flex items-start justify-between">
+                            <div className="rounded-full bg-black/55 px-3 py-2 text-sm font-bold text-white">{chapterCount ? `CH ${chapterCount}` : (activeManga.type || 'MANGA')}</div>
+                            <div className="rounded-full bg-black/55 px-4 py-2 text-sm font-bold text-white">{selectedIndex + 1} <span className="text-white/50">/ {mangas.length}</span></div>
+                        </div>
+                        <div className="space-y-3 pb-1">
+                            <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-white">
+                                {chapterCount && <span className="flex items-center gap-1 rounded-full border border-white/15 bg-black/45 px-3 py-1.5"><CCIcon className="h-3.5 w-3.5" /> {chapterCount}</span>}
+                                {rating && <span className="rounded-full border border-white/15 bg-black/45 px-3 py-1.5">☆ {rating}</span>}
+                                {author && <span className="rounded-full border border-white/15 bg-black/45 px-3 py-1.5">{author}</span>}
+                            </div>
+                            <h2 className="max-w-[95%] text-[27px] font-extrabold leading-[1.16] tracking-tight text-white drop-shadow-lg">{displayTitle}</h2>
+                            <div className="flex flex-wrap gap-2 text-xs font-medium text-white">
+                                {(displayManga.genres || []).slice(0, 3).map((genre) => <span key={genre.name} className="rounded-full border border-white/15 bg-black/45 px-3 py-1.5">{genre.name}</span>)}
+                            </div>
+                            <div className="pointer-events-auto grid grid-cols-2 gap-2 pt-1">
+                                <button type="button" onClick={() => onMangaClick(navigationId, false, displayManga)} className="flex h-12 items-center justify-center rounded-full border border-white/15 bg-black/70 text-sm font-bold text-white">ⓘ DETAILS</button>
+                                <button type="button" onClick={() => onMangaClick(navigationId, true, displayManga)} className="flex h-12 items-center justify-center rounded-full border border-white/15 bg-black/70 text-sm font-bold text-white">▶ READ NOW</button>
+                            </div>
+                        </div>
+                    </div>
+                );
+            })()}
             {/* Dots Indicator */}
-            <div className="absolute z-20 flex gap-2 right-4 top-1/2 -translate-y-1/2 flex-col md:flex-row md:bottom-6 md:left-1/2 md:-translate-x-1/2 md:top-auto md:right-auto md:translate-y-0">
+            <div className="absolute z-20 hidden md:flex gap-2 right-4 top-1/2 -translate-y-1/2 flex-col md:flex-row md:bottom-6 md:left-1/2 md:-translate-x-1/2 md:top-auto md:right-auto md:translate-y-0">
                 {mangas.map((_, idx) => (
                     <button
                         key={idx}

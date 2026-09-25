@@ -21,11 +21,18 @@ const PopularManhwa: React.FC<PopularManhwaProps> = ({ onMangaClick }) => {
     });
 
     useEffect(() => {
+        let cancelled = false;
         const fetchManhwa = async () => {
             try {
                 const { data } = await mangaService.getPopularManhwa(1);
                 if (data) {
-                    setManhwaList(data);
+                    const visible = data.slice(0, 10);
+                    setManhwaList(visible);
+                    setLoading(false);
+                    void mangaService.enrichVisibleManga(visible, (enriched, index) => {
+                        if (cancelled) return;
+                        setManhwaList((current) => current.map((item, itemIndex) => itemIndex === index ? enriched : item));
+                    });
                 }
             } catch (err) {
                 console.error('Failed to fetch popular manhwa', err);
@@ -35,6 +42,7 @@ const PopularManhwa: React.FC<PopularManhwaProps> = ({ onMangaClick }) => {
         };
 
         fetchManhwa();
+        return () => { cancelled = true; };
     }, []);
 
     const scrollPrev = useCallback(() => emblaApi && emblaApi.scrollPrev(), [emblaApi]);
@@ -49,7 +57,7 @@ const PopularManhwa: React.FC<PopularManhwaProps> = ({ onMangaClick }) => {
                 </div>
                 <div className="flex gap-4 overflow-hidden">
                     {Array.from({ length: 6 }).map((_, idx) => (
-                        <div key={idx} className="flex-[0_0_160px] md:flex-[0_0_210px] lg:flex-[0_0_230px]">
+                        <div key={idx} className="flex-[0_0_140px] md:flex-[0_0_210px] lg:flex-[0_0_230px]">
                             <div className="aspect-[2/3] rounded-lg bg-white/10 mb-3" />
                             <div className="h-4 w-4/5 rounded bg-white/10" />
                             <div className="h-4 w-3/5 rounded bg-white/10 mt-2" />
@@ -97,11 +105,11 @@ const PopularManhwa: React.FC<PopularManhwaProps> = ({ onMangaClick }) => {
                             {manhwaList.slice(0, 10).map((manga) => (
                                 <div
                                     key={manga.id || manga.mal_id}
-                                    className="flex-[0_0_160px] md:flex-[0_0_210px] lg:flex-[0_0_230px]"
+                                    className="flex-[0_0_140px] md:flex-[0_0_210px] lg:flex-[0_0_230px]"
                                 >
                                     <MangaCard
                                         manga={manga as unknown as Manga}
-                                        onClick={(mangaObj) => onMangaClick((mangaObj.id || mangaObj.mal_id).toString(), false, mangaObj)}
+                                        onClick={(mangaObj) => onMangaClick((mangaObj.scraper_id || mangaObj.id || mangaObj.mal_id).toString(), false, mangaObj)}
                                         disableTilt
                                     />
                                 </div>

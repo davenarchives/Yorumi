@@ -1,30 +1,45 @@
 import { AnimatePresence, m } from 'framer-motion';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
-import { lazy } from 'react';
-import AnimeDetailsPage from '../pages/AnimeDetailsPage';
-import AnimeFormatPage from '../pages/AnimeFormatPage';
-import ContinueWatchingPage from '../pages/ContinueWatchingPage';
-import FavoriteAnimePage from '../pages/FavoriteAnimePage';
-import FavoriteMangaPage from '../pages/FavoriteMangaPage';
-import GenrePage from '../pages/GenrePage';
+import { lazy, Suspense } from 'react';
 import HomePage from '../pages/HomePage';
-import MangaContinueReadingPage from '../pages/MangaContinueReadingPage';
-import MangaDetailsPage from '../pages/MangaDetailsPage';
-import MangaFormatPage from '../pages/MangaFormatPage';
-import MangaGenrePage from '../pages/MangaGenrePage';
-import MangaPage from '../pages/MangaPage';
-import MangaReaderPage from '../pages/MangaReaderPage';
-import MangaReadListPage from '../pages/MangaReadListPage';
-import LNPage from '../pages/LNPage';
-import LNDetailsPage from '../pages/LNDetailsPage';
-import LNReaderPage from '../pages/LNReaderPage';
-import ProfilePage from '../pages/ProfilePage';
-import LibraryPage from '../pages/LibraryPage';
-import UserProfilePage from '../pages/UserProfilePage';
-import UserSearchPage from '../pages/UserSearchPage';
-import WatchListPage from '../pages/WatchListPage';
-import YumiPage from '../pages/YumiPage';
 import { pageTransitionVariants } from '../utils/motion';
+
+const AnimeDetailsPage = lazy(() => import('../pages/AnimeDetailsPage'));
+const AnimeFormatPage = lazy(() => import('../pages/AnimeFormatPage'));
+const ContinueWatchingPage = lazy(() => import('../pages/ContinueWatchingPage'));
+const FavoriteAnimePage = lazy(() => import('../pages/FavoriteAnimePage'));
+const FavoriteMangaPage = lazy(() => import('../pages/FavoriteMangaPage'));
+const GenrePage = lazy(() => import('../pages/GenrePage'));
+const LibraryPage = lazy(() => import('../pages/LibraryPage'));
+const LNDetailsPage = lazy(() => import('../pages/LNDetailsPage'));
+const LNPage = lazy(() => import('../pages/LNPage'));
+const LNReaderPage = lazy(() => import('../pages/LNReaderPage'));
+const MangaContinueReadingPage = lazy(() => import('../pages/MangaContinueReadingPage'));
+const MangaDetailsPage = lazy(() => import('../pages/MangaDetailsPage'));
+const MangaFormatPage = lazy(() => import('../pages/MangaFormatPage'));
+const MangaGenrePage = lazy(() => import('../pages/MangaGenrePage'));
+const MangaPage = lazy(() => import('../pages/MangaPage'));
+const MangaReaderPage = lazy(() => import('../pages/MangaReaderPage'));
+const MangaReadListPage = lazy(() => import('../pages/MangaReadListPage'));
+const ProfilePage = lazy(() => import('../pages/ProfilePage'));
+const SearchPage = lazy(() => import('../pages/SearchPage'));
+const SearchResultsPage = lazy(() => import('../pages/SearchResultsPage'));
+const UserProfilePage = lazy(() => import('../pages/UserProfilePage'));
+const UserSearchPage = lazy(() => import('../pages/UserSearchPage'));
+const WatchListPage = lazy(() => import('../pages/WatchListPage'));
+const YumiPage = lazy(() => import('../pages/YumiPage'));
+
+function RouteFallback() {
+    return (
+        <div
+            className="flex min-h-[50vh] items-center justify-center text-sm text-white/60"
+            role="status"
+            aria-live="polite"
+        >
+            Loading…
+        </div>
+    );
+}
 
 const getTransitionKey = (pathname: string) => {
     if (pathname.startsWith('/anime/details/')) {
@@ -52,6 +67,7 @@ export function AppRoutes() {
                 exit="exit"
                 className="relative z-10"
             >
+                <Suspense fallback={<RouteFallback />}>
                 <Routes location={location}>
                     <Route path="/" element={<HomePage />} />
                     <Route path="/anime/popular" element={<AnimeFormatPage />} />
@@ -81,6 +97,8 @@ export function AppRoutes() {
                     <Route path="/manga/specials" element={<MangaFormatPage />} />
 
                     <Route path="/library" element={<LibraryPage />} />
+                    <Route path="/search" element={<SearchPage />} />
+                    <Route path="/search/:type" element={<SearchResultsPage />} />
 
                     <Route path="/profile" element={<ProfilePage />} />
                     <Route path="/users" element={<UserSearchPage />} />
@@ -94,6 +112,7 @@ export function AppRoutes() {
                     <Route path="/manga/favorites" element={<FavoriteMangaPage />} />
                     <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
+                </Suspense>
             </m.main>
         </AnimatePresence>
     );

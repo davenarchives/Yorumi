@@ -1,6 +1,6 @@
-import { Play, Plus, Check } from 'lucide-react';
+import { useState } from 'react';
+import { Play, Plus, Check, ChevronDown } from 'lucide-react';
 import { AnimatePresence, m } from 'framer-motion';
-import { useNavigate } from 'react-router-dom';
 import type { Anime } from '../../../../types/anime';
 import { useTitleLanguage } from '../../../../context/TitleLanguageContext';
 import { getDisplayTitle } from '../../../../utils/titleLanguage';
@@ -15,14 +15,16 @@ interface DetailsInfoProps {
     onWatch: () => void;
     onToggleList: () => void;
     onToggleFavorite?: () => void;
+    onBack: () => void;
     statusPicker?: React.ReactNode;
     children?: React.ReactNode;
 }
 
-export default function DetailsInfo({ anime, episodesCount, isLoading = false, inList, inFavorites = false, onWatch, onToggleList, onToggleFavorite, statusPicker, children }: DetailsInfoProps) {
-    const navigate = useNavigate();
+export default function DetailsInfo({ anime, episodesCount, isLoading = false, inList, inFavorites = false, onWatch, onToggleList, onToggleFavorite, onBack, statusPicker, children }: DetailsInfoProps) {
     const { language } = useTitleLanguage();
+    const [synopsisExpanded, setSynopsisExpanded] = useState(false);
     const displayTitle = getDisplayTitle(anime as unknown as Record<string, unknown>, language);
+
     // ... helper ...
     const getLatestEpisode = () => {
         if (anime.status === 'NOT_YET_RELEASED') return null;
@@ -35,14 +37,14 @@ export default function DetailsInfo({ anime, episodesCount, isLoading = false, i
 
     return (
         <div className="flex flex-col gap-6">
-            <div className="flex flex-col md:flex-row gap-8 lg:gap-12 md:items-end">
+            <div className="flex flex-row gap-4 md:gap-8 lg:gap-12 items-start md:items-end">
                 {/* Portrait Image */}
-            <div className="flex-shrink-0 mx-auto md:mx-0 w-48 sm:w-52 md:w-56 lg:w-60 relative aspect-[2/3]">
+            <div className="flex-shrink-0 w-28 sm:w-36 md:w-56 lg:w-60 relative aspect-[2/3]">
                 <div className="rounded-xl overflow-hidden shadow-2xl shadow-black/50 w-full h-full relative bg-[#121212] border border-white/5">
                     <AnimatePresence mode="popLayout">
                         <m.img
                             key={anime.id || anime.mal_id}
-                            src={anime.images.jpg.large_image_url}
+                            src={anime.images?.jpg?.large_image_url || anime.images?.jpg?.image_url || ''}
                             alt={displayTitle}
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
@@ -55,7 +57,7 @@ export default function DetailsInfo({ anime, episodesCount, isLoading = false, i
             </div>
 
             {/* Details */}
-            <div className="flex-1 text-center md:text-left flex flex-col justify-end md:h-[336px] lg:h-[360px] gap-3 md:gap-4 min-w-0 relative">
+            <div className="flex-1 text-left flex flex-col justify-end md:h-[336px] lg:h-[360px] gap-3 md:gap-4 min-w-0 relative">
                 <AnimatePresence mode="wait">
                     <m.div
                         key={anime.id || anime.mal_id}
@@ -65,19 +67,16 @@ export default function DetailsInfo({ anime, episodesCount, isLoading = false, i
                         transition={{ duration: 0.3 }}
                         className="flex flex-col gap-3 md:gap-4 justify-end h-full w-full"
                     >
-                        {/* Overline & Title */}
+                        {/* Title */}
                         <div className="space-y-1">
-                            <span className="text-[11px] font-black uppercase tracking-widest text-[#e53945]">
-                                {anime.type === 'TV' || anime.type === 'OVA' || anime.type === 'ONA' ? 'Series' : anime.type || 'Anime'}
-                            </span>
-                            <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-black text-white uppercase tracking-tight leading-tight">
+                            <h1 className="text-[24px] sm:text-3xl md:text-4xl lg:text-5xl font-semibold md:font-black text-white md:uppercase tracking-tight leading-[1.12]">
                                 {anime.title_english || anime.title || displayTitle}
                             </h1>
                         </div>
 
                         {/* Genres */}
                         {anime.genres && anime.genres.length > 0 && (
-                            <div className="flex flex-wrap items-center justify-center md:justify-start gap-2">
+                            <div className="hidden md:flex flex-wrap items-center justify-start gap-2">
                                 {anime.genres.slice(0, 4).map((genre) => (
                                     <span key={genre.name} className="px-3 py-1 bg-white/5 border border-white/5 rounded-full text-xs font-semibold text-gray-300">
                                         {genre.name}
@@ -87,7 +86,7 @@ export default function DetailsInfo({ anime, episodesCount, isLoading = false, i
                         )}
 
                         {/* Metadata Row */}
-                        <div className="flex flex-wrap items-center justify-center md:justify-start gap-4 text-sm font-bold text-gray-400">
+                        <div className="flex flex-wrap items-center justify-start gap-x-3 gap-y-1 text-sm font-bold text-gray-400">
                             {isLoading ? (
                                 <>
                                     <span className="h-4 w-14 bg-white/10 rounded animate-pulse" />
@@ -122,12 +121,12 @@ export default function DetailsInfo({ anime, episodesCount, isLoading = false, i
                         </div>
 
                         {/* Synopsis */}
-                        <div className="text-gray-300 text-sm md:text-base leading-relaxed max-w-4xl line-clamp-4">
+                        <div className="hidden md:block text-gray-300 text-sm md:text-base leading-relaxed max-w-4xl line-clamp-4">
                             {anime.synopsis || 'No synopsis.'}
                         </div>
 
                         {/* Actions */}
-                        <div className="flex w-full flex-row items-center justify-center md:justify-start gap-3 pt-1">
+                        <div className="hidden md:flex w-full flex-row items-center justify-start gap-3 pt-1">
                             <button
                                 onClick={onWatch}
                                 disabled={isLoading}
@@ -153,7 +152,7 @@ export default function DetailsInfo({ anime, episodesCount, isLoading = false, i
                             </div>
 
                             <button
-                                onClick={() => navigate(-1)}
+                                onClick={onBack}
                                 className="h-10 px-6 bg-[#1a1a1a] hover:bg-white/10 text-white text-sm font-bold rounded-xl transition-colors flex items-center gap-2 whitespace-nowrap"
                             >
                                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
@@ -164,6 +163,47 @@ export default function DetailsInfo({ anime, episodesCount, isLoading = false, i
                 </AnimatePresence>
             </div>
         </div>
+
+            <div className="md:hidden space-y-4">
+                <div className="relative">
+                    <p className={`overflow-hidden text-base leading-7 text-zinc-300 transition-[max-height] duration-500 ease-out ${synopsisExpanded ? 'max-h-[40rem]' : 'max-h-[5.25rem]'}`}>
+                        {anime.synopsis || 'No synopsis available.'}
+                    </p>
+                    {!synopsisExpanded && (anime.synopsis || '').length > 140 && (
+                        <div className="pointer-events-none absolute inset-x-0 bottom-8 h-12 bg-gradient-to-t from-[#0a0a0a] via-[#0a0a0a]/85 to-transparent" />
+                    )}
+                    {(anime.synopsis || '').length > 140 && (
+                        <button
+                            type="button"
+                            onClick={() => setSynopsisExpanded((value) => !value)}
+                            className="mx-auto mt-1 flex h-8 w-8 items-center justify-center text-white/85"
+                            aria-label={synopsisExpanded ? 'Show less synopsis' : 'Show more synopsis'}
+                        >
+                            <ChevronDown className={`h-5 w-5 transition-transform duration-300 ${synopsisExpanded ? 'rotate-180' : ''}`} />
+                        </button>
+                    )}
+                </div>
+                {anime.genres && anime.genres.length > 0 && (
+                    <div className={`${synopsisExpanded ? 'flex flex-wrap' : 'flex overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'} gap-2 pb-1 transition-all duration-300`}>
+                        {(synopsisExpanded ? anime.genres : anime.genres.slice(0, 8)).map((genre) => (
+                            <span key={genre.name} className="shrink-0 rounded-full bg-white/[0.07] px-3 py-1.5 text-xs font-semibold text-zinc-300">
+                                {genre.name}
+                            </span>
+                        ))}
+                    </div>
+                )}
+                <div className="hidden">
+                    <button onClick={onWatch} disabled={isLoading} className="h-11 rounded-xl bg-white/[0.08] text-sm font-bold text-white flex items-center justify-center gap-2">
+                        <Play className="h-4 w-4 fill-current" /> Watch
+                    </button>
+                    <button onClick={onToggleList} disabled={isLoading} className={`h-11 rounded-xl text-sm font-bold flex items-center justify-center gap-2 ${inList ? 'bg-yorumi-accent/20 text-yorumi-accent' : 'bg-white/[0.08] text-white'}`}>
+                        {inList ? <Check className="h-4 w-4" /> : <Plus className="h-4 w-4" />} {inList ? 'Saved' : 'Save'}
+                    </button>
+                    <button onClick={onBack} className="h-11 rounded-xl bg-white/[0.08] text-sm font-bold text-white flex items-center justify-center gap-2">
+                        <span aria-hidden="true">←</span> Back
+                    </button>
+                </div>
+            </div>
 
             {/* Children for layout extension (Tabs, etc) */}
             <div className="w-full">

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import useEmblaCarousel from 'embla-carousel-react';
+import Autoplay from 'embla-carousel-autoplay';
 import type { Anime } from '../../../types/anime';
 import AnimeLogoImage from '../../../components/anime/AnimeLogoImage';
 import SpotlightSkeleton from './SpotlightSkeleton';
@@ -8,6 +9,7 @@ import { getDisplayTitle } from '../../../utils/titleLanguage';
 import { getDisplayImageUrl } from '../../../utils/image';
 import { AnimatePresence, m } from 'framer-motion';
 import CCIcon from '../../../components/ui/CCIcon';
+import { animeService } from '../../../services/animeService';
 
 interface SpotlightHeroProps {
     animeList: Anime[];
@@ -135,8 +137,11 @@ const SpotlightHero: React.FC<SpotlightHeroProps> = ({ animeList, isLoading = fa
     const [emblaRef, emblaApi] = useEmblaCarousel({
         loop: true,
         duration: 20
-    });
+    }, [
+        Autoplay({ delay: 5000, stopOnInteraction: false, stopOnMouseEnter: true })
+    ]);
     const [selectedIndex, setSelectedIndex] = useState(0);
+    const [detailsById, setDetailsById] = useState<Record<string, Anime>>({});
 
     // Update selected index when slide changes
     const onSelect = useCallback(() => {
@@ -162,6 +167,21 @@ const SpotlightHero: React.FC<SpotlightHeroProps> = ({ animeList, isLoading = fa
         }
     }, [animeList, onAnimeHover, selectedIndex]);
 
+    useEffect(() => {
+        const activeAnime = animeList[selectedIndex];
+        const id = activeAnime?.id || activeAnime?.mal_id;
+        const key = String(id || '');
+        if (!id || detailsById[key] || (activeAnime.genres?.length && activeAnime.studios?.length && activeAnime.duration)) return;
+
+        let cancelled = false;
+        void animeService.getAnimeDetailsFast(id, activeAnime.type).then(({ data }) => {
+            if (!cancelled && data) {
+                setDetailsById((current) => ({ ...current, [key]: data }));
+            }
+        }).catch(() => undefined);
+        return () => { cancelled = true; };
+    }, [animeList, detailsById, selectedIndex]);
+
     const handleNext = useCallback(() => {
         if (emblaApi) emblaApi.scrollNext();
     }, [emblaApi]);
@@ -180,7 +200,7 @@ const SpotlightHero: React.FC<SpotlightHeroProps> = ({ animeList, isLoading = fa
     }
 
     return (
-        <div className="relative w-full h-[50vh] md:h-[60vh] min-h-[400px] md:min-h-[480px] group bg-[#0a0a0a] overflow-hidden mb-8">
+        <div className="media-spotlight relative w-full h-[58vh] md:h-[60vh] min-h-[440px] md:min-h-[480px] group bg-[#0a0a0a] overflow-hidden mb-8">
             {/* Background Crossfade */}
             <div className="absolute inset-0 z-0 select-none overflow-hidden">
                 <AnimatePresence>
@@ -190,23 +210,31 @@ const SpotlightHero: React.FC<SpotlightHeroProps> = ({ animeList, isLoading = fa
                         const backgroundCover = getAnimeBackgroundCover(anime, coverImage);
                         const isPosterFallback = backgroundCover === coverImage && !(anime as any).anilist_banner_image && !(anime as any).bannerImage && !(anime as any).backdrop;
                         const displayBackground = getDisplayImageUrl(backgroundCover);
+                        const displayPoster = getDisplayImageUrl(coverImage);
                         return (
-                            <m.div
-                                key={`bg-${selectedIndex}`}
-                                initial={{ scale: 1.05, opacity: 0 }}
-                                animate={{ scale: 1, opacity: isPosterFallback ? 0.5 : 0.7 }}
-                                exit={{ opacity: 0 }}
-                                transition={{ duration: 0.8 }}
-                                className={`absolute inset-0 bg-no-repeat bg-cover bg-center ${isPosterFallback ? 'blur-xl scale-110' : ''}`}
-                                style={{
-                                    backgroundImage: displayBackground ? `url(${displayBackground})` : 'none',
-                                }}
-                            />
+                            <React.Fragment key={`bg-${selectedIndex}`}>
+                                <m.div
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    exit={{ opacity: 0 }}
+                                    transition={{ duration: 0.45 }}
+                                    className="absolute inset-0 bg-cover bg-center bg-no-repeat md:hidden"
+                                    style={{ backgroundImage: displayPoster ? `url(${displayPoster})` : 'none' }}
+                                />
+                                <m.div
+                                    initial={{ scale: 1.05, opacity: 0 }}
+                                    animate={{ scale: 1, opacity: isPosterFallback ? 0.5 : 0.7 }}
+                                    exit={{ opacity: 0 }}
+                                    transition={{ duration: 0.8 }}
+                                    className={`absolute inset-0 hidden bg-cover bg-center bg-no-repeat md:block ${isPosterFallback ? 'blur-xl scale-110' : ''}`}
+                                    style={{ backgroundImage: displayBackground ? `url(${displayBackground})` : 'none' }}
+                                />
+                            </React.Fragment>
                         );
                     })()}
                 </AnimatePresence>
                 <div className="absolute inset-x-0 bottom-0 h-[60%] bg-gradient-to-t from-[#0a0a0a] via-[#0a0a0a]/80 to-transparent z-0 pointer-events-none" />
-                <div className="absolute inset-0 bg-gradient-to-r from-[#0a0a0a] via-[#0a0a0a]/80 to-transparent pointer-events-none z-0" />
+                <div className="absolute inset-0 hidden bg-gradient-to-r from-[#0a0a0a] via-[#0a0a0a]/80 to-transparent pointer-events-none z-0 md:block" />
             </div>
 
             {/* Embla Viewport (Invisible Swipe Catcher) */}
@@ -222,7 +250,7 @@ const SpotlightHero: React.FC<SpotlightHeroProps> = ({ animeList, isLoading = fa
             </div>
 
             {/* Fixed Overlay Content */}
-            <div className="absolute inset-0 z-10 pointer-events-none">
+            <div className="absolute inset-0 z-10 hidden pointer-events-none md:block">
                 <AnimatePresence>
                     {animeList[selectedIndex] && (() => {
                         const activeAnime = animeList[selectedIndex];
@@ -236,7 +264,7 @@ const SpotlightHero: React.FC<SpotlightHeroProps> = ({ animeList, isLoading = fa
                                 animate={{ opacity: 1 }}
                                 exit={{ opacity: 0 }}
                                 transition={{ duration: 0.4, ease: "easeInOut" }}
-                                className="absolute inset-0 flex flex-col md:flex-row gap-12 items-center w-full max-w-7xl mx-auto px-8 md:px-14 mt-12"
+                                className="absolute inset-0 flex flex-col md:flex-row gap-12 items-center w-full max-w-7xl mx-auto px-5 md:px-14 mt-12"
                             >
                                 {/* Text Info (Left) */}
                                 <div className="flex-1 pointer-events-auto w-full max-w-2xl flex flex-col justify-end h-[360px] md:h-[380px]">
@@ -244,7 +272,7 @@ const SpotlightHero: React.FC<SpotlightHeroProps> = ({ animeList, isLoading = fa
                                     <div className="w-full mb-4">
                                         <div className="flex items-center gap-3 mb-3">
                                             {coverImage && (
-                                                <div className="md:hidden h-24 w-16 rounded-md overflow-hidden shadow-lg shadow-black/50 border border-white/10 flex-shrink-0 relative">
+                                                <div className="hidden h-24 w-16 rounded-md overflow-hidden shadow-lg shadow-black/50 border border-white/10 flex-shrink-0 relative">
                                                     <img
                                                         src={coverImage}
                                                         alt={displayTitle}
@@ -268,7 +296,7 @@ const SpotlightHero: React.FC<SpotlightHeroProps> = ({ animeList, isLoading = fa
                                     </div>
 
                                     {/* Middle Section: Chips */}
-                                    <div className="w-full flex items-center flex-wrap gap-4 text-white select-none mb-4">
+                                    <div className="spotlight-meta w-full flex items-center flex-wrap gap-4 text-white select-none mb-4">
                                         {activeAnime.score > 0 && (
                                             <span className="flex items-center justify-center gap-1.5 bg-white/10 px-3 h-8 rounded-lg backdrop-blur-sm text-sm font-bold">
                                                 <svg className="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" /></svg>
@@ -303,7 +331,7 @@ const SpotlightHero: React.FC<SpotlightHeroProps> = ({ animeList, isLoading = fa
                                         </p>
                                     </div>
 
-                                    <div className="w-full flex gap-4">
+                                    <div className="spotlight-actions w-full flex gap-4">
                                         <button
                                             onMouseEnter={() => onAnimeHover?.(activeAnime)}
                                             onFocus={() => onAnimeHover?.(activeAnime)}
@@ -371,8 +399,51 @@ const SpotlightHero: React.FC<SpotlightHeroProps> = ({ animeList, isLoading = fa
 
 
 
+            {animeList[selectedIndex] && (() => {
+                const activeAnime = animeList[selectedIndex];
+                const details = detailsById[String(activeAnime.id || activeAnime.mal_id || '')];
+                const displayAnime = details ? { ...details, ...activeAnime, genres: activeAnime.genres?.length ? activeAnime.genres : details.genres, studios: activeAnime.studios?.length ? activeAnime.studios : details.studios, duration: activeAnime.duration || details.duration } : activeAnime;
+                const displayTitle = getDisplayTitle(displayAnime as unknown as Record<string, unknown>, language);
+                const episodeCount = displayAnime.latestEpisode || displayAnime.episodes;
+                const nextAiring = displayAnime.nextAiringEpisode;
+                const airingSeconds = Math.max(0, Number(nextAiring?.timeUntilAiring || 0));
+                const airingCountdown = airingSeconds >= 86400
+                    ? `${Math.ceil(airingSeconds / 86400)}D`
+                    : airingSeconds >= 3600
+                        ? `${Math.ceil(airingSeconds / 3600)}H`
+                        : airingSeconds > 0 ? `${Math.ceil(airingSeconds / 60)}M` : '';
+                const rating = displayAnime.score > 0
+                    ? Math.round(displayAnime.score <= 10 ? displayAnime.score * 10 : displayAnime.score)
+                    : null;
+                const duration = String(displayAnime.duration || '').match(/\d+/)?.[0];
+                return (
+                    <div className="pointer-events-none absolute inset-0 z-20 flex flex-col justify-between px-4 pb-4 md:hidden" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 1.25rem)' }}>
+                        <div className="flex items-start justify-between">
+                            <div className="rounded-full bg-black/55 px-3 py-2 text-sm font-bold text-white">{nextAiring?.episode ? `EP ${nextAiring.episode}${airingCountdown ? ` ${airingCountdown}` : ''}` : episodeCount ? `EP ${episodeCount}` : (displayAnime.status || 'ANIME')}</div>
+                            <div className="rounded-full bg-black/55 px-4 py-2 text-sm font-bold text-white">{selectedIndex + 1} <span className="text-white/50">/ {animeList.length}</span></div>
+                        </div>
+                        <div className="translate-y-1 space-y-2">
+                            <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-white">
+                                <span className="rounded-full border border-white/15 bg-black/45 px-3 py-1.5">{displayAnime.type || 'TV'}</span>
+                                {episodeCount && <span className="flex items-center gap-1 rounded-full border border-white/15 bg-black/45 px-3 py-1.5"><CCIcon className="h-3.5 w-3.5" /> {episodeCount}</span>}
+                                {rating && <span className="rounded-full border border-white/15 bg-black/45 px-3 py-1.5">☆ {rating}</span>}
+                                {duration && <span className="rounded-full border border-white/15 bg-black/45 px-3 py-1.5">◷ {duration} mins</span>}
+                            </div>
+                            <h2 className="max-w-[95%] text-[26px] font-extrabold leading-[1.16] tracking-tight text-white drop-shadow-lg">{displayTitle}</h2>
+                            <div className="flex flex-wrap gap-2 text-xs font-medium text-white">
+                                {(displayAnime.genres || []).slice(0, 3).map((genre) => <span key={genre.name} className="rounded-full border border-white/20 bg-black/45 px-3 py-1.5">{genre.name}</span>)}
+                                {displayAnime.studios?.[0]?.name && <span className="rounded-full border border-white/20 bg-black/45 px-3 py-1.5">{displayAnime.studios[0].name}</span>}
+                            </div>
+                            <div className="pointer-events-auto grid grid-cols-2 gap-2 pt-1">
+                                <button type="button" onClick={() => onAnimeClick(activeAnime)} className="flex h-12 items-center justify-center rounded-full border border-white/15 bg-black/70 text-sm font-bold text-white">ⓘ DETAILS</button>
+                                <button type="button" onClick={() => onWatchClick(activeAnime)} className="flex h-12 items-center justify-center rounded-full border border-white/15 bg-black/70 text-sm font-bold text-white">▶ WATCH NOW</button>
+                            </div>
+                        </div>
+                    </div>
+                );
+            })()}
             {/* Dots Indicator */}
-            <div className="absolute z-20 flex gap-2 right-4 top-1/2 -translate-y-1/2 flex-col md:flex-row md:bottom-6 md:left-1/2 md:-translate-x-1/2 md:top-auto md:right-auto md:translate-y-0">
+            <div className="absolute z-20 hidden gap-2 right-4 top-1/2 -translate-y-1/2 flex-col md:flex md:flex-row md:bottom-6 md:left-1/2 md:-translate-x-1/2 md:top-auto md:right-auto md:translate-y-0">
                 {animeList.map((_, idx) => (
                     <button
                         key={idx}

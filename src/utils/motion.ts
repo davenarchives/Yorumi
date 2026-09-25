@@ -13,6 +13,7 @@ export const pageTransitionVariants: Variants = {
         opacity: 1,
         y: 0,
         transition: { duration: 0.32, ease: softEase },
+        transitionEnd: { transform: 'none' },
     },
     exit: {
         opacity: 0,

@@ -24,7 +24,7 @@ export default function MangaPage() {
             {/* Spotlight Hero Section */}
             <MangaSpotlight onMangaClick={handleSpotlightClick} />
 
-            <div className="w-full max-w-7xl mx-auto px-8 md:px-14 z-10 relative mt-8">
+            <div className="numbered-media-sections w-full max-w-7xl mx-auto px-4 md:px-14 z-10 relative mt-8">
 
                 {/* Latest Updates Carousel */}
                 <LatestMangaUpdates

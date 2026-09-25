@@ -34,7 +34,7 @@ interface ChapterViewToggleProps {
 
 export default function ChapterViewToggle({ viewMode, onViewModeChange }: ChapterViewToggleProps) {
     return (
-        <div className="flex items-center bg-[#141414] border border-white/10 rounded-xl p-1 gap-1 shrink-0">
+        <div className="flex items-center bg-[#141414] border border-white/10 rounded-2xl p-1 gap-1 shrink-0">
             <button
                 type="button"
                 onClick={() => onViewModeChange('list')}
@@ -53,7 +53,7 @@ export default function ChapterViewToggle({ viewMode, onViewModeChange }: Chapte
                     <line x1="3" y1="18" x2="14" y2="18" />
                 </svg>
                 {viewMode === 'list' && (
-                    <span className="absolute bottom-1 w-2.5 h-1 bg-blue-500 rounded-full transition-all" />
+                    <span className="absolute bottom-1 w-2.5 h-1 bg-purple-500 rounded-full transition-all" />
                 )}
             </button>
             <button
@@ -75,7 +75,7 @@ export default function ChapterViewToggle({ viewMode, onViewModeChange }: Chapte
                     <rect x="3" y="14" width="7" height="7" rx="2" />
                 </svg>
                 {viewMode === 'grid' && (
-                    <span className="absolute bottom-1 w-2.5 h-1 bg-blue-500 rounded-full transition-all" />
+                    <span className="absolute bottom-1 w-2.5 h-1 bg-purple-500 rounded-full transition-all" />
                 )}
             </button>
         </div>

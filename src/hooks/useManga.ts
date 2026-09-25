@@ -60,9 +60,10 @@ export function useManga() {
             try {
                 // Fetch Hot Updates instead of generic Top Manga
                 const data = await mangaService.getHotUpdates();
-                if (data?.data) {
+                const hotItems = Array.isArray(data) ? data : data?.data;
+                if (Array.isArray(hotItems)) {
                     // Map Hot Updates to Manga interface
-                    const hotUpdates = data.data.slice(0, 8).map((update: any) => ({
+                    const hotUpdates = hotItems.slice(0, 8).map((update: any) => ({
                         mal_id: update.id, // String ID from scraper
                         id: update.id,
                         title: update.title,
@@ -75,7 +76,7 @@ export function useManga() {
                         score: 0, // Not available in simple update
                         type: 'Manga',
                         status: update.status || 'Unknown',
-                        chapters: parseInt(update.chapter) || 0,
+                        chapters: Number.parseFloat(String(update.chapter || '').match(/\d+(?:\.\d+)?/)?.[0] || '0'),
                         volumes: null,
                         synopsis: 'Hot Update from MangaKatana',
                     } as Manga));

@@ -7,6 +7,7 @@ import AnimeCard from './AnimeCard';
 import { useTitleLanguage } from '../../../context/TitleLanguageContext';
 import { getDisplayTitle } from '../../../utils/titleLanguage';
 import { getDisplayImageUrl } from '../../../utils/image';
+import MediaSectionHeader from '../../../components/ui/MediaSectionHeader';
 
 interface TrendingNowProps {
     animeList: Anime[];
@@ -17,6 +18,7 @@ interface TrendingNowProps {
 
     onMouseEnter?: (anime: Anime) => void;
     variant?: 'portrait' | 'landscape';
+    sectionNumber?: number;
 }
 
 const TrendingNow: React.FC<TrendingNowProps> = ({
@@ -27,7 +29,8 @@ const TrendingNow: React.FC<TrendingNowProps> = ({
     onWatchClick,
 
     onMouseEnter,
-    variant = 'portrait'
+    variant = 'portrait',
+    sectionNumber = 1
 }) => {
     const { language } = useTitleLanguage();
     const [emblaRef, emblaApi] = useEmblaCarousel({
@@ -87,12 +90,8 @@ const TrendingNow: React.FC<TrendingNowProps> = ({
 
     return (
         <section className="relative z-20 mt-4 mb-12">
-            <div className="flex items-center gap-4 mb-6">
-                <h2 className="text-xl md:text-2xl font-black text-white tracking-wide uppercase whitespace-nowrap">{title}</h2>
-                <div className="flex-1 h-px bg-white/10" />
-
-                <div className="flex items-center gap-4">
-                    <div className="flex gap-2">
+            <MediaSectionHeader index={sectionNumber} title={title} actions={
+                    <>
                         <button
                             onClick={scrollPrev}
                             className="p-1.5 rounded-full bg-white/5 hover:bg-white/10 transition-colors border border-white/5"
@@ -107,11 +106,8 @@ const TrendingNow: React.FC<TrendingNowProps> = ({
                         >
                             <ChevronRight className="w-4 h-4 text-gray-300" />
                         </button>
-                    </div>
-
-
-                </div>
-            </div>
+                    </>
+            } />
 
             <div className="relative">
                 <div className="flex gap-4">

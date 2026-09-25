@@ -19,7 +19,7 @@ export default function LNPage() {
             {/* Hero Spotlight Carousel */}
             <LNSpotlight onLNClick={handleLNClick} />
 
-            <div className="w-full max-w-7xl mx-auto px-8 md:px-14 z-10 relative mt-8">
+            <div className="numbered-media-sections w-full max-w-7xl mx-auto px-4 md:px-14 z-10 relative mt-8">
                 {/* Popular Korean Web Novels */}
                 <PopularKoreanNovels onLNClick={handleLNClick} />
 

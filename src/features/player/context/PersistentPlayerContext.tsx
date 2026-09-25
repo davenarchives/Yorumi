@@ -2,6 +2,8 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { createPortal } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router-dom';
 import VideoPlayer, { type VideoPlayerProps } from '../components/VideoPlayer';
+import { isNativeMobile } from '../../../platform/runtime';
+import { setSystemPictureInPictureEnabled } from '../../../platform/immersiveMode';
 
 type PersistentPlayerContextValue = {
     registerPlayer: (props: VideoPlayerProps, watchUrl: string, watchState?: any) => void;
@@ -91,8 +93,17 @@ export function PersistentPlayerProvider({ children }: { children: ReactNode }) 
 
     const isInlineMode = Boolean(isInlineAvailable && inlineRect);
     const shouldShowInlinePlayer = Boolean(hasPlayer && !isClosed && isInlineAvailable);
-    const shouldShowMiniPlayer = Boolean(hasPlayer && !isClosed && !isInlineAvailable && playerProps?.streamUrl);
+    const shouldShowMiniPlayer = Boolean(!isNativeMobile() && hasPlayer && !isClosed && !isInlineAvailable && playerProps?.streamUrl);
     const shouldRenderPlayer = shouldShowMiniPlayer || shouldShowInlinePlayer;
+
+    useEffect(() => {
+        if (!isNativeMobile()) return;
+        const enabled = Boolean(shouldShowInlinePlayer && playerProps?.streamUrl);
+        setSystemPictureInPictureEnabled(enabled).catch(() => undefined);
+        return () => {
+            setSystemPictureInPictureEnabled(false).catch(() => undefined);
+        };
+    }, [playerProps?.streamUrl, shouldShowInlinePlayer]);
 
     const effectivePlayerProps = useMemo(() => {
         if (!playerProps) return null;
@@ -189,7 +200,13 @@ export function PersistentPlayerProvider({ children }: { children: ReactNode }) 
                 return props;
             }
 
-            if (isSameEpisode && currentProps.streamUrl) {
+            const streamSelectionChanged = (
+                currentProps.selectedAudio !== props.selectedAudio ||
+                currentProps.selectedServer !== props.selectedServer ||
+                currentProps.selectedStreamIndex !== props.selectedStreamIndex
+            );
+
+            if (isSameEpisode && currentProps.streamUrl && !streamSelectionChanged) {
                 if (props.streamUrl && props.streamUrl !== currentProps.streamUrl && !props.isLoading) {
                     return props;
                 }
@@ -270,8 +287,8 @@ export function PersistentPlayerProvider({ children }: { children: ReactNode }) 
                 top: `${inlineRect.top}px`,
                 width: `${inlineRect.width}px`,
                 height: `${inlineRect.height}px`,
-                zIndex: 40,
-                borderRadius: '1rem',
+                zIndex: effectivePlayerProps?.mobilePageLayout ? 2147483500 : 40,
+                borderRadius: effectivePlayerProps?.mobilePageLayout ? 0 : '1rem',
                 overflow: 'hidden',
             }
             : (miniPosition
@@ -302,7 +319,7 @@ export function PersistentPlayerProvider({ children }: { children: ReactNode }) 
             {children}
             {shouldRenderPlayer && effectivePlayerProps && containerStyle && createPortal(
                 <div
-                    className={`shadow-2xl shadow-black/80 bg-black transition-[border-radius] duration-200 ease-out ${
+                    className={`persistent-player-surface shadow-2xl shadow-black/80 bg-black transition-[border-radius] duration-200 ease-out ${
                         isInlineMode ? 'absolute z-40' : 'fixed cursor-grab active:cursor-grabbing z-[2147483646]'
                     }`}
                     style={containerStyle}

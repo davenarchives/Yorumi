@@ -8,6 +8,8 @@ import MangaInfoSidebar from './MangaInfoSidebar';
 import { useTitleLanguage } from '../../../../context/TitleLanguageContext';
 import { getDisplayTitle } from '../../../../utils/titleLanguage';
 import discordRPCService from '../../../../services/discordRPCService';
+import { isNativeMobile } from '../../../../platform/runtime';
+import { enterImmersiveMode, exitImmersiveMode } from '../../../../platform/immersiveMode';
 
 type FullscreenElement = HTMLDivElement & {
     webkitRequestFullscreen?: () => Promise<void> | void;
@@ -58,6 +60,16 @@ export default function MangaReaderModal({
     const [readingMode, setReadingMode] = useState<'longstrip' | 'page'>('longstrip');
     const [pageIndex, setPageIndex] = useState(0);
     const [isHeaderVisible, setIsHeaderVisible] = useState(false);
+
+    // Sync system bars visibility with reader UI on mobile
+    useEffect(() => {
+        if (!isNativeMobile()) return;
+        if (isHeaderVisible) {
+            exitImmersiveMode().catch(() => undefined);
+        } else {
+            enterImmersiveMode().catch(() => undefined);
+        }
+    }, [isHeaderVisible]);
 
     const lastScrollY = useRef(0);
     const readerRootRef = useRef<HTMLDivElement>(null);
@@ -179,7 +191,7 @@ export default function MangaReaderModal({
     };
 
     const requestMobileFullscreen = () => {
-        if (fullscreenAttemptedRef.current || window.innerWidth >= 768 || document.fullscreenElement) return;
+        if (isNativeMobile() || fullscreenAttemptedRef.current || window.innerWidth >= 768 || document.fullscreenElement) return;
 
         fullscreenAttemptedRef.current = true;
         const element = readerRootRef.current as FullscreenElement | null;
@@ -216,6 +228,7 @@ export default function MangaReaderModal({
                     isVisible={isHeaderVisible}
                     onZoomIn={onZoomIn}
                     onZoomOut={onZoomOut}
+                    onClose={onClose}
                 />
 
                 {/* Main Layout */}

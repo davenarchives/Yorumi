@@ -1,10 +1,13 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Settings, Maximize, Minimize, Mic, Gauge, Video, Monitor, ChevronLeft, CheckCircle2, Circle, X, RotateCcw, RotateCw } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, FastForward, Volume2, VolumeX, Settings, Maximize, Minimize, Mic, Gauge, Video, Monitor, ChevronLeft, CheckCircle2, Circle, X, RotateCcw, RotateCw, Captions, Lock, Unlock } from 'lucide-react';
 import RedoIcon from '@mui/icons-material/Redo';
 import type { StreamServerKey } from '../../../hooks/useStreams';
-import type { StreamLink } from '../../../types/stream';
+import type { StreamLink, SubtitleTrack } from '../../../types/stream';
 import type { SkipTimestamp } from '../../../services/skipTimestamps';
 import { getMappedQuality } from '../../../utils/streamUtils';
+import { isNativeMobile } from '../../../platform/runtime';
+import { enterImmersiveMode, exitImmersiveMode } from '../../../platform/immersiveMode';
+import { ScreenOrientation } from '@capacitor/screen-orientation';
 
 interface CustomVideoControlsProps {
     videoRef: React.RefObject<HTMLVideoElement | null>;
@@ -42,6 +45,9 @@ interface CustomVideoControlsProps {
     animeImage?: string;
     episodeNumber?: number;
     episodeTitle?: string;
+    hasSubtitles?: boolean;
+    subtitleTracks?: SubtitleTrack[];
+    pageLayout?: boolean;
 }
 
 const PLAYBACK_SPEEDS = [0.25, 1, 1.25, 1.5, 2];
@@ -49,6 +55,42 @@ const QUALITY_OPTIONS = ['Auto', '1080p', '720p', '480p', '360p'];
 const SEEK_SECONDS = 5;
 const GLASS_BUTTON_CLASS = 'watch-control-glass rounded-full flex items-center justify-center text-white transition-colors shadow-[0_8px_28px_rgba(0,0,0,0.28)]';
 const GLASS_PANEL_CLASS = 'watch-control-glass rounded-full text-white shadow-[0_8px_28px_rgba(0,0,0,0.28)]';
+
+const waitForViewportOrientation = (orientation: 'portrait' | 'landscape', timeoutMs = 1200) => new Promise<void>((resolve) => {
+    const startedAt = Date.now();
+    const check = () => {
+        const viewport = window.visualViewport;
+        const width = viewport?.width || window.innerWidth;
+        const height = viewport?.height || window.innerHeight;
+        const matches = orientation === 'portrait' ? height >= width : width >= height;
+        if (matches || Date.now() - startedAt >= timeoutMs) {
+            resolve();
+            return;
+        }
+        window.requestAnimationFrame(check);
+    };
+    check();
+});
+
+const getSubtitleLabel = (language: string) => {
+    const raw = String(language || '').trim();
+    const normalized = raw.toLowerCase().replace(/_/g, '-');
+    const languageNames: Record<string, string> = {
+        en: 'English', eng: 'English', english: 'English',
+        ar: 'Arabic', ara: 'Arabic', arabic: 'Arabic',
+        es: 'Spanish', spa: 'Spanish', spanish: 'Spanish',
+        fr: 'French', fra: 'French', fre: 'French', french: 'French',
+        de: 'German', deu: 'German', ger: 'German', german: 'German',
+        id: 'Indonesian', ind: 'Indonesian', indonesian: 'Indonesian',
+        ja: 'Japanese', jpn: 'Japanese', japanese: 'Japanese',
+        pt: 'Portuguese', por: 'Portuguese', portuguese: 'Portuguese',
+        th: 'Thai', tha: 'Thai', thai: 'Thai',
+        vi: 'Vietnamese', vie: 'Vietnamese', vietnamese: 'Vietnamese',
+    };
+    if (languageNames[normalized]) return languageNames[normalized];
+    const base = normalized.split('-')[0];
+    return languageNames[base] || raw || 'Unknown';
+};
 
 function SeekIcon({ direction }: { direction: 'back' | 'forward' }) {
     const Icon = direction === 'back' ? RotateCcw : RotateCw;
@@ -86,8 +128,6 @@ export default function CustomVideoControls({
     mode = 'full',
     onMiniClose,
     onMiniExpand,
-    isWide = false,
-    onToggleWide,
     hlsLevels = [],
     onHlsQualitySelect,
     initialDuration = 0,
@@ -96,6 +136,9 @@ export default function CustomVideoControls({
     animeImage,
     episodeNumber,
     episodeTitle,
+    hasSubtitles = false,
+    subtitleTracks = [],
+    pageLayout = false,
 }: CustomVideoControlsProps) {
 
     const [isPlaying, setIsPlaying] = useState(false);
@@ -110,6 +153,84 @@ export default function CustomVideoControls({
     const [playbackSpeed, setPlaybackSpeed] = useState(1);
     const [centerAction, setCenterAction] = useState<{ type: 'play' | 'pause'; id: number } | null>(null);
     const [selectedHlsQuality, setSelectedHlsQuality] = useState<string>('Auto');
+    const [subtitlesEnabled, setSubtitlesEnabled] = useState(hasSubtitles);
+    const [selectedSubtitleIndex, setSelectedSubtitleIndex] = useState(0);
+    const [showSubtitleMenu, setShowSubtitleMenu] = useState(false);
+    const [isControlsLocked, setIsControlsLocked] = useState(false);
+    const [isFastForwarding, setIsFastForwarding] = useState(false);
+    const nativeFullscreenTransitionRef = useRef(false);
+    const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const holdActivatedRef = useRef(false);
+    const isFastForwardingRef = useRef(false);
+    const suppressNextClickRef = useRef(false);
+    const previousPlaybackRateRef = useRef(1);
+
+    const selectSubtitleTrack = useCallback((index: number | null) => {
+        const tracks = videoRef.current?.textTracks;
+        if (tracks) {
+            for (let trackIndex = 0; trackIndex < tracks.length; trackIndex += 1) {
+                tracks[trackIndex].mode = index !== null && trackIndex === index ? 'showing' : 'disabled';
+            }
+        }
+        if (index === null) {
+            setSubtitlesEnabled(false);
+        } else {
+            setSelectedSubtitleIndex(index);
+            setSubtitlesEnabled(true);
+        }
+        setShowSubtitleMenu(false);
+    }, [videoRef]);
+
+    useEffect(() => {
+        const tracks = videoRef.current?.textTracks;
+        if (!tracks) return;
+        for (let index = 0; index < tracks.length; index += 1) {
+            tracks[index].mode = hasSubtitles && subtitlesEnabled && index === selectedSubtitleIndex ? 'showing' : 'disabled';
+        }
+    }, [hasSubtitles, selectedSubtitleIndex, streamKey, subtitlesEnabled, videoRef]);
+
+    useEffect(() => {
+        setSubtitlesEnabled(hasSubtitles);
+        setSelectedSubtitleIndex(0);
+        setShowSubtitleMenu(false);
+    }, [hasSubtitles, streamKey]);
+
+    useEffect(() => {
+        const video = videoRef.current;
+        if (!video || !hasSubtitles) return;
+
+        const cueLine = showControls || !isPlaying ? -4 : -2;
+        const positionCues = () => {
+            for (let trackIndex = 0; trackIndex < video.textTracks.length; trackIndex += 1) {
+                const track = video.textTracks[trackIndex];
+                const cues = track.cues;
+                if (!cues) continue;
+
+                for (let cueIndex = 0; cueIndex < cues.length; cueIndex += 1) {
+                    const cue = cues[cueIndex];
+                    if ('line' in cue && 'snapToLines' in cue) {
+                        const positionedCue = cue as TextTrackCue & { line: number | 'auto'; snapToLines: boolean };
+                        positionedCue.snapToLines = true;
+                        positionedCue.line = cueLine;
+                    }
+                }
+            }
+        };
+
+        const trackElements = Array.from(video.querySelectorAll('track'));
+        for (let trackIndex = 0; trackIndex < video.textTracks.length; trackIndex += 1) {
+            video.textTracks[trackIndex].addEventListener('cuechange', positionCues);
+        }
+        trackElements.forEach((track) => track.addEventListener('load', positionCues));
+        positionCues();
+
+        return () => {
+            for (let trackIndex = 0; trackIndex < video.textTracks.length; trackIndex += 1) {
+                video.textTracks[trackIndex].removeEventListener('cuechange', positionCues);
+            }
+            trackElements.forEach((track) => track.removeEventListener('load', positionCues));
+        };
+    }, [hasSubtitles, isPlaying, showControls, streamKey, videoRef]);
 
     useEffect(() => {
         if (initialDuration && initialDuration > 0) {
@@ -127,6 +248,9 @@ export default function CustomVideoControls({
     const currentQuality = currentStream ? getMappedQuality(currentStream.quality) : 'Auto';
     const selectedServerLabel = serverOptions.find((server) => server.key === selectedServer)?.label || 'Auto';
     const hasDub = availableAudios.includes('dub');
+    // Always let a Dub stream request Sub. The handler will purge a stale
+    // dub-only response and refetch before deciding that Sub is unavailable.
+    const canToggleAudio = selectedAudio === 'dub' || hasDub;
     const adjacentHandler = hasNextEpisode ? onNextEpisode : onPrevEpisode;
     const AdjacentIcon = hasNextEpisode ? SkipForward : SkipBack;
 
@@ -219,17 +343,18 @@ export default function CustomVideoControls({
     }, [duration]);
 
     const handleMouseMove = useCallback(() => {
+        if (isFastForwardingRef.current) return;
         setShowControls(true);
         if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
 
         controlsTimeoutRef.current = setTimeout(() => {
-            if (isPlaying) {
+            if (pageLayout || isPlaying) {
                 setShowControls(false);
                 setShowSettings(false); // also hide settings menu
                 setSettingsView('main');
             }
-        }, 3000);
-    }, [isPlaying]);
+        }, pageLayout ? 5000 : 3000);
+    }, [isPlaying, pageLayout]);
 
     const handleMouseLeave = useCallback(() => {
         if (isPlaying) {
@@ -238,6 +363,57 @@ export default function CustomVideoControls({
             setSettingsView('main');
         }
     }, [isPlaying]);
+
+    const handlePlayerSurfaceTap = useCallback(() => {
+        if (showControls) {
+            if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
+            setShowControls(false);
+            setShowSettings(false);
+            setShowSubtitleMenu(false);
+            setSettingsView('main');
+            return;
+        }
+        handleMouseMove();
+    }, [handleMouseMove, showControls]);
+
+    const stopHoldGesture = useCallback(() => {
+        if (holdTimerRef.current) {
+            clearTimeout(holdTimerRef.current);
+            holdTimerRef.current = null;
+        }
+        const video = videoRef.current;
+        if (video && holdActivatedRef.current) {
+            video.playbackRate = previousPlaybackRateRef.current;
+        }
+        holdActivatedRef.current = false;
+        isFastForwardingRef.current = false;
+        setIsFastForwarding(false);
+    }, [videoRef]);
+
+    const startFastForwardGesture = useCallback(() => {
+        stopHoldGesture();
+        holdActivatedRef.current = false;
+        holdTimerRef.current = setTimeout(() => {
+            const video = videoRef.current;
+            if (!video) return;
+            holdActivatedRef.current = true;
+            isFastForwardingRef.current = true;
+            setIsFastForwarding(true);
+            setShowControls(false);
+            setShowSettings(false);
+            setShowSubtitleMenu(false);
+            previousPlaybackRateRef.current = video.playbackRate || playbackSpeed || 1;
+            video.playbackRate = 2;
+        }, 350);
+    }, [playbackSpeed, stopHoldGesture, videoRef]);
+
+    useEffect(() => () => stopHoldGesture(), [stopHoldGesture]);
+
+    useEffect(() => {
+        if (!pageLayout) return;
+        document.body.classList.toggle('yorumi-player-controls-hidden', !showControls);
+        return () => document.body.classList.remove('yorumi-player-controls-hidden');
+    }, [pageLayout, showControls]);
 
     const toggleVideoPlayback = useCallback(() => {
         const video = videoRef.current;
@@ -304,14 +480,6 @@ export default function CustomVideoControls({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [videoRef, playbackSpeed, streamKey]);
 
-    useEffect(() => {
-        const handleFullscreenChange = () => {
-            setIsFullscreen(!!document.fullscreenElement);
-        };
-        document.addEventListener('fullscreenchange', handleFullscreenChange);
-        return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
-    }, []);
-
     const togglePlay = (e?: React.MouseEvent) => {
         if (e) e.stopPropagation();
         toggleVideoPlayback();
@@ -323,16 +491,100 @@ export default function CustomVideoControls({
         }
     };
 
-    const toggleFullscreen = () => {
+    const exitNativeFullscreen = useCallback(async () => {
+        if (nativeFullscreenTransitionRef.current) return;
+        nativeFullscreenTransitionRef.current = true;
+        try {
+            if (document.fullscreenElement) {
+                await document.exitFullscreen().catch(() => undefined);
+            }
+            await ScreenOrientation.lock({ orientation: 'portrait-primary' }).catch((error) => {
+                console.warn('Failed to restore portrait orientation', error);
+            });
+            await waitForViewportOrientation('portrait');
+            document.body.classList.remove('yorumi-player-landscape');
+            setIsFullscreen(false);
+            await ScreenOrientation.unlock().catch((error) => {
+                console.warn('Failed to unlock native orientation', error);
+            });
+            await exitImmersiveMode().catch((error) => {
+                console.warn('Failed to exit immersive player mode', error);
+            });
+        } finally {
+            nativeFullscreenTransitionRef.current = false;
+        }
+    }, []);
+
+    const enterNativeFullscreen = useCallback(async () => {
+        if (nativeFullscreenTransitionRef.current) return;
+        nativeFullscreenTransitionRef.current = true;
+        try {
+            // Native rotation owns the viewport. CSS only expands the player;
+            // it must never rotate or swap vw/vh dimensions.
+            await ScreenOrientation.lock({ orientation: 'landscape' });
+            await waitForViewportOrientation('landscape');
+            document.body.classList.add('yorumi-player-landscape');
+            await enterImmersiveMode();
+            setIsFullscreen(true);
+        } catch (error) {
+            document.body.classList.remove('yorumi-player-landscape');
+            setIsFullscreen(false);
+            await ScreenOrientation.unlock().catch(() => undefined);
+            await exitImmersiveMode().catch(() => undefined);
+            console.error('Failed to enter native landscape player mode', error);
+        } finally {
+            nativeFullscreenTransitionRef.current = false;
+        }
+    }, []);
+
+    useEffect(() => {
+        const handleFullscreenChange = () => {
+            if (pageLayout && isNativeMobile()) {
+                if (!document.fullscreenElement && isFullscreen && !nativeFullscreenTransitionRef.current) {
+                    void exitNativeFullscreen();
+                }
+                return;
+            }
+            setIsFullscreen(Boolean(document.fullscreenElement));
+        };
+        document.addEventListener('fullscreenchange', handleFullscreenChange);
+        return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    }, [exitNativeFullscreen, isFullscreen, pageLayout]);
+
+    const toggleFullscreen = async () => {
         const playerContainer = videoRef.current?.closest('.watch-player-shell');
         if (!playerContainer) return;
 
+        if (pageLayout && isNativeMobile()) {
+            if (isFullscreen) {
+                await exitNativeFullscreen();
+            } else {
+                await enterNativeFullscreen();
+            }
+            return;
+        }
+
         if (!document.fullscreenElement) {
-            playerContainer.requestFullscreen().catch(console.error);
+            try {
+                await playerContainer.requestFullscreen({ navigationUI: 'hide' });
+                if (pageLayout) {
+                    await ScreenOrientation.lock({ orientation: 'landscape' });
+                }
+            } catch (error) {
+                console.error(error);
+            }
         } else {
-            document.exitFullscreen().catch(console.error);
+            await document.exitFullscreen().catch(console.error);
         }
     };
+
+    useEffect(() => () => {
+        if (pageLayout && isNativeMobile()) {
+            document.body.classList.remove('yorumi-player-landscape');
+            ScreenOrientation.unlock().catch(() => undefined);
+            exitImmersiveMode().catch(() => undefined);
+        }
+    }, [pageLayout]);
 
     const handleCast = async () => {
         const video = videoRef.current as any;
@@ -396,6 +648,29 @@ export default function CustomVideoControls({
             playerShell.addEventListener('mousemove', handleMouseMove);
             playerShell.addEventListener('mouseleave', handleMouseLeave);
             const focusPlayer = () => playerShell.focus({ preventScroll: true });
+            const handleGesturePointerDown = (event: PointerEvent) => {
+                if (!pageLayout || !event.isPrimary || event.button !== 0) return;
+                startFastForwardGesture();
+            };
+            const handleGesturePointerUp = (event: PointerEvent) => {
+                if (!pageLayout || !event.isPrimary) return;
+                const wasFastForwarding = holdActivatedRef.current;
+                stopHoldGesture();
+                if (wasFastForwarding) {
+                    suppressNextClickRef.current = true;
+                    event.preventDefault();
+                    event.stopPropagation();
+                }
+            };
+            const handleGestureClick = (event: MouseEvent) => {
+                if (!suppressNextClickRef.current) return;
+                suppressNextClickRef.current = false;
+                event.preventDefault();
+                event.stopPropagation();
+            };
+            const handleGesturePointerCancel = () => {
+                if (pageLayout) stopHoldGesture();
+            };
             const handleKeyDown = (event: KeyboardEvent) => {
                 const isPlaybackKey = event.code === 'Space' || event.code === 'ArrowLeft' || event.code === 'ArrowRight';
                 if (!isPlaybackKey) return;
@@ -428,6 +703,10 @@ export default function CustomVideoControls({
                 handleMouseMove();
             };
             playerShell.addEventListener('pointerdown', focusPlayer);
+            playerShell.addEventListener('pointerdown', handleGesturePointerDown, true);
+            playerShell.addEventListener('pointerup', handleGesturePointerUp, true);
+            playerShell.addEventListener('pointercancel', handleGesturePointerCancel, true);
+            playerShell.addEventListener('click', handleGestureClick, true);
             playerShell.addEventListener('keydown', handleKeyDown);
             
             const initialTimer = setTimeout(handleMouseMove, 0);
@@ -437,10 +716,14 @@ export default function CustomVideoControls({
                 playerShell.removeEventListener('mousemove', handleMouseMove);
                 playerShell.removeEventListener('mouseleave', handleMouseLeave);
                 playerShell.removeEventListener('pointerdown', focusPlayer);
+                playerShell.removeEventListener('pointerdown', handleGesturePointerDown, true);
+                playerShell.removeEventListener('pointerup', handleGesturePointerUp, true);
+                playerShell.removeEventListener('pointercancel', handleGesturePointerCancel, true);
+                playerShell.removeEventListener('click', handleGestureClick, true);
                 playerShell.removeEventListener('keydown', handleKeyDown);
             };
         }
-    }, [videoRef, handleMouseMove, handleMouseLeave, toggleVideoPlayback]);
+    }, [videoRef, handleMouseMove, handleMouseLeave, pageLayout, startFastForwardGesture, stopHoldGesture, toggleVideoPlayback]);
 
     // Cleanup the center animation state so it fully unmounts
     useEffect(() => {
@@ -575,7 +858,7 @@ export default function CustomVideoControls({
             `}</style>
             
             {/* Center Animation Overlay */}
-            {centerAction && (
+            {centerAction && !pageLayout && (
                 <div 
                     key={centerAction.id}
                     className="watch-center-pop absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none z-[60] flex h-16 w-16 items-center justify-center rounded-full bg-[#2A2322]/75 shadow-2xl animate-animetsu-center-pop sm:h-[72px] sm:w-[72px]"
@@ -588,10 +871,63 @@ export default function CustomVideoControls({
                 </div>
             )}
 
+            {pageLayout && (
+                <div
+                    className="absolute inset-x-0 top-0 z-[60] touch-manipulation bg-transparent"
+                    style={{ bottom: '104px' }}
+                    onClick={handlePlayerSurfaceTap}
+                    onContextMenu={(event) => event.preventDefault()}
+                    aria-hidden="true"
+                />
+            )}
+
+            {pageLayout && isFastForwarding && (
+                <div className="pointer-events-none absolute left-1/2 top-4 z-[100] flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-white/10 bg-black/75 px-4 py-2 text-sm font-bold text-white shadow-xl backdrop-blur-sm">
+                    <span>2x</span>
+                    <FastForward className="h-4 w-4 fill-current" strokeWidth={2.5} />
+                </div>
+            )}
+
+            {pageLayout && (
+                <div
+                    className={`pointer-events-auto absolute left-0 right-0 z-[80] h-16 -translate-y-1/2 ${isFastForwarding ? 'pointer-events-none opacity-0' : `transition-opacity duration-300 ${showControls ? 'opacity-100' : 'pointer-events-none opacity-0'}`}`}
+                    style={{ top: 'calc((100% - 104px) / 2)' }}
+                    onClick={(event) => event.stopPropagation()}
+                >
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setIsControlsLocked((locked) => !locked);
+                            handleMouseMove();
+                        }}
+                        className="absolute left-4 top-1/2 grid h-11 w-11 -translate-y-1/2 place-items-center text-white drop-shadow-lg"
+                        aria-label={isControlsLocked ? 'Unlock player controls' : 'Lock player controls'}
+                    >
+                        {isControlsLocked ? <Lock className="h-7 w-7" /> : <Unlock className="h-7 w-7" />}
+                    </button>
+                    {!isControlsLocked && (
+                        <>
+                            <button type="button" onClick={() => seekBy(-SEEK_SECONDS)} className="absolute top-1/2 grid h-12 w-12 -translate-x-1/2 -translate-y-1/2 place-items-center text-white drop-shadow-lg" style={{ left: 'calc(50% - 88px)' }} aria-label="Back 5 seconds">
+                                <SeekIcon direction="back" />
+                            </button>
+                            <button type="button" onClick={togglePlay} className="absolute left-1/2 top-1/2 grid h-16 w-16 -translate-x-1/2 -translate-y-1/2 place-items-center text-white drop-shadow-xl" aria-label={isPlaying ? 'Pause' : 'Play'}>
+                                {isPlaying ? <Pause className="h-12 w-12 fill-current" /> : <Play className="ml-1 h-12 w-12 fill-current" />}
+                            </button>
+                            <button type="button" onClick={() => seekBy(SEEK_SECONDS)} className="absolute top-1/2 grid h-12 w-12 -translate-x-1/2 -translate-y-1/2 place-items-center text-white drop-shadow-lg" style={{ left: 'calc(50% + 88px)' }} aria-label="Forward 5 seconds">
+                                <SeekIcon direction="forward" />
+                            </button>
+                            <button type="button" onClick={() => onNextEpisode?.()} disabled={!hasNextEpisode || !onNextEpisode} className="absolute right-4 top-1/2 grid h-11 w-11 -translate-y-1/2 place-items-center text-white drop-shadow-lg disabled:opacity-30" aria-label="Next episode">
+                                <SkipForward className="h-7 w-7 fill-current" />
+                            </button>
+                        </>
+                    )}
+                </div>
+            )}
+
             {/* Top Bar - Server Selection */}
 
             <div 
-                className={`absolute bottom-0 left-0 right-0 p-2 sm:p-6 transition-opacity duration-300 z-[2147483647] pointer-events-none ${showControls || !isPlaying ? 'opacity-100' : 'opacity-0'}`}
+                className={`watch-controls-deck absolute bottom-0 left-0 right-0 pointer-events-none ${isFastForwarding ? '' : 'transition-opacity duration-300'} ${pageLayout ? `z-[80] h-[104px] border-t border-white/10 bg-black px-3 py-2 ${isControlsLocked || !showControls || isFastForwarding ? 'opacity-0' : 'opacity-100'}` : `z-[2147483647] p-2 sm:p-6 ${showControls || !isPlaying ? 'opacity-100' : 'opacity-0'}`}`}
             >
                 <div className="mx-auto max-w-5xl flex flex-col gap-3 sm:gap-4 pointer-events-auto">
                     {/* Scrubber / Progress Bar */}
@@ -634,17 +970,17 @@ export default function CustomVideoControls({
                     </div>
 
                     {/* Controls */}
-                    <div className="flex w-full items-center justify-center gap-1 sm:justify-between sm:gap-3">
+                    <div className={`flex w-full items-center ${pageLayout ? 'justify-between gap-3' : 'justify-center gap-1 sm:justify-between sm:gap-3'}`}>
                         {/* Left Controls */}
-                        <div className="flex min-w-0 items-center gap-1 sm:gap-2">
-                            <button 
+                        <div className={`flex min-w-0 items-center ${pageLayout ? 'gap-2' : 'gap-1 sm:gap-2'}`}>
+                            {!pageLayout && <button 
                                 onClick={togglePlay} 
                                 className={`${GLASS_BUTTON_CLASS} h-7 w-7 sm:h-10 sm:w-12`}
                             >
                                 {isPlaying ? <Pause className="h-3.5 w-3.5 fill-current sm:h-5 sm:w-5" /> : <Play className="h-3.5 w-3.5 fill-current sm:h-5 sm:w-5" />}
-                            </button>
+                            </button>}
                             
-                            {adjacentHandler && (
+                            {!pageLayout && adjacentHandler && (
                                 <button 
                                     onClick={(e) => { e.stopPropagation(); adjacentHandler(); }}
                                     title={hasNextEpisode ? 'Next Episode' : 'Previous Episode'}
@@ -654,12 +990,12 @@ export default function CustomVideoControls({
                                 </button>
                             )}
                             
-                            <div className={`${GLASS_PANEL_CLASS} group/volume flex h-7 w-7 items-center overflow-hidden transition-all duration-300 sm:h-10 sm:w-12 sm:hover:w-32`}>
+                            <div className={`${GLASS_PANEL_CLASS} group/volume flex items-center overflow-hidden transition-all duration-300 ${pageLayout ? 'h-11 w-11' : 'h-7 w-7 sm:h-10 sm:w-12 sm:hover:w-32'}`}>
                                 <button 
                                     onClick={toggleMute} 
-                                    className="flex h-7 w-7 flex-shrink-0 items-center justify-center sm:h-10 sm:w-12"
+                                    className={`flex flex-shrink-0 items-center justify-center ${pageLayout ? 'h-11 w-11' : 'h-7 w-7 sm:h-10 sm:w-12'}`}
                                 >
-                                    {isMuted || volume === 0 ? <VolumeX className="h-3.5 w-3.5 sm:h-5 sm:w-5" /> : <Volume2 className="h-3.5 w-3.5 sm:h-5 sm:w-5" />}
+                                    {isMuted || volume === 0 ? <VolumeX className={pageLayout ? 'h-6 w-6' : 'h-3.5 w-3.5 sm:h-5 sm:w-5'} /> : <Volume2 className={pageLayout ? 'h-6 w-6' : 'h-3.5 w-3.5 sm:h-5 sm:w-5'} />}
                                 </button>
                                 <input 
                                     type="range" 
@@ -679,29 +1015,29 @@ export default function CustomVideoControls({
                                 />
                             </div>
 
-                            <div className={`${GLASS_PANEL_CLASS} flex h-7 min-w-[62px] items-center justify-center px-1.5 text-[9px] font-bold tracking-normal sm:h-10 sm:min-w-0 sm:px-4 sm:text-xs sm:font-medium sm:tracking-wider`}>
+                            <div className={`${GLASS_PANEL_CLASS} flex items-center justify-center font-bold tracking-normal ${pageLayout ? 'h-11 min-w-[94px] px-3 text-xs' : 'h-7 min-w-[62px] px-1.5 text-[9px] sm:h-10 sm:min-w-0 sm:px-4 sm:text-xs sm:font-medium sm:tracking-wider'}`}>
                                 {formatTime(currentTime)} / {formatTime(duration)}
                             </div>
                         </div>
 
                         {/* Right Controls */}
-                        <div className="flex shrink-0 items-center gap-1 sm:gap-2">
-                            <button
+                        <div className={`flex shrink-0 items-center ${pageLayout ? 'gap-2' : 'gap-1 sm:gap-2'}`}>
+                            {!pageLayout && <button
                                 onClick={() => seekBy(-SEEK_SECONDS)}
                                 className={`${GLASS_BUTTON_CLASS} h-7 w-7 sm:h-10 sm:w-12`}
                                 title="Back 5 seconds"
                             >
                                 <SeekIcon direction="back" />
-                            </button>
-                            <button
+                            </button>}
+                            {!pageLayout && <button
                                 onClick={() => seekBy(SEEK_SECONDS)}
                                 className={`${GLASS_BUTTON_CLASS} h-7 w-7 sm:h-10 sm:w-12`}
                                 title="Forward 5 seconds"
                             >
                                 <SeekIcon direction="forward" />
-                            </button>
+                            </button>}
 
-                            <div className={`${GLASS_PANEL_CLASS} relative flex h-7 items-center gap-0 px-0 sm:h-10 sm:gap-1 sm:px-3`}>
+                            <div className={`${GLASS_PANEL_CLASS} relative flex items-center ${pageLayout ? 'h-11 gap-1 px-1.5' : 'h-7 gap-0 px-0 sm:h-10 sm:gap-1 sm:px-3'}`}>
                                 {/* Settings Popover */}
                                 {showSettings && (
                                     <div className="absolute bottom-full right-0 mb-3 w-44 bg-[#1A1A1A]/95 backdrop-blur-xl rounded-xl p-1 shadow-2xl z-50">
@@ -719,12 +1055,12 @@ export default function CustomVideoControls({
                                             <div className="flex flex-col gap-0.5">
                                                 <button
                                                     onClick={() => {
-                                                        if (hasDub) {
+                                                        if (canToggleAudio) {
                                                             onAudioChange(selectedAudio === 'dub' ? 'sub' : 'dub');
                                                             setShowSettings(false);
                                                         }
                                                     }}
-                                                    disabled={!hasDub}
+                                                    disabled={!canToggleAudio}
                                                     className="flex items-center justify-between w-full p-2 hover:bg-white/10 rounded-lg transition-colors disabled:opacity-40"
                                                 >
                                                     <div className="flex items-center gap-2 text-white">
@@ -860,18 +1196,63 @@ export default function CustomVideoControls({
                                     </div>
                                 )}
 
-                                <button onClick={() => { setShowSettings(!showSettings); setSettingsView('main'); }} className="rounded-full p-1.5 text-white transition-colors hover:bg-white/10 hover:text-white/80 sm:p-2">
-                                    <Settings className="h-3.5 w-3.5 sm:h-5 sm:w-5" />
+                                <button onClick={() => { setShowSettings(!showSettings); setShowSubtitleMenu(false); setSettingsView('main'); }} className={`rounded-full text-white transition-colors hover:bg-white/10 hover:text-white/80 ${pageLayout ? 'p-2.5' : 'p-1.5 sm:p-2'}`}>
+                                    <Settings className={pageLayout ? 'h-6 w-6' : 'h-3.5 w-3.5 sm:h-5 sm:w-5'} />
                                 </button>
-                                <button
-                                    onClick={onToggleWide}
-                                    className={`rounded-full p-1.5 text-white transition-colors sm:p-2 ${isWide ? 'bg-white/20 hover:bg-white/25' : 'hover:bg-white/10 hover:text-white/80'}`}
-                                    title={isWide ? 'Show episodes' : 'Wide player'}
-                                >
-                                    <Monitor className="h-3.5 w-3.5 sm:h-5 sm:w-5" />
-                                </button>
-                                <button onClick={toggleFullscreen} className="rounded-full p-1.5 text-white transition-colors hover:bg-white/10 hover:text-white/80 sm:p-2">
-                                    {isFullscreen ? <Minimize className="h-3.5 w-3.5 sm:h-5 sm:w-5" /> : <Maximize className="h-3.5 w-3.5 sm:h-5 sm:w-5" />}
+                                {hasSubtitles && (
+                                    <>
+                                        {showSubtitleMenu && subtitleTracks.length > 1 && (
+                                            <div
+                                                className="pointer-events-auto absolute bottom-full right-8 z-50 mb-3 max-h-64 w-44 overflow-y-auto rounded-xl bg-[#1A1A1A]/95 p-1 shadow-2xl backdrop-blur-xl sm:right-10"
+                                                onClick={(event) => event.stopPropagation()}
+                                                onPointerDown={(event) => event.stopPropagation()}
+                                            >
+                                                <div className="border-b border-white/10 px-2.5 py-2 text-xs font-semibold text-white">Subtitles</div>
+                                                <button
+                                                    onClick={(event) => { event.stopPropagation(); selectSubtitleTrack(null); }}
+                                                    type="button"
+                                                    className="flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left text-xs text-white/80 transition-colors hover:bg-white/10"
+                                                >
+                                                    <span>Off</span>
+                                                    {!subtitlesEnabled && <CheckCircle2 className="h-3.5 w-3.5" />}
+                                                </button>
+                                                {subtitleTracks.map((track, index) => (
+                                                    <button
+                                                        key={`${track.url}:${index}`}
+                                                        onClick={(event) => { event.stopPropagation(); selectSubtitleTrack(index); }}
+                                                        type="button"
+                                                        className="flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-white/80 transition-colors hover:bg-white/10"
+                                                    >
+                                                        <span className="truncate">{getSubtitleLabel(track.lang)}</span>
+                                                        {subtitlesEnabled && selectedSubtitleIndex === index && <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
+                                        <button
+                                            onClick={(event) => {
+                                                event.stopPropagation();
+                                                setShowSettings(false);
+                                                if (subtitleTracks.length <= 1) {
+                                                    selectSubtitleTrack(subtitlesEnabled ? null : 0);
+                                                    return;
+                                                }
+                                                setShowSubtitleMenu((visible) => !visible);
+                                            }}
+                                            type="button"
+                                            className={`rounded-full text-white transition-colors ${pageLayout ? 'p-2.5' : 'p-1.5 sm:p-2'} ${subtitlesEnabled ? 'bg-white/20 hover:bg-white/25' : 'hover:bg-white/10 hover:text-white/80'}`}
+                                            title={subtitleTracks.length > 1
+                                                ? 'Choose subtitle language'
+                                                : (subtitlesEnabled ? 'Turn subtitles off' : 'Turn subtitles on')}
+                                            aria-expanded={showSubtitleMenu}
+                                            aria-pressed={subtitlesEnabled}
+                                        >
+                                            <Captions className={pageLayout ? 'h-6 w-6' : 'h-3.5 w-3.5 sm:h-5 sm:w-5'} />
+                                        </button>
+                                    </>
+                                )}
+                                <button onClick={toggleFullscreen} className={`rounded-full text-white transition-colors hover:bg-white/10 hover:text-white/80 ${pageLayout ? 'p-2.5' : 'p-1.5 sm:p-2'}`}>
+                                    {isFullscreen ? <Minimize className={pageLayout ? 'h-6 w-6' : 'h-3.5 w-3.5 sm:h-5 sm:w-5'} /> : <Maximize className={pageLayout ? 'h-6 w-6' : 'h-3.5 w-3.5 sm:h-5 sm:w-5'} />}
                                 </button>
                             </div>
                         </div>

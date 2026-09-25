@@ -8,6 +8,7 @@ import AnimeCardSkeleton from './AnimeCardSkeleton';
 
 import TopTenSidebar from './TopTenSidebar';
 import ContinueWatching from './ContinueWatching';
+import MediaSectionHeader from '../../../components/ui/MediaSectionHeader';
 
 interface AnimeDashboardProps {
     continueWatchingList?: any[];
@@ -84,7 +85,7 @@ export default function AnimeDashboard({
                 />
             )}
 
-            <div className={`w-full max-w-7xl mx-auto px-8 md:px-14 z-10 relative ${compactCatalogMode ? '' : 'mt-8'}`}>
+            <div className={`w-full max-w-7xl mx-auto px-4 md:px-14 z-10 relative ${compactCatalogMode ? '' : 'mt-8'}`}>
 
                 {!compactCatalogMode && continueWatchingList && continueWatchingList.length > 0 && (
                     <div className="mb-8">
@@ -101,6 +102,7 @@ export default function AnimeDashboard({
                     <TrendingNow
                         animeList={latestUpdates}
                         title={latestUpdatesTitle}
+                        sectionNumber={1}
                         isLoading={latestUpdatesLoading}
                         onAnimeClick={onAnimeClick}
                         onWatchClick={(anime) => onWatchClick(anime, 1)}
@@ -113,6 +115,7 @@ export default function AnimeDashboard({
                     <TrendingNow
                         animeList={trendingAnime}
                         title={trendingTitle}
+                        sectionNumber={2}
                         isLoading={trendingLoading}
                         onAnimeClick={onAnimeClick}
                         onWatchClick={(anime) => onWatchClick(anime, 1)}
@@ -125,6 +128,7 @@ export default function AnimeDashboard({
                     <PopularSeason
                         animeList={popularSeason}
                         title={popularSeasonTitle}
+                        sectionNumber={3}
                         isLoading={popularSeasonLoading}
                         onAnimeClick={onAnimeClick}
                         onWatchClick={(anime) => onWatchClick(anime, 1)}
@@ -138,15 +142,12 @@ export default function AnimeDashboard({
                     <div className={`grid grid-cols-1 ${!hideTopTen ? 'lg:grid-cols-[1fr_340px]' : ''} gap-6 items-start`}>
                         {!hideTopAnime && (
                             <div data-hover-boundary>
-                                <div className="flex items-center gap-4 mb-6">
-                                    <h2 className="text-xl md:text-2xl font-black text-white tracking-wide uppercase whitespace-nowrap">{allTimeTitle}</h2>
-                                    <div className="flex-1 h-px bg-white/10" />
-                                </div>
+                                <MediaSectionHeader index={4} title={allTimeTitle} />
 
                                 <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-5 xl:grid-cols-5 gap-4 md:gap-6">
                                     {topAnimeLoading ? (
                                         Array.from({ length: 15 }).map((_, i) => (
-                                            <div key={i} className={i >= 10 ? 'hidden sm:block' : ''}>
+                                            <div key={i} className={i >= 12 ? 'hidden sm:block' : ''}>
                                                 <AnimeCardSkeleton />
                                             </div>
                                         ))
@@ -154,7 +155,7 @@ export default function AnimeDashboard({
                                         topAnime.slice(0, 15).map((item, i) => (
                                             <div
                                                 key={`${item.scraperId || item.id || item.mal_id || item.title}-${item.latestEpisode || item.episodes || 0}`}
-                                                className={i >= 10 ? 'hidden sm:block' : ''}
+                                                className={i >= 12 ? 'hidden sm:block' : ''}
                                             >
                                                 <AnimeCard
                                                     anime={item}

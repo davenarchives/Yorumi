@@ -104,10 +104,25 @@ export function resolveHlsUrl(baseUrl: string, relativeOrAbsolute: string): stri
     }
 }
 
+function isLocalMediaProxyUrl(rawUrl: string): boolean {
+    try {
+        const parsed = new URL(rawUrl);
+        return parsed.port === '18765' && (parsed.hostname === '127.0.0.1' || parsed.hostname === 'localhost');
+    } catch {
+        return false;
+    }
+}
+
 function getFetchableUrl(rawUrl: string): string {
     if (!rawUrl) return '';
     if (rawUrl.startsWith('/')) {
         return `${API_ORIGIN}${rawUrl}`;
+    }
+    // Android playback URLs are already proxied by the on-device native
+    // server. Sending these through the backend makes 127.0.0.1 point at the
+    // PC/server instead of the phone and fails with ECONNREFUSED.
+    if (isLocalMediaProxyUrl(rawUrl)) {
+        return rawUrl;
     }
     if (rawUrl.startsWith('http') && !rawUrl.includes('localhost:3001') && !rawUrl.includes('127.0.0.1:3001') && !rawUrl.startsWith(API_ORIGIN)) {
         return `${API_BASE}/scraper/proxy?url=${encodeURIComponent(rawUrl)}`;
@@ -409,7 +424,7 @@ ${rawBlobUrl}
             isHls,
             isEmbed: false,
             provider: 'Offline Storage',
-            server: 'anidb',
+            server: 'hianime',
             subtitles: downloaded.subtitles,
             duration: downloaded.duration,
         };
@@ -475,6 +490,7 @@ ${rawBlobUrl}
             episodeNumber: number;
             episodeTitle?: string;
             streamUrl: string;
+            isHls?: boolean;
             quality?: string;
             audio?: 'sub' | 'dub';
             subtitles?: SubtitleTrack[];
@@ -514,7 +530,7 @@ ${rawBlobUrl}
             let finalSize = 0;
             let hlsDuration = 0;
 
-            const isHls = streamUrl.includes('.m3u8') || streamUrl.includes('m3u8');
+            const isHls = params.isHls === true || streamUrl.includes('.m3u8') || streamUrl.includes('m3u8');
 
             if (isHls) {
                 const result = await downloadHlsStream(streamUrl, (bytes, progress) => {

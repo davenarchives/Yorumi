@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { X, Tv, BookOpen, BookText, Play, Trash2, Download } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import Carousel from '../components/ui/Carousel';
@@ -20,6 +20,15 @@ import type { WatchListItem } from '../utils/storage';
 
 export type LibraryTab = 'anime' | 'manga' | 'ln';
 
+type MobileLibraryItem = {
+    id: string;
+    title: string;
+    image: string;
+    count?: number;
+    route: string;
+    state?: Record<string, unknown>;
+};
+
 const STORAGE_KEY = 'yorumi_library_tab';
 
 const getAnimeRouteId = (item: WatchListItem) => {
@@ -34,6 +43,7 @@ const getAnimeRouteId = (item: WatchListItem) => {
 };
 
 export default function LibraryPage() {
+    const [isOffline, setIsOffline] = useState(() => typeof navigator !== 'undefined' && !navigator.onLine);
     const [activeTab, setActiveTab] = useState<LibraryTab>(() => {
         try {
             const saved = localStorage.getItem(STORAGE_KEY);
@@ -64,18 +74,116 @@ export default function LibraryPage() {
     const { downloads: lnDownloads, deleteDownload: deleteLNDownload } = useLNDownloads();
     const navigate = useNavigate();
 
-    const filteredWatching = continueWatchingList;
-    const filteredReading = continueReadingList;
-    const filteredLN = continueLNList;
-    const filteredWatchList = watchList;
-    const filteredReadList = readList;
-    const filteredLNList = lnReadList;
+    useEffect(() => {
+        const updateNetworkStatus = () => setIsOffline(!navigator.onLine);
+        window.addEventListener('online', updateNetworkStatus);
+        window.addEventListener('offline', updateNetworkStatus);
+        return () => {
+            window.removeEventListener('online', updateNetworkStatus);
+            window.removeEventListener('offline', updateNetworkStatus);
+        };
+    }, []);
+
+    const filteredWatching = isOffline ? [] : continueWatchingList;
+    const filteredReading = isOffline ? [] : continueReadingList;
+    const filteredLN = isOffline ? [] : continueLNList;
+    const filteredWatchList = isOffline ? [] : watchList;
+    const filteredReadList = isOffline ? [] : readList;
+    const filteredLNList = isOffline ? [] : lnReadList;
+
+    const mobileLibraryItems = useMemo<MobileLibraryItem[]>(() => {
+        const items = new Map<string, MobileLibraryItem>();
+        if (activeTab === 'anime') {
+            filteredWatchList.forEach((item) => {
+                const progress = filteredWatching.find((entry) => String(entry.animeId) === String(item.id) || entry.animeTitle?.toLowerCase() === item.title.toLowerCase());
+                const routeId = getAnimeRouteId(item);
+                items.set(String(item.id), {
+                    id: String(item.id), title: item.title, image: item.image,
+                    count: item.totalCount || progress?.totalCount || progress?.episodeNumber,
+                    route: `/anime/details/${encodeURIComponent(routeId)}`,
+                    state: { anime: { id: Number(item.anilistId || item.id) || 0, mal_id: Number(item.malId || item.id) || 0, scraperId: item.scraperId, title: item.title, title_english: item.title, images: { jpg: { image_url: item.image, large_image_url: item.image } }, episodes: item.totalCount || progress?.totalCount || null, status: item.mediaStatus, type: item.type || 'TV', score: item.score || 0, synopsis: item.synopsis, genres: item.genres?.map((name) => ({ name, mal_id: 0 })) || [] } },
+                });
+            });
+            filteredWatching.forEach((item) => {
+                if ([...items.values()].some((entry) => entry.title.toLowerCase() === item.animeTitle.toLowerCase())) return;
+                items.set(String(item.animeId), { id: String(item.animeId), title: item.animeTitle, image: item.animePoster || item.animeImage, count: item.totalCount || item.episodeNumber, route: `/anime/details/${encodeURIComponent(item.animeId)}`, state: { anime: { id: Number(item.animeId) || 0, mal_id: Number(item.animeId) || 0, title: item.animeTitle, title_english: item.animeTitle, images: { jpg: { image_url: item.animePoster || item.animeImage, large_image_url: item.animePoster || item.animeImage } }, episodes: item.totalCount || null, status: item.mediaStatus, type: 'TV', score: 0 } } });
+            });
+            const animeDownloadGroups = new Map<string, typeof downloads>();
+            downloads.forEach((download) => {
+                const key = String(download.animeId || download.animeTitle).trim();
+                animeDownloadGroups.set(key, [...(animeDownloadGroups.get(key) || []), download]);
+            });
+            animeDownloadGroups.forEach((group, key) => {
+                const first = group[0];
+                if (!first) return;
+                const existing = items.get(key) || [...items.values()].find((item) => item.title.toLowerCase() === first.animeTitle.toLowerCase());
+                const existingAnime = existing?.state?.anime as Record<string, unknown> | undefined;
+                items.set(existing?.id || key, {
+                    ...(existing || {}), id: existing?.id || key, title: first.animeTitle, image: existing?.image || first.animeImage,
+                    count: isOffline ? group.length : existing?.count, route: existing?.route || `/anime/details/${encodeURIComponent(key)}`,
+                    state: { ...(existing?.state || {}), fromDownloads: isOffline, animeTitle: first.animeTitle, downloadedEpisodes: group, anime: { ...(existingAnime || {}), id: existingAnime?.id || Number(key) || 0, mal_id: existingAnime?.mal_id || Number(key) || 0, title: first.animeTitle, title_english: first.animeTitle, images: { jpg: { image_url: existing?.image || first.animeImage, large_image_url: existing?.image || first.animeImage } } } },
+                });
+            });
+        } else if (activeTab === 'manga') {
+            filteredReadList.forEach((item) => {
+                const progress = filteredReading.find((entry) => String(entry.mangaId) === String(item.id) || entry.mangaTitle?.toLowerCase() === item.title.toLowerCase());
+                const routeId = String(item.scraperId || '').startsWith('vault') ? item.scraperId : item.id;
+                items.set(String(item.id), { id: String(item.id), title: item.title, image: item.image, count: item.totalCount || progress?.totalCount || Number(progress?.chapterNumber), route: `/manga/details/${encodeURIComponent(String(routeId))}`, state: { manga: { id: item.id, mal_id: item.malId || item.id, scraper_id: item.scraperId, title: item.title, title_english: item.title, images: { jpg: { image_url: item.image, large_image_url: item.image } }, chapters: item.totalCount || progress?.totalCount || null, status: item.mediaStatus, type: item.type || 'Manga', score: item.score || 0, synopsis: item.synopsis, genres: item.genres?.map((name) => ({ name, mal_id: 0 })) || [] } } });
+            });
+            filteredReading.forEach((item) => {
+                if ([...items.values()].some((entry) => entry.title.toLowerCase() === item.mangaTitle.toLowerCase())) return;
+                items.set(String(item.mangaId), { id: String(item.mangaId), title: item.mangaTitle, image: item.mangaPoster || item.mangaImage, count: item.totalCount || Number(item.chapterNumber), route: `/manga/details/${encodeURIComponent(item.mangaId)}`, state: { manga: { id: item.mangaId, mal_id: item.mangaId, scraper_id: item.mangaId, title: item.mangaTitle, title_english: item.mangaTitle, images: { jpg: { image_url: item.mangaPoster || item.mangaImage, large_image_url: item.mangaPoster || item.mangaImage } }, chapters: item.totalCount || null, status: item.mediaStatus, type: 'Manga', score: 0 } } });
+            });
+            const mangaDownloadGroups = new Map<string, typeof mangaDownloads>();
+            mangaDownloads.forEach((download) => {
+                const key = String(download.mangaId || download.mangaTitle).trim();
+                mangaDownloadGroups.set(key, [...(mangaDownloadGroups.get(key) || []), download]);
+            });
+            mangaDownloadGroups.forEach((group, key) => {
+                const first = group[0];
+                if (!first) return;
+                const existing = items.get(key) || [...items.values()].find((item) => item.title.toLowerCase() === first.mangaTitle.toLowerCase());
+                const existingManga = existing?.state?.manga as Record<string, unknown> | undefined;
+                items.set(existing?.id || key, {
+                    ...(existing || {}), id: existing?.id || key, title: first.mangaTitle, image: existing?.image || first.mangaImage,
+                    count: isOffline ? group.length : existing?.count, route: existing?.route || `/manga/details/${encodeURIComponent(key)}`,
+                    state: { ...(existing?.state || {}), fromDownloads: isOffline, downloadedChapters: group, manga: { ...(existingManga || {}), id: existingManga?.id || key, mal_id: existingManga?.mal_id || key, scraper_id: existingManga?.scraper_id || key, title: first.mangaTitle, title_english: first.mangaTitle, images: { jpg: { image_url: existing?.image || first.mangaImage, large_image_url: existing?.image || first.mangaImage } } } },
+                });
+            });
+        } else {
+            filteredLNList.forEach((item) => {
+                const progress = filteredLN.find((entry) => String(entry.novelId) === String(item.id));
+                items.set(String(item.id), { id: String(item.id), title: item.title, image: item.image, count: item.totalCount || progress?.chapterNumber, route: `/ln/details/${encodeURIComponent(String(item.id))}`, state: { ln: { id: item.id, mal_id: item.id, title: item.title, title_english: item.title, images: { jpg: { image_url: item.image, large_image_url: item.image } }, chapters: item.totalCount || null, status: item.mediaStatus, type: item.type || 'NOVEL', score: item.score || 0, synopsis: item.synopsis, genres: item.genres?.map((name) => ({ name, mal_id: 0 })) || [] } } });
+            });
+            filteredLN.forEach((item) => {
+                if ([...items.values()].some((entry) => entry.title.toLowerCase() === item.novelTitle.toLowerCase())) return;
+                items.set(String(item.novelId), { id: String(item.novelId), title: item.novelTitle, image: item.coverImage, count: item.chapterNumber, route: `/ln/details/${encodeURIComponent(String(item.novelId))}`, state: { ln: { id: item.novelId, mal_id: item.novelId, scraper_id: String(item.novelId).includes(':') ? item.novelId : undefined, title: item.novelTitle, title_english: item.novelTitle, images: { jpg: { image_url: item.coverImage, large_image_url: item.coverImage } }, type: 'NOVEL', score: 0 } } });
+            });
+            const lnDownloadGroups = new Map<string, typeof lnDownloads>();
+            lnDownloads.forEach((download) => {
+                const key = String(download.novelId || download.novelTitle).trim();
+                lnDownloadGroups.set(key, [...(lnDownloadGroups.get(key) || []), download]);
+            });
+            lnDownloadGroups.forEach((group, key) => {
+                const first = group[0];
+                if (!first) return;
+                const existing = items.get(key) || [...items.values()].find((item) => item.title.toLowerCase() === first.novelTitle.toLowerCase());
+                const existingLN = existing?.state?.ln as Record<string, unknown> | undefined;
+                items.set(existing?.id || key, {
+                    ...(existing || {}), id: existing?.id || key, title: first.novelTitle, image: existing?.image || first.novelImage,
+                    count: isOffline ? group.length : existing?.count, route: existing?.route || `/ln/details/${encodeURIComponent(key)}`,
+                    state: { ...(existing?.state || {}), fromDownloads: isOffline, downloadedChapters: group, ln: { ...(existingLN || {}), id: existingLN?.id || key, mal_id: existingLN?.mal_id || key, scraper_id: existingLN?.scraper_id || key, title: first.novelTitle, title_english: first.novelTitle, images: { jpg: { image_url: existing?.image || first.novelImage, large_image_url: existing?.image || first.novelImage } }, type: 'NOVEL' } },
+                });
+            });
+        }
+        return [...items.values()];
+    }, [activeTab, downloads, filteredLN, filteredLNList, filteredReadList, filteredReading, filteredWatchList, filteredWatching, isOffline, lnDownloads, mangaDownloads]);
 
     return (
-        <div className="min-h-screen bg-[#0a0a0a] pt-12 pb-24">
-            <div className="w-full max-w-7xl mx-auto px-8 md:px-14 relative">
+        <div className="min-h-screen bg-[#0a0a0a] pt-0 pb-24 md:pt-12">
+            <div className="w-full max-w-7xl mx-auto px-3 md:px-14 relative">
                 {/* Header with Title, Horizontal Line, and Media Selector Toggle */}
-                <div className="mb-8">
+                <div className="sticky top-0 z-30 -mx-3 mb-8 border-b border-white/5 bg-[#0a0a0a]/95 px-3 pb-3 pt-[calc(env(safe-area-inset-top,0px)+0.75rem)] backdrop-blur-xl md:static md:mx-0 md:border-b-0 md:bg-transparent md:px-0 md:pb-0 md:pt-0 md:backdrop-blur-none">
                     <div className="flex items-center gap-4 mb-2">
                         <h1 className="text-2xl font-bold uppercase tracking-wider text-white whitespace-nowrap">
                             MY LIBRARY
@@ -128,7 +236,29 @@ export default function LibraryPage() {
                 </div>
 
                 {/* Tab Contents */}
-                <div className="pb-12">
+                <div className="grid grid-cols-2 gap-3 pb-12 md:hidden">
+                    {mobileLibraryItems.map((item) => (
+                        <button key={`${activeTab}-${item.id}`} type="button" onClick={() => navigate(item.route, { state: item.state })} className="min-w-0 text-left">
+                            <div className="relative aspect-[2/3] overflow-hidden rounded-md bg-white/5">
+                                {item.image && <img src={item.image} alt={item.title} className="h-full w-full object-cover" loading="lazy" />}
+                                <div className="absolute inset-x-0 bottom-0 h-2/5 bg-gradient-to-t from-black via-black/65 to-transparent" />
+                                {item.count && item.count > 0 ? (
+                                    <span className="absolute left-1.5 top-1.5 rounded bg-zinc-200/90 px-1.5 py-0.5 text-xs font-medium text-zinc-800">
+                                        {item.count}
+                                    </span>
+                                ) : null}
+                                <h2 className="absolute inset-x-0 bottom-0 line-clamp-2 px-2 pb-2 text-sm font-medium leading-5 text-white drop-shadow-lg">
+                                    {item.title}
+                                </h2>
+                            </div>
+                        </button>
+                    ))}
+                    {mobileLibraryItems.length === 0 && (
+                        <p className="col-span-2 py-20 text-center text-sm text-white/45">Nothing saved here yet.</p>
+                    )}
+                </div>
+
+                <div className="hidden pb-12 md:block">
                     {/* Anime Tab */}
                     {activeTab === 'anime' && (
                         <div className="space-y-8">
@@ -324,17 +454,10 @@ export default function LibraryPage() {
                                                     key={item.id}
                                                     className="relative group h-full cursor-pointer"
                                                     onClick={() => {
-                                                        const progress = filteredReading.find(
-                                                            (p) => String(p.mangaId) === String(item.id) ||
-                                                                (item.title && p.mangaTitle?.toLowerCase() === item.title.toLowerCase())
-                                                        );
-                                                        if (progress) {
-                                                            const title = slugify(progress.mangaTitle || item.title || 'manga');
-                                                            navigate(`/manga/read/${title}/${progress.mangaId}/c${progress.chapterNumber}`);
-                                                        } else {
-                                                            const mangaRouteId = String(item.scraperId || '').startsWith('vault') ? item.scraperId : item.id;
-                                                            navigate(`/manga/details/${mangaRouteId}`);
-                                                        }
+                                                        const mangaRouteId = String(item.scraperId || '').startsWith('vault') ? item.scraperId : item.id;
+                                                        navigate(`/manga/details/${encodeURIComponent(String(mangaRouteId))}`, {
+                                                            state: { manga: { id: item.id, mal_id: item.malId || item.id, scraper_id: item.scraperId, title: item.title, title_english: item.title, images: { jpg: { image_url: item.image, large_image_url: item.image } }, chapters: item.totalCount, status: item.mediaStatus, type: item.type || 'Manga', score: item.score || 0, synopsis: item.synopsis, genres: item.genres?.map((name) => ({ name, mal_id: 0 })) || [] } },
+                                                        });
                                                     }}
                                                 >
                                                     <div className="relative aspect-[3/4] rounded-xl overflow-hidden mb-3 shadow-lg border border-white/5 transition-colors cursor-pointer">
@@ -386,8 +509,11 @@ export default function LibraryPage() {
                                                                 state: {
                                                                     fromDownloads: true,
                                                                     mangaTitle: group.mangaTitle,
+                                                                    downloadedChapters: group.items,
                                                                     manga: {
                                                                         id: group.mangaId,
+                                                                        mal_id: group.mangaId,
+                                                                        scraper_id: group.mangaId,
                                                                         title: group.mangaTitle,
                                                                         images: {
                                                                             jpg: {
@@ -475,16 +601,9 @@ export default function LibraryPage() {
                                                     key={item.id}
                                                     className="relative group h-full cursor-pointer"
                                                     onClick={() => {
-                                                        const progress = filteredLN.find(
-                                                            (p) => String(p.novelId) === String(item.id) ||
-                                                                (item.title && p.novelTitle?.toLowerCase() === item.title.toLowerCase())
-                                                        );
-                                                        if (progress) {
-                                                            const title = slugify(progress.novelTitle || item.title || 'novel');
-                                                            navigate(`/ln/read/${title}/${progress.novelId}/${encodeURIComponent(progress.chapterId)}`);
-                                                        } else {
-                                                            navigate(`/ln/details/${item.id}`);
-                                                        }
+                                                        navigate(`/ln/details/${encodeURIComponent(String(item.id))}`, {
+                                                            state: { ln: { id: item.id, mal_id: item.id, title: item.title, title_english: item.title, images: { jpg: { image_url: item.image, large_image_url: item.image } }, chapters: item.totalCount, status: item.mediaStatus, type: item.type || 'NOVEL', score: item.score || 0, synopsis: item.synopsis, genres: item.genres?.map((name) => ({ name, mal_id: 0 })) || [] } },
+                                                        });
                                                     }}
                                                 >
                                                     <div className="relative aspect-[3/4] rounded-xl overflow-hidden mb-3 shadow-lg border border-white/5 transition-colors cursor-pointer">
@@ -536,8 +655,11 @@ export default function LibraryPage() {
                                                                 state: {
                                                                     fromDownloads: true,
                                                                     novelTitle: group.novelTitle,
+                                                                    downloadedChapters: group.items,
                                                                     ln: {
                                                                         id: group.novelId,
+                                                                        mal_id: group.novelId,
+                                                                        scraper_id: group.novelId,
                                                                         title: group.novelTitle,
                                                                         images: {
                                                                             jpg: {

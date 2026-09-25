@@ -2,6 +2,7 @@ import { setLocalStorageWithCleanup } from '../utils/localStorageQuota';
 
 const PREFIX = 'yorumi_offline_v1:';
 const memoryCache = new Map<string, any>();
+const pendingFetches = new Map<string, Promise<unknown>>();
 
 export function isOffline(): boolean {
     return typeof navigator !== 'undefined' && !navigator.onLine;
@@ -35,6 +36,23 @@ export function saveOfflineData<T>(key: string, data: T): void {
 }
 
 export async function fetchWithOfflineFallback<T>(
+    key: string,
+    fetcher: () => Promise<T>,
+    isEmpty?: (data: T) => boolean
+): Promise<T> {
+    const pending = pendingFetches.get(key) as Promise<T> | undefined;
+    if (pending) return pending;
+
+    const request = fetchWithOfflineFallbackUnshared(key, fetcher, isEmpty);
+    pendingFetches.set(key, request);
+    try {
+        return await request;
+    } finally {
+        if (pendingFetches.get(key) === request) pendingFetches.delete(key);
+    }
+}
+
+async function fetchWithOfflineFallbackUnshared<T>(
     key: string,
     fetcher: () => Promise<T>,
     isEmpty?: (data: T) => boolean

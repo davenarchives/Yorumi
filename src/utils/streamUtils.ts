@@ -34,6 +34,7 @@ export const getStreamData = async (
         year?: string | number;
         format?: string;
         anilistId?: number;
+        malId?: number;
     }
 ): Promise<StreamLink[]> => {
     const playbackEpisodeNumber = getPlaybackEpisodeNumber(episode as Parameters<typeof getPlaybackEpisodeNumber>[0]) || Number(episode.episodeNumber) || undefined;

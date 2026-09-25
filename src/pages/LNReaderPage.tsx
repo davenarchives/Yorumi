@@ -9,11 +9,12 @@ import { getDisplayTitle } from '../utils/titleLanguage';
 import { slugify } from '../utils/slugify';
 import sleepingGif from '../assets/sleeping.gif';
 import discordRPCService from '../services/discordRPCService';
+import { enterImmersiveMode, exitImmersiveMode } from '../platform/immersiveMode';
+import { isNativeMobile } from '../platform/runtime';
 import {
     ArrowLeft,
     ChevronLeft,
     ChevronRight,
-    ChevronUp,
     Settings,
     Type,
     X,
@@ -56,7 +57,6 @@ export default function LNReaderPage() {
     const [novelDetails, setNovelDetails] = useState<any>(null);
     const [showChaptersDropdown, setShowChaptersDropdown] = useState(false);
     const [isHeaderVisible, setIsHeaderVisible] = useState(false);
-    const [showScrollTop, setShowScrollTop] = useState(false);
 
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [settings, setSettings] = useState<LNReaderSettings>(() => {
@@ -75,6 +75,39 @@ export default function LNReaderPage() {
     const activeChapter = useMemo(() => {
         return loadedChapters[loadedChapters.length - 1] || null;
     }, [loadedChapters]);
+
+    const headerChapterTitle = useMemo(() => {
+        if (activeChapter?.title) return activeChapter.title;
+        const selected = novelChapters.find((chapter) => String(chapter.id) === String(chapterId));
+        return selected?.title || 'Loading chapter…';
+    }, [activeChapter, chapterId, novelChapters]);
+
+    useEffect(() => {
+        return () => {
+            exitImmersiveMode().catch((error) => console.warn('Unable to exit immersive LN reader mode:', error));
+        };
+    }, []);
+
+    // Sync system bars with reader UI on mobile
+    useEffect(() => {
+        if (!isNativeMobile()) return;
+        if (isHeaderVisible) {
+            exitImmersiveMode().catch(() => undefined);
+        } else {
+            enterImmersiveMode().catch(() => undefined);
+        }
+    }, [isHeaderVisible]);
+
+    const handleClose = () => {
+        const historyIdx = Number((window.history.state as { idx?: number } | null)?.idx ?? 0);
+        if (historyIdx > 0) {
+            navigate(-1);
+        } else if (novelId) {
+            navigate(`/ln/details/${novelId}`, { replace: true, state: { ln: passedLN } });
+        } else {
+            navigate('/ln', { replace: true });
+        }
+    };
 
     useEffect(() => {
         const novelTitle = novelDetails?.title || passedLN?.title || slugTitle;
@@ -298,18 +331,9 @@ export default function LNReaderPage() {
         setIsHeaderVisible(false);
         setShowChaptersDropdown(false);
         const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
-        setShowScrollTop(scrollTop > 300);
-
         if (scrollHeight - (scrollTop + clientHeight) < 600) {
             loadNextChapter();
         }
-    };
-
-    const scrollToTop = () => {
-        if (contentRef.current) {
-            contentRef.current.parentElement?.scrollTo({ top: 0, behavior: 'smooth' });
-        }
-        window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
     // Scroll to current chapter in dropdown
@@ -385,9 +409,26 @@ export default function LNReaderPage() {
         <div className="fixed inset-0 md:left-[70px] z-[130] md:z-[90] flex items-center justify-center bg-black/95 backdrop-blur-md transition-all duration-300">
             <div className={`w-full h-full flex flex-col ${themeStyle.bg} ${themeStyle.text} relative overflow-hidden transition-colors duration-300`}>
                 {/* Header (Matching Manga Header Height & Style) */}
-                <header className={`h-20 shrink-0 ${themeStyle.panel} border-b ${themeStyle.border} z-50 absolute top-0 left-0 right-0 flex items-center justify-between px-6 md:px-14 backdrop-blur-md bg-opacity-90 transition-transform duration-300 ${isHeaderVisible ? 'translate-y-0' : '-translate-y-full'}`}>
-                    {/* Left side: Cover + Title */}
-                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                <header
+                    className={`shrink-0 ${themeStyle.panel} border-b ${themeStyle.border} z-50 absolute top-0 left-0 right-0 backdrop-blur-md bg-opacity-90 transition-transform duration-300 ${
+                        isHeaderVisible ? 'translate-y-0' : '-translate-y-full'
+                    }`}
+                    style={{
+                        paddingTop: 'env(safe-area-inset-top, 0px)',
+                    }}
+                >
+                    <div className="w-full h-14 md:h-16 px-3 md:px-14 grid grid-cols-[minmax(0,1fr)_auto] md:grid-cols-3 items-center gap-3">
+                        {/* Left side: Cover + Title */}
+                        <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                        <button
+                            onClick={handleClose}
+                            className="p-2 -ml-2 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white transition-colors flex items-center justify-center shrink-0"
+                            title="Back"
+                            aria-label="Back"
+                        >
+                            <ArrowLeft className="w-5 h-5" />
+                        </button>
+
                         {coverImage && (
                             <img
                                 src={coverImage}
@@ -401,13 +442,13 @@ export default function LNReaderPage() {
                                 {displayNovelTitle}
                             </h1>
                             <span className="text-base md:text-lg font-bold text-white truncate leading-tight">
-                                {activeChapter ? activeChapter.title : 'Loading Chapter...'}
+                                {headerChapterTitle}
                             </span>
                         </div>
                     </div>
 
                     {/* Center side: Font Controls */}
-                    <div className="flex-1 flex justify-center hidden md:flex">
+                    <div className="hidden md:flex justify-center">
                         <div className="flex items-center gap-1 bg-white/5 rounded-full p-1 border border-white/10">
                             <button
                                 onClick={() => updateSettings({ fontSize: Math.max(13, settings.fontSize - 1) })}
@@ -430,7 +471,7 @@ export default function LNReaderPage() {
                     </div>
 
                     {/* Right side: Reader Settings */}
-                    <div className="flex items-center justify-end gap-2 flex-1 shrink-0">
+                    <div className="flex items-center justify-end gap-2 shrink-0">
                         <button
                             onClick={() => setIsSettingsOpen(true)}
                             className="p-2.5 hover:bg-white/10 rounded-xl border border-white/10 transition-colors flex items-center gap-2 text-xs font-bold"
@@ -439,7 +480,8 @@ export default function LNReaderPage() {
                             <span className="hidden sm:inline">Reader Settings</span>
                         </button>
                     </div>
-                </header>
+                </div>
+            </header>
 
                 {/* Main Content Scrollable Area */}
                 <main onClick={handleContentClick} onScroll={handleScroll} className="flex-1 overflow-y-auto pt-24 pb-28 px-6 custom-scrollbar cursor-pointer flex flex-col">
@@ -495,22 +537,30 @@ export default function LNReaderPage() {
                 </main>
 
                 {/* Footer (Matching Manga Footer Height & Layout) */}
-                <footer className={`h-20 shrink-0 ${themeStyle.panel} border-t ${themeStyle.border} z-50 absolute bottom-0 left-0 right-0 flex items-center justify-between px-6 md:px-14 backdrop-blur-md bg-opacity-90 transition-transform duration-300 ${isHeaderVisible ? 'translate-y-0' : 'translate-y-full'}`}>
-                    {/* LEFT: Prev Chapter */}
-                    <div className="flex-1 flex justify-start">
+                <footer
+                    className={`shrink-0 ${themeStyle.panel} border-t ${themeStyle.border} z-50 absolute bottom-0 left-0 right-0 backdrop-blur-md bg-opacity-90 transition-transform duration-300 ${
+                        isHeaderVisible ? 'translate-y-0' : 'translate-y-full'
+                    }`}
+                    style={{
+                        paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+                    }}
+                >
+                    <div className="w-full h-14 md:h-16 px-3 md:px-14 grid grid-cols-[44px_minmax(0,1fr)_44px] md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2">
+                        {/* LEFT: Prev Chapter */}
+                        <div className="flex justify-start min-w-0">
                         <button
                             disabled={!loadedChapters[0]?.prevChapterId}
                             onClick={() => loadedChapters[0]?.prevChapterId && navigateToChapter(loadedChapters[0].prevChapterId)}
-                            className="h-10 px-4 md:px-6 bg-[#1a1a1a] border border-white/5 hover:bg-white/10 text-gray-400 hover:text-white disabled:opacity-30 disabled:hover:bg-transparent flex items-center gap-2 rounded-xl transition-colors font-bold text-sm"
+                            className="w-11 md:w-auto h-10 px-0 md:px-6 bg-[#1a1a1a] border border-white/5 hover:bg-white/10 text-gray-400 hover:text-white disabled:opacity-30 disabled:hover:bg-transparent flex items-center justify-center gap-2 rounded-xl transition-colors font-bold text-sm"
                             title="Previous Chapter"
                         >
                             <ChevronLeft className="w-4 h-4" />
-                            <span>Prev</span>
+                            <span className="hidden md:inline">Prev</span>
                         </button>
                     </div>
 
                     {/* CENTER: Chapter Dropdown Selector */}
-                    <div className="flex-1 flex justify-center relative">
+                    <div className="flex justify-center relative min-w-0">
                         {showChaptersDropdown && (
                             <div className="absolute bottom-full mb-4 w-64 md:w-80 max-h-[300px] bg-[#1a1a1a] border border-white/10 rounded-xl shadow-2xl overflow-hidden flex flex-col z-[100]">
                                 <div
@@ -546,7 +596,7 @@ export default function LNReaderPage() {
 
                         <button
                             onClick={() => setShowChaptersDropdown((prev) => !prev)}
-                            className="h-10 px-4 md:px-6 bg-white/5 hover:bg-white/10 text-white flex items-center gap-2 rounded-xl transition-colors font-bold text-sm border border-white/10"
+                            className="h-10 w-full max-w-[230px] px-3 md:px-6 bg-white/5 hover:bg-white/10 text-white flex items-center justify-center gap-2 rounded-xl transition-colors font-bold text-sm border border-white/10"
                         >
                             <Menu className="w-4 h-4 text-amber-400" />
                             <span className="truncate max-w-[120px] sm:max-w-[200px]">
@@ -556,17 +606,18 @@ export default function LNReaderPage() {
                         </button>
                     </div>
 
-                    {/* RIGHT: Next Chapter */}
-                    <div className="flex-1 flex justify-end">
-                        <button
-                            disabled={!activeChapter?.nextChapterId}
-                            onClick={() => activeChapter?.nextChapterId && navigateToChapter(activeChapter.nextChapterId)}
-                            className="h-10 px-4 md:px-6 bg-amber-400 hover:bg-amber-300 text-black disabled:opacity-50 disabled:hover:bg-amber-400 flex items-center gap-2 rounded-xl transition-colors font-extrabold text-sm shadow-lg shadow-amber-400/20"
-                            title="Next Chapter"
-                        >
-                            <span>Next</span>
-                            <ChevronRight className="w-4 h-4" />
-                        </button>
+                        {/* RIGHT: Next Chapter */}
+                        <div className="flex justify-end min-w-0">
+                            <button
+                                disabled={!activeChapter?.nextChapterId}
+                                onClick={() => activeChapter?.nextChapterId && navigateToChapter(activeChapter.nextChapterId)}
+                                className="w-11 md:w-auto h-10 px-0 md:px-5 bg-amber-400 hover:bg-amber-300 text-black disabled:opacity-50 disabled:hover:bg-amber-400 flex items-center justify-center gap-2 rounded-xl transition-colors font-extrabold text-xs md:text-sm shadow-lg shadow-amber-400/20 active:scale-95"
+                                title="Next Chapter"
+                            >
+                                <span className="hidden md:inline">Next</span>
+                                <ChevronRight className="w-4 h-4" />
+                            </button>
+                        </div>
                     </div>
                 </footer>
 
@@ -704,16 +755,6 @@ export default function LNReaderPage() {
                         </div>
                     </div>
                 )}
-                {/* Back to top floating button */}
-                <button
-                    onClick={scrollToTop}
-                    className={`fixed right-6 md:right-10 z-[120] p-3 rounded-full bg-amber-400 text-black shadow-xl hover:bg-amber-300 transition-all duration-300 ${
-                        showScrollTop ? 'opacity-100 scale-100' : 'opacity-0 scale-0 pointer-events-none'
-                    } ${isHeaderVisible ? 'bottom-24' : 'bottom-8'}`}
-                    title="Back to top"
-                >
-                    <ChevronUp className="w-5 h-5 stroke-[3]" />
-                </button>
             </div>
         </div>
     );

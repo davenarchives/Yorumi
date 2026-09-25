@@ -58,7 +58,7 @@ export default function LatestMangaUpdates({ onMangaClick }: LatestMangaUpdatesP
                 </div>
                 <div className="flex gap-4 overflow-hidden">
                     {Array.from({ length: 6 }).map((_, idx) => (
-                        <div key={idx} className="flex-[0_0_160px] md:flex-[0_0_210px] lg:flex-[0_0_230px]">
+                        <div key={idx} className="flex-[0_0_140px] md:flex-[0_0_210px] lg:flex-[0_0_230px]">
                             <div className="aspect-[2/3] rounded-lg bg-white/10 mb-3" />
                             <div className="h-4 w-4/5 rounded bg-white/10" />
                             <div className="h-4 w-3/5 rounded bg-white/10 mt-2" />
@@ -120,7 +120,7 @@ export default function LatestMangaUpdates({ onMangaClick }: LatestMangaUpdatesP
                                 return (
                                     <div
                                         key={manga.id}
-                                        className="flex-[0_0_160px] md:flex-[0_0_210px] lg:flex-[0_0_230px]"
+                                        className="flex-[0_0_140px] md:flex-[0_0_210px] lg:flex-[0_0_230px]"
                                     >
                                         <MangaCard
                                             manga={fakeManga}

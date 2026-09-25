@@ -1,8 +1,14 @@
 // API Service for Manga operations - Using AniList
 import type { Manga, MangaChapter } from '../types/manga';
 import axios from 'axios';
-import { API_BASE } from '../config/api';
+import { API_BASE, USES_LOCAL_SOURCES } from '../config/api';
 import { getDisplayImageUrl } from '../utils/image';
+import { mangaKatanaSource } from '../platform/sources/mangakatana';
+import {
+    getLocalAniListMangaDetails,
+    getLocalAniListMangaPage,
+    getLocalRandomMangaIds,
+} from '../platform/sources/anilistManga';
 const apiClient = axios.create({
     baseURL: API_BASE,
     timeout: 15000,
@@ -13,7 +19,26 @@ const chapterPagesCache = new Map<string, { data: any; timestamp: number }>();
 const chapterListInFlight = new Map<string, Promise<any>>();
 const chapterPagesInFlight = new Map<string, Promise<any>>();
 const inFlightRequests = new Map<string, Promise<any>>();
-const PERSISTED_CACHE_PREFIX = 'yorumi_manga_cache_v4';
+const localSourceResolutionCache = new Map<string, Promise<HydratedManga>>();
+let activeLocalMangaResolutions = 0;
+const pendingLocalMangaResolutions: Array<() => void> = [];
+// Home-card enrichment is intentionally serialized so it cannot flood
+// MangaKatana and starve an explicit details/chapter request from the user.
+const MAX_LOCAL_MANGA_RESOLUTIONS = 1;
+
+const scheduleLocalMangaResolution = async <T>(task: () => Promise<T>): Promise<T> => {
+    if (activeLocalMangaResolutions >= MAX_LOCAL_MANGA_RESOLUTIONS) {
+        await new Promise<void>((resolve) => pendingLocalMangaResolutions.push(resolve));
+    }
+    activeLocalMangaResolutions += 1;
+    try {
+        return await task();
+    } finally {
+        activeLocalMangaResolutions -= 1;
+        pendingLocalMangaResolutions.shift()?.();
+    }
+};
+const PERSISTED_CACHE_PREFIX = 'yorumi_manga_cache_v5';
 const SEARCH_CACHE_TTL = 5 * 60 * 1000;
 const DETAIL_CACHE_TTL = 15 * 60 * 1000;
 const LIST_CACHE_TTL = 10 * 60 * 1000;
@@ -61,11 +86,14 @@ const writePersistedCache = (key: string, data: any, timestamp: number) => {
     }
 };
 
-// Auto-cleanup legacy/stale manga caches on load
+// Remove only genuinely legacy cache namespaces. Current v5 home caches must
+// survive app restarts so Android can paint the Manga page immediately.
 try {
     if (typeof window !== 'undefined' && window.localStorage) {
         Object.keys(localStorage).forEach(k => {
-            if (k.includes('manga-unified:') || k.includes('manga-spotlight') || k.includes('manga-top') || k.includes('manga-popular')) {
+            const isLegacyVersion = /^yorumi_manga_cache_v[1-4]:/.test(k);
+            const isUnversionedLegacy = /^(manga-unified|manga-spotlight|manga-top|manga-popular)(:|$)/.test(k);
+            if (isLegacyVersion || isUnversionedLegacy) {
                 localStorage.removeItem(k);
             }
         });
@@ -189,6 +217,15 @@ const mapAnilistToManga = (item: AniListManga) => ({
     relations: item.relations
 });
 
+const mapAniListPage = (data: { media?: AniListManga[]; pageInfo?: { lastPage?: number; currentPage?: number; hasNextPage?: boolean } }) => ({
+    data: data.media?.map(mapAnilistToManga) || [],
+    pagination: {
+        last_visible_page: data.pageInfo?.lastPage || 1,
+        current_page: data.pageInfo?.currentPage || 1,
+        has_next_page: data.pageInfo?.hasNextPage || false,
+    },
+});
+
 const isMostlyLatin = (value: string | undefined) => {
     const normalized = String(value || '').replace(/[\s\d\p{P}]/gu, '');
     if (!normalized) return false;
@@ -256,9 +293,104 @@ type HydratedManga = Manga & {
     resolvedChapters?: MangaChapter[];
 };
 
+const getMangaTitleCandidates = (manga: Partial<Manga>) => ([
+    manga.title,
+    manga.title_english,
+    manga.title_romaji,
+    manga.title_native,
+    ...(Array.isArray(manga.synonyms) ? manga.synonyms : []),
+])
+    .map((value) => String(value || '').trim())
+    .filter(Boolean);
+
+const normalizeComparableTitle = (value: string) => String(value || '')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .replace(/\b(the|a|an|manga|manhwa|manhua)\b/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const isConfirmedMangaSourceMatch = (manga: Partial<Manga>, sourceDetails: { title?: string; altNames?: string[] }) => {
+    const expectedTitles = getMangaTitleCandidates(manga).map(normalizeComparableTitle).filter(Boolean);
+    const sourceTitles = [
+        sourceDetails.title,
+        ...(Array.isArray(sourceDetails.altNames) ? sourceDetails.altNames : []),
+    ].map((title) => normalizeComparableTitle(String(title || ''))).filter(Boolean);
+
+    if (expectedTitles.length === 0 || sourceTitles.length === 0) return false;
+
+    return expectedTitles.some((expected) => sourceTitles.some((actual) => {
+        if (expected === actual) return true;
+        if (actual.startsWith(`${expected} `) || expected.startsWith(`${actual} `)) return true;
+
+        const expectedTokens = expected.split(' ').filter((token) => token.length > 1);
+        const actualTokens = new Set(actual.split(' ').filter((token) => token.length > 1));
+        if (expectedTokens.length < 2) return false;
+        const matched = expectedTokens.filter((token) => actualTokens.has(token)).length;
+        return matched / expectedTokens.length >= 0.82;
+    }));
+};
+
+const resolveLocalMangaKatanaDetails = async (manga: Partial<Manga>) => {
+    for (const title of [...new Set(getMangaTitleCandidates(manga))]) {
+        try {
+            const match = (await mangaKatanaSource.search(title))[0];
+            if (!match?.id) continue;
+            const details = await mangaKatanaSource.getDetails(match.id);
+            if (!isConfirmedMangaSourceMatch(manga, details)) continue;
+            if (Array.isArray(details.chapters) && details.chapters.length > 0) {
+                return details;
+            }
+        } catch {
+            // Try the next title candidate.
+        }
+    }
+    return null;
+};
+
+const enrichLocalManga = async (manga: Manga): Promise<HydratedManga> => {
+    if (!USES_LOCAL_SOURCES || manga.scraper_id) return manga as HydratedManga;
+
+    const key = String(manga.id || manga.mal_id || manga.title || '').trim();
+    const existing = localSourceResolutionCache.get(key);
+    if (existing) return existing;
+
+    const request = scheduleLocalMangaResolution(() => resolveLocalMangaKatanaDetails(manga))
+        .then((details) => {
+            if (!details) {
+                localSourceResolutionCache.delete(key);
+                return manga as HydratedManga;
+            }
+            const chapters = details.chapters || [];
+            const enriched: HydratedManga = {
+                ...manga,
+                scraper_id: details.id,
+                chapters: chapters.length || manga.chapters,
+                resolvedChapters: chapters,
+            };
+            chapterListCache.set(details.id, {
+                data: { chapters },
+                timestamp: Date.now(),
+            });
+            return enriched;
+        })
+        .catch(() => manga as HydratedManga);
+
+    localSourceResolutionCache.set(key, request);
+    return request;
+};
+
 export const mangaService = {
+    async enrichVisibleManga(items: Manga[], onItem?: (item: HydratedManga, index: number) => void) {
+        if (!USES_LOCAL_SOURCES) return items;
+        return Promise.all(items.map(async (item, index) => {
+            const enriched = await enrichLocalManga(item);
+            onItem?.(enriched, index);
+            return enriched;
+        }));
+    },
     peekUnifiedMangaDetails(id: string | number) {
-        return getCached(`manga-unified:${String(id)}`, DETAIL_CACHE_TTL) as Manga | null;
+        return getCached(`manga-unified:v2:${String(id)}`, DETAIL_CACHE_TTL) as Manga | null;
     },
 
     peekTopManga(page: number = 1) {
@@ -294,13 +426,16 @@ export const mangaService = {
     },
 
     peekEnrichedSpotlight() {
-        return getCached(`manga-spotlight`, SPOTLIGHT_CACHE_TTL) as { data: Manga[] } | null;
+        return getCached(`manga-spotlight:v3`, SPOTLIGHT_CACHE_TTL) as { data: Manga[] } | null;
     },
 
     // Fetch top manga from AniList (sorted by SCORE)
     async getTopManga(page: number = 1) {
         return fetchWithCache(`manga-top:${page}`, LIST_CACHE_TTL, async () => {
             try {
+                if (USES_LOCAL_SOURCES) {
+                    return mapAniListPage(await getLocalAniListMangaPage({ page, sort: ['SCORE_DESC'] }));
+                }
                 const res = await fetch(`${API_BASE}/anilist/top/manga?page=${page}`);
                 if (res.ok) {
                     const data = await res.json();
@@ -326,6 +461,9 @@ export const mangaService = {
     // Fetch trending manga from AniList (sorted by TRENDING)
     async getTrendingManga(page: number = 1) {
         try {
+            if (USES_LOCAL_SOURCES) {
+                return mapAniListPage(await getLocalAniListMangaPage({ page, perPage: 10, sort: ['TRENDING_DESC'] }));
+            }
             const res = await fetch(`${API_BASE}/anilist/trending/manga?page=${page}`);
             if (res.ok) {
                 const data = await res.json();
@@ -351,6 +489,9 @@ export const mangaService = {
     async getPopularManga(page: number = 1) {
         return fetchWithCache(`manga-popular:${page}`, LIST_CACHE_TTL, async () => {
             try {
+                if (USES_LOCAL_SOURCES) {
+                    return mapAniListPage(await getLocalAniListMangaPage({ page, sort: ['POPULARITY_DESC'] }));
+                }
                 const res = await fetch(`${API_BASE}/anilist/popular/manga?page=${page}`);
                 if (res.ok) {
                     const data = await res.json();
@@ -377,6 +518,13 @@ export const mangaService = {
     async getPopularManhwa(page: number = 1) {
         return fetchWithCache(`manga-popular-manhwa:${page}`, LIST_CACHE_TTL, async () => {
             try {
+                if (USES_LOCAL_SOURCES) {
+                    return mapAniListPage(await getLocalAniListMangaPage({
+                        page,
+                        sort: ['POPULARITY_DESC'],
+                        countryOfOrigin: 'KR',
+                    }));
+                }
                 const res = await fetch(`${API_BASE}/anilist/top/manhwa?page=${page}`);
                 if (res.ok) {
                     const data = await res.json();
@@ -401,6 +549,14 @@ export const mangaService = {
 
     // Search manga via AniList
     async searchManga(query: string, page: number = 1, limit: number = 18) {
+        if (USES_LOCAL_SOURCES) {
+            return mapAniListPage(await getLocalAniListMangaPage({
+                page,
+                perPage: limit,
+                search: query,
+                sort: ['SEARCH_MATCH', 'POPULARITY_DESC'],
+            }));
+        }
         const res = await fetch(`${API_BASE}/anilist/search/manga?q=${encodeURIComponent(query)}&page=${page}&limit=${limit}`);
         const data = await res.json();
         return {
@@ -415,6 +571,22 @@ export const mangaService = {
 
     // Get A-Z List for Manga via Backend (AniList)
     async getAZList(letter: string, page: number = 1) {
+        if (USES_LOCAL_SOURCES) {
+            const data = await getLocalAniListMangaPage({
+                page,
+                perPage: 18,
+                search: letter,
+                sort: ['SEARCH_MATCH', 'POPULARITY_DESC'],
+            });
+            const expected = letter.trim().toLowerCase();
+            return mapAniListPage({
+                ...data,
+                media: data.media.filter((item) => {
+                    const title = item.title?.english || item.title?.romaji || item.title?.native || '';
+                    return expected === '#' ? /^\W|^\d/.test(title) : title.toLowerCase().startsWith(expected);
+                }),
+            });
+        }
         const res = await fetch(`${API_BASE}/anilist/manga/az-list/${encodeURIComponent(letter)}?page=${page}`);
         const data = await res.json();
         return {
@@ -429,6 +601,13 @@ export const mangaService = {
 
     async getOneShotManga(page: number = 1) {
         return fetchWithCache(`manga-one-shot:${page}`, LIST_CACHE_TTL, async () => {
+            if (USES_LOCAL_SOURCES) {
+                return mapAniListPage(await getLocalAniListMangaPage({
+                    page,
+                    sort: ['POPULARITY_DESC'],
+                    format: 'ONE_SHOT',
+                }));
+            }
             const res = await fetch(`${API_BASE}/anilist/top/one-shot?page=${page}`);
             const data = await res.json();
             return {
@@ -452,10 +631,14 @@ export const mangaService = {
         }
 
         try {
-            const request = fetch(`${API_BASE}/anilist/manga/${id}`)
-                .then(async (res) => {
+            const request = (USES_LOCAL_SOURCES
+                ? getLocalAniListMangaDetails(Number(id))
+                : fetch(`${API_BASE}/anilist/manga/${id}`).then(async (res) => {
                     if (!res.ok) throw new Error('Failed to fetch details');
-                    const data = await res.json();
+                    return res.json();
+                })
+            )
+                .then((data) => {
                     const result = { data: mapAnilistToManga(data) };
                     if (result.data) {
                         setCached(cacheKey, result);
@@ -486,9 +669,11 @@ export const mangaService = {
             return chapterListInFlight.get(mangaId)!;
         }
 
-        const request = apiClient
-            .get(`/manga/chapters/${encodeURIComponent(mangaId)}`)
-            .then(({ data }) => {
+        const request = (USES_LOCAL_SOURCES
+            ? mangaKatanaSource.getChapters(mangaId).then((chapters) => ({ chapters }))
+            : apiClient.get(`/manga/chapters/${encodeURIComponent(mangaId)}`).then(({ data }) => data)
+        )
+            .then((data) => {
                 if (data?.chapters && Array.isArray(data.chapters)) {
                     chapterListCache.set(mangaId, { data, timestamp: Date.now() });
                 }
@@ -516,7 +701,9 @@ export const mangaService = {
 
         const fetchOnce = async () => {
             let resultData;
-            if (chapterUrl.includes('toonily.com') || chapterUrl.includes('manhwaread.com')) {
+            if (USES_LOCAL_SOURCES && chapterUrl.includes('mangakatana.com')) {
+                resultData = { pages: await mangaKatanaSource.getContent(chapterUrl) };
+            } else if (chapterUrl.includes('toonily.com') || chapterUrl.includes('manhwaread.com')) {
                 const res = await fetch(`${API_BASE}/vault/manga/pages?url=${encodeURIComponent(chapterUrl)}`);
                 const vaultData = await res.json();
                 
@@ -559,18 +746,21 @@ export const mangaService = {
     // Search manga on MangaKatana scraper with local pagination
     async searchMangaScraper(query: string, page: number = 1, limit: number = 18) {
         const normalizedQuery = query.trim().toLowerCase();
-        const cacheKey = `manga-search:${normalizedQuery}`;
+        const cacheKey = `manga-search:v2:${normalizedQuery}`;
 
         let items = getCached(cacheKey, SEARCH_CACHE_TTL) as ScraperManga[] | null;
         if (!items) {
             if (inFlightRequests.has(cacheKey)) {
                 items = await inFlightRequests.get(cacheKey)!;
             } else {
-                const request = fetch(`${API_BASE}/manga/search?q=${encodeURIComponent(query)}`)
-                    .then(async (res) => {
-                        const data = await res.json();
-                        return Array.isArray(data) ? data : (data?.data || []);
-                    })
+                const request = (USES_LOCAL_SOURCES
+                    ? mangaKatanaSource.search(query).then((results) => results as ScraperManga[])
+                    : fetch(`${API_BASE}/manga/search?q=${encodeURIComponent(query)}`)
+                        .then(async (res) => {
+                            const data = await res.json();
+                            return Array.isArray(data) ? data : (data?.data || []);
+                        })
+                )
                     .finally(() => {
                         inFlightRequests.delete(cacheKey);
                 });
@@ -631,8 +821,12 @@ export const mangaService = {
 
     async getLatestMangaScraper(page: number = 1) {
         return fetchWithCache(`manga-latest:${page}`, LIST_CACHE_TTL, async () => {
-            const res = await fetch(`${API_BASE}/manga/latest?page=${page}`);
-            const data = await res.json();
+            const data = USES_LOCAL_SOURCES
+                ? await mangaKatanaSource.getList('/latest', page).then(({ results, totalPages }) => ({
+                    data: results,
+                    pagination: { total_pages: totalPages },
+                }))
+                : await fetch(`${API_BASE}/manga/latest?page=${page}`).then((res) => res.json());
             const items = data.data || [];
             const totalPages = data.pagination?.total_pages || (page + (items.length === 20 ? 1 : 0));
             return {
@@ -648,8 +842,12 @@ export const mangaService = {
 
     async getNewMangaScraper(page: number = 1) {
         return fetchWithCache(`manga-new:${page}`, LIST_CACHE_TTL, async () => {
-            const res = await fetch(`${API_BASE}/manga/new-manga?page=${page}`);
-            const data = await res.json();
+            const data = USES_LOCAL_SOURCES
+                ? await mangaKatanaSource.getList('/new-manga', page).then(({ results, totalPages }) => ({
+                    data: results,
+                    pagination: { total_pages: totalPages },
+                }))
+                : await fetch(`${API_BASE}/manga/new-manga?page=${page}`).then((res) => res.json());
             const items = data.data || [];
             const totalPages = data.pagination?.total_pages || (page + (items.length === 20 ? 1 : 0));
             return {
@@ -665,8 +863,12 @@ export const mangaService = {
 
     async getMangaDirectory(page: number = 1) {
         return fetchWithCache(`manga-directory:${page}`, LIST_CACHE_TTL, async () => {
-            const res = await fetch(`${API_BASE}/manga/directory?page=${page}`);
-            const data = await res.json();
+            const data = USES_LOCAL_SOURCES
+                ? await mangaKatanaSource.getList('/manga', page).then(({ results, totalPages }) => ({
+                    data: results,
+                    pagination: { total_pages: totalPages },
+                }))
+                : await fetch(`${API_BASE}/manga/directory?page=${page}`).then((res) => res.json());
             const items = data.data || [];
             const totalPages = data.pagination?.total_pages || (page + (items.length === 20 ? 1 : 0));
             return {
@@ -682,6 +884,9 @@ export const mangaService = {
 
     async getHotUpdates() {
         return fetchWithCache(`manga-hot-updates`, LIST_CACHE_TTL, async () => {
+            if (USES_LOCAL_SOURCES) {
+                return mangaKatanaSource.getHotUpdates();
+            }
             const response = await fetch(`${API_BASE}/manga/hot-updates`);
             if (!response.ok) throw new Error('Failed to fetch hot updates');
             const data = await response.json();
@@ -698,7 +903,36 @@ export const mangaService = {
     },
 
     async getEnrichedSpotlight() {
-        return fetchWithCache(`manga-spotlight`, SPOTLIGHT_CACHE_TTL, async () => {
+        return fetchWithCache(`manga-spotlight:v3`, SPOTLIGHT_CACHE_TTL, async () => {
+            if (USES_LOCAL_SOURCES) {
+                // Match Electron exactly: the spotlight is selected from the
+                // first eight MangaKatana hot updates, never from AniList.
+                const hotUpdates = await mangaService.getHotUpdates();
+                const visible = hotUpdates.slice(0, 8).flatMap((item: any) => {
+                    const id = String(item.id || '').replace(/^mk:/i, '').trim();
+                    const title = String(item.title || '').trim();
+                    const image = getDisplayImageUrl(item.thumbnail || item.coverImage || '');
+                    if (!id || !title || !image) return [];
+                    const chapterMatch = String(item.chapter || item.latestChapter || '').match(/[\d.]+/);
+                    const chapterCount = chapterMatch ? Number.parseFloat(chapterMatch[0]) : undefined;
+                    return [{
+                        mal_id: id,
+                        id,
+                        scraper_id: id,
+                        title,
+                        title_english: title,
+                        title_romaji: title,
+                        images: { jpg: { large_image_url: image, image_url: image } },
+                        chapters: chapterCount,
+                        type: 'Manga',
+                        status: 'Publishing',
+                        score: 0,
+                        genres: [],
+                        synopsis: item.chapter ? `Latest chapter: ${item.chapter}. (Source: MangaKatana)` : 'Featured on MangaKatana.',
+                    } as Manga];
+                });
+                return { data: visible };
+            }
             try {
                 const res = await fetch(`${API_BASE}/manga/spotlight`);
                 if (res.ok) {
@@ -735,7 +969,7 @@ export const mangaService = {
     // Get scraper details (fallback for string IDs)
     // Get scraper details (fallback for string IDs)
     async getScraperMangaDetails(id: string) {
-        const cacheKey = `manga-scraper-details:${id}`;
+        const cacheKey = `manga-scraper-details:v3:${id}`;
         const cached = getCached(cacheKey, DETAIL_CACHE_TTL);
         if (cached) return cached;
         if (inFlightRequests.has(cacheKey)) {
@@ -743,15 +977,26 @@ export const mangaService = {
         }
 
         try {
-            const request = fetch(`${API_BASE}/manga/details/${encodeURIComponent(id)}`)
-                .then(async (res) => {
-                    if (!res.ok) return null;
-                    const json = await res.json();
-                    const scraperData = json.data;
+            const request = (USES_LOCAL_SOURCES
+                ? mangaKatanaSource.getDetails(id).then((details) => ({ data: details }))
+                : fetch(`${API_BASE}/manga/details/${encodeURIComponent(id)}`).then(async (res) => {
+                    if (!res.ok) return { data: null };
+                    return res.json();
+                })
+            )
+                .then((json) => {
+                    const scraperData = json.data as ScraperManga | null;
 
-                    if (!scraperData) return null;
+                    if (!scraperData?.id || !String(scraperData.title || '').trim()) return null;
 
-                    const mapped = mapScraperToManga(scraperData as any) as Manga;
+                    const mapped = mapScraperToManga(scraperData) as HydratedManga;
+                    if (Array.isArray(scraperData.chapters) && scraperData.chapters.length > 0) {
+                        mapped.resolvedChapters = scraperData.chapters as MangaChapter[];
+                        chapterListCache.set(String(id), {
+                            data: { chapters: scraperData.chapters },
+                            timestamp: Date.now(),
+                        });
+                    }
                     if (mapped) {
                         setCached(cacheKey, mapped);
                     }
@@ -771,11 +1016,44 @@ export const mangaService = {
 
     // Unified details endpoint (supports AniList numeric IDs and scraper IDs)
     async getUnifiedMangaDetails(id: string | number) {
-        const cacheKey = `manga-unified:${String(id)}`;
+        const cacheKey = `manga-unified:v2:${String(id)}`;
         const cached = getCached(cacheKey, DETAIL_CACHE_TTL);
         if (cached) return cached;
         if (inFlightRequests.has(cacheKey)) {
             return inFlightRequests.get(cacheKey)!;
+        }
+
+        if (USES_LOCAL_SOURCES) {
+            if (!/^\d+$/.test(String(id))) {
+                return mangaService.getScraperMangaDetails(String(id));
+            }
+            const localDetails = await mangaService.getMangaDetails(id);
+            const mapped = localDetails.data as HydratedManga | null;
+            if (!mapped) return mapped;
+
+            const sourceDetails = await resolveLocalMangaKatanaDetails(mapped);
+            if (sourceDetails) {
+                mapped.scraper_id = sourceDetails.id;
+                mapped.resolvedChapters = sourceDetails.chapters;
+                mapped.chapters = sourceDetails.chapters.length || mapped.chapters;
+                mapped.title_english = mapped.title_english || sourceDetails.title;
+                mapped.synonyms = [...new Set([...(mapped.synonyms || []), ...(sourceDetails.altNames || [])])];
+                const chapterPayload = { chapters: sourceDetails.chapters };
+                [
+                    String(id),
+                    String(mapped.id || ''),
+                    String(mapped.mal_id || ''),
+                    String(sourceDetails.id || ''),
+                ]
+                    .map((key) => key.trim())
+                    .filter(Boolean)
+                    .forEach((key) => {
+                        chapterListCache.set(key, { data: chapterPayload, timestamp: Date.now() });
+                    });
+            }
+
+            setCached(cacheKey, mapped);
+            return mapped;
         }
 
         const request = fetch(`${API_BASE}/manga/details/${encodeURIComponent(String(id))}?includeChapters=1`)
@@ -836,9 +1114,12 @@ export const mangaService = {
             if (!refillPromise) {
                 refillPromise = (async () => {
                     try {
-                        const res = await fetch(`${API_BASE}/anilist/random-manga`);
-                        if (!res.ok) throw new Error('Failed to fetch random manga batch');
-                        const batch = await res.json();
+                        const batch = USES_LOCAL_SOURCES
+                            ? await getLocalRandomMangaIds()
+                            : await fetch(`${API_BASE}/anilist/random-manga`).then(async (res) => {
+                                if (!res.ok) throw new Error('Failed to fetch random manga batch');
+                                return res.json() as Promise<Array<{ id: number }>>;
+                            });
 
                         // Shuffle the batch
                         for (let i = batch.length - 1; i > 0; i--) {

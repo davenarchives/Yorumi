@@ -5,12 +5,21 @@ import { slugify } from '../utils/slugify';
 import MangaReaderModal from '../features/manga/components/MangaReaderModal';
 import type { MangaChapter } from '../types/manga';
 import sleepingGif from '../assets/sleeping.gif';
+import { enterImmersiveMode, exitImmersiveMode } from '../platform/immersiveMode';
 
 export default function MangaReaderPage() {
     const { id, chapter } = useParams<{ title: string; id: string; chapter: string }>();
     const navigate = useNavigate();
     const location = useLocation();
     const routeManga = location.state?.manga;
+    const routeChapter = location.state?.chapter as MangaChapter | undefined;
+
+    useEffect(() => {
+        enterImmersiveMode().catch((error) => console.warn('Unable to enter immersive reader mode:', error));
+        return () => {
+            exitImmersiveMode().catch((error) => console.warn('Unable to exit immersive reader mode:', error));
+        };
+    }, []);
 
     const {
         selectedManga,
@@ -40,6 +49,10 @@ export default function MangaReaderPage() {
 
     // Auto-load chapter when chapters are available
     useEffect(() => {
+        if (routeChapter && !currentMangaChapter) {
+            loadMangaChapter(routeChapter);
+            return;
+        }
         if (mangaChapters.length > 0 && chapter && !currentMangaChapter) {
             // Find chapter by number (chapter param is like "c4" or "c2.1" from URL, strip the 'c' prefix)
             const chapterNumStr = (chapter.startsWith('c') ? chapter.slice(1) : chapter).trim();
@@ -58,7 +71,13 @@ export default function MangaReaderPage() {
                 loadMangaChapter(mangaChapters[mangaChapters.length - 1]);
             }
         }
-    }, [mangaChapters, chapter, currentMangaChapter, loadMangaChapter]);
+    }, [mangaChapters, chapter, currentMangaChapter, loadMangaChapter, routeChapter]);
+
+    const effectiveChapters = mangaChapters.length > 0
+        ? mangaChapters
+        : routeChapter
+            ? [routeChapter]
+            : [];
 
     // Handle chapter navigation - update URL
     const handleLoadChapter = (ch: MangaChapter) => {
@@ -83,7 +102,7 @@ export default function MangaReaderPage() {
     };
 
     // Show loading while manga, chapters, or chapter pages are loading
-    if (mangaLoading || mangaChaptersLoading || !selectedManga || (!currentMangaChapter && mangaChapters.length > 0)) {
+    if ((mangaLoading && !routeManga) || (mangaChaptersLoading && !routeChapter) || !selectedManga || (!currentMangaChapter && effectiveChapters.length > 0)) {
         return (
             <div className="fixed inset-0 z-[130] md:z-[90] flex flex-col items-center justify-center gap-4 bg-black/95 backdrop-blur-md text-center">
                 <img src={sleepingGif} alt="Loading..." className="w-32 h-32 object-contain animate-bounce" />
@@ -93,7 +112,7 @@ export default function MangaReaderPage() {
     }
 
     // Handle case where no chapters exist
-    if (mangaChapters.length === 0) {
+    if (effectiveChapters.length === 0) {
         const sourceName = selectedManga?.scraper_id?.toString().startsWith('vault:') ? 'Toonily' : 'MangaKatana';
         return (
             <div className="min-h-screen flex flex-col items-center justify-center bg-[#0a0a0a] text-white gap-4">
@@ -115,7 +134,7 @@ export default function MangaReaderPage() {
             isOpen={true}
             onClose={handleClose}
             manga={selectedManga}
-            chapters={mangaChapters}
+            chapters={effectiveChapters}
             currentChapter={currentMangaChapter}
             pages={chapterPages}
             chapterSearchQuery={chapterSearchQuery}

@@ -34,7 +34,7 @@ export default function Top100LN({ onLNClick }: Top100LNProps) {
                 <div className="flex items-center justify-between mb-6">
                     <div className="h-7 w-44 rounded bg-white/10" />
                 </div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+                <div className="grid grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
                     {Array.from({ length: 12 }).map((_, idx) => (
                         <div key={idx}>
                             <div className="aspect-[2/3] rounded-lg bg-white/10 mb-2" />
@@ -60,7 +60,7 @@ export default function Top100LN({ onLNClick }: Top100LNProps) {
             </div>
 
             {/* Grid Layout */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+            <div className="grid grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
                 {lns.map((ln) => (
                     <div
                         key={ln.id}

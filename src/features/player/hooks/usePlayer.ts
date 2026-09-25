@@ -1,12 +1,14 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { useAnime } from '../../../hooks/useAnime';
-import { useStreams } from '../../../hooks/useStreams';
+import { useStreams, STREAM_SERVER_OPTIONS } from '../../../hooks/useStreams';
+import type { StreamServerKey } from '../../../hooks/useStreams';
 import type { Anime, Episode } from '../../../types/anime';
 import { storage } from '../../../utils/storage';
 import { getEpisodeWatchKey } from '../../../utils/episodeWatchKey';
 import { fetchSkipTimestamps, type SkipTimestamp } from '../../../services/skipTimestamps';
 import { downloadService } from '../../../services/downloadService';
+import { isNativeMobile } from '../../../platform/runtime';
 
 const AUTO_NEXT_STORAGE_KEY = 'yorumi:auto-next-enabled';
 const AUTO_SKIP_STORAGE_KEY = 'yorumi:auto-skip-enabled';
@@ -48,6 +50,7 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string, 
         year: selectedAnime?.year,
         format: selectedAnime?.type,
         anilistId: selectedAnime?.id,
+        malId: selectedAnime?.mal_id,
     };
     const streamsHook = useStreams(scraperSession, selectedAnime?.title || animeSlugTitle, streamMetadata);
     const {
@@ -155,6 +158,7 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string, 
     const streamRetryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const streamRetryStateRef = useRef<{ key: string; attempts: number }>({ key: '', attempts: 0 });
     const streamFailureStateRef = useRef<{ key: string; attempts: number }>({ key: '', attempts: 0 });
+    const failedServersRef = useRef<Set<StreamServerKey>>(new Set());
     const STREAM_RETRY_DELAYS_MS: number[] = [];
     const extractDirectScraperSession = (value: unknown): string => {
         const raw = String(value || '').trim();
@@ -262,6 +266,7 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string, 
             streamFetchRetryKeyRef.current = '';
             autoLoadAttemptKeyRef.current = '';
             streamFailureStateRef.current = { key: '', attempts: 0 };
+            failedServersRef.current.clear();
             resetScheduledStreamRetry();
         }
     }, [animeId, epNumParam, clearStreams, resetScheduledStreamRetry]);
@@ -397,10 +402,16 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string, 
             }
 
             if (targetEp) {
-                const isAlreadyCurrent = currentEpisode && getPlaybackEpisodeNumber(currentEpisode) === getPlaybackEpisodeNumber(targetEp);
+                const targetEpisodeNumber = getPlaybackEpisodeNumber(targetEp);
+                const isAlreadyCurrent = currentEpisode && getPlaybackEpisodeNumber(currentEpisode) === targetEpisodeNumber;
                 if (isAlreadyCurrent && (currentStream || streamLoading || serverSwitchLoading)) return;
 
-                const targetEpisodeNumber = getPlaybackEpisodeNumber(targetEp);
+                const attemptKey = `${String(animeId || '')}:${targetEpisodeNumber}`;
+                if (autoLoadAttemptKeyRef.current === attemptKey && (streamLoading || serverSwitchLoading || (isAlreadyCurrent && currentStream))) {
+                    return;
+                }
+                autoLoadAttemptKeyRef.current = attemptKey;
+
                 const currentEpParamNumber = parseEpisodeNumber(epNumParam);
                 const targetWatchKey = getEpisodeWatchKey(targetEp);
                 if (targetWatchKey) markEpisodeComplete(targetWatchKey);
@@ -643,11 +654,46 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string, 
         if (second > 0) setStartAtOverrideSeconds(second);
         const switchedSource = tryNextStream();
         if (!switchedSource && currentEpisode) {
+            // On mobile devices, sources resolve locally via HiAnime; switching servers causes an infinite restart loop.
+            if (isNativeMobile()) {
+                const failureKey = `${String(scraperSession || '')}:${String(currentEpisode.session || currentEpisode.episodeNumber || '')}`;
+                if (streamFailureStateRef.current.key !== failureKey) {
+                    streamFailureStateRef.current = { key: failureKey, attempts: 0 };
+                }
+                if (streamFailureStateRef.current.attempts >= 1) {
+                    setStreamExhausted(true);
+                    return;
+                }
+                streamFailureStateRef.current = {
+                    key: failureKey,
+                    attempts: streamFailureStateRef.current.attempts + 1,
+                };
+                resetScheduledStreamRetry();
+                bustEpisodeCache(currentEpisode.session);
+                loadStream(currentEpisode);
+                return;
+            }
+
+            // Mark current server as failed (Desktop/Electron)
+            failedServersRef.current.add(selectedServer);
+
+            // Try the next server that hasn't failed yet
+            const nextServer = STREAM_SERVER_OPTIONS.find(
+                (s) => !failedServersRef.current.has(s.key)
+            );
+
+            if (nextServer) {
+                console.info(`[Yorumi] Server "${selectedServer}" failed — auto-switching to "${nextServer.key}"`);
+                applyServerChange(nextServer.key);
+                return;
+            }
+
+            // All servers failed — attempt cache-bust retry on the original server
             const failureKey = `${String(scraperSession || '')}:${String(currentEpisode.session || currentEpisode.episodeNumber || '')}`;
             if (streamFailureStateRef.current.key !== failureKey) {
                 streamFailureStateRef.current = { key: failureKey, attempts: 0 };
             }
-            if (streamFailureStateRef.current.attempts >= 2) {
+            if (streamFailureStateRef.current.attempts >= 1) {
                 setStreamExhausted(true);
                 return;
             }
@@ -655,11 +701,13 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string, 
                 key: failureKey,
                 attempts: streamFailureStateRef.current.attempts + 1,
             };
+            // Reset failed servers for one more round
+            failedServersRef.current.clear();
             resetScheduledStreamRetry();
             bustEpisodeCache(currentEpisode.session);
             loadStream(currentEpisode);
         }
-    }, [currentEpisode, currentStream?.url, scraperSession, tryNextStream, resetScheduledStreamRetry, bustEpisodeCache, loadStream]);
+    }, [currentEpisode, currentStream?.url, scraperSession, selectedServer, tryNextStream, applyServerChange, resetScheduledStreamRetry, bustEpisodeCache, loadStream]);
 
     // --- Actions ---
 
@@ -802,6 +850,7 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string, 
         watchedEpisodes,
         episodesResolved,
         epNum: epNumParam,
+        episodeDurationSeconds,
         resumeAtSeconds: startAtOverrideSeconds ?? (resumeAtSeconds > 0 ? resumeAtSeconds : savedWatchPosition),
         cleanCurrentTitle,
 

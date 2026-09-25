@@ -1,6 +1,7 @@
 import axios from 'axios';
 import type { LightNovel, LNChapter, LNChapterContent } from '../types/ln';
-import { API_BASE } from '../config/api';
+import { API_BASE, USES_LOCAL_SOURCES } from '../config/api';
+import { novelBinSource } from '../platform/sources/novelbin';
 import { getDisplayImageUrl } from '../utils/image';
 import { fetchWithOfflineFallback } from './offlineCache';
 import { POPULAR_KOREAN_NOVELS, POPULAR_CHINESE_NOVELS } from './lnData';
@@ -11,6 +12,28 @@ const apiClient = axios.create({
     baseURL: API_BASE,
     timeout: 15000,
 });
+
+const normalizeNovelTitle = (value: string) => String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\b(light novel|novel|web novel|volume|vol)\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const isConfirmedNovelMatch = (expectedTitles: string[], candidateTitle: string) => {
+    const candidate = normalizeNovelTitle(candidateTitle);
+    if (!candidate) return false;
+    return expectedTitles.some((title) => {
+        const expected = normalizeNovelTitle(title);
+        if (!expected) return false;
+        if (candidate === expected) return true;
+        if (candidate.startsWith(`${expected} `) || expected.startsWith(`${candidate} `)) return true;
+        const expectedTokens = expected.split(' ').filter((token) => token.length > 2);
+        const candidateTokens = new Set(candidate.split(' ').filter((token) => token.length > 2));
+        if (expectedTokens.length < 2) return false;
+        return expectedTokens.filter((token) => candidateTokens.has(token)).length / expectedTokens.length >= 0.8;
+    });
+};
 
 const cacheMap = new Map<string, { data: any; timestamp: number }>();
 const CACHE_TTL = 15 * 60 * 1000; // 15 minutes
@@ -356,6 +379,15 @@ export const lnService = {
     async resolveScraperId(titles: string[]): Promise<string | null> {
         const key = `ln_resolve_${titles.join('_')}`;
         return fetchWithOfflineFallback(key, async () => {
+            if (USES_LOCAL_SOURCES) {
+                const expectedTitles = [...new Set(titles.map((value) => value.trim()).filter(Boolean))];
+                for (const title of expectedTitles) {
+                    const results = await novelBinSource.search(title);
+                    const match = results.find((candidate) => isConfirmedNovelMatch(expectedTitles, candidate.title));
+                    if (match?.id) return match.id;
+                }
+                return null;
+            }
             try {
                 const { data } = await apiClient.post('/ln/resolve', { titles });
                 return data?.scraperId || null;
@@ -377,6 +409,13 @@ export const lnService = {
         source?: string;
     } | null> {
         return fetchWithOfflineFallback(`ln_scraper_details_${scraperId}`, async () => {
+            if (USES_LOCAL_SOURCES) {
+                try {
+                    return await novelBinSource.getDetails(scraperId);
+                } catch {
+                    return null;
+                }
+            }
             try {
                 const query = refresh ? '?refresh=true' : '';
                 const { data } = await apiClient.get(`/ln/details/${encodeURIComponent(scraperId)}${query}`);
@@ -402,6 +441,15 @@ export const lnService = {
     // 10. Backend Integration: Read Chapter Content
     async getChapterContent(chapterId: string): Promise<LNChapterContent | null> {
         return fetchWithOfflineFallback(`ln_content_${chapterId}`, async () => {
+            if (USES_LOCAL_SOURCES) {
+                try {
+                    const chapter = await novelBinSource.getContent(chapterId);
+                    return chapter.content?.trim() ? chapter : null;
+                } catch (error) {
+                    console.error('[LN] Native chapter fetch failed:', error);
+                    return null;
+                }
+            }
             try {
                 const { data } = await apiClient.get(`/ln/read/${encodeURIComponent(chapterId)}`);
                 if (data?.success && data?.data) {
@@ -443,7 +491,9 @@ export const lnService = {
             // Run AniList search, backend scraper search, and local curated list match in parallel
             const [aniListRes, scraperRes] = await Promise.allSettled([
                 fetchAniList(gqlQuery, { search: trimmed }),
-                apiClient.get(`/ln/search?q=${encodeURIComponent(trimmed)}`).then((r) => r.data?.data || []).catch(() => []),
+                USES_LOCAL_SOURCES
+                    ? novelBinSource.search(trimmed)
+                    : apiClient.get(`/ln/search?q=${encodeURIComponent(trimmed)}`).then((r) => r.data?.data || []).catch(() => []),
             ]);
 
             const anilistList = (aniListRes.status === 'fulfilled' && aniListRes.value?.Page?.media)

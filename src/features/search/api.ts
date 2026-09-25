@@ -5,7 +5,7 @@ import type { TitleLanguage } from '../../context/TitleLanguageContext';
 import { getDisplayTitle, getSecondaryTitle } from '../../utils/titleLanguage';
 import type { Anime } from '../../types/anime';
 import type { Manga } from '../../types/manga';
-import { API_BASE } from '../../config/api';
+import { API_BASE, USES_LOCAL_SOURCES } from '../../config/api';
 
 export interface SearchPreviewItem {
     id: string | number;
@@ -36,14 +36,14 @@ type PreviewManga = Manga & {
 };
 
 export const searchApi = {
-    async getAnimePreview(rawQuery: string, language: TitleLanguage) {
+    async getAnimePreview(rawQuery: string, language: TitleLanguage, limit = 8) {
         const query = rawQuery.replace(/\s+movie$/i, '').trim() || rawQuery;
-        if (sessionStorage.getItem('_yrm_vlt_s') === 'unlocked') {
+        if (!USES_LOCAL_SOURCES && sessionStorage.getItem('_yrm_vlt_s') === 'unlocked') {
             try {
                 const res = await fetch(`${API_BASE}/vault/anime/search?q=${encodeURIComponent(query)}`);
                 const json = await res.json();
                 if (json.success) {
-                    return json.data.slice(0, 6).map((item: any) => ({
+                    return json.data.slice(0, limit).map((item: any) => ({
                         id: item.id,
                         title: item.title,
                         subtitle: item.releaseDate ? new Date(item.releaseDate).getFullYear().toString() : 'OVA',
@@ -61,7 +61,7 @@ export const searchApi = {
         }
 
         const results = await tmdbService.searchMulti(query).catch(() => []);
-        const animeResults = results.filter(tmdbService.isAnimeContent).slice(0, 8);
+        const animeResults = results.filter(tmdbService.isAnimeContent).slice(0, limit);
 
         if (animeResults.length > 0) {
             return animeResults.map((item) => {
@@ -91,7 +91,7 @@ export const searchApi = {
         }
 
         try {
-            const { data } = await animeService.searchAnime(query, 1, 6);
+            const { data } = await animeService.searchAnime(query, 1, limit);
             if (data && data.length > 0) {
                 return (data as PreviewAnime[]).map((item) => ({
                     id: item.id || item.mal_id,
@@ -118,13 +118,13 @@ export const searchApi = {
         return [];
     },
 
-    async getMangaPreview(query: string, language: TitleLanguage) {
-        if (sessionStorage.getItem('_yrm_vlt_s') === 'unlocked') {
+    async getMangaPreview(query: string, language: TitleLanguage, limit = 8) {
+        if (!USES_LOCAL_SOURCES && sessionStorage.getItem('_yrm_vlt_s') === 'unlocked') {
             try {
                 const res = await fetch(`${API_BASE}/vault/manga/search?q=${encodeURIComponent(query)}`);
                 const json = await res.json();
                 if (json.success) {
-                    return json.data.slice(0, 6).map((item: any) => ({
+                    return json.data.slice(0, limit).map((item: any) => ({
                         id: item.id,
                         title: item.title,
                         subtitle: item.rating ? `★ ${item.rating}` : 'Manga',
@@ -142,12 +142,23 @@ export const searchApi = {
             }
         }
 
-        const { data } = await mangaService.searchManga(query, 1, 6);
-        return (data as PreviewManga[]).slice(0, 4).map((item) => ({
+        let data: Manga[] = [];
+        if (USES_LOCAL_SOURCES) {
+            const scraperResult = await mangaService.searchMangaScraper(query, 1, limit).catch(() => ({ data: [] as Manga[] }));
+            data = scraperResult.data || [];
+            if (data.length === 0) {
+                const catalogResult = await mangaService.searchManga(query, 1, limit).catch(() => ({ data: [] as Manga[] }));
+                data = catalogResult.data || [];
+            }
+        } else {
+            const catalogResult = await mangaService.searchManga(query, 1, limit);
+            data = catalogResult.data || [];
+        }
+        return (data as PreviewManga[]).slice(0, limit).map((item) => ({
             id: item.id || item.mal_id,
             title: getDisplayTitle(item as unknown as Record<string, unknown>, language),
             subtitle: item.chapters ? `Chapters: ${item.chapters}` : getSecondaryTitle(item as unknown as Record<string, unknown>, language),
-            image: item.images?.jpg?.image_url || '',
+            image: item.images?.jpg?.large_image_url || item.images?.jpg?.image_url || '',
             date: item.published?.string
                 ? item.published.string
                 : '',
@@ -159,10 +170,10 @@ export const searchApi = {
         })) as SearchPreviewItem[];
     },
 
-    async getLNPreview(query: string, language: TitleLanguage) {
+    async getLNPreview(query: string, language: TitleLanguage, limit = 8) {
         const { lnService } = await import('../../services/lnService');
         const items = await lnService.searchNovels(query);
-        return items.slice(0, 8).map((item) => ({
+        return items.slice(0, limit).map((item) => ({
             id: item.id,
             title: getDisplayTitle(item as unknown as Record<string, unknown>, language),
             subtitle: item.author || getSecondaryTitle(item as unknown as Record<string, unknown>, language),

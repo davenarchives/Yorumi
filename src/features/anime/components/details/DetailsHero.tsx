@@ -11,7 +11,10 @@ interface DetailsHeroProps {
 
 export default function DetailsHero({ anime }: DetailsHeroProps) {
     const { language } = useTitleLanguage();
-    const bannerImage = anime.anilist_banner_image || anime.images.jpg.large_image_url;
+    const bannerImage = anime.anilist_banner_image
+        || anime.images?.jpg?.large_image_url
+        || anime.images?.jpg?.image_url
+        || '';
     const displayTitle = getDisplayTitle(anime as unknown as Record<string, unknown>, language);
 
     return (

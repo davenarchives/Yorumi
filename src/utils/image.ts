@@ -1,4 +1,4 @@
-import { API_BASE } from '../config/api';
+import { API_BASE, USES_LOCAL_SOURCES } from '../config/api';
 
 const IMAGE_PROXY_BASE = `${API_BASE}/image/proxy?url=`;
 const PROXY_HOST_PATTERNS = [
@@ -23,7 +23,7 @@ export const getDisplayImageUrl = (url?: string | null): string => {
     try {
         const parsed = new URL(value);
         const shouldProxy = PROXY_HOST_PATTERNS.some((pattern) => pattern.test(parsed.hostname));
-        return shouldProxy ? `${IMAGE_PROXY_BASE}${encodeURIComponent(value)}` : value;
+        return shouldProxy && !USES_LOCAL_SOURCES ? `${IMAGE_PROXY_BASE}${encodeURIComponent(value)}` : value;
     } catch {
         return value;
     }

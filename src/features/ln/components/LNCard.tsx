@@ -97,7 +97,7 @@ export default function LNCard({ ln, rank, onClick, disableTilt = false }: LNCar
         >
             {/* Image Container with 3D Transform */}
             <div
-                className="relative aspect-[2/3] rounded-xl overflow-hidden mb-2.5 bg-[#141414] transition-all duration-75 ease-out"
+                className="relative aspect-[2/3] rounded-xl overflow-hidden mb-1.5 md:mb-2.5 bg-[#141414] transition-all duration-75 ease-out"
                 style={{
                     transform: disableTilt
                         ? 'none'
@@ -126,16 +126,16 @@ export default function LNCard({ ln, rank, onClick, disableTilt = false }: LNCar
 
                 {/* Bottom Left: Type + Status Badges */}
                 <div className="absolute bottom-2 left-2 flex flex-wrap gap-1.5 z-10 max-w-[90%]">
-                    <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold uppercase ${
+                    <span className={`rounded bg-black/55 px-1.5 py-0.5 text-[9px] font-extrabold uppercase text-white md:px-2 md:text-[10px] ${
                         ln.countryOfOrigin === 'KR'
-                            ? 'bg-amber-500 text-black shadow-sm'
+                            ? 'md:bg-amber-500 md:text-black md:shadow-sm'
                             : ln.countryOfOrigin === 'CN'
-                            ? 'bg-red-600 text-white shadow-sm'
-                            : 'bg-white/20 backdrop-blur-sm text-white'
+                            ? 'md:bg-red-600 md:text-white md:shadow-sm'
+                            : 'md:bg-white/20 md:backdrop-blur-sm md:text-white'
                     }`}>
                         {ln.countryOfOrigin === 'KR' ? 'KR (WN)' : ln.countryOfOrigin === 'CN' ? 'CN (WN)' : (ln.type || 'NOVEL')}
                     </span>
-                    <span className="bg-black/60 backdrop-blur-sm text-gray-300 px-2 py-0.5 rounded text-[10px] font-bold uppercase flex items-center gap-1">
+                    <span className="flex items-center gap-1 rounded bg-black/55 px-1.5 py-0.5 text-[9px] font-bold uppercase text-gray-200 md:bg-black/60 md:px-2 md:text-[10px] md:text-gray-300 md:backdrop-blur-sm">
                         <span className={`w-1.5 h-1.5 rounded-full ${ln.status === 'FINISHED' || ln.status === 'Completed' ? 'bg-blue-400' : 'bg-green-400'}`} />
                         {ln.status === 'Completed' || ln.status === 'FINISHED' ? 'COMPLETED' : 'ONGOING'}
                     </span>
@@ -192,7 +192,7 @@ export default function LNCard({ ln, rank, onClick, disableTilt = false }: LNCar
             )}
 
             {/* Title Below Card */}
-            <h3 className="text-sm font-semibold text-gray-100 line-clamp-2 leading-tight group-hover:text-amber-400 transition-colors">
+            <h3 className="line-clamp-2 text-xs font-semibold leading-tight text-gray-100 transition-colors group-hover:text-amber-400 md:text-sm">
                 {displayTitle}
             </h3>
         </m.div>

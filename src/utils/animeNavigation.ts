@@ -19,11 +19,14 @@ const isGenericScraperSessionId = (value: unknown): boolean =>
     /^[a-z0-9-]+$/i.test(String(value || '').trim());
 
 const isProviderScraperSessionId = (value: unknown): boolean =>
-    /^consumet:[a-z0-9-]+:.+/i.test(String(value || '').trim());
+    /^(consumet|hi|hianime):[a-z0-9-_]+/i.test(String(value || '').trim());
+
+const isHiAnimeSessionId = (value: unknown): boolean =>
+    /^hi[-:][a-z0-9-_]+/i.test(String(value || '').trim());
 
 export const isSupportedScraperSessionId = (value: unknown): boolean => {
     const normalized = String(value || '').trim();
-    return isAnimePaheSessionId(normalized) || isGenericScraperSessionId(normalized) || isProviderScraperSessionId(normalized);
+    return isAnimePaheSessionId(normalized) || isGenericScraperSessionId(normalized) || isProviderScraperSessionId(normalized) || isHiAnimeSessionId(normalized);
 };
 
 export const getDirectScraperRouteId = (value: unknown): string => {

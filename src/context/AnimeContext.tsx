@@ -8,6 +8,8 @@ import { useAuth } from './AuthContext';
 import { getDisplayImageUrl } from '../utils/image';
 import { isSupportedScraperSessionId } from '../utils/animeNavigation';
 import { setLocalStorageWithCleanup } from '../utils/localStorageQuota';
+import { USES_LOCAL_SOURCES } from '../config/api';
+import { getLocalHiAnimeEpisodes } from '../platform/sources/hianime';
 
 interface AnimeContextType {
     // State
@@ -649,7 +651,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
             });
         const fastBundle = await Promise.race<any | null>([
             fastBundlePromise,
-            new Promise<null>((resolve) => window.setTimeout(() => resolve(null), 300)),
+            new Promise<null>((resolve) => window.setTimeout(() => resolve(null), 2000)),
         ]);
 
         const fetchSpotlight = async () => {
@@ -668,26 +670,15 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
             }
 
             try {
-                const retryDelays = [0, 1000, 2500];
-                for (const delay of retryDelays) {
-                    if (delay > 0) {
-                        await new Promise((resolve) => window.setTimeout(resolve, delay));
-                    }
-
-                    try {
-                        const { data } = await animeService.getSpotlightAnime();
-                        if (data && data.length > 0) {
-                            setSpotlightAnime(data);
-                            writeHomeCache('spotlight', data);
-                            preloadLogos(data.map((a: Anime) => a.id || a.mal_id).filter(Boolean));
-                            return;
-                        }
-                    } catch (e) {
-                        if (delay === retryDelays[retryDelays.length - 1]) {
-                            console.error('Failed to fetch spotlight', e);
-                        }
-                    }
+                const { data } = await animeService.getSpotlightAnime();
+                if (data && data.length > 0) {
+                    setSpotlightAnime(data);
+                    writeHomeCache('spotlight', data);
+                    preloadLogos(data.map((a: Anime) => a.id || a.mal_id).filter(Boolean));
+                    return;
                 }
+            } catch (e) {
+                console.error('Failed to fetch spotlight', e);
             } finally {
                 setSpotlightLoading(false);
             }
@@ -1096,9 +1087,11 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
                 };
 
                 for (let index = 0; index < queryList.length; index += 3) {
-                    const results = await Promise.all(
-                        queryList.slice(index, index + 3).map(q => animeService.searchAllManga(q).then(res => res || []).catch(() => []))
-                    );
+                    const batch = queryList.slice(index, index + 3);
+                    const results = await Promise.all([
+                        ...batch.map(q => animeService.searchAllManga(q).then(res => res || []).catch(() => [])),
+                        ...batch.map(q => animeService.searchScraper(q).then(res => res || []).catch(() => [])),
+                    ]);
 
                     results.flat().forEach((candidate: any) => {
                         const session = String(candidate?.session || '').trim();
@@ -1287,6 +1280,51 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
                 }
             } catch (e) {
                 if (cacheKey) scraperSessionCache.current.delete(cacheKey);
+            }
+        }
+        if (USES_LOCAL_SOURCES) {
+            const altTitles = [
+                anime.title_english,
+                anime.title_romaji,
+                anime.title_japanese,
+                ...(anime.synonyms || [])
+            ].filter(Boolean) as string[];
+
+            try {
+                const localEpMatches = await getLocalHiAnimeEpisodes(anime.title, altTitles);
+                if (localEpMatches.length > 0) {
+                    const localEps: Episode[] = localEpMatches.map((m) => ({
+                        session: m.epId || `local-ep-${m.epNumber}`,
+                        episodeNumber: String(m.epNumber),
+                        title: m.title || `Episode ${m.epNumber}`,
+                    }));
+                    const localSession = `local:hianime:${anime.id || anime.mal_id || anime.title}`;
+                    if (cacheKey) scraperSessionCache.current.set(cacheKey, localSession);
+                    episodesCache.current.set(localSession, localEps);
+                    if (cacheKey) writeEpisodeSessionCache(cacheKey, localSession, localEps);
+                    return { session: localSession, eps: localEps };
+                }
+            } catch (err) {
+                console.warn('[AnimeContext] Local HiAnime episode lookup failed:', err);
+            }
+
+            const count = getExpectedEpisodeCount(anime) || (String(anime.type || '').toUpperCase() === 'MOVIE' ? 1 : 0);
+            if (count > 0) {
+                const syntheticEps: Episode[] = Array.from({ length: count }, (_, i) => {
+                    const epNum = i + 1;
+                    const meta = anime.episodeMetadata?.[i];
+                    return {
+                        session: `local-ep-${epNum}`,
+                        episodeNumber: String(epNum),
+                        title: meta?.title || `Episode ${epNum}`,
+                        snapshot: meta?.thumbnail,
+                    };
+                });
+                const localSession = `local:anime:${anime.id || anime.mal_id || anime.title}`;
+                if (cacheKey) scraperSessionCache.current.set(cacheKey, localSession);
+                episodesCache.current.set(localSession, syntheticEps);
+                if (cacheKey) writeEpisodeSessionCache(cacheKey, localSession, syntheticEps);
+                return { session: localSession, eps: syntheticEps };
             }
         }
         return { session, eps: [] };

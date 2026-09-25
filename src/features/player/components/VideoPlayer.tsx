@@ -8,12 +8,15 @@ import type { StreamServerKey } from '../../../hooks/useStreams';
 import { shouldSkipIntro, shouldSkipOutro, type SkipTimestamp } from '../../../services/skipTimestamps';
 import sleepingGif from '../../../assets/sleeping.gif';
 import discordRPCService from '../../../services/discordRPCService';
+import { getRuntimePlatform } from '../../../platform/runtime';
 
 const IFRAME_LOAD_TIMEOUT_MS = 18_000;
-const NATIVE_LOAD_TIMEOUT_MS = 20_000;
-const MEDIA_STALL_TIMEOUT_MS = 14_000;
+const NATIVE_LOAD_TIMEOUT_MS = 25_000;
+const MEDIA_STALL_TIMEOUT_MS = 25_000;
+const PLAYBACK_START_WATCHDOG_MS = 30_000;
 const HAVE_FUTURE_DATA = 3;
 const isElectron = typeof window !== 'undefined' && (window.location.protocol === 'file:' || Boolean((window as any).electron || (window as any).electronAPI));
+const isNativeMobile = getRuntimePlatform() === 'android' || getRuntimePlatform() === 'ios';
 
 class CustomHlsLoader extends (Hls.DefaultConfig.loader as any) {
     constructor(config: any) {
@@ -130,6 +133,8 @@ export interface VideoPlayerProps {
     animeImage?: string;
     episodeNumber?: number;
     episodeTitle?: string;
+    expectedDurationSeconds?: number | null;
+    mobilePageLayout?: boolean;
 }
 
 export default function VideoPlayer(props: VideoPlayerProps) {
@@ -187,6 +192,7 @@ export default function VideoPlayer(props: VideoPlayerProps) {
     const mediaStallTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const autoSkipPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const autoNextTriggerKeyRef = useRef('');
+    const rejectedMediaUrlRef = useRef('');
     const lastTimeRef = useRef<{ session?: string; time: number }>({ time: 0 });
     const [showServerMenu, setShowServerMenu] = useState(false);
     const [isFullscreen, setIsFullscreen] = useState(false);
@@ -247,13 +253,10 @@ export default function VideoPlayer(props: VideoPlayerProps) {
     const getServerDisplayName = (key: string) => {
         const option = serverOptions?.find((s) => s.key === key);
         if (option?.label) return option.label;
-        if (key === 'anidb') return 'AniDB';
-        if (key === 'vidsrc') return 'VidSrc';
-        if (key === 'vidking') return 'VidKing';
-        if (key === 'videasy') return 'Videasy';
-        if (key === 'reanime') return 'ReAnime';
-        if (key === 'animegg') return 'AnimeGG';
-        if (key === 'auto') return 'AniDB';
+        if (key === 'frieren' || key === 'hianime' || key === 'auto') return 'Frieren';
+        if (key === 'stark' || key === 'start' || key === 'anikoto') return 'Stark';
+        if (key === 'fern' || key === 'animegg') return 'Fern';
+        if (key === 'himmel' || key === 'reanime') return 'Himmel';
         return key.replace(/[-_]+/g, ' ').replace(/\b\w/g, (match) => match.toUpperCase());
     };
 
@@ -268,6 +271,35 @@ export default function VideoPlayer(props: VideoPlayerProps) {
         return url;
     }, [streamUrl]);
 
+    const subtitleTracks = useMemo(() => {
+        const tracks = Array.isArray(props.subtitles) ? props.subtitles : [];
+        const subtitleLanguageRank = (language: string) => {
+            const normalized = language.trim().toLowerCase().replace(/_/g, '-');
+            const isEnglish = /(^|\b)(en|eng|english)(-|\b)/.test(normalized);
+            if (!isEnglish) return 2;
+
+            // Prefer full English dialogue over signs/songs-only tracks.
+            return /sign|song|forced/.test(normalized) ? 1 : 0;
+        };
+
+        const uniqueTracks = new Map<string, SubtitleTrack>();
+        tracks.forEach((track) => {
+            const url = String(track?.url || '').trim();
+            if (url && !uniqueTracks.has(url)) uniqueTracks.set(url, track);
+        });
+
+        return Array.from(uniqueTracks.values())
+            .sort((left, right) => (
+                subtitleLanguageRank(String(left.lang || '')) - subtitleLanguageRank(String(right.lang || ''))
+            ));
+    }, [props.subtitles]);
+
+    const resolveSubtitleUrl = useCallback((url: string) => {
+        if (!url) return url;
+        if (url.startsWith('/api/')) return `${API_ORIGIN}${url}`;
+        return url;
+    }, []);
+
     const isOfflineStream = useMemo(() => {
         return Boolean(
             streamUrl?.startsWith('blob:') ||
@@ -281,8 +313,8 @@ export default function VideoPlayer(props: VideoPlayerProps) {
     const shouldUseNativeVideo = useMemo(() => {
         if (!resolvedStreamUrl) return false;
         if (isOfflineStream) return true;
-        if (selectedServer === 'anidb') return true;
         if (isEmbed) return false;
+        if (selectedServer === 'frieren' || (selectedServer as string) === 'hianime') return true;
         if (isHls || /\.m3u8/i.test(resolvedStreamUrl)) return true;
         if (/\/api\/scraper\/embed\?/i.test(resolvedStreamUrl)) return false;
         if (/\/api\/scraper\/proxy\?/i.test(resolvedStreamUrl)) return true;
@@ -355,6 +387,7 @@ export default function VideoPlayer(props: VideoPlayerProps) {
 
     useEffect(() => {
         iframeReadyNotifiedRef.current = false;
+        rejectedMediaUrlRef.current = '';
     }, [resolvedStreamUrl]);
 
     useEffect(() => {
@@ -752,7 +785,10 @@ export default function VideoPlayer(props: VideoPlayerProps) {
         hlsRef.current?.destroy();
         hlsRef.current = null;
 
-        if (!resolvedStreamUrl.startsWith('blob:') && video.canPlayType('application/vnd.apple.mpegurl')) {
+        // Android WebView may report native HLS support even though proxied HLS
+        // never loads metadata or media frames. Always use hls.js on native
+        // mobile so playlists and segments flow through the local proxy.
+        if (!isNativeMobile && !resolvedStreamUrl.startsWith('blob:') && video.canPlayType('application/vnd.apple.mpegurl')) {
             video.src = resolvedStreamUrl;
             return;
         }
@@ -764,18 +800,18 @@ export default function VideoPlayer(props: VideoPlayerProps) {
 
         let hlsRecoveryAttempts = 0;
         const hls = new Hls({
-            enableWorker: true,
+            enableWorker: !isNativeMobile,
             lowLatencyMode: false,
             fLoader: CustomHlsLoader as any,
             pLoader: CustomHlsLoader as any,
-            startLevel: -1,            // auto-select quality via ABR
-            abrEwmaDefaultEstimate: 5_000_000, // assume ~5Mbps initially so ABR picks 720p+ by default
-            manifestLoadingTimeOut: 15_000,
-            manifestLoadingMaxRetry: 3,
-            levelLoadingTimeOut: 15_000,
-            levelLoadingMaxRetry: 3,
-            fragLoadingTimeOut: 20_000,
-            fragLoadingMaxRetry: 3,
+            startLevel: 0,
+            abrEwmaDefaultEstimate: 5_000_000,
+            manifestLoadingTimeOut: 25_000,
+            manifestLoadingMaxRetry: 4,
+            levelLoadingTimeOut: 25_000,
+            levelLoadingMaxRetry: 4,
+            fragLoadingTimeOut: 30_000,
+            fragLoadingMaxRetry: 4,
             // Set correct Referer for direct CDN streams.
             // Electron's onBeforeSendHeaders overrides Referer to allmanga.to for .m3u8/.ts URLs,
             // which breaks flixcloud.cc (ReAnime) and vivibebe.site (AniNeko direct) access.
@@ -799,18 +835,29 @@ export default function VideoPlayer(props: VideoPlayerProps) {
             const parsed = (data?.levels || hls.levels || []).map((lvl: any) => lvl.height).filter(Boolean);
             setHlsLevels(parsed);
 
-            const applyStartAndPlay = () => {
+            const getValidHlsStart = () => {
                 const isSameEpisode = lastTimeRef.current.session === episodeSession;
-                const start = (isSameEpisode && lastTimeRef.current.time > 0)
+                const requestedStart = isSameEpisode && lastTimeRef.current.time > 0
                     ? lastTimeRef.current.time
                     : Number(startAtRef.current || 0);
+                const duration = Number(video.duration);
 
-                if (start > 0) {
-                    try {
-                        video.currentTime = start;
-                    } catch (e) {
-                        console.warn('Failed setting currentTime:', e);
-                    }
+                // Completed episodes must restart instead of restoring a
+                // timestamp that immediately fires `ended`/auto-next.
+                if (Number.isFinite(duration) && duration > 0 && requestedStart >= duration - 10) {
+                    lastTimeRef.current = { session: episodeSession, time: 0 };
+                    return 0;
+                }
+                return requestedStart;
+            };
+
+            const applyStartAndPlay = () => {
+                const start = getValidHlsStart();
+
+                try {
+                    video.currentTime = start;
+                } catch (e) {
+                    console.warn('Failed setting currentTime:', e);
                 }
 
                 video.play().catch((err) => {
@@ -823,8 +870,8 @@ export default function VideoPlayer(props: VideoPlayerProps) {
             };
 
             const handleHlsStartSync = () => {
-                const start = Number(startAtRef.current || 0);
-                if (start > 0 && Math.abs(video.currentTime - start) > 1.5) {
+                const start = getValidHlsStart();
+                if (Math.abs(video.currentTime - start) > 1.5) {
                     try {
                         video.currentTime = start;
                     } catch (e) {
@@ -953,17 +1000,17 @@ export default function VideoPlayer(props: VideoPlayerProps) {
     }, [autoSkipEnabled, clearAutoSkipPoll, resolvedStreamUrl, runAutoSkipCheck, shouldUseNativeVideo, skipTimestamps.length, videoRef]);
 
     return (
-        <div className={`watch-player-shell w-full max-w-full h-full max-h-full relative bg-[#0b0c0f] group transition-all duration-300 overflow-hidden rounded-none shadow-none outline-none ${displayMode === 'mini' ? 'rounded-xl shadow-2xl shadow-black/70' : 'md:rounded-2xl md:shadow-2xl md:shadow-black/80'}`}>
+        <div className={`watch-player-shell w-full max-w-full h-full max-h-full relative bg-[#0b0c0f] group transition-all duration-300 overflow-hidden rounded-none shadow-none outline-none ${displayMode === 'mini' ? 'rounded-xl shadow-2xl shadow-black/70' : (props.mobilePageLayout ? '' : 'md:rounded-2xl md:shadow-2xl md:shadow-black/80')}`}>
 
-            {(resolvedStreamUrl && !isLoading && !isServerSwitching) ? (
-                <div className="relative w-full max-w-full h-full bg-black flex items-center justify-center z-10 overflow-hidden rounded-none md:rounded-2xl">
-                    <div className="w-full h-full max-w-full max-h-full flex items-center justify-center bg-black overflow-hidden rounded-none md:rounded-2xl">
+            {resolvedStreamUrl ? (
+                <div className={`relative w-full max-w-full h-full bg-black flex items-center justify-center z-10 overflow-hidden rounded-none ${props.mobilePageLayout ? '' : 'md:rounded-2xl'}`}>
+                    <div className={`w-full h-full max-w-full max-h-full flex items-center justify-center bg-black overflow-hidden rounded-none ${props.mobilePageLayout ? '' : 'md:rounded-2xl'}`}>
                         {shouldUseNativeVideo ? (
                             <>
                                 <video
                                     ref={videoRef}
                                     src={isHls || /\.m3u8/i.test(resolvedStreamUrl) ? undefined : resolvedStreamUrl}
-                                    className="w-full h-full bg-black cursor-pointer object-contain"
+                                    className={`w-full bg-black cursor-pointer object-contain ${props.mobilePageLayout ? 'h-[calc(100%_-_104px)] self-start' : 'h-full'}`}
                                     onClick={() => {
                                         if (!videoRef.current || !resolvedStreamUrl) return;
                                         if (videoRef.current.paused) videoRef.current.play().catch(() => {});
@@ -976,7 +1023,28 @@ export default function VideoPlayer(props: VideoPlayerProps) {
                                     preload="auto"
                                     crossOrigin="anonymous"
                                     disableRemotePlayback={false}
-                                    onCanPlay={() => onLoadRef.current?.()}
+                                    onLoadedMetadata={(event) => {
+                                        const actualDuration = event.currentTarget.duration;
+                                        const expectedDuration = Number(props.expectedDurationSeconds || 0);
+                                        if (
+                                            expectedDuration >= 15 * 60
+                                            && Number.isFinite(actualDuration)
+                                            && actualDuration > 0
+                                            && (actualDuration < expectedDuration * 0.65 || actualDuration > expectedDuration * 1.6)
+                                        ) {
+                                            rejectedMediaUrlRef.current = resolvedStreamUrl;
+                                            event.currentTarget.pause();
+                                            console.warn(
+                                                `[Yorumi] Rejected mismatched episode duration from ${selectedServer}: expected about ${expectedDuration}s, received ${Math.round(actualDuration)}s.`
+                                            );
+                                            onErrorRef.current?.();
+                                        }
+                                    }}
+                                    onCanPlay={() => {
+                                        if (rejectedMediaUrlRef.current !== resolvedStreamUrl) {
+                                            onLoadRef.current?.();
+                                        }
+                                    }}
                                     onError={() => onErrorRef.current?.()}
                                     onTimeUpdate={(event) => {
                                         const video = event.currentTarget;
@@ -989,7 +1057,21 @@ export default function VideoPlayer(props: VideoPlayerProps) {
                                         runAutoSkipCheck(video);
                                     }}
                                     onEnded={handleNativeEnded}
-                                />
+                                >
+                                    {subtitleTracks.map((track, index) => {
+                                        const lang = String(track.lang || '').trim() || 'und';
+                                        return (
+                                            <track
+                                                key={`${track.url}:${index}`}
+                                                kind="subtitles"
+                                                src={resolveSubtitleUrl(track.url)}
+                                                srcLang={lang}
+                                                label={lang.toUpperCase()}
+                                                default={index === 0}
+                                            />
+                                        );
+                                    })}
+                                </video>
                                 <CustomVideoControls
                                     streamKey={`${episodeSession ?? ''}::${resolvedStreamUrl ?? ''}`}
                                     videoRef={videoRef}
@@ -1026,6 +1108,9 @@ export default function VideoPlayer(props: VideoPlayerProps) {
                                     animeImage={props.animeImage}
                                     episodeNumber={props.episodeNumber}
                                     episodeTitle={props.episodeTitle}
+                                    hasSubtitles={subtitleTracks.length > 0}
+                                    subtitleTracks={subtitleTracks}
+                                    pageLayout={props.mobilePageLayout}
                                 />
                             </>
                         ) : (
@@ -1082,6 +1167,24 @@ export default function VideoPlayer(props: VideoPlayerProps) {
                             </>
                         )}
                     </div>
+
+                    {/* Non-destructive loading overlay: keep video mounted underneath so buffering/playback is not aborted */}
+                    {(isLoading || isServerSwitching) && !streamExhausted && (
+                        <div className="absolute inset-0 bg-black/75 backdrop-blur-[2px] z-30 flex items-center justify-center pointer-events-none transition-opacity duration-200">
+                            <style>{`
+                                @keyframes animeSubtleFloat {
+                                    0%, 100% { transform: translateY(0); }
+                                    50% { transform: translateY(-8px); }
+                                }
+                            `}</style>
+                            <div className="flex flex-col items-center" style={{ animation: 'animeSubtleFloat 2s ease-in-out infinite' }}>
+                                <img src={sleepingGif} alt="fetching player..." className="w-24 h-24 object-contain opacity-90" />
+                                <p className="mt-3 text-white/70 text-xs font-medium tracking-wide">
+                                    {isServerSwitching ? 'switching server...' : 'buffering stream...'}
+                                </p>
+                            </div>
+                        </div>
+                    )}
                 </div>
             ) : (!resolvedStreamUrl || isLoading || isServerSwitching) && !streamExhausted ? (
                 <div className="absolute inset-0 bg-black z-20 flex items-center justify-center">
@@ -1117,7 +1220,7 @@ export default function VideoPlayer(props: VideoPlayerProps) {
             {/* Header Controls — ALWAYS visible regardless of loading/stream state */}
             {displayMode !== 'mini' && !isFullscreen && (
                 <div 
-                    className={`absolute top-0 left-0 right-0 p-4 sm:p-6 transition-opacity duration-300 z-[2147483647] flex items-center justify-between pointer-events-none ${showServerMenu || !resolvedStreamUrl || !shouldUseNativeVideo || isLoading || isServerSwitching ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                    className={`watch-player-top-controls absolute top-0 left-0 right-0 p-4 sm:p-6 transition-opacity duration-300 z-[2147483647] flex items-center justify-between pointer-events-none ${showServerMenu || !resolvedStreamUrl || !shouldUseNativeVideo || isLoading || isServerSwitching ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
                 >
                     {/* Left: Server Menu or Offline Badge */}
                     <div className="pointer-events-auto relative">

@@ -3,7 +3,13 @@ import { deleteDoc, doc, getDoc, setDoc } from "firebase/firestore";
 import axios from "axios";
 import type { Anime } from "../types/anime";
 import { db, isFirebaseEnabled } from "./firebase";
-import { API_BASE } from "../config/api";
+import { API_BASE, USES_LOCAL_SOURCES } from "../config/api";
+import { getLocalHiAnimeStreams } from "../platform/sources/hianime";
+import {
+    getLocalAniListAnimeHome,
+    getLocalAniListAnimeDetails,
+    getLocalAniListAnimePage,
+} from "../platform/sources/anilistAnime";
 import { downloadService, type DownloadedEpisode } from "./downloadService";
 import { getDisplayImageUrl } from "../utils/image";
 import { isSupportedScraperSessionId } from "../utils/animeNavigation";
@@ -380,13 +386,13 @@ const cache = new Map<string, { data: any, timestamp: number }>();
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 const DETAIL_CACHE_TTL = 15 * 60 * 1000; // 15 minutes for anime details + episodes
 const streamCache = new Map<string, { data: any, timestamp: number }>();
-const STREAM_CACHE_TTL = 20 * 60 * 1000; // 20 minutes
+const STREAM_CACHE_TTL = 4 * 60 * 1000; // Signed provider URLs expire quickly.
 const mappingCache = new Map<string, string>();
 const scraperSearchCache = new Map<string, { data: any[]; timestamp: number }>();
 const SCRAPER_SEARCH_TTL = 5 * 60 * 1000;
 const AZ_LIST_CACHE_TTL = 10 * 60 * 1000;
 const PERSISTED_CACHE_PREFIX = 'yorumi_api_cache_v11';
-const STREAM_CACHE_VERSION = 'v18';
+const STREAM_CACHE_VERSION = 'v25';
 const PERSISTED_STREAM_CACHE_PREFIX = `yorumi_stream_cache_${STREAM_CACHE_VERSION}`;
 
 const readPersistedCache = (key: string, ttl: number) => {
@@ -594,11 +600,17 @@ export const animeService = {
 
         const fetchPromise = (async () => {
             try {
-                const res = await fetchJsonWithTimeout(`${API_BASE}/anime/home-fast`, {}, 6000);
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                let payload: any = null;
+                if (USES_LOCAL_SOURCES) {
+                    payload = await getLocalAniListAnimeHome();
+                } else {
+                    const res = await fetchJsonWithTimeout(`${API_BASE}/anime/home-fast`, {}, 6000);
                 if (!res.ok) {
                     throw new Error(`Failed to fetch fast home data: ${res.statusText}`);
                 }
-                const payload = await res.json();
+                    payload = await res.json();
+                }
 
                 const spotlightAnime = Array.isArray(payload?.spotlight)
                     ? payload.spotlight.map((item: any) => {
@@ -679,6 +691,16 @@ export const animeService = {
 
         const fetchPromise: Promise<LatestUpdatesResult> = (async () => {
             try {
+                if (USES_LOCAL_SOURCES) {
+                    const pageData = await getLocalAniListAnimePage({ page: 1, perPage: 18, sort: ['TRENDING_DESC'] });
+                    const result: LatestUpdatesResult = {
+                        data: (pageData.media || []).map(mapLatestUpdateItemToAnime).filter(hasUsableLatestUpdateAnimeImage)
+                    };
+                    if (result.data.length > 0) {
+                        setCache(cacheKey, result, DETAIL_CACHE_TTL);
+                    }
+                    return result;
+                }
                 const res = await fetchJsonWithTimeout(`${API_BASE}/scraper/recently-updated?page=1&limit=18`, {}, 8000);
                 if (!res.ok) {
                     throw new Error(`Failed to fetch latest updates: ${res.statusText}`);
@@ -731,6 +753,21 @@ export const animeService = {
 
         const fetchPromise: Promise<LatestUpdatesPageResult> = (async () => {
             try {
+                if (USES_LOCAL_SOURCES) {
+                    const pageData = await getLocalAniListAnimePage({ page, perPage: limit, sort: ['TRENDING_DESC'] });
+                    const result: LatestUpdatesPageResult = {
+                        data: (pageData.media || []).map(mapLatestUpdateItemToAnime).filter(hasUsableLatestUpdateAnimeImage),
+                        pagination: {
+                            last_visible_page: pageData.pageInfo?.lastPage || 1,
+                            current_page: pageData.pageInfo?.currentPage || 1,
+                            has_next_page: pageData.pageInfo?.hasNextPage || false,
+                        }
+                    };
+                    if (result.data.length > 0) {
+                        setCache(cacheKey, result, DETAIL_CACHE_TTL);
+                    }
+                    return result;
+                }
                 const res = await fetchJsonWithTimeout(
                     `${API_BASE}/scraper/recently-updated?page=${page}&limit=${limit}`,
                     {},
@@ -787,6 +824,21 @@ export const animeService = {
 
         const fetchPromise = (async () => {
             try {
+                if (USES_LOCAL_SOURCES) {
+                    const pageData = await getLocalAniListAnimePage({ page, perPage: 18, sort: ['POPULARITY_DESC'], format });
+                    const result = {
+                        data: (pageData.media?.map(mapAnilistToAnime) || []).filter(isReleasedTrendingAnime),
+                        pagination: {
+                            last_visible_page: pageData.pageInfo?.lastPage || 1,
+                            current_page: pageData.pageInfo?.currentPage || 1,
+                            has_next_page: pageData.pageInfo?.hasNextPage || false
+                        }
+                    };
+                    if (result.data.length > 0) {
+                        setCache(cacheKey, result, DETAIL_CACHE_TTL);
+                    }
+                    return result;
+                }
                 const formatParam = format ? `&format=${encodeURIComponent(format)}` : '';
                 const res = await fetch(`${API_BASE}/anime/popular?page=${page}&limit=18${formatParam}`);
                 if (!res.ok) {
@@ -817,6 +869,17 @@ export const animeService = {
 
     // Search anime via AniList
     async searchAnime(query: string, page: number = 1, limit: number = 18) {
+        if (USES_LOCAL_SOURCES) {
+            const pageData = await getLocalAniListAnimePage({ search: query, page, perPage: limit });
+            return {
+                data: pageData.media?.map(mapAnilistToAnime) || [],
+                pagination: {
+                    last_visible_page: pageData.pageInfo?.lastPage || 1,
+                    current_page: pageData.pageInfo?.currentPage || 1,
+                    has_next_page: pageData.pageInfo?.hasNextPage || false
+                }
+            };
+        }
         const res = await fetch(`${API_BASE}/anime/search?q=${encodeURIComponent(query)}&page=${page}&limit=${limit}`);
         const data = await res.json();
         return {
@@ -896,6 +959,26 @@ export const animeService = {
         const fetchPromise = (async () => {
             try {
                 const isBroadPage = normalizedLetter === 'All' || normalizedLetter === '#' || normalizedLetter === '0-9';
+                if (USES_LOCAL_SOURCES) {
+                    const pageData = await getLocalAniListAnimePage({
+                        search: isBroadPage ? undefined : normalizedLetter,
+                        sort: isBroadPage ? ['POPULARITY_DESC'] : ['TITLE_ROMAJI'],
+                        page,
+                        perPage: 24,
+                    });
+                    const result = {
+                        data: pageData.media.map(mapAnilistToAnime),
+                        pagination: {
+                            last_visible_page: pageData.pageInfo?.lastPage || page,
+                            current_page: pageData.pageInfo?.currentPage || page,
+                            has_next_page: pageData.pageInfo?.hasNextPage || false,
+                        }
+                    };
+                    if (result.data.length > 0) {
+                        setCache(cacheKey, result, AZ_LIST_CACHE_TTL);
+                    }
+                    return result;
+                }
                 const endpoint = isBroadPage
                     ? `${API_BASE}/anime/popular?page=${page}&limit=24`
                     : `${API_BASE}/anime/search?q=${encodeURIComponent(normalizedLetter)}&page=${page}&limit=24`;
@@ -952,6 +1035,14 @@ export const animeService = {
 
         const fetchPromise = (async () => {
             try {
+                if (USES_LOCAL_SOURCES) {
+                    const localData = await getLocalAniListAnimeDetails(Number(id));
+                    const result = { data: mapAnilistToAnime(localData) as Anime };
+                    if (result.data) {
+                        setCache(cacheKey, result, DETAIL_CACHE_TTL);
+                    }
+                    return result;
+                }
                 const formatParam = format ? `&format=${encodeURIComponent(format)}` : '';
                 let res = await fetch(`${API_BASE}/anime/metadata?id=${id}${formatParam}`).catch(() => null);
                 let data = res && res.ok ? await res.json().catch(() => null) : null;
@@ -1002,6 +1093,19 @@ export const animeService = {
             try {
                 if (!navigator.onLine) {
                     throw new Error('Offline');
+                }
+                if (USES_LOCAL_SOURCES) {
+                    const localData = await getLocalAniListAnimeDetails(Number(id));
+                    const mappedAnime = localData ? (mapAnilistToAnime(localData) as Anime) : null;
+                    const result = {
+                        data: mappedAnime,
+                        episodes: [],
+                        scraperSession: null,
+                    };
+                    if (hasSufficientEpisodePayload(mappedAnime, result)) {
+                        setCache(cacheKey, result, DETAIL_CACHE_TTL);
+                    }
+                    return result;
                 }
                 const formatParam = format ? `&format=${encodeURIComponent(format)}` : '';
                 let res = await fetch(`${API_BASE}/anime/metadata?id=${id}${formatParam}`).catch(() => null);
@@ -1344,11 +1448,18 @@ export const animeService = {
         format?: string;
         episodeNumber?: number;
         anilistId?: number;
+        malId?: number;
     }) {
-        const provider = String(options?.provider || 'auto').trim().toLowerCase() || 'auto';
+        const rawProvider = String(options?.provider || 'auto').trim().toLowerCase() || 'auto';
+        const provider = rawProvider === 'frieren' ? 'hianime'
+            : (rawProvider === 'stark' || rawProvider === 'start') ? 'anikoto'
+            : rawProvider === 'fern' ? 'animegg'
+            : rawProvider === 'himmel' ? 'reanime'
+            : rawProvider;
         const lookupScope = getStreamLookupCacheScope({ ...options, provider });
         const scopedEpisodeSession = lookupScope ? `${episodeSession}:${lookupScope}` : episodeSession;
-        const cacheKey = getStreamCacheKey(animeSession, scopedEpisodeSession, provider);
+        const effectiveProvider = USES_LOCAL_SOURCES ? 'mobile_local' : provider;
+        const cacheKey = getStreamCacheKey(animeSession, scopedEpisodeSession, effectiveProvider);
         const cached = getCachedStream(cacheKey);
         if (cached) return cached;
 
@@ -1358,6 +1469,21 @@ export const animeService = {
 
         const fetchPromise = (async () => {
             try {
+                if (USES_LOCAL_SOURCES) {
+                    const localStreams = await getLocalHiAnimeStreams(
+                        options?.title || animeSession,
+                        Number(options?.episodeNumber || 1),
+                        options?.titles || [],
+                        // Zoko's direct route is MAL-keyed. Passing an AniList
+                        // ID here can resolve a different title with a valid
+                        // response, leaving the player stuck on the wrong media.
+                        options?.malId,
+                    );
+                    if (Array.isArray(localStreams) && localStreams.length > 0) {
+                        setCachedStream(cacheKey, localStreams);
+                    }
+                    return localStreams;
+                }
 
 
                 const { data } = await apiClient.get('/scraper/streams', {
@@ -1410,10 +1536,18 @@ export const animeService = {
     invalidateStreamCache(animeSession: string, episodeSession?: string, provider = 'auto') {
         if (!animeSession) return;
 
+        const rawProvider = String(provider || 'auto').trim().toLowerCase() || 'auto';
+        const normalizedProvider = rawProvider === 'frieren' ? 'hianime'
+            : (rawProvider === 'stark' || rawProvider === 'start') ? 'anikoto'
+            : rawProvider === 'fern' ? 'animegg'
+            : rawProvider === 'himmel' ? 'reanime'
+            : rawProvider;
+        const effectiveProvider = USES_LOCAL_SOURCES ? 'mobile_local' : normalizedProvider;
+
         if (episodeSession) {
-            clearCachedStream(getStreamCacheKey(animeSession, episodeSession, provider));
-            inFlightRequests.delete(getStreamCacheKey(animeSession, episodeSession, provider));
-            const scopedPrefix = `streams:${STREAM_CACHE_VERSION}:${provider}:${animeSession}:${episodeSession}:`;
+            clearCachedStream(getStreamCacheKey(animeSession, episodeSession, effectiveProvider));
+            inFlightRequests.delete(getStreamCacheKey(animeSession, episodeSession, effectiveProvider));
+            const scopedPrefix = `streams:${STREAM_CACHE_VERSION}:${effectiveProvider}:${animeSession}:${episodeSession}:`;
             Array.from(streamCache.keys())
                 .filter((key) => key.startsWith(scopedPrefix))
                 .forEach((key) => clearCachedStream(key));
@@ -1535,10 +1669,16 @@ export const animeService = {
     // Get native spotlight anime from TMDB trending pool
     async getSpotlightAnime() {
         try {
-            const res = await fetchJsonWithTimeout(`${API_BASE}/anime/trending?limit=8`, {}, 12000);
+            let spotlight: unknown[] = [];
+            if (USES_LOCAL_SOURCES) {
+                const pageData = await getLocalAniListAnimePage({ page: 1, perPage: 8, sort: ['TRENDING_DESC'] });
+                spotlight = pageData.media || [];
+            } else {
+                const res = await fetchJsonWithTimeout(`${API_BASE}/anime/trending?limit=8`, {}, 12000);
             if (!res.ok) throw new Error('Failed to fetch spotlight');
             const data = await res.json();
-            const spotlight = data?.media || [];
+                spotlight = data?.media || [];
+            }
 
             const processedSpotlight = (spotlight || []).map((item: any) => {
                 const anime = (item?.id || item?.title?.romaji || item?.title?.english || item?.coverImage
@@ -1579,6 +1719,9 @@ export const animeService = {
 
     // Search AniList (returns raw AniList data for spotlight resolution)
     async searchAnilist(query: string) {
+        if (USES_LOCAL_SOURCES) {
+            return await getLocalAniListAnimePage({ search: query, page: 1, perPage: 10 });
+        }
         const res = await fetch(`${API_BASE}/anime/search?q=${encodeURIComponent(query)}`);
         return res.json();
     },
@@ -1595,6 +1738,21 @@ export const animeService = {
 
         const fetchPromise = (async () => {
             try {
+                if (USES_LOCAL_SOURCES) {
+                    const pageData = await getLocalAniListAnimePage({ page, perPage: limit, sort: ['TRENDING_DESC'] });
+                    const result = {
+                        data: pageData.media?.map(mapAnilistToAnime) || [],
+                        pagination: {
+                            last_visible_page: pageData.pageInfo?.lastPage || 1,
+                            current_page: pageData.pageInfo?.currentPage || 1,
+                            has_next_page: pageData.pageInfo?.hasNextPage || false
+                        }
+                    };
+                    if (result.data.length > 0) {
+                        setCache(cacheKey, result, DETAIL_CACHE_TTL);
+                    }
+                    return result;
+                }
                 const res = await fetch(`${API_BASE}/anime/trending?page=${page}&limit=${limit}`);
                 if (!res.ok) {
                     console.warn(`Failed to fetch trending: ${res.statusText}`);

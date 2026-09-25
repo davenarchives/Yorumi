@@ -1,5 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
-import { ChevronUp } from 'lucide-react';
+import { useRef, useEffect } from 'react';
 import type { MangaPage, MangaChapter } from '../../../../types/manga';
 import sleepingGif from '../../../../assets/sleeping.gif';
 
@@ -28,13 +27,12 @@ export default function PageViewer({
     zoomLevel,
     pageIndex,
     isLoading,
-    isHeaderVisible,
+    isHeaderVisible: _isHeaderVisible,
     onScroll,
     onContentClick,
     onLoadChapter,
     onPageChange,
 }: PageViewerProps) {
-    const [showScrollTop, setShowScrollTop] = useState(false);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
 
     // Sequential image preloader: loads Page 1 first, then Page 2, 3... 50 in strict order
@@ -88,11 +86,6 @@ export default function PageViewer({
 
     const handleScrollInternal = (e: React.UIEvent<HTMLDivElement>) => {
         onScroll(e);
-        setShowScrollTop(e.currentTarget.scrollTop > 500);
-    };
-
-    const scrollToTop = () => {
-        scrollContainerRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
     return (
@@ -207,18 +200,6 @@ export default function PageViewer({
                     </div>
                 )}
             </div>
-
-            {/* Scroll to Top Button */}
-            <button
-                onClick={scrollToTop}
-                className={`absolute right-6 z-40 w-12 h-12 rounded-full bg-yorumi-manga text-black shadow-lg flex items-center justify-center transition-all duration-300 hover:bg-yorumi-manga/90 hover:scale-110 active:scale-95 ${
-                    showScrollTop ? 'opacity-100 pointer-events-auto translate-y-0' : 'opacity-0 pointer-events-none translate-y-4'
-                }`}
-                style={{ bottom: isHeaderVisible ? '6rem' : '1.5rem' }}
-                title="Scroll to Top"
-            >
-                <ChevronUp className="w-6 h-6" strokeWidth={2.5} />
-            </button>
         </div>
     );
 }

@@ -14,12 +14,19 @@ const AllTimePopularManga: React.FC<AllTimePopularMangaProps> = ({ onMangaClick 
     const [loading, setLoading] = useState(!(cachedPopular?.data?.length));
 
     useEffect(() => {
+        let cancelled = false;
         const fetchManga = async () => {
             try {
                 // Use getPopularManga for all-time popularity (POPULARITY_DESC)
                 const { data } = await mangaService.getPopularManga(1);
                 if (data) {
-                    setMangaList(data);
+                    const visible = data.slice(0, 12);
+                    setMangaList(visible);
+                    setLoading(false);
+                    void mangaService.enrichVisibleManga(visible, (enriched, index) => {
+                        if (cancelled) return;
+                        setMangaList((current) => current.map((item, itemIndex) => itemIndex === index ? enriched : item));
+                    });
                 }
             } catch (err) {
                 console.error('Failed to fetch all-time popular manga', err);
@@ -29,6 +36,7 @@ const AllTimePopularManga: React.FC<AllTimePopularMangaProps> = ({ onMangaClick 
         };
 
         fetchManga();
+        return () => { cancelled = true; };
     }, []);
 
 
@@ -39,7 +47,7 @@ const AllTimePopularManga: React.FC<AllTimePopularMangaProps> = ({ onMangaClick 
                     <div className="h-7 w-44 rounded bg-white/10" />
                     <div className="h-6 w-20 rounded bg-white/10" />
                 </div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+                <div className="grid grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
                     {Array.from({ length: 12 }).map((_, idx) => (
                         <div key={idx}>
                             <div className="aspect-[2/3] rounded-lg bg-white/10 mb-2" />
@@ -62,7 +70,7 @@ const AllTimePopularManga: React.FC<AllTimePopularMangaProps> = ({ onMangaClick 
             </div>
 
             {/* Grid Layout */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+            <div className="grid grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
                 {mangaList.slice(0, 12).map((manga) => (
                     <div
                         key={manga.id || manga.mal_id}
@@ -70,7 +78,7 @@ const AllTimePopularManga: React.FC<AllTimePopularMangaProps> = ({ onMangaClick 
                     >
                         <MangaCard
                             manga={manga as unknown as Manga}
-                            onClick={(mangaObj) => onMangaClick((mangaObj.id || mangaObj.mal_id).toString(), false, mangaObj)}
+                            onClick={(mangaObj) => onMangaClick((mangaObj.scraper_id || mangaObj.id || mangaObj.mal_id).toString(), false, mangaObj)}
                             disableTilt
                         />
                     </div>

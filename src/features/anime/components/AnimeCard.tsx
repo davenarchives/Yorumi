@@ -184,7 +184,7 @@ const AnimeCard: React.FC<AnimeCardProps> = ({
             onMouseMove={handleMouseMove}
         >
             <div
-                className="relative aspect-[2/3] rounded-lg overflow-visible mb-3 shadow-lg ring-0 outline-none transition-all duration-75 ease-out"
+                className="relative aspect-[2/3] rounded-lg overflow-visible mb-1.5 md:mb-3 shadow-lg ring-0 outline-none transition-all duration-75 ease-out"
                 style={{
                     transform: disableTilt
                         ? 'none'
@@ -212,11 +212,11 @@ const AnimeCard: React.FC<AnimeCardProps> = ({
                     />
 
                     <div className="absolute bottom-2 left-2 flex gap-1.5 z-10">
-                        <span className="bg-white/20 backdrop-blur-sm text-white px-2 py-1 rounded text-xs font-bold">
+                        <span className="rounded bg-black/55 px-1.5 py-0.5 text-[10px] font-bold text-white md:bg-white/20 md:px-2 md:py-1 md:text-xs md:backdrop-blur-sm">
                             {anime.type || 'TV'}
                         </span>
                         {episodeCount && (
-                            <span className="bg-[#22c55e] text-white px-2 py-1 rounded text-xs font-bold flex items-center gap-1">
+                            <span className="flex items-center gap-1 rounded bg-[#22c55e] px-1.5 py-0.5 text-[10px] font-bold text-white md:px-2 md:py-1 md:text-xs">
                                 <CCIcon className="w-3 h-3" />
                                 {episodeCount}
                             </span>
@@ -288,7 +288,7 @@ const AnimeCard: React.FC<AnimeCardProps> = ({
                 )}
             </div>
 
-            <h3 className="text-sm font-semibold text-gray-100 line-clamp-2 leading-tight group-hover:text-yorumi-accent transition-colors">
+            <h3 className="line-clamp-2 text-xs font-semibold leading-tight text-gray-100 transition-colors group-hover:text-yorumi-accent md:text-sm">
                 {displayTitle}
             </h3>
         </m.div>
