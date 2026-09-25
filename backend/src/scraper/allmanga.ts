@@ -976,7 +976,7 @@ export class AllMangaScraper {
         try {
             const epData = JSON.parse(epJsonStr);
             const epList = Array.isArray(epData) ? epData : (epData.episodes || epData.data || []);
-            const targetEp = epList.find((e: any) => Number(e.number) === Number(episodeNumber)) || epList[0];
+            const targetEp = epList.find((e: any) => Number(e.number) === Number(episodeNumber));
             if (!targetEp?.id) return undefined;
 
             const langJsonStr = await this.fetchAnidbUrl(`https://anidb.app/api/frontend/episode/${targetEp.id}/languages`);

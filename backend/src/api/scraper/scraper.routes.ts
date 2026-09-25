@@ -633,15 +633,21 @@ router.get('/episodes', async (req, res) => {
 
 router.get('/streams', async (req, res) => {
     try {
-        const animeSessionRaw = req.query.anime_session as string;
+        let animeSessionRaw = (req.query.anime_session || req.query.session || req.query.animeSession) as string;
+        let epSessionRaw = (req.query.ep_session || req.query.epSession || req.query.episode_session || req.query.episode) as string;
+        if (!epSessionRaw && animeSessionRaw && animeSessionRaw.includes('?ep=')) {
+            epSessionRaw = animeSessionRaw;
+            animeSessionRaw = animeSessionRaw.split('?ep=')[0];
+        }
         const animeSession = animeSessionRaw?.startsWith('s:') ? animeSessionRaw.substring(2) : animeSessionRaw;
-        const epSessionRaw = req.query.ep_session as string;
         const epSession = normalizeEpisodeSession(animeSession, epSessionRaw);
 
         if (!epSession || !animeSession) {
             const provider = String(req.query.provider || '').trim().toLowerCase();
-            // Metadata/embed providers (videasy, vidsrc, vidking, anidb) resolve via TMDB/AniDB title + episode — no scraper session needed.
-            const isSessionlessProvider = provider === 'videasy' || provider === 'vidsrc' || provider === 'vidking' || provider === 'anidb';
+            const isSessionlessProvider = [
+                'frieren', 'stark', 'start', 'fern', 'himmel',
+                'anikoto', 'reanime', 'hianime', 'auto', 'animegg'
+            ].includes(provider);
             if (!isSessionlessProvider) {
                 return res.status(400).json({ error: 'anime_session and ep_session are required' });
             }
@@ -673,6 +679,15 @@ router.get('/streams', async (req, res) => {
                 const next = { ...item };
                 const providerName = String(next.provider || '').trim().toLowerCase();
                 const server = String(next.server || '').trim().toLowerCase();
+                if (Array.isArray(next.subtitles)) {
+                    next.subtitles = next.subtitles.map((subtitle: any) => {
+                        if (!subtitle?.url || !/^https?:\/\//i.test(subtitle.url)) return subtitle;
+                        return {
+                            ...subtitle,
+                            url: buildScraperProxyUrl(req, subtitle.url, next.referer || '', false),
+                        };
+                    });
+                }
                 const isKwikUrl = /^https?:\/\/([^/]+\.)?kwik\./i.test(next.url);
                 if (server === 'kwik' || isKwikUrl) {
                     next.url = buildKwikEmbedProxyUrl(req, next.url);
@@ -728,9 +743,13 @@ router.post('/clear-stream-cache', (_req, res) => {
 
 router.get('/playable-stream', async (req, res) => {
     try {
-        const animeSessionRaw = req.query.anime_session as string;
+        let animeSessionRaw = (req.query.anime_session || req.query.session || req.query.animeSession) as string;
+        let epSessionRaw = (req.query.ep_session || req.query.epSession || req.query.episode_session || req.query.episode) as string;
+        if (!epSessionRaw && animeSessionRaw && animeSessionRaw.includes('?ep=')) {
+            epSessionRaw = animeSessionRaw;
+            animeSessionRaw = animeSessionRaw.split('?ep=')[0];
+        }
         const animeSession = animeSessionRaw?.startsWith('s:') ? animeSessionRaw.substring(2) : animeSessionRaw;
-        const epSessionRaw = req.query.ep_session as string;
         const epSession = normalizeEpisodeSession(animeSession, epSessionRaw);
         const direct = String(req.query.direct || '').trim() === '1';
 
@@ -1151,7 +1170,9 @@ router.get('/proxy', async (req, res) => {
                 res.set('Access-Control-Allow-Origin', '*');
                 res.set('Access-Control-Expose-Headers', 'Content-Length, Content-Range, Accept-Ranges');
                 // Remove Content-Length because we are stripping the mask which changes the length
-                req.on('close', () => { response.data?.destroy?.(); });
+                res.on('close', () => {
+                    if (!res.writableEnded) response.data?.destroy?.();
+                });
                 
                 response.data.on('error', () => {
                     if (!res.headersSent) res.status(502);
@@ -1172,7 +1193,9 @@ router.get('/proxy', async (req, res) => {
             if (response.headers['content-range']) res.set('Content-Range', response.headers['content-range']);
             if (response.headers['accept-ranges']) res.set('Accept-Ranges', response.headers['accept-ranges']);
             if (response.headers['content-length']) res.set('Content-Length', response.headers['content-length']);
-            req.on('close', () => { response.data?.destroy?.(); });
+            res.on('close', () => {
+                if (!res.writableEnded) response.data?.destroy?.();
+            });
             return response.data.pipe(res);
         }
 
@@ -1182,7 +1205,9 @@ router.get('/proxy', async (req, res) => {
         res.set('Access-Control-Expose-Headers', 'Content-Length, Content-Range, Accept-Ranges');
         if (response.headers['content-range']) res.set('Content-Range', response.headers['content-range']);
         if (response.headers['accept-ranges']) res.set('Accept-Ranges', response.headers['accept-ranges']);
-        if (response.headers['content-length']) res.set('Content-Length', response.headers['content-length']);
+        // The playlist body is rewritten below, so the upstream byte length is
+        // no longer valid. Leaving it attached truncates proxy URLs in Hls.js.
+        res.removeHeader('Content-Length');
 
         const body = (await streamToBuffer(response.data)).toString('utf-8');
         const urlObj = new URL(targetUrl);
@@ -1239,23 +1264,23 @@ router.get('/proxy', async (req, res) => {
             return matchedAudio ? nextPlaylist.replace(/\n{3,}/g, '\n\n') : playlist;
         };
 
+        if (!body.includes('#EXT')) {
+            logger.warn(`[scraper-proxy] Upstream for ${targetUrl} did not return a valid HLS playlist`);
+            return res.status(502).send('Invalid upstream HLS manifest');
+        }
+
         const rewritten = filterHlsAudio(body)
             .split('\n')
             .map((line) => {
                 const trimmed = line.trim();
                 if (!trimmed) return line;
 
-                if (trimmed.startsWith('#EXT-X-STREAM-INF:') && !trimmed.includes('CODECS=')) {
-                    // Inject generic High Profile H.264 codec to prevent Chrome from rejecting the stream
-                    return `${trimmed},CODECS="avc1.640028,mp4a.40.2"`;
-                }
-
                 if (trimmed.startsWith('#') && trimmed.includes('URI=')) {
                     return line.replace(/URI=["']([^"']+)["']/g, (_m, uri) => {
                         const absoluteUri = uri.startsWith('http')
                             ? uri
-                            : (uri.startsWith('/') ? `${urlObj.origin}${uri}` : `${basePath}${uri}`);
-                        return `URI="${getPublicBase(req)}/api/scraper/proxy?url=${encodeURIComponent(absoluteUri)}&referer=${encodeURIComponent(nextReferer)}${nextCookie ? `&cookie=${encodeURIComponent(nextCookie)}` : ''}${proxyMediaSegments ? '&proxyMedia=1' : ''}${req.query.maskCheck === '1' ? '&maskCheck=1' : ''}${requestedAudio ? `&audio=${encodeURIComponent(requestedAudio)}` : ''}"`;
+                            : (uri.startsWith('//') ? `${urlObj.protocol}${uri}` : (uri.startsWith('/') ? `${urlObj.origin}${uri}` : `${basePath}${uri}`));
+                        return `URI="/api/scraper/proxy?url=${encodeURIComponent(absoluteUri)}&referer=${encodeURIComponent(nextReferer)}${nextCookie ? `&cookie=${encodeURIComponent(nextCookie)}` : ''}${proxyMediaSegments ? '&proxyMedia=1' : ''}${req.query.maskCheck === '1' ? '&maskCheck=1' : ''}${requestedAudio ? `&audio=${encodeURIComponent(requestedAudio)}` : ''}"`;
                     });
                 }
 
@@ -1263,7 +1288,7 @@ router.get('/proxy', async (req, res) => {
 
                 const absolute = trimmed.startsWith('http')
                     ? trimmed
-                    : (trimmed.startsWith('/') ? `${urlObj.origin}${trimmed}` : `${basePath}${trimmed}`);
+                    : (trimmed.startsWith('//') ? `${urlObj.protocol}${trimmed}` : (trimmed.startsWith('/') ? `${urlObj.origin}${trimmed}` : `${basePath}${trimmed}`));
 
                 const proxySuffix = `&referer=${encodeURIComponent(nextReferer)}${nextCookie ? `&cookie=${encodeURIComponent(nextCookie)}` : ''}${proxyMediaSegments ? '&proxyMedia=1' : ''}${req.query.maskCheck === '1' ? '&maskCheck=1' : ''}${requestedAudio ? `&audio=${encodeURIComponent(requestedAudio)}` : ''}`;
 
@@ -1277,15 +1302,21 @@ router.get('/proxy', async (req, res) => {
                     targetUrl.includes('ibyteimg') ||
                     targetUrl.includes('shiora') ||
                     targetUrl.includes('norami') ||
-                    targetUrl.includes('akirax')
+                    targetUrl.includes('akirax') ||
+                    nextReferer.includes('krussdomi') ||
+                    targetUrl.includes('krussdomi') ||
+                    targetUrl.includes('advancedairesearchlab') ||
+                    targetUrl.includes('habibikun') ||
+                    targetUrl.includes('babybayw') ||
+                    targetUrl.includes('narutokun')
                 ) {
-                    // Always proxy all segments when proxyMedia=1 or for AniDB / AniKoto (needed for PNG mask stripping & Referer authentication).
-                    return `${getPublicBase(req)}/api/scraper/proxy?url=${encodeURIComponent(absolute)}${proxySuffix}`;
+                    // Always proxy all segments when proxyMedia=1 or for AniDB / AniKoto / Krussdomi (needed for Referer authentication).
+                    return `/api/scraper/proxy?url=${encodeURIComponent(absolute)}${proxySuffix}`;
                 }
 
                 // Sub-playlist lines must pass through the proxy for CORS.
                 if (!isMediaSegment(trimmed) && isLikelySubPlaylist(trimmed)) {
-                    return `${getPublicBase(req)}/api/scraper/proxy?url=${encodeURIComponent(absolute)}${proxySuffix}`;
+                    return `/api/scraper/proxy?url=${encodeURIComponent(absolute)}${proxySuffix}`;
                 }
 
                 // Direct absolute URL for media segments — browser fetches from CDN, not Vercel.

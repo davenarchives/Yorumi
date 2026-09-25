@@ -1,5 +1,7 @@
 import axios from 'axios';
 import { load } from 'cheerio';
+import crypto from 'node:crypto';
+import vm from 'node:vm';
 import type { VideoSource, StreamResponse } from '../api/anime/video-sources.js';
 
 const BASE = 'https://anikototv.to';
@@ -15,6 +17,236 @@ const H = {
 function normalizeTitle(s: string) {
     return (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 }
+
+// ---------------------------------------------------------------------------
+// MegaPlay Decryption Helpers
+// ---------------------------------------------------------------------------
+
+function decodeScriptString(value: string): string {
+    return value.replace(/\\u([\dA-Fa-f]{4})|\\x([\dA-Fa-f]{2})|\\([\\'"bnfrtv0])/g, (_, unicode, hex, escaped) => {
+        if (unicode) return String.fromCharCode(Number.parseInt(unicode, 16));
+        if (hex) return String.fromCharCode(Number.parseInt(hex, 16));
+        const map: Record<string, string> = { b: '\b', n: '\n', f: '\f', r: '\r', t: '\t', v: '\v', '0': '\0' };
+        return map[escaped] ?? escaped;
+    });
+}
+
+function getScriptStrings(script: string): string[] {
+    const strings: string[] = [];
+    let index = 0;
+    let previous = '';
+    while (index < script.length) {
+        const char = script[index];
+        if (char === '/' && script[index + 1] === '/') {
+            index = script.indexOf('\n', index + 2);
+            if (index < 0) break;
+            continue;
+        }
+        if (char === '/' && script[index + 1] === '*') {
+            index = script.indexOf('*/', index + 2);
+            if (index < 0) break;
+            index += 2;
+            continue;
+        }
+        if (char === '/' && /[=(:,[!&|?{};]/.test(previous)) {
+            index++;
+            let inClass = false;
+            while (index < script.length) {
+                if (script[index] === '\\') {
+                    index += 2;
+                    continue;
+                }
+                if (script[index] === '[') inClass = true;
+                if (script[index] === ']') inClass = false;
+                if (script[index] === '/' && !inClass) {
+                    index++;
+                    while (/[a-z]/i.test(script[index] ?? '')) index++;
+                    break;
+                }
+                index++;
+            }
+            continue;
+        }
+        if (char === "'" || char === '"') {
+            const quote = char;
+            let value = '';
+            index++;
+            while (index < script.length && script[index] !== quote) {
+                if (script[index] === '\\' && index + 1 < script.length) value += script[index++];
+                value += script[index++];
+            }
+            strings.push(decodeScriptString(value));
+            index++;
+            continue;
+        }
+        if (char === '`') {
+            index++;
+            while (index < script.length && script[index] !== '`') index += script[index] === '\\' ? 2 : 1;
+            index++;
+            continue;
+        }
+        if (!/\s/.test(char)) previous = char;
+        index++;
+    }
+    return [...new Set(strings)];
+}
+
+function getMegaPlayRoutes(script: string) {
+    const routes = getScriptStrings(script)
+        .filter((value) => /^stream\/getSources[\w/-]*$/i.test(value))
+        .sort((left, right) => left.length - right.length);
+    const legacy = routes[0] ?? null;
+    const modern = routes.find((route) => route !== legacy && route.startsWith(legacy)) ?? null;
+    return { legacy, modern };
+}
+
+function decryptMegaPlaySource(value: string | undefined, script: string): string | null {
+    if (!value) return null;
+    const encrypted = Buffer.from(value, 'base64url');
+    if (!encrypted.length || encrypted.length % 16) return null;
+    const values = getScriptStrings(script).filter((item) => Buffer.byteLength(item) > 0 && Buffer.byteLength(item) <= 32);
+    const ivs = values.filter((item) => Buffer.byteLength(item) === 16);
+    for (const keyValue of values) {
+        const key = Buffer.alloc(32);
+        Buffer.from(keyValue).copy(key);
+        for (const ivValue of ivs) {
+            try {
+                const decipher = crypto.createDecipheriv('aes-256-cbc', key, Buffer.from(ivValue));
+                const decrypted = Buffer.concat([decipher.update(encrypted), decipher.final()]);
+                const data = JSON.parse(decrypted.toString('utf8'));
+                const source = data?.file ?? data?.url ?? data?.sources?.file ?? data?.sources?.[0]?.file;
+                if (typeof source === 'string' && source) return source;
+            } catch {
+                // Try next combination
+            }
+        }
+    }
+    return null;
+}
+
+function getMegaPlaySigningKey(script: string): string | null {
+    const objectName = script.match(/\blet\s+([A-Za-z_$][\w$]*)\s*;\s*!\s*function\s*\(\)\s*\{/i)?.[1];
+    const entry = script.match(/\bconst\s+[A-Za-z_$][\w$]*\s*=\s*new URLSearchParams\b/);
+    if (!objectName || !entry) return null;
+
+    const encoderIndex = script.indexOf('new TextEncoder();return');
+    if (encoderIndex < 0) return null;
+
+    const keyVar = script
+        .slice(encoderIndex, encoderIndex + 1600)
+        .match(/new TextEncoder\(\);return[\s\S]{0,1200}?\]\(([A-Za-z_$][\w$]*)\),\{/i)?.[1];
+    if (!keyVar) return null;
+
+    const keyExpression = script.match(
+        new RegExp(`(?:const|let|var)\\s+${keyVar}\\s*=\\s*(${objectName}\\.[A-Za-z_$][\\w$]*\\(\\d+\\))`)
+    )?.[1];
+    if (!keyExpression) return null;
+
+    try {
+        const context: Record<string, any> = { console, decodeURI, encodeURI, Math, String, Array, Object, RegExp, Error, SyntaxError };
+        context.globalThis = context;
+        vm.runInNewContext(
+            `${script.slice(0, entry.index)};globalThis.__megaPlaySigningKey=${keyExpression};`,
+            context,
+            { timeout: 5000 }
+        );
+        return typeof context.__megaPlaySigningKey === 'string' ? context.__megaPlaySigningKey : null;
+    } catch {
+        return null;
+    }
+}
+
+function signMegaPlayUrl(value: string | null, signingKey: string | null): string | null {
+    if (!value || !signingKey || /[?&]token=/i.test(value)) return value;
+    const match = String(value).match(/\/([a-f0-9]{32})\/([a-f0-9]{32})\//i);
+    if (!match) return value;
+
+    const pathKey = `${match[1].toLowerCase()}/${match[2].toLowerCase()}`;
+    const payload = `${Math.floor(Date.now() / 1000) + 90}|${pathKey}`;
+    const signature = crypto.createHmac('sha256', signingKey).update(payload).digest('base64url');
+    const token = `${Buffer.from(payload).toString('base64url')}.${signature}`;
+    const endpoint = new URL(value);
+    endpoint.searchParams.set('token', token);
+    return endpoint.href;
+}
+
+function buildSourceUrl(origin: string, path: string, fileId: string): string {
+    const endpoint = new URL(path, origin);
+    endpoint.searchParams.append('id', fileId);
+    endpoint.searchParams.append('id', fileId);
+    return endpoint.href;
+}
+
+async function extractMegaPlayDetails(embedUrl: string, { referer }: { referer?: string } = {}) {
+    const pageUrl = new URL(String(embedUrl));
+    const pageHeaders = {
+        'User-Agent': UA,
+        'Accept': 'text/html,*/*',
+        'Referer': referer ?? `${pageUrl.origin}/`,
+    };
+    const { data: pageHtml } = await axios.get(pageUrl.href, { headers: pageHeaders, timeout: 8000 });
+    const fileId = String(pageHtml).match(/data-id=["']([^"']+)["']/i)?.[1];
+    if (!fileId) throw new Error(`MegaPlay file id not found: ${embedUrl}`);
+
+    const scriptUrls = [...String(pageHtml).matchAll(/<script[^>]+src=["']([^"']+)["']/gi)]
+        .map((m) => new URL(m[1], pageUrl).href);
+    const scripts = await Promise.all(scriptUrls.map(async (url) => {
+        try {
+            const { data } = await axios.get(url, { headers: { 'User-Agent': UA, Referer: pageUrl.href }, timeout: 8000 });
+            return String(data);
+        } catch {
+            return null;
+        }
+    }));
+    const validScripts = scripts.filter((s): s is string => typeof s === 'string');
+    const script = validScripts.find((val) => /getSources/i.test(val) && /AES-CBC/i.test(val));
+    const signingScript = validScripts.find((val) => val.includes('[a-f0-9]{32}') && val.includes('token='));
+    if (!script) throw new Error(`MegaPlay client script not found: ${embedUrl}`);
+
+    const { legacy, modern } = getMegaPlayRoutes(script);
+    if (!legacy && !modern) throw new Error(`MegaPlay source routes not found: ${embedUrl}`);
+
+    const sourceHeaders = {
+        'User-Agent': UA,
+        'Accept': 'application/json,*/*',
+        'Referer': pageUrl.href,
+        'X-Requested-With': 'XMLHttpRequest',
+    };
+
+    const [modernData, legacyData] = await Promise.all([
+        modern ? axios.get(buildSourceUrl(pageUrl.origin, modern, fileId), { headers: sourceHeaders, timeout: 8000 }).then(r => r.data).catch(() => null) : null,
+        legacy ? axios.get(buildSourceUrl(pageUrl.origin, legacy, fileId), { headers: sourceHeaders, timeout: 8000 }).then(r => r.data).catch(() => null) : null,
+    ]);
+
+    const signingKey = signingScript ? getMegaPlaySigningKey(signingScript) : null;
+    const modernUrl = signMegaPlayUrl(
+        modernData?.sources?.file ?? decryptMegaPlaySource(modernData?.enc, script),
+        signingKey
+    );
+    const legacyUrl = signMegaPlayUrl(
+        legacyData?.sources?.file ?? decryptMegaPlaySource(legacyData?.enc, script),
+        signingKey
+    );
+
+    const sources = [
+        modernUrl ? { url: modernUrl, variant: 'modern' } : null,
+        legacyUrl ? { url: legacyUrl, variant: 'legacy' } : null,
+    ].filter((s): s is { url: string; variant: string } => Boolean(s?.url));
+
+    if (!sources.length) throw new Error(`MegaPlay response has no sources: ${embedUrl}`);
+    const metadata = modernData ?? legacyData ?? {};
+    return {
+        origin: pageUrl.origin,
+        sources,
+        tracks: Array.isArray(metadata.tracks) ? metadata.tracks : [],
+        intro: metadata.intro ?? null,
+        outro: metadata.outro ?? null,
+    };
+}
+
+// ---------------------------------------------------------------------------
+// Main Anikoto Scraper Implementation
+// ---------------------------------------------------------------------------
 
 export class AnikotoScraper implements VideoSource {
     id = 'anikoto';
@@ -86,7 +318,7 @@ export class AnikotoScraper implements VideoSource {
             const asksSeason2 = /\b(season 2|s2|2nd season|season2)\b/i.test(searchTitle);
             const asksMovie = /\b(movie|film)\b/i.test(searchTitle);
 
-            let bestCandidate = candidates[0];
+            let bestCandidate: typeof candidates[number] | null = null;
             let bestScore = -999;
 
             for (const c of candidates) {
@@ -111,6 +343,8 @@ export class AnikotoScraper implements VideoSource {
                     bestCandidate = c;
                 }
             }
+
+            if (!bestCandidate || bestScore <= 0) return null;
 
             const chosenSlug = bestCandidate.slug;
 
@@ -175,31 +409,21 @@ export class AnikotoScraper implements VideoSource {
                     if (!embedUrl || processedEmbeds.has(embedUrl)) continue;
                     processedEmbeds.add(embedUrl);
 
-                    const origin = new URL(embedUrl).origin;
-                    
-                    // Fetch embed page to get sources
-                    const embedPage = await axios.get(embedUrl, {
-                        headers: { ...H, Referer: SPOOF_REF }
-                    }).then(r => r.data);
-                    
-                    const fileIdMatch = embedPage.match(/data-id="([^"]*)"/);
-                    if (fileIdMatch) {
-                        const fileId = fileIdMatch[1];
-                        const sources = await axios.get(`${origin}/stream/getSources?id=${fileId}&id=${fileId}`, {
-                            headers: { ...H, 'X-Requested-With': 'XMLHttpRequest', Referer: `${origin}/` }
-                        }).then(r => r.data).catch(() => null);
-
-                        if (sources?.sources?.file) {
-                            const foundM3u8 = sources.sources.file;
+                    // If it's a MegaPlay embed, run extractMegaPlayDetails
+                    if (/megaplay\.[^/]+\/stream\//i.test(embedUrl)) {
+                        const details = await extractMegaPlayDetails(embedUrl, { referer: SPOOF_REF });
+                        if (details?.sources?.length) {
+                            const foundM3u8 = details.sources[0].url;
                             if (srv.type === 'sub') {
                                 m3u8 = foundM3u8;
-                                referer = `${origin}/`;
-                                if (sources.tracks) {
-                                    for (const t of sources.tracks) {
+                                referer = `${details.origin}/`;
+                                if (details.tracks) {
+                                    for (const t of details.tracks) {
                                         if (t.file) {
                                             subtitles.push({
                                                 url: t.file,
                                                 lang: t.label || 'Unknown',
+                                                default: Boolean(t.default),
                                             });
                                         }
                                     }
@@ -208,9 +432,43 @@ export class AnikotoScraper implements VideoSource {
                                 dubM3u8 = foundM3u8;
                             }
                         }
+                    } else {
+                        // Fallback generic extraction
+                        const origin = new URL(embedUrl).origin;
+                        const embedPage = await axios.get(embedUrl, {
+                            headers: { ...H, Referer: SPOOF_REF }
+                        }).then(r => r.data);
+                        
+                        const fileIdMatch = embedPage.match(/data-id="([^"]*)"/);
+                        if (fileIdMatch) {
+                            const fileId = fileIdMatch[1];
+                            const sources = await axios.get(`${origin}/stream/getSources?id=${fileId}&id=${fileId}`, {
+                                headers: { ...H, 'X-Requested-With': 'XMLHttpRequest', Referer: `${origin}/` }
+                            }).then(r => r.data).catch(() => null);
+
+                            if (sources?.sources?.file) {
+                                const foundM3u8 = sources.sources.file;
+                                if (srv.type === 'sub') {
+                                    m3u8 = foundM3u8;
+                                    referer = `${origin}/`;
+                                    if (sources.tracks) {
+                                        for (const t of sources.tracks) {
+                                            if (t.file) {
+                                                subtitles.push({
+                                                    url: t.file,
+                                                    lang: t.label || 'Unknown',
+                                                });
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    dubM3u8 = foundM3u8;
+                                }
+                            }
+                        }
                     }
                 } catch {
-                    // skip
+                    // skip server link on error
                 }
             }
 
@@ -245,12 +503,13 @@ export class AnikotoScraper implements VideoSource {
                         }
                     }
                 } catch {
-                    // ignore
+                    // ignore playlist parse error
                 }
             }
 
             return {
                 m3u8: m3u8 || dubM3u8,
+                audio: m3u8 ? 'sub' : 'dub',
                 dubM3u8: dubM3u8 || undefined,
                 variants,
                 subtitles,

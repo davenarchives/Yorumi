@@ -6,6 +6,9 @@ const execFileAsync = util.promisify(execFile);
 import { AllMangaScraper } from '../../scraper/allmanga';
 import { AniNekoScraper } from '../../scraper/anineko';
 import { AnikotoScraper } from '../../scraper/anikoto';
+import { HiAnimeScraper } from '../../scraper/hianime';
+import { ReAnimeScraper } from '../../scraper/reanime';
+import { AnimeGGScraper } from '../../scraper/animegg';
 import { cacheGet, cacheSet } from '../../utils/redis-cache';
 import { logger } from '../../core/logger';
 import { streambertAnimeService } from './anime.service';
@@ -15,6 +18,7 @@ import * as cheerio from 'cheerio';
 export type SubtitleTrack = { lang: string; url: string };
 export type StreamResponse = {
     m3u8: string;
+    audio?: 'sub' | 'dub';
     dubM3u8?: string;
     subtitles: SubtitleTrack[];
     source: string;
@@ -100,116 +104,7 @@ async function resolveTmdbInfo(targetId: number, episode: number, options?: { ti
     return { tmdbId, isMovie, seasonNumber, relativeEpisode };
 }
 
-class VideasySource implements VideoSource {
-    id = 'videasy';
 
-    async getStream(anilistId: number, episode: number, options?: { title?: string, tmdbId?: number, format?: string, anilistId?: number }): Promise<StreamResponse | null> {
-        const baseUrl = String(process.env.VIDEASY_BASE_URL || 'https://player.videasy.to').replace(/\/+$/, '');
-        const { tmdbId, isMovie, seasonNumber, relativeEpisode } = await resolveTmdbInfo(anilistId, episode, options);
-        if (!tmdbId) return null;
-
-        const playerUrl = isMovie
-            ? `${baseUrl}/movie/${tmdbId}`
-            : `${baseUrl}/tv/${tmdbId}/${seasonNumber}/${relativeEpisode}`;
-        
-        try {
-            const response = await axios.get<string>(playerUrl, {
-                headers: {
-                    'User-Agent': USER_AGENT,
-                    Referer: 'https://videasy.to',
-                    Accept: 'text/html,application/xhtml+xml',
-                },
-                timeout: 15_000,
-            });
-            const html = String(response.data || '');
-            const match = html.match(/(?:file|src)\s*[:=]\s*["']([^"']+\.m3u8[^"']*)["']/i);
-            
-            if (match?.[1]) {
-                const m3u8Url = absoluteUrl(match[1], baseUrl);
-                return {
-                    m3u8: `/api/scraper/proxy?url=${encodeURIComponent(m3u8Url)}&referer=${encodeURIComponent(baseUrl)}`,
-                    subtitles: extractSubtitles(html, baseUrl),
-                    source: this.id,
-                    episode,
-                    title: await getEpisodeTitle(anilistId, episode),
-                    referer: baseUrl,
-                };
-            }
-        } catch (error) {
-            // Ignore extraction errors and fallback to iframe
-        }
-
-        return {
-            m3u8: playerUrl,
-            subtitles: [],
-            source: this.id,
-            episode,
-            title: await getEpisodeTitle(anilistId, episode),
-            referer: baseUrl,
-        };
-    }
-}
-
-class EmbedSource implements VideoSource {
-    constructor(public id: string, private baseUrl: string) {}
-
-    async getStream(targetId: number, episode: number, options?: { title?: string, tmdbId?: number, format?: string, anilistId?: number }): Promise<StreamResponse | null> {
-        const cleanBase = this.baseUrl.replace(/\/+$/, '');
-        const { tmdbId, isMovie, seasonNumber, relativeEpisode } = await resolveTmdbInfo(targetId, episode, options);
-        if (!tmdbId) return null;
-
-        let playerUrl = isMovie
-            ? `${cleanBase}/embed/movie/${tmdbId}`
-            : `${cleanBase}/embed/tv/${tmdbId}/${seasonNumber}/${relativeEpisode}`;
-
-        const effectiveAnilistId = options?.anilistId || (options?.tmdbId ? undefined : (targetId > 0 ? targetId : undefined));
-
-        if (this.id === 'vidsrc' || this.id === 'vidking') {
-            return {
-                m3u8: playerUrl,
-                subtitles: [],
-                source: this.id,
-                episode,
-                title: effectiveAnilistId ? await getEpisodeTitle(effectiveAnilistId, episode).catch(() => undefined) : undefined,
-                referer: this.baseUrl,
-            };
-        }
-
-        try {
-            const response = await axios.get<string>(playerUrl, {
-                headers: {
-                    'User-Agent': USER_AGENT,
-                    Referer: this.baseUrl,
-                },
-                timeout: 15_000,
-            });
-            const html = String(response.data || '');
-            const match = html.match(/(?:file|src)\s*[:=]\s*["']([^"']+\.m3u8[^"']*)["']/i);
-            
-            if (match?.[1]) {
-                return {
-                    m3u8: absoluteUrl(match[1], this.baseUrl),
-                    subtitles: extractSubtitles(html, this.baseUrl),
-                    source: this.id,
-                    episode,
-                    title: effectiveAnilistId ? await getEpisodeTitle(effectiveAnilistId, episode) : undefined,
-                    referer: this.baseUrl,
-                };
-            }
-        } catch (error) {
-            // Ignore extraction errors and fallback to iframe
-        }
-
-        return {
-            m3u8: playerUrl,
-            subtitles: [],
-            source: this.id,
-            episode,
-            title: effectiveAnilistId ? await getEpisodeTitle(effectiveAnilistId, episode) : undefined,
-            referer: this.baseUrl,
-        };
-    }
-}
 
 class AllMangaSource implements VideoSource {
     id = 'allmanga';
@@ -457,7 +352,7 @@ class AniDBSource implements VideoSource {
             try { epData = JSON.parse(epJsonStr || ''); } catch {}
             const epList = epData?.episodes || (Array.isArray(epData) ? epData : []);
             
-            const targetEp = epList.find((e: any) => Number(e.number || e.episode) === episode) || epList[0];
+            const targetEp = epList.find((e: any) => Number(e.number || e.episode) === episode);
             const epId = targetEp?.id;
 
             if (!epId) {
@@ -588,28 +483,52 @@ async function fetchAnidbText(url: string, customHeaders?: Record<string, string
     }
 }
 
-// Default sources for auto-fallback (only sources that return playable HLS/video URLs)
+// Default sources for auto-fallback (all return high-quality playable HLS/MP4 streams)
+const hiAnimeSource = new HiAnimeScraper();
+const anikotoSource = new AnikotoScraper();
+const reAnimeSource = new ReAnimeScraper();
+const animeggSource = new AnimeGGScraper();
+const allMangaSource = new AllMangaSource();
+
 const streamableSources: VideoSource[] = [
-    new AniDBSource(),
-    new EmbedSource('vidsrc', process.env.VIDSRC_BASE_URL || 'https://vidsrc.in'),
-    new EmbedSource('vidking', process.env.VIDKING_BASE_URL || 'https://www.vidking.net'),
-    new VideasySource(),
+    hiAnimeSource,
+    anikotoSource,
+    animeggSource,
+    reAnimeSource,
 ];
 
 // All sources including explicit provider-only sources
-const allSources: VideoSource[] = [...streamableSources];
+const allSources: VideoSource[] = [
+    hiAnimeSource,
+    anikotoSource,
+    animeggSource,
+    reAnimeSource,
+    allMangaSource,
+];
 
 function orderedSources(requested: string) {
-    if (requested === 'anidb') return [streamableSources[0]]; // Only try AniDB when explicit
+    const r = requested.toLowerCase().trim();
+    if (r === 'frieren' || r === 'hianime' || r === 'anidb') {
+        return [hiAnimeSource];
+    }
+    if (r === 'stark' || r === 'start' || r === 'anikoto') {
+        return [anikotoSource];
+    }
+    if (r === 'fern' || r === 'animegg') {
+        return [animeggSource];
+    }
+    if (r === 'himmel' || r === 'reanime') {
+        return [reAnimeSource];
+    }
     if (!requested || requested === 'auto') return streamableSources;
     const source = allSources.find((item) => item.id === requested);
-    return source ? [source, ...streamableSources.filter(s => s.id !== requested)] : streamableSources;
+    return source ? [source, ...streamableSources.filter((s) => s.id !== requested)] : streamableSources;
 }
 
 export const animeVideoSources = {
-    async getStream(anilistId: number, episode: number, requestedSource = 'anidb', options?: { title?: string, tmdbId?: number, format?: string }, nocache = false): Promise<StreamResponse | null> {
-        const sourceId = String(requestedSource || 'anidb').trim().toLowerCase();
-        const cacheKey = `anime:stream:v109:${anilistId}:${episode}:${sourceId}`;
+    async getStream(anilistId: number, episode: number, requestedSource = 'frieren', options?: { title?: string, titles?: any, tmdbId?: number, format?: string, anilistId?: number }, nocache = false): Promise<StreamResponse | null> {
+        const sourceId = String(requestedSource || 'frieren').trim().toLowerCase();
+        const cacheKey = `anime:stream:v119:${anilistId}:${episode}:${sourceId}`;
         if (!nocache) {
             const cached = await cacheGet<StreamResponse>(cacheKey);
             if (cached) return cached;
@@ -623,7 +542,12 @@ export const animeVideoSources = {
             try {
                 const result = await source.getStream(anilistId, episode, options);
                 if (result?.m3u8) {
-                    await cacheSet(cacheKey, result, ttl);
+                    // A source can temporarily fail to resolve its subtitle embed while
+                    // its dub embed succeeds. Do not persist that degraded response;
+                    // the next request should get another chance to resolve Sub.
+                    if (result.audio !== 'dub') {
+                        await cacheSet(cacheKey, result, ttl);
+                    }
                     return result;
                 }
             } catch (error) {

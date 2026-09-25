@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { animeQuery, streambertAnimeService } from './anime.service';
 import { anilistService } from '../anilist/anilist.service';
+import { getOrFetchHomeFastPayload } from '../anilist/anilist.routes';
 import { animeVideoSources } from './video-sources';
 
 const router = Router();
@@ -47,6 +48,13 @@ router.get('/metadata', async (req, res) => {
             }
         }
 
+        if (!metadata && req.query.title) {
+            const titleSearch = await anilistService.searchAnime(String(req.query.title), 1, 1).catch(() => null);
+            if (titleSearch?.media?.[0]?.id) {
+                metadata = await anilistService.getAnimeById(titleSearch.media[0].id).catch(() => null);
+            }
+        }
+
         if (!metadata) {
             res.status(404).json({ error: 'Anime not found' });
             return;
@@ -67,7 +75,13 @@ router.get('/search', async (req, res) => {
             return;
         }
 
-        const result = await streambertAnimeService.search(filters);
+        let result = await streambertAnimeService.search(filters);
+        if ((!result || !Array.isArray(result.media) || result.media.length === 0) && filters.query) {
+            const anilistResult = await anilistService.searchAnime(filters.query, filters.page, filters.perPage).catch(() => null);
+            if (anilistResult && Array.isArray(anilistResult.media) && anilistResult.media.length > 0) {
+                result = anilistResult;
+            }
+        }
         res.set('Cache-Control', 'public, max-age=120, s-maxage=300, stale-while-revalidate=600');
         res.json(result);
     } catch (error: any) {
@@ -145,19 +159,29 @@ router.get('/stream', async (req, res) => {
     }
 });
 
+let mediaPoolCache: { data: any[]; timestamp: number } | null = null;
+const MEDIA_POOL_CACHE_TTL = 10 * 60 * 1000;
+
 const getGlobalAnilistMediaPool = async (): Promise<any[]> => {
+    if (mediaPoolCache && Date.now() - mediaPoolCache.timestamp < MEDIA_POOL_CACHE_TTL) {
+        return mediaPoolCache.data;
+    }
     const [t, s, m, a] = await Promise.all([
         anilistService.getTrendingAnime(1, 50).catch(() => ({ media: [] })),
         anilistService.getPopularThisSeason(1, 50).catch(() => ({ media: [] })),
         anilistService.getPopularThisMonth(1, 50).catch(() => ({ media: [] })),
         anilistService.getPopularAnime(1, 50).catch(() => ({ media: [] })),
     ]);
-    return [
+    const pool = [
         ...(t?.media || []),
         ...(s?.media || []),
         ...(m?.media || []),
         ...(a?.media || []),
     ];
+    if (pool.length > 0) {
+        mediaPoolCache = { data: pool, timestamp: Date.now() };
+    }
+    return pool;
 };
 
 const normalizeTitleForMatch = (title: unknown): string =>
@@ -227,7 +251,13 @@ router.get('/trending', async (req, res) => {
     try {
         const page = animeQuery.toPositiveInt(req.query.page, 1, 500);
         const perPage = animeQuery.toPositiveInt(req.query.perPage || req.query.limit, 10, 50);
-        const result = await streambertAnimeService.trending(page, perPage);
+        let result = await streambertAnimeService.trending(page, perPage);
+        if (!result || !Array.isArray(result.media) || result.media.length === 0) {
+            result = await anilistService.getTrendingAnime(page, perPage);
+            res.set('Cache-Control', 'public, max-age=120, s-maxage=300, stale-while-revalidate=600');
+            res.json(result);
+            return;
+        }
         const pool = await getGlobalAnilistMediaPool();
         res.set('Cache-Control', 'public, max-age=120, s-maxage=300, stale-while-revalidate=600');
         res.json({
@@ -243,7 +273,13 @@ router.get('/popular', async (req, res) => {
     try {
         const page = animeQuery.toPositiveInt(req.query.page, 1, 500);
         const perPage = animeQuery.toPositiveInt(req.query.perPage || req.query.limit, 10, 50);
-        const result = await streambertAnimeService.popular(page, perPage);
+        let result = await streambertAnimeService.popular(page, perPage);
+        if (!result || !Array.isArray(result.media) || result.media.length === 0) {
+            result = await anilistService.getPopularAnime(page, perPage);
+            res.set('Cache-Control', 'public, max-age=120, s-maxage=300, stale-while-revalidate=600');
+            res.json(result);
+            return;
+        }
         const pool = await getGlobalAnilistMediaPool();
         res.set('Cache-Control', 'public, max-age=120, s-maxage=300, stale-while-revalidate=600');
         res.json({
@@ -264,7 +300,13 @@ router.get('/seasonal', async (req, res) => {
         const year = animeQuery.toPositiveInt(req.query.year || req.query.seasonYear, now.getFullYear(), 3000);
         const page = animeQuery.toPositiveInt(req.query.page, 1, 500);
         const perPage = animeQuery.toPositiveInt(req.query.perPage || req.query.limit, 10, 50);
-        const result = await streambertAnimeService.seasonal(season, year, page, perPage);
+        let result = await streambertAnimeService.seasonal(season, year, page, perPage);
+        if (!result || !Array.isArray(result.media) || result.media.length === 0) {
+            result = await anilistService.getPopularThisSeason(page, perPage);
+            res.set('Cache-Control', 'public, max-age=120, s-maxage=300, stale-while-revalidate=600');
+            res.json(result);
+            return;
+        }
         const pool = await getGlobalAnilistMediaPool();
         res.set('Cache-Control', 'public, max-age=120, s-maxage=300, stale-while-revalidate=600');
         res.json({
@@ -276,20 +318,40 @@ router.get('/seasonal', async (req, res) => {
     }
 });
 
+let animeHomeFastMemoryCache: { data: any; timestamp: number } | null = null;
+const ANIME_HOME_FAST_TTL_MS = 2 * 60 * 1000;
+
 router.get('/home-fast', async (_req, res) => {
     try {
+        if (animeHomeFastMemoryCache && Date.now() - animeHomeFastMemoryCache.timestamp < ANIME_HOME_FAST_TTL_MS) {
+            res.set('Cache-Control', 'public, max-age=60, s-maxage=120, stale-while-revalidate=300');
+            res.json(animeHomeFastMemoryCache.data);
+            return;
+        }
+
         const now = new Date();
         const month = now.getMonth() + 1;
         const season = month <= 3 ? 'WINTER' : month <= 6 ? 'SPRING' : month <= 9 ? 'SUMMER' : 'FALL';
         const year = now.getFullYear();
 
-        const [trending, seasonal, popular, allAnilistMedia] = await Promise.all([
+        const [trending, seasonal, popular] = await Promise.all([
             streambertAnimeService.trending(1, 30).catch(() => ({ media: [] })),
             streambertAnimeService.seasonal(season, year, 1, 24).catch(() => ({ media: [] })),
             streambertAnimeService.popular(1, 24).catch(() => ({ media: [] })),
-            getGlobalAnilistMediaPool(),
         ]);
 
+        // If TMDB returned empty (e.g. no TMDB key configured or rate limited), serve the resilient AniList home-fast bundle
+        if ((!trending?.media || trending.media.length === 0) && (!popular?.media || popular.media.length === 0)) {
+            const anilistPayload = await getOrFetchHomeFastPayload();
+            if (anilistPayload) {
+                animeHomeFastMemoryCache = { data: anilistPayload, timestamp: Date.now() };
+                res.set('Cache-Control', 'public, max-age=60, s-maxage=120, stale-while-revalidate=300');
+                res.json(anilistPayload);
+                return;
+            }
+        }
+
+        const allAnilistMedia = await getGlobalAnilistMediaPool();
         const enrichedTrending = enrichTmdbWithAnilistStudios(trending.media, allAnilistMedia);
         const enrichedSeasonal = enrichTmdbWithAnilistStudios(seasonal.media, allAnilistMedia);
         const enrichedPopular = enrichTmdbWithAnilistStudios(popular.media, allAnilistMedia);
@@ -315,6 +377,7 @@ router.get('/home-fast', async (_req, res) => {
             generatedAt: Date.now(),
         };
 
+        animeHomeFastMemoryCache = { data: payload, timestamp: Date.now() };
         res.set('Cache-Control', 'public, max-age=60, s-maxage=120, stale-while-revalidate=300');
         res.json(payload);
     } catch (error) {

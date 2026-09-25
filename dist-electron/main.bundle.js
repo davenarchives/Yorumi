@@ -3518,6 +3518,9 @@ function initDiscordRPC(clientId) {
       discordRpcConnected = false;
       console.log("[Discord RPC] Disconnected from Discord");
     });
+    discordRpcClient.on("error", (err) => {
+      console.log("[Discord RPC] Client error:", err.message || err);
+    });
     discordRpcClient.login({ clientId: currentDiscordClientId }).catch((err) => {
       discordRpcConnected = false;
       console.log("[Discord RPC] Could not connect to Discord:", err.message || err);
@@ -3541,23 +3544,45 @@ function setDiscordActivity(presenceData) {
     if (smallKey.startsWith("http://")) {
       smallKey = smallKey.replace("http://", "https://");
     }
-    const activity = {
-      details: presenceData.details || "Yorumi Anime & Manga Streamer",
-      state: presenceData.state || void 0,
-      largeImageKey: largeKey,
-      largeImageText: presenceData.largeImageText || "Yorumi",
-      smallImageKey: smallKey,
-      smallImageText: presenceData.smallImageText || "Yorumi",
-      instance: false
+    const activityType = typeof presenceData.type === "number" ? presenceData.type : presenceData.type ? Number(presenceData.type) : 0;
+    const timestamps = (presenceData.startTimestamp || presenceData.endTimestamp) ? {
+      start: presenceData.startTimestamp,
+      end: presenceData.endTimestamp
+    } : undefined;
+    const assets = {
+      large_image: largeKey,
+      large_text: presenceData.largeImageText || "Yorumi",
+      small_image: smallKey,
+      small_text: presenceData.smallImageText || "Yorumi"
     };
-    if (presenceData.startTimestamp) {
-      activity.startTimestamp = presenceData.startTimestamp;
-    }
-    if (presenceData.endTimestamp) {
-      activity.endTimestamp = presenceData.endTimestamp;
-    }
-    discordRpcClient.setActivity(activity).catch((err) => {
-      console.log("[Discord RPC] Failed to set activity:", err.message || err);
+
+    const rpcPayload = {
+      pid: process.pid,
+      activity: {
+        type: activityType,
+        details: presenceData.details || "Yorumi Anime & Manga Streamer",
+        state: presenceData.state || undefined,
+        timestamps,
+        assets,
+        instance: false
+      }
+    };
+
+    discordRpcClient.request("SET_ACTIVITY", rpcPayload).catch((err) => {
+      console.log("[Discord RPC] Primary SET_ACTIVITY request failed, falling back to setActivity:", err.message || err);
+      discordRpcClient.setActivity({
+        details: presenceData.details || "Yorumi Anime & Manga Streamer",
+        state: presenceData.state || undefined,
+        largeImageKey: largeKey,
+        largeImageText: presenceData.largeImageText || "Yorumi",
+        smallImageKey: smallKey,
+        smallImageText: presenceData.smallImageText || "Yorumi",
+        startTimestamp: presenceData.startTimestamp,
+        endTimestamp: presenceData.endTimestamp,
+        instance: false
+      }).catch((setErr) => {
+        console.log("[Discord RPC] Failed to set activity:", setErr.message || setErr);
+      });
     });
     return true;
   } catch (err) {

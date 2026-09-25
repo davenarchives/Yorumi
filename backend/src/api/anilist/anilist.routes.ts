@@ -473,27 +473,29 @@ const refreshHomeFastCache = async () => {
 
 const warmHomeFastCache = async () => refreshHomeFastCache();
 
+export const getOrFetchHomeFastPayload = async () => {
+    const memoryHit = getFreshHomeFastFromMemory();
+    if (memoryHit && Array.isArray(memoryHit.spotlight) && memoryHit.spotlight.length > 0) {
+        return memoryHit;
+    }
+
+    const redisHit = await redis.get<any>(HOME_FAST_CACHE_KEY).catch(() => null);
+    if (redisHit && Array.isArray(redisHit.spotlight) && redisHit.spotlight.length > 0) {
+        homeFastMemoryCache = { data: redisHit, timestamp: Date.now() };
+        refreshHomeFastCache().catch(() => undefined);
+        return redisHit;
+    }
+    if (redisHit) {
+        redis.del(HOME_FAST_CACHE_KEY).catch(() => undefined);
+    }
+
+    return refreshHomeFastCache();
+};
+
 router.get('/home-fast', async (_req, res) => {
     try {
-        const memoryHit = getFreshHomeFastFromMemory();
-        if (memoryHit) {
-            res.json(memoryHit);
-            return;
-        }
-
-        const redisHit = await redis.get<any>(HOME_FAST_CACHE_KEY).catch(() => null);
-        if (redisHit && Array.isArray(redisHit.spotlight) && redisHit.spotlight.length > 0) {
-            homeFastMemoryCache = { data: redisHit, timestamp: Date.now() };
-            res.json(redisHit);
-            refreshHomeFastCache().catch(() => undefined);
-            return;
-        }
-        if (redisHit) {
-            redis.del(HOME_FAST_CACHE_KEY).catch(() => undefined);
-        }
-
-        const fresh = await refreshHomeFastCache();
-        res.json(fresh);
+        const payload = await getOrFetchHomeFastPayload();
+        res.json(payload);
     } catch (error) {
         console.error('Error in home-fast route:', error);
         res.status(500).json({ error: 'Failed to fetch home bundle' });

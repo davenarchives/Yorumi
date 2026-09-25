@@ -1,7 +1,9 @@
 import { AllMangaScraper } from '../../scraper/allmanga';
+import { HiAnimeScraper } from '../../scraper/hianime';
+import type { Episode } from '../../scraper/types';
 import { tmdbService } from './tmdb.service';
-import { Request, Response } from 'express'; // Trigger restart
-import { anilistService } from './anilist.service';
+import { anilistService as scraperAnilistService } from './anilist.service';
+import { anilistService } from '../anilist/anilist.service';
 
 import { acquireLock, cacheGet, cacheSet, releaseLock } from '../../utils/redis-cache';
 
@@ -17,6 +19,7 @@ type StreamProviderOptions = {
 
 class ScraperService {
     private allMangaScraper: AllMangaScraper;
+    private hiAnimeScraper: HiAnimeScraper;
 
     private cache = new Map<string, { expiresAt: number; value: any }>();
     private inFlight = new Map<string, Promise<any>>();
@@ -24,6 +27,7 @@ class ScraperService {
 
     constructor() {
         this.allMangaScraper = new AllMangaScraper();
+        this.hiAnimeScraper = new HiAnimeScraper();
     }
 
     private isAnimePaheSession(session: string) {
@@ -297,9 +301,25 @@ class ScraperService {
                     return fallback;
                 }
             };
-            const allManga = await withTimeout(this.allMangaScraper.searchAnime(query), 7000, []);
+            const [allManga, hiAnime] = await Promise.all([
+                withTimeout(this.allMangaScraper.searchAnime(query), 7000, []),
+                withTimeout(this.hiAnimeScraper.searchAnime(query), 5000, null),
+            ]);
             const seen = new Set<string>();
             const merged: any[] = [];
+
+            if (hiAnime && hiAnime.animeId) {
+                const session = `hi:${hiAnime.slug || hiAnime.animeId}`;
+                seen.add(session);
+                merged.push({
+                    id: session,
+                    session,
+                    scraperId: session,
+                    title: hiAnime.title,
+                    url: `/anime/${session}`,
+                    source: 'hianime',
+                });
+            }
 
             const addItems = (items: unknown) => {
                 if (!Array.isArray(items)) return;
@@ -510,6 +530,140 @@ class ScraperService {
                 }
 
                 try {
+                    // 1. HiAnime session: e.g. "hi:solo-leveling-235" or "hi-235"
+                    if (/^hi[-:]/i.test(session)) {
+                        const rawId = session.replace(/^hi[-:]/i, '').split('?')[0];
+                        const animeId = rawId.includes('-') ? rawId.split('-').pop()! : rawId;
+                        const rawEps = await this.hiAnimeScraper.getEpisodes(animeId);
+                        if (rawEps.length > 0) {
+                            const episodes: Episode[] = rawEps.map((ep) => ({
+                                id: `hi:${animeId}?ep=${ep.epId}`,
+                                session: `hi:${animeId}?ep=${ep.epId}`,
+                                episodeNumber: ep.epNumber,
+                                title: ep.title,
+                                url: `/watch/hi:${animeId}?ep=${ep.epId}`,
+                                isSubbed: true,
+                                isDubbed: true,
+                            }));
+                            const result = { episodes, lastPage: 1 };
+                            cacheSet(fullCacheKey, result, Math.ceil(fullTtlMs / 1000)).catch(() => undefined);
+                            return result;
+                        }
+                    }
+
+                    // 2. Numeric session: e.g. AniList ID "195600" or "1735"
+                    const parsedId = parseInt(session, 10);
+                    if (!isNaN(parsedId) && parsedId > 0 && String(parsedId) === session.trim()) {
+                        const anime = await anilistService.getAnimeById(parsedId).catch(() => null);
+                        if (anime) {
+                            const titles = [
+                                anime.title?.english,
+                                anime.title?.romaji,
+                                anime.title?.native,
+                                ...(Array.isArray(anime.synonyms) ? anime.synonyms : [])
+                            ].filter(Boolean) as string[];
+
+                            // Try HiAnime first
+                            for (const title of titles.slice(0, 3)) {
+                                const hiMatch = await this.hiAnimeScraper.searchAnime(title).catch(() => null);
+                                if (hiMatch?.animeId) {
+                                    const rawEps = await this.hiAnimeScraper.getEpisodes(hiMatch.animeId);
+                                    if (rawEps.length > 0) {
+                                        const episodes: Episode[] = rawEps.map((ep) => ({
+                                            id: `hi:${hiMatch.slug}?ep=${ep.epId}`,
+                                            session: `hi:${hiMatch.slug}?ep=${ep.epId}`,
+                                            episodeNumber: ep.epNumber,
+                                            title: ep.title,
+                                            url: `/watch/hi:${hiMatch.slug}?ep=${ep.epId}`,
+                                            isSubbed: true,
+                                            isDubbed: true,
+                                        }));
+                                        const result = { episodes, lastPage: 1 };
+                                        cacheSet(fullCacheKey, result, Math.ceil(fullTtlMs / 1000)).catch(() => undefined);
+                                        return result;
+                                    }
+                                }
+                            }
+
+                            // Try AllManga next
+                            for (const title of titles.slice(0, 3)) {
+                                const allMangaMatch = await this.allMangaScraper.searchAnime(title).catch(() => []);
+                                if (Array.isArray(allMangaMatch) && allMangaMatch.length > 0 && allMangaMatch[0]?.session) {
+                                    const allMangaEps = await this.allMangaScraper.getEpisodes(allMangaMatch[0].session);
+                                    if (Array.isArray(allMangaEps?.episodes) && allMangaEps.episodes.length > 0) {
+                                        cacheSet(fullCacheKey, allMangaEps, Math.ceil(fullTtlMs / 1000)).catch(() => undefined);
+                                        return allMangaEps;
+                                    }
+                                }
+                            }
+
+                            // Fallback: AniList streaming episodes or placeholders
+                            if (Array.isArray(anime.streamingEpisodes) && anime.streamingEpisodes.length > 0) {
+                                const episodes: Episode[] = anime.streamingEpisodes.map((ep, idx) => ({
+                                    id: `al:${parsedId}:${idx + 1}`,
+                                    session: `al:${parsedId}:${idx + 1}`,
+                                    episodeNumber: idx + 1,
+                                    title: ep.title || `Episode ${idx + 1}`,
+                                    snapshot: ep.thumbnail,
+                                    url: ep.url || `/watch/al:${parsedId}:${idx + 1}`,
+                                    isSubbed: true,
+                                    isDubbed: true,
+                                }));
+                                const result = { episodes, lastPage: 1 };
+                                cacheSet(fullCacheKey, result, Math.ceil(fullTtlMs / 1000)).catch(() => undefined);
+                                return result;
+                            }
+
+                            const epCount = Number(anime.episodes || anime.latestEpisode || 0);
+                            if (epCount > 0) {
+                                const episodes: Episode[] = Array.from({ length: epCount }, (_, i) => ({
+                                    id: `al:${parsedId}:${i + 1}`,
+                                    session: `al:${parsedId}:${i + 1}`,
+                                    episodeNumber: i + 1,
+                                    title: `Episode ${i + 1}`,
+                                    url: `/watch/al:${parsedId}:${i + 1}`,
+                                    isSubbed: true,
+                                    isDubbed: true,
+                                }));
+                                const result = { episodes, lastPage: 1 };
+                                cacheSet(fullCacheKey, result, Math.ceil(fullTtlMs / 1000)).catch(() => undefined);
+                                return result;
+                            }
+                        }
+                    }
+
+                    // 3. Title slug fallback: e.g. "naruto" or "solo-leveling"
+                    const titleQuery = this.queryFromSessionSlug(session);
+                    if (titleQuery) {
+                        const hiMatch = await this.hiAnimeScraper.searchAnime(titleQuery).catch(() => null);
+                        if (hiMatch?.animeId) {
+                            const rawEps = await this.hiAnimeScraper.getEpisodes(hiMatch.animeId);
+                            if (rawEps.length > 0) {
+                                const episodes: Episode[] = rawEps.map((ep) => ({
+                                    id: `hi:${hiMatch.slug}?ep=${ep.epId}`,
+                                    session: `hi:${hiMatch.slug}?ep=${ep.epId}`,
+                                    episodeNumber: ep.epNumber,
+                                    title: ep.title,
+                                    url: `/watch/hi:${hiMatch.slug}?ep=${ep.epId}`,
+                                    isSubbed: true,
+                                    isDubbed: true,
+                                }));
+                                const result = { episodes, lastPage: 1 };
+                                cacheSet(fullCacheKey, result, Math.ceil(fullTtlMs / 1000)).catch(() => undefined);
+                                return result;
+                            }
+                        }
+
+                        const allMangaMatch = await this.allMangaScraper.searchAnime(titleQuery).catch(() => []);
+                        if (Array.isArray(allMangaMatch) && allMangaMatch.length > 0 && allMangaMatch[0]?.session) {
+                            const allMangaEps = await this.allMangaScraper.getEpisodes(allMangaMatch[0].session);
+                            if (Array.isArray(allMangaEps?.episodes) && allMangaEps.episodes.length > 0) {
+                                cacheSet(fullCacheKey, allMangaEps, Math.ceil(fullTtlMs / 1000)).catch(() => undefined);
+                                return allMangaEps;
+                            }
+                        }
+                    }
+
                     return { episodes: [], lastPage: 1 };
                 } finally {
                     releaseLock(lockKey).catch(() => undefined);
@@ -526,13 +680,29 @@ class ScraperService {
         const provider = String(options?.provider || 'auto').trim().toLowerCase() || 'auto';
         
         // ── Custom Video Sources (video-sources.ts) ─────────────────────────
-        if (provider === 'auto' || provider === 'vidsrc' || provider === 'vidking' || provider === 'anidb' || provider === 'anikoto' || provider === 'videasy' || provider === 'reanime' || provider === 'anineko') {
+        const customProviders = [
+            'auto', 'anidb',
+            'frieren', 'hianime',
+            'stark', 'start', 'anikoto',
+            'fern', 'animegg',
+            'himmel', 'reanime'
+        ];
+        if (customProviders.includes(provider)) {
             const title = String(options?.title || this.queryFromSessionSlug(animeSession)).trim();
             const parsedAnilistId = parseInt(animeSession, 10);
             const anilistId = options?.anilistId || (!isNaN(parsedAnilistId) && parsedAnilistId > 0 ? parsedAnilistId : undefined);
-            const effectiveProvider = provider === 'auto' ? 'anidb' : provider;
+            let effectiveProvider = provider;
+            if (provider === 'auto' || provider === 'anidb' || provider === 'frieren') {
+                effectiveProvider = 'hianime';
+            } else if (provider === 'stark' || provider === 'start') {
+                effectiveProvider = 'anikoto';
+            } else if (provider === 'fern') {
+                effectiveProvider = 'animegg';
+            } else if (provider === 'himmel') {
+                effectiveProvider = 'reanime';
+            }
 
-            const tmdbTarget = effectiveProvider === 'anidb'
+            const tmdbTarget = (effectiveProvider === 'hianime' || effectiveProvider === 'anidb')
                 ? null
                 : await tmdbService.resolveMediaTarget({ 
                     title, 
@@ -544,9 +714,10 @@ class ScraperService {
 
             const episodeNumber = Number(options?.episodeNumber || this.parseEpisodeNumber(epSession)) || 1;
             const { animeVideoSources } = require('../anime/video-sources');
-            const targetId = tmdbTarget?.tmdbId || (anilistId || 0);
+            const targetId = (anilistId || 0) || tmdbTarget?.tmdbId || 0;
             const streamResponse = await animeVideoSources.getStream(targetId, episodeNumber, effectiveProvider, {
                 title,
+                titles: options?.titles,
                 tmdbId: tmdbTarget?.tmdbId,
                 format: options?.format,
                 anilistId,
@@ -556,22 +727,53 @@ class ScraperService {
                 const isHls = /\.m3u8?(?:[?#]|$)/i.test(streamResponse.m3u8);
                 const referer = streamResponse.referer || '';
                 const actualSource = String(streamResponse.source || provider).trim().toLowerCase();
+                const isProxiedSource = [
+                    'anineko', 'anidb', 'hianime', 'frieren',
+                    'anikoto', 'stark', 'start',
+                    'reanime', 'himmel',
+                    'animegg', 'fern'
+                ].includes(actualSource) || [
+                    'hianime', 'frieren',
+                    'anikoto', 'stark', 'start',
+                    'reanime', 'himmel',
+                    'animegg', 'fern'
+                ].includes(provider);
                 let proxyMedia = '';
-                if (actualSource === 'anineko' || actualSource === 'anidb') proxyMedia = '&proxyMedia=1';
+                if (isProxiedSource) proxyMedia = '&proxyMedia=1';
                 
                 let masterUrl = streamResponse.m3u8;
-                if ((actualSource === 'anineko' || actualSource === 'anidb') && masterUrl.startsWith('http')) {
+                if (isProxiedSource && masterUrl.startsWith('http')) {
                     masterUrl = `/api/scraper/proxy?url=${encodeURIComponent(masterUrl)}&referer=${encodeURIComponent(referer)}${proxyMedia}`;
                 }
                 // Don't double-wrap: if the source already returned a proxied /api/... path, use it as-is
                 
-                const serverName = actualSource === 'anidb' ? 'AniDB' : actualSource === 'videasy' ? 'Videasy' : actualSource === 'vidking' ? 'VidKing' : actualSource === 'vidsrc' ? 'VidSrc' : actualSource.toUpperCase();
-                const isEmbedSource = !isHls && (/embed/i.test(masterUrl) || actualSource === 'vidsrc' || actualSource === 'vidking' || actualSource === 'videasy');
+                const serverName = (actualSource === 'hianime' || actualSource === 'frieren')
+                    ? 'Frieren'
+                    : (actualSource === 'anikoto' || actualSource === 'stark' || actualSource === 'start')
+                    ? 'Stark'
+                    : (actualSource === 'animegg' || actualSource === 'fern')
+                    ? 'Fern'
+                    : (actualSource === 'reanime' || actualSource === 'himmel')
+                    ? 'Himmel'
+                    : actualSource === 'anidb'
+                    ? 'Frieren'
+                    : actualSource.toUpperCase();
+                const sourceKey = (actualSource === 'hianime' || actualSource === 'frieren')
+                    ? 'frieren'
+                    : (actualSource === 'anikoto' || actualSource === 'stark' || actualSource === 'start')
+                    ? 'stark'
+                    : (actualSource === 'animegg' || actualSource === 'fern')
+                    ? 'fern'
+                    : (actualSource === 'reanime' || actualSource === 'himmel')
+                    ? 'himmel'
+                    : actualSource;
+                const isEmbedSource = Boolean(streamResponse.isEmbed) || (!isHls && /embed/i.test(masterUrl));
 
+                const primaryAudio = streamResponse.audio === 'dub' ? 'dub' : 'sub';
                 const streamsList: any[] = [{
                     quality: 'auto',
-                    audio: 'sub',
-                    provider: actualSource,
+                    audio: primaryAudio,
+                    provider: sourceKey,
                     server: serverName,
                     url: masterUrl,
                     isHls: isHls,
@@ -582,15 +784,15 @@ class ScraperService {
                     directUrl: streamResponse.m3u8
                 }];
 
-                if (streamResponse.dubM3u8) {
+                if (streamResponse.dubM3u8 && (primaryAudio !== 'dub' || streamResponse.dubM3u8 !== streamResponse.m3u8)) {
                     let dubMasterUrl = streamResponse.dubM3u8;
-                    if ((actualSource === 'anineko' || actualSource === 'anikoto' || actualSource === 'anidb') && dubMasterUrl.startsWith('http')) {
+                    if (isProxiedSource && dubMasterUrl.startsWith('http')) {
                         dubMasterUrl = `/api/scraper/proxy?url=${encodeURIComponent(dubMasterUrl)}&referer=${encodeURIComponent(referer)}${proxyMedia}`;
                     }
                     streamsList.push({
                         quality: 'auto',
                         audio: 'dub',
-                        provider: actualSource,
+                        provider: sourceKey,
                         server: serverName,
                         url: dubMasterUrl,
                         isHls: true,
@@ -604,13 +806,13 @@ class ScraperService {
                 if (Array.isArray(streamResponse.variants) && streamResponse.variants.length > 0) {
                     for (const v of streamResponse.variants) {
                         let vUrl = v.url;
-                        if ((actualSource === 'anineko' || actualSource === 'anikoto' || actualSource === 'anidb') && vUrl.startsWith('http')) {
+                        if (isProxiedSource && vUrl.startsWith('http')) {
                             vUrl = `/api/scraper/proxy?url=${encodeURIComponent(vUrl)}&referer=${encodeURIComponent(referer)}${proxyMedia}`;
                         }
                         streamsList.push({
                             quality: v.quality,
-                            audio: 'sub',
-                            provider: actualSource,
+                            audio: primaryAudio,
+                            provider: sourceKey,
                             server: serverName,
                             url: vUrl,
                             isHls: true,
@@ -624,13 +826,13 @@ class ScraperService {
                 if (Array.isArray(streamResponse.dubVariants) && streamResponse.dubVariants.length > 0) {
                     for (const v of streamResponse.dubVariants) {
                         let vUrl = v.url;
-                        if ((actualSource === 'anineko' || actualSource === 'anikoto' || actualSource === 'anidb') && vUrl.startsWith('http')) {
+                        if (isProxiedSource && vUrl.startsWith('http')) {
                             vUrl = `/api/scraper/proxy?url=${encodeURIComponent(vUrl)}&referer=${encodeURIComponent(referer)}${proxyMedia}`;
                         }
                         streamsList.push({
                             quality: v.quality,
                             audio: 'dub',
-                            provider: actualSource,
+                            provider: sourceKey,
                             server: serverName,
                             url: vUrl,
                             isHls: true,
@@ -657,14 +859,14 @@ class ScraperService {
             // Only resolve season title if showId is missing
             const isAllMangaSession = AllMangaScraper.isAllMangaSession(showId);
             if (!isAllMangaSession && title) {
-                const anilistResult = await anilistService.resolveSeasonTitle(title, 1).catch(() => ({ romaji: '', title: '' }));
+                const anilistResult = await scraperAnilistService.resolveSeasonTitle(title, 1).catch(() => ({ romaji: '', title: '' }));
                 const baseTitle = anilistResult.romaji || anilistResult.title || title;
                 if (baseTitle) {
                     title = baseTitle;
                 }
             }
 
-            const key = `streams:allmanga:v7:${showId || title.toLowerCase()}:${episodeNumber || epSession}:${year || ''}`;
+            const key = `streams:allmanga:v8:${showId || title.toLowerCase()}:${episodeNumber || epSession}:${year || ''}`;
             const links = await this.getOrLoad(
                 key,
                 5 * 60 * 1000,

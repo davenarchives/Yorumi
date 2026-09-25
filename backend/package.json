@@ -7,13 +7,13 @@
         "yorumi-cli": "dist/cli.js"
     },
     "scripts": {
-        "start": "node dist/index.js",
+        "start": "node dist/bundle.cjs",
         "predev": "npx -y kill-port 3001",
-        "dev": "nodemon --exec tsx src/index.ts",
-        "cli": "tsx src/cli.ts",
-        "build": "tsc",
-        "migrate:mappings:dry": "tsx scripts/migrate-anilist-mappings.ts",
-        "migrate:mappings": "tsx scripts/migrate-anilist-mappings.ts --apply"
+        "dev": "npx tsx watch src/index.ts",
+        "cli": "npx tsx src/cli.ts",
+        "build": "npx esbuild src/index.ts --bundle --platform=node --target=node18 --outfile=dist/bundle.cjs --external:@sparticuz/chromium",
+        "migrate:mappings:dry": "npx tsx scripts/migrate-anilist-mappings.ts",
+        "migrate:mappings": "npx tsx scripts/migrate-anilist-mappings.ts --apply"
     },
     "dependencies": {
         "@sparticuz/chromium": "^143.0.4",

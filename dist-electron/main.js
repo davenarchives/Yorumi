@@ -15688,6 +15688,185 @@ var require_main2 = __commonJS({
   }
 });
 
+// node_modules/file-uri-to-path/index.js
+var require_file_uri_to_path = __commonJS({
+  "node_modules/file-uri-to-path/index.js"(exports2, module2) {
+    var sep = require("path").sep || "/";
+    module2.exports = fileUriToPath;
+    function fileUriToPath(uri) {
+      if ("string" != typeof uri || uri.length <= 7 || "file://" != uri.substring(0, 7)) {
+        throw new TypeError("must pass in a file:// URI to convert to a file path");
+      }
+      var rest = decodeURI(uri.substring(7));
+      var firstSlash = rest.indexOf("/");
+      var host = rest.substring(0, firstSlash);
+      var path2 = rest.substring(firstSlash + 1);
+      if ("localhost" == host) host = "";
+      if (host) {
+        host = sep + sep + host;
+      }
+      path2 = path2.replace(/^(.+)\|/, "$1:");
+      if (sep == "\\") {
+        path2 = path2.replace(/\//g, "\\");
+      }
+      if (/^.+\:/.test(path2)) {
+      } else {
+        path2 = sep + path2;
+      }
+      return host + path2;
+    }
+  }
+});
+
+// node_modules/bindings/bindings.js
+var require_bindings = __commonJS({
+  "node_modules/bindings/bindings.js"(exports2, module2) {
+    var fs2 = require("fs");
+    var path2 = require("path");
+    var fileURLToPath = require_file_uri_to_path();
+    var join = path2.join;
+    var dirname = path2.dirname;
+    var exists = fs2.accessSync && function(path3) {
+      try {
+        fs2.accessSync(path3);
+      } catch (e) {
+        return false;
+      }
+      return true;
+    } || fs2.existsSync || path2.existsSync;
+    var defaults = {
+      arrow: process.env.NODE_BINDINGS_ARROW || " \u2192 ",
+      compiled: process.env.NODE_BINDINGS_COMPILED_DIR || "compiled",
+      platform: process.platform,
+      arch: process.arch,
+      nodePreGyp: "node-v" + process.versions.modules + "-" + process.platform + "-" + process.arch,
+      version: process.versions.node,
+      bindings: "bindings.node",
+      try: [
+        // node-gyp's linked version in the "build" dir
+        ["module_root", "build", "bindings"],
+        // node-waf and gyp_addon (a.k.a node-gyp)
+        ["module_root", "build", "Debug", "bindings"],
+        ["module_root", "build", "Release", "bindings"],
+        // Debug files, for development (legacy behavior, remove for node v0.9)
+        ["module_root", "out", "Debug", "bindings"],
+        ["module_root", "Debug", "bindings"],
+        // Release files, but manually compiled (legacy behavior, remove for node v0.9)
+        ["module_root", "out", "Release", "bindings"],
+        ["module_root", "Release", "bindings"],
+        // Legacy from node-waf, node <= 0.4.x
+        ["module_root", "build", "default", "bindings"],
+        // Production "Release" buildtype binary (meh...)
+        ["module_root", "compiled", "version", "platform", "arch", "bindings"],
+        // node-qbs builds
+        ["module_root", "addon-build", "release", "install-root", "bindings"],
+        ["module_root", "addon-build", "debug", "install-root", "bindings"],
+        ["module_root", "addon-build", "default", "install-root", "bindings"],
+        // node-pre-gyp path ./lib/binding/{node_abi}-{platform}-{arch}
+        ["module_root", "lib", "binding", "nodePreGyp", "bindings"]
+      ]
+    };
+    function bindings(opts) {
+      if (typeof opts == "string") {
+        opts = { bindings: opts };
+      } else if (!opts) {
+        opts = {};
+      }
+      Object.keys(defaults).map(function(i2) {
+        if (!(i2 in opts)) opts[i2] = defaults[i2];
+      });
+      if (!opts.module_root) {
+        opts.module_root = exports2.getRoot(exports2.getFileName());
+      }
+      if (path2.extname(opts.bindings) != ".node") {
+        opts.bindings += ".node";
+      }
+      var requireFunc = typeof __webpack_require__ === "function" ? __non_webpack_require__ : require;
+      var tries = [], i = 0, l = opts.try.length, n, b, err;
+      for (; i < l; i++) {
+        n = join.apply(
+          null,
+          opts.try[i].map(function(p) {
+            return opts[p] || p;
+          })
+        );
+        tries.push(n);
+        try {
+          b = opts.path ? requireFunc.resolve(n) : requireFunc(n);
+          if (!opts.path) {
+            b.path = n;
+          }
+          return b;
+        } catch (e) {
+          if (e.code !== "MODULE_NOT_FOUND" && e.code !== "QUALIFIED_PATH_RESOLUTION_FAILED" && !/not find/i.test(e.message)) {
+            throw e;
+          }
+        }
+      }
+      err = new Error(
+        "Could not locate the bindings file. Tried:\n" + tries.map(function(a) {
+          return opts.arrow + a;
+        }).join("\n")
+      );
+      err.tries = tries;
+      throw err;
+    }
+    module2.exports = exports2 = bindings;
+    exports2.getFileName = function getFileName(calling_file) {
+      var origPST = Error.prepareStackTrace, origSTL = Error.stackTraceLimit, dummy = {}, fileName;
+      Error.stackTraceLimit = 10;
+      Error.prepareStackTrace = function(e, st) {
+        for (var i = 0, l = st.length; i < l; i++) {
+          fileName = st[i].getFileName();
+          if (fileName !== __filename) {
+            if (calling_file) {
+              if (fileName !== calling_file) {
+                return;
+              }
+            } else {
+              return;
+            }
+          }
+        }
+      };
+      Error.captureStackTrace(dummy);
+      dummy.stack;
+      Error.prepareStackTrace = origPST;
+      Error.stackTraceLimit = origSTL;
+      var fileSchema = "file://";
+      if (fileName.indexOf(fileSchema) === 0) {
+        fileName = fileURLToPath(fileName);
+      }
+      return fileName;
+    };
+    exports2.getRoot = function getRoot(file) {
+      var dir = dirname(file), prev;
+      while (true) {
+        if (dir === ".") {
+          dir = process.cwd();
+        }
+        if (exists(join(dir, "package.json")) || exists(join(dir, "node_modules"))) {
+          return dir;
+        }
+        if (prev === dir) {
+          throw new Error(
+            'Could not find module root given file: "' + file + '". Do you have a `package.json` file? '
+          );
+        }
+        prev = dir;
+        dir = join(dir, "..");
+      }
+    };
+  }
+});
+
+// node_modules/register-scheme/index.js
+var require_register_scheme = __commonJS({
+  "node_modules/register-scheme/index.js"(exports2, module2) {
+    module2.exports = require_bindings()("register-protocol-handler").registerProtocolHandler;
+  }
+});
+
 // node_modules/discord-rpc/src/util.js
 var require_util2 = __commonJS({
   "node_modules/discord-rpc/src/util.js"(exports2, module2) {
@@ -15698,7 +15877,7 @@ var require_util2 = __commonJS({
       register = app.setAsDefaultProtocolClient.bind(app);
     } catch (err) {
       try {
-        register = require("register-scheme");
+        register = require_register_scheme();
       } catch (e) {
       }
     }
@@ -26404,6 +26583,9 @@ function initDiscordRPC(clientId) {
       discordRpcConnected = false;
       console.log("[Discord RPC] Disconnected from Discord");
     });
+    discordRpcClient.on("error", (err) => {
+      console.log("[Discord RPC] Client error:", err.message || err);
+    });
     discordRpcClient.login({ clientId: currentDiscordClientId }).catch((err) => {
       discordRpcConnected = false;
       console.log("[Discord RPC] Could not connect to Discord:", err.message || err);
@@ -26427,24 +26609,43 @@ function setDiscordActivity(presenceData) {
     if (smallKey.startsWith("http://")) {
       smallKey = smallKey.replace("http://", "https://");
     }
-    const activity = {
-      type: typeof presenceData.type === "number" ? presenceData.type : presenceData.type ? Number(presenceData.type) : 0,
-      details: presenceData.details || "Yorumi Anime & Manga Streamer",
-      state: presenceData.state || void 0,
-      largeImageKey: largeKey,
-      largeImageText: presenceData.largeImageText || "Yorumi",
-      smallImageKey: smallKey,
-      smallImageText: presenceData.smallImageText || "Yorumi",
-      instance: false
+    const activityType = typeof presenceData.type === "number" ? presenceData.type : presenceData.type ? Number(presenceData.type) : 0;
+    const timestamps = presenceData.startTimestamp || presenceData.endTimestamp ? {
+      start: presenceData.startTimestamp,
+      end: presenceData.endTimestamp
+    } : void 0;
+    const assets = {
+      large_image: largeKey,
+      large_text: presenceData.largeImageText || "Yorumi",
+      small_image: smallKey,
+      small_text: presenceData.smallImageText || "Yorumi"
     };
-    if (presenceData.startTimestamp) {
-      activity.startTimestamp = presenceData.startTimestamp;
-    }
-    if (presenceData.endTimestamp) {
-      activity.endTimestamp = presenceData.endTimestamp;
-    }
-    discordRpcClient.setActivity(activity).catch((err) => {
-      console.log("[Discord RPC] Failed to set activity:", err.message || err);
+    const rpcPayload = {
+      pid: process.pid,
+      activity: {
+        type: activityType,
+        details: presenceData.details || "Yorumi Anime & Manga Streamer",
+        state: presenceData.state || void 0,
+        timestamps,
+        assets,
+        instance: false
+      }
+    };
+    discordRpcClient.request("SET_ACTIVITY", rpcPayload).catch((err) => {
+      console.log("[Discord RPC] Primary SET_ACTIVITY request failed, falling back to setActivity:", err.message || err);
+      discordRpcClient.setActivity({
+        details: presenceData.details || "Yorumi Anime & Manga Streamer",
+        state: presenceData.state || void 0,
+        largeImageKey: largeKey,
+        largeImageText: presenceData.largeImageText || "Yorumi",
+        smallImageKey: smallKey,
+        smallImageText: presenceData.smallImageText || "Yorumi",
+        startTimestamp: presenceData.startTimestamp,
+        endTimestamp: presenceData.endTimestamp,
+        instance: false
+      }).catch((setErr) => {
+        console.log("[Discord RPC] Failed to set activity:", setErr.message || setErr);
+      });
     });
     return true;
   } catch (err) {

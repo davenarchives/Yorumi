@@ -1,5 +1,6 @@
 import axios from 'axios';
 import * as cheerio from 'cheerio';
+import { AdaptiveEngine } from './adaptive';
 
 const NOVELBIN_BASE = 'https://novel-bin.com';
 const WUXIA_BASE = 'https://wuxiaworld.site';
@@ -97,14 +98,30 @@ export async function searchNovelBin(query: string): Promise<NovelSearchResult[]
         const { data: html } = await axiosNB.get(`/search?keyword=${encodeURIComponent(query)}`);
         const $ = cheerio.load(html);
         const results: NovelSearchResult[] = [];
+        const seenHrefs = new Set<string>();
 
-        $('.list-novel .row').each((_, el) => {
-            const title = $(el).find('.novel-title a').text().trim();
-            const href = $(el).find('.novel-title a').attr('href');
-            const img = $(el).find('img').attr('src') || $(el).find('img').attr('data-src');
+        // Adaptive query: tries primary selectors first, auto-recovers with fingerprint if site layout drifts
+        const cards = AdaptiveEngine.query($, '.list-novel .row, a.almanac-book-row, a[href*="/novel-bin/"]', 'mediaSearchCard');
+
+        cards.each((_, el) => {
+            const isAnchor = $(el).is('a');
+            const href = isAnchor ? $(el).attr('href') : $(el).find('a[href*="/novel-bin/"], .novel-title a').attr('href');
+            if (!href || href === '/novel-bin/' || href.includes('/genre/') || href.includes('/author/')) return;
+
+            const cleanHref = href.replace(/\/$/, '');
+            if (seenHrefs.has(cleanHref)) return;
+            seenHrefs.add(cleanHref);
+
+            const title = isAnchor
+                ? ($(el).attr('title') || $(el).find('h3, .almanac-row-copy, strong').first().text().trim())
+                : ($(el).find('.novel-title a, h3 a').text().trim() || $(el).find('h3').text().trim());
+
+            const imgEl = $(el).find('img');
+            const img = imgEl.attr('src') || imgEl.attr('data-src') || imgEl.attr('srcset')?.split(' ')[0];
 
             if (title && href) {
                 const slug = href.replace(/^https?:\/\/novel-bin\.com\/novel-bin\//, '').replace(/^\/novel-bin\//, '').replace(/\/$/, '');
+                if (!slug || slug.includes('chapter') || slug === 'search') return;
                 results.push({
                     id: `nb:${slug}`,
                     title,
@@ -129,71 +146,105 @@ export async function getNovelBinDetails(slug: string): Promise<NovelDetails | n
         const { data: html } = await axiosNB.get(targetUrl);
         const $ = cheerio.load(html);
 
-        const title = $('.title').first().text().trim() || $('h3.title').text().trim() || 'Light Novel';
-        const cover = $('.book img').attr('src') || $('.book img').attr('data-src') || '';
+        const title = $('h1').first().text().trim() || $('.title').first().text().trim() || $('h3.title').text().trim() || 'Light Novel';
+        const cover = $('img[src*="/files/image/"], .almanac-hero-cover img, .book img').first().attr('src') || $('.book img').attr('data-src') || '';
 
         let author = 'Unknown';
-        $('.info li, .info div, .info-meta li, .info-meta div').each((_, el) => {
+        $('.info li, .info div, .info-meta li, .info-meta div, dl').each((_, el) => {
             const text = $(el).text().trim();
             if (/author:/i.test(text)) {
                 author = text.replace(/author:/i, '').trim().replace(/\s+/g, ' ');
             }
         });
         if (!author || author === 'Unknown') {
-            author = $('.info a[href*="/author/"]').text().trim() || 'Unknown';
+            author = $('.almanac-author, .author, .info a[href*="/author/"]').first().text().trim() || 'Unknown';
         }
 
-        const status = $('.info a[href*="/status/"]').text().trim() || 'Ongoing';
+        let status = 'Ongoing';
+        $('dt:contains("Status")').each((_, el) => {
+            const s = $(el).next('dd').text().trim();
+            if (s) status = s;
+        });
+        if (status === 'Ongoing') {
+            status = $('.info a[href*="/status/"]').text().trim() || 'Ongoing';
+        }
 
         const genres: string[] = [];
         $('.info a[href*="/genre/"]').each((_, el) => {
             const g = $(el).text().trim();
-            if (g) genres.push(g);
+            if (g && !genres.includes(g)) genres.push(g);
         });
 
-        const description = $('.desc-text').text().trim();
+        const description = $('.desc-text, p.description, .desc, [class*="synopsis"]').first().text().trim();
 
-        // Extract chapter list (fetch AJAX archive for complete 500+ chapters if novelId exists)
+        // Extract chapter list
         const chapters: NovelChapter[] = [];
         let num = 1;
 
-        const novelIdAttr = $('#rating').attr('data-novel-id') || $('input#novelId').val() || $('input[name="novelId"]').val() || $('[data-novel-id]').attr('data-novel-id');
-        let chapterHtml = html;
-        if (novelIdAttr) {
-            try {
-                const { data: ajaxHtml } = await axiosNB.get(`/ajax/chapter-archive?novelId=${novelIdAttr}`);
-                if (ajaxHtml && (ajaxHtml.includes('list-chapter') || ajaxHtml.includes('<a'))) {
-                    chapterHtml = ajaxHtml;
+        // Try NovelBin AJAX chapter list by slug first (returns full catalog in JSON)
+        try {
+            const { data: ajaxData } = await axiosNB.get(`/ajax/chapter-list?slug=${cleanSlug}`);
+            if (ajaxData?.chapters && Array.isArray(ajaxData.chapters) && ajaxData.chapters.length > 0) {
+                const seenSlugs = new Set<string>();
+                for (const ch of ajaxData.chapters) {
+                    const cHref = String(ch.url || '');
+                    const cSlug = cHref
+                        .replace(/^https?:\/\/novel-bin\.com\/novel-bin\//, '')
+                        .replace(/^\/novel-bin\//, '')
+                        .replace(/\/$/, '');
+                    if (!cSlug || seenSlugs.has(cSlug)) continue;
+                    seenSlugs.add(cSlug);
+
+                    chapters.push({
+                        id: `nb:${cSlug}`,
+                        number: Number(ch.index) || num++,
+                        title: ch.title || `Chapter ${num}`,
+                        url: cHref.startsWith('http') ? cHref : `${NOVELBIN_BASE}${cHref.startsWith('/') ? '' : '/'}${cHref}`,
+                    });
                 }
-            } catch (err) {
-                console.warn('[NovelBin] AJAX chapter archive fetch failed, using inline list:', err);
             }
+        } catch (err: any) {
+            console.warn('[NovelBin] AJAX chapter-list by slug failed, checking fallback:', err?.message || err);
         }
 
-        const $c = cheerio.load(chapterHtml);
-        const seenSlugs = new Set<string>();
-
-        // Specifically find chapter list container to avoid top header / latest release widgets
-        const $chapterList = $c('#list-chapter, .list-chapter, .chapter-list').length > 0
-            ? $c('#list-chapter, .list-chapter, .chapter-list')
-            : $c('body');
-
-        $chapterList.find('a').each((_, el) => {
-            const cTitle = $c(el).text().trim();
-            const cHref = $c(el).attr('href') || '';
-            if (cTitle && cHref && (cHref.includes('/chapter-') || cHref.includes('/novel-bin/'))) {
-                const cSlug = cHref.replace(/^https?:\/\/novel-bin\.com\/novel-bin\//, '').replace(/^\/novel-bin\//, '').replace(/\/$/, '');
-                if (!cSlug || seenSlugs.has(cSlug)) return;
-                seenSlugs.add(cSlug);
-
-                chapters.push({
-                    id: `nb:${cSlug}`,
-                    number: num++,
-                    title: cTitle,
-                    url: cHref.startsWith('http') ? cHref : `${NOVELBIN_BASE}${cHref.startsWith('/') ? '' : '/'}${cHref}`,
-                });
+        if (chapters.length === 0) {
+            const novelIdAttr = $('#rating').attr('data-novel-id') || $('input#novelId').val() || $('input[name="novelId"]').val() || $('[data-novel-id]').attr('data-novel-id') || $('article[data-book-id]').attr('data-book-id');
+            let chapterHtml = html;
+            if (novelIdAttr) {
+                try {
+                    const { data: ajaxHtml } = await axiosNB.get(`/ajax/chapter-archive?novelId=${novelIdAttr}`);
+                    if (ajaxHtml && (ajaxHtml.includes('list-chapter') || ajaxHtml.includes('<a'))) {
+                        chapterHtml = ajaxHtml;
+                    }
+                } catch (err) {
+                    console.warn('[NovelBin] AJAX chapter archive fetch failed, using inline list:', err);
+                }
             }
-        });
+
+            const $c = cheerio.load(chapterHtml);
+            const seenSlugs = new Set<string>();
+
+            // Search inside chapter container to avoid unrelated recommended novel links
+            const $chapterList = AdaptiveEngine.query($c, 'ol.almanac-chapter-list, #list-chapter, .list-chapter, .chapter-list', 'chapterItem');
+            const $target = $chapterList.length > 0 ? $chapterList : $c('body');
+
+            $target.find('a[href*="/chapter-"], a[href*="/novel-bin/"]').each((_, el) => {
+                const cTitle = $c(el).text().trim().replace(/^\d+\s*(Chapter\s*)/i, 'Chapter ');
+                const cHref = $c(el).attr('href') || '';
+                if (cTitle && cHref && cHref.includes('/chapter-')) {
+                    const cSlug = cHref.replace(/^https?:\/\/novel-bin\.com\/novel-bin\//, '').replace(/^\/novel-bin\//, '').replace(/\/$/, '');
+                    if (!cSlug || seenSlugs.has(cSlug)) return;
+                    seenSlugs.add(cSlug);
+
+                    chapters.push({
+                        id: `nb:${cSlug}`,
+                        number: num++,
+                        title: cTitle,
+                        url: cHref.startsWith('http') ? cHref : `${NOVELBIN_BASE}${cHref.startsWith('/') ? '' : '/'}${cHref}`,
+                    });
+                }
+            });
+        }
 
         return {
             id: `nb:${cleanSlug}`,
@@ -223,12 +274,13 @@ export async function getNovelBinChapterContent(chapterSlug: string): Promise<No
         const { data: html } = await axiosNB.get(targetUrl);
         const $ = cheerio.load(html);
 
-        const title = $('.chr-title').text().trim() || $('h2').text().trim() || 'Chapter';
-        const rawContent = $('#chr-content').html() || $('.chr-c').html() || $('.reading-content').html() || '';
+        const title = $('.chr-title, .chapter-title, h1, h2').filter((_, el) => /chapter/i.test($(el).text())).first().text().trim() || $('.chr-title').text().trim() || 'Chapter';
+        const contentBlock = AdaptiveEngine.queryOne($, '#chr-content, .chr-c, .reading-content, #chapter-content, .chapter-content', 'chapterContentBlock');
+        const rawContent = contentBlock.html() || '';
         const sanitizedContent = sanitizeChapterHtml(rawContent);
 
-        const prevHref = $('#prev_chap').attr('href');
-        const nextHref = $('#next_chap').attr('href');
+        const prevHref = $('#prev_chap, a.btn-prev, a[class*="prev"]').first().attr('href');
+        const nextHref = $('#next_chap, a.btn-next, a[class*="next"]').first().attr('href');
 
         const prevChapterId = prevHref && !prevHref.includes('javascript:')
             ? `nb:${prevHref.replace(/^https?:\/\/novel-bin\.com\/novel-bin\//, '').replace(/^\/novel-bin\//, '').replace(/^novel-bin\//, '').replace(/\/$/, '')}`
@@ -267,9 +319,9 @@ export async function searchWuxiaWorld(query: string): Promise<NovelSearchResult
         const $ = cheerio.load(html);
         const results: NovelSearchResult[] = [];
 
-        $('.c-tabs-item__content').each((_, el) => {
-            const title = $(el).find('.post-title a').text().trim();
-            const href = $(el).find('.post-title a').attr('href');
+        AdaptiveEngine.query($, '.c-tabs-item__content, .page-item-detail', 'mediaSearchCard').each((_, el) => {
+            const title = $(el).find('.post-title a, h3 a').first().text().trim();
+            const href = $(el).find('.post-title a, h3 a').first().attr('href');
             const img = $(el).find('img').attr('src') || $(el).find('img').attr('data-src');
 
             if (title && href) {
@@ -298,7 +350,7 @@ export async function getWuxiaWorldDetails(slug: string): Promise<NovelDetails |
         const { data: html } = await axiosWuxia.get(`/novel/${cleanSlug}/`);
         const $ = cheerio.load(html);
 
-        const title = $('.post-title h1').text().trim() || $('h1').first().text().trim();
+        const title = AdaptiveEngine.queryOne($, '.post-title h1, h1', 'detailTitle').text().trim() || 'Untitled Novel';
         const cover = $('.summary_image img').attr('src') || $('.summary_image img').attr('data-src') || '';
         const author = $('.author-content a').text().trim() || 'Unknown';
         const status = $('.post-status .summary-content').text().trim() || 'Ongoing';
@@ -374,7 +426,8 @@ export async function getWuxiaWorldChapterContent(chapterSlug: string): Promise<
         const $ = cheerio.load(html);
 
         const title = $('.breadcrumb li.active').text().trim() || $('h1').text().trim() || 'Chapter';
-        const rawContent = $('.reading-content').html() || $('.text-left').html() || '';
+        const contentBlock = AdaptiveEngine.queryOne($, '.reading-content, .text-left', 'chapterContentBlock');
+        const rawContent = contentBlock.html() || '';
         const sanitizedContent = sanitizeChapterHtml(rawContent);
 
         const prevHref = $('.nav-previous a').attr('href') || $('.prev_page').attr('href');
@@ -417,8 +470,8 @@ export async function searchRoyalRoad(query: string): Promise<NovelSearchResult[
         const $ = cheerio.load(html);
         const results: NovelSearchResult[] = [];
 
-        $('.fiction-list-item').each((_, el) => {
-            const titleEl = $(el).find('.fiction-title a');
+        AdaptiveEngine.query($, '.fiction-list-item', 'mediaSearchCard').each((_, el) => {
+            const titleEl = $(el).find('.fiction-title a, h2 a, h3 a').first();
             const title = titleEl.text().trim();
             const href = titleEl.attr('href');
             const img = $(el).find('img').attr('src');
@@ -448,7 +501,7 @@ export async function getRoyalRoadDetails(fictionSlug: string): Promise<NovelDet
         const { data: html } = await axiosRR.get(`/fiction/${cleanSlug}`);
         const $ = cheerio.load(html);
 
-        const title = $('h1').text().trim();
+        const title = AdaptiveEngine.queryOne($, 'h1', 'detailTitle').text().trim() || 'Untitled Novel';
         const cover = $('.thumbnail').attr('src') || '';
         const author = $('.fiction-info a[href*="/profile/"]').text().trim() || 'Unknown';
         const status = $('.fiction-info .label').first().text().trim() || 'Ongoing';
@@ -505,7 +558,8 @@ export async function getRoyalRoadChapterContent(chapterSlug: string): Promise<N
         const $ = cheerio.load(html);
 
         const title = $('.chapter-title h1').text().trim() || $('h1').first().text().trim() || 'Chapter';
-        const rawContent = $('.chapter-content').html() || '';
+        const contentBlock = AdaptiveEngine.queryOne($, '.chapter-content', 'chapterContentBlock');
+        const rawContent = contentBlock.html() || '';
         const sanitizedContent = sanitizeChapterHtml(rawContent);
 
         const prevHref = $('.btn-primary[href*="/chapter/"]').first().attr('href');
@@ -535,13 +589,22 @@ export async function searchAllNovelFull(query: string): Promise<NovelSearchResu
         const { data: html } = await axiosANF.get(`/search?keyword=${encodeURIComponent(query)}`);
         const $ = cheerio.load(html);
         const results: NovelSearchResult[] = [];
+        const seenSlugs = new Set<string>();
 
-        $('.list-truyen .row').each((_, el) => {
-            const title = $(el).find('.truyen-title a').text().trim();
-            const href = $(el).find('.truyen-title a').attr('href');
-            const img = $(el).find('img').attr('src');
+        AdaptiveEngine.query($, '.list-truyen .row, .con, .list .item', 'mediaSearchCard').each((_, el) => {
+            let title = $(el).find('.truyen-title a, h3.tit a, h3 a').first().text().trim();
+            let href = $(el).find('.truyen-title a, h3.tit a, h3 a').first().attr('href');
+            if (!title || !href) {
+                const fallbackA = $(el).find('a[href*=".html"], a').filter((_, a) => $(a).text().trim().length > 2 && !$(a).find('img').length).first();
+                title = fallbackA.text().trim();
+                href = fallbackA.attr('href');
+            }
+            const imgEl = $(el).find('.pic img, img').first();
+            const img = imgEl.attr('src') || imgEl.attr('data-src');
             if (title && href) {
                 const slug = href.replace(/^\//, '').replace(/\.html$/, '');
+                if (seenSlugs.has(slug)) return;
+                seenSlugs.add(slug);
                 results.push({
                     id: `anf:${slug}`,
                     title,
@@ -565,34 +628,92 @@ export async function getAllNovelFullDetails(slug: string): Promise<NovelDetails
         const { data: html } = await axiosANF.get(`/${cleanSlug}.html`);
         const $ = cheerio.load(html);
 
-        const title = $('.books .title').text().trim() || $('.title').first().text().trim();
-        const cover = $('.book img').attr('src') || '';
+        const title = AdaptiveEngine.queryOne($, 'h1, .books .title, .title', 'detailTitle').text().trim() || 'Untitled Novel';
+        const coverImg = $('.book img, .pic img, .info-holder img').first();
+        const cover = coverImg.attr('src') || coverImg.attr('data-src') || '';
         const author = $('.info a[href*="/author/"]').text().trim() || 'Unknown';
         const status = $('.info a[href*="/status/"]').text().trim() || 'Ongoing';
 
         const genres: string[] = [];
         $('.info a[href*="/genre/"]').each((_, el) => {
             const g = $(el).text().trim();
-            if (g) genres.push(g);
+            if (g && !genres.includes(g)) genres.push(g);
         });
 
-        const description = $('.desc-text').text().trim();
+        const description = $('#tab-description, .desc-text, .desc').text().trim();
 
         const chapters: NovelChapter[] = [];
         let num = 1;
-        $('.list-chapter a').each((_, el) => {
-            const cTitle = $(el).text().trim();
-            const cHref = $(el).attr('href') || '';
-            if (cHref) {
-                const cSlug = cHref.replace(/^\//, '').replace(/\.html$/, '');
-                chapters.push({
-                    id: `anf:${cSlug}`,
-                    number: num++,
-                    title: cTitle,
-                    url: cHref.startsWith('http') ? cHref : `${ALLNOVELFULL_BASE}${cHref}`,
+        const seenSlugs = new Set<string>();
+
+        // Try AllNovelFull AJAX chapter list to fetch all pages (each page has 50 chapters)
+        const novelId = $('input#truyen-id').val() || $('[data-novel-id]').first().attr('data-novel-id');
+        let rawHtmlChunks: string[] = [];
+
+        if (novelId) {
+            try {
+                const { data: page1 } = await axiosANF.get(`/ajax-chapter-list?novelId=${novelId}&page=1`);
+                if (page1?.html) {
+                    rawHtmlChunks.push(page1.html);
+                    const totalPage = Number(page1.totalPage) || 1;
+                    if (totalPage > 1) {
+                        const pagePromises = [];
+                        for (let p = 2; p <= Math.min(totalPage, 50); p++) {
+                            pagePromises.push(
+                                axiosANF.get(`/ajax-chapter-list?novelId=${novelId}&page=${p}`)
+                                    .then(r => r.data?.html || '')
+                                    .catch(() => '')
+                            );
+                        }
+                        const rest = await Promise.all(pagePromises);
+                        rawHtmlChunks.push(...rest);
+                    }
+                }
+            } catch (err: any) {
+                console.warn('[AllNovelFull] AJAX chapter fetch failed:', err?.message || err);
+            }
+        }
+
+        if (rawHtmlChunks.length > 0) {
+            for (const chunk of rawHtmlChunks) {
+                if (!chunk) continue;
+                const $chunk = cheerio.load(chunk);
+                $chunk('a[href*="/chapter-"], a').each((_, el) => {
+                    const cTitle = $chunk(el).text().trim();
+                    const cHref = $chunk(el).attr('href') || '';
+                    if (cHref && !cHref.includes('?page=') && !cHref.includes('.html?') && !cHref.includes('javascript:')) {
+                        const cSlug = cHref.replace(/^\//, '').replace(/\.html$/, '');
+                        if (!cSlug || seenSlugs.has(cSlug)) return;
+                        seenSlugs.add(cSlug);
+
+                        chapters.push({
+                            id: `anf:${cSlug}`,
+                            number: num++,
+                            title: cTitle,
+                            url: cHref.startsWith('http') ? cHref : `${ALLNOVELFULL_BASE}${cHref.startsWith('/') ? '' : '/'}${cHref}`,
+                        });
+                    }
                 });
             }
-        });
+        } else {
+            // Fallback to static HTML
+            AdaptiveEngine.query($, '#list-chapter a, .list-chapter a', 'chapterItem').each((_, el) => {
+                const cTitle = $(el).text().trim();
+                const cHref = $(el).attr('href') || '';
+                if (cHref && !cHref.includes('?page=') && !cHref.includes('.html?') && !cHref.includes('javascript:') && !/^(first|next|last|prev)$/i.test(cTitle)) {
+                    const cSlug = cHref.replace(/^\//, '').replace(/\.html$/, '');
+                    if (!cSlug || seenSlugs.has(cSlug)) return;
+                    seenSlugs.add(cSlug);
+
+                    chapters.push({
+                        id: `anf:${cSlug}`,
+                        number: num++,
+                        title: cTitle,
+                        url: cHref.startsWith('http') ? cHref : `${ALLNOVELFULL_BASE}${cHref.startsWith('/') ? '' : '/'}${cHref}`,
+                    });
+                }
+            });
+        }
 
         return {
             id: `anf:${cleanSlug}`,
@@ -617,12 +738,13 @@ export async function getAllNovelFullChapterContent(chapterSlug: string): Promis
         const { data: html } = await axiosANF.get(`/${cleanSlug}.html`);
         const $ = cheerio.load(html);
 
-        const title = $('.chapter-title').text().trim() || $('h2').text().trim() || 'Chapter';
-        const rawContent = $('#chapter-content').html() || '';
+        const title = $('.chapter-title').text().trim() || $('h1').text().trim() || $('h2').text().trim() || 'Chapter';
+        const contentBlock = AdaptiveEngine.queryOne($, '#chapter-content, #chr-content, .chr-c', 'chapterContentBlock');
+        const rawContent = contentBlock.html() || '';
         const sanitizedContent = sanitizeChapterHtml(rawContent);
 
-        const prevHref = $('#prev_chap').attr('href');
-        const nextHref = $('#next_chap').attr('href');
+        const prevHref = $('a#prev_chap, a.btn-prev').attr('href');
+        const nextHref = $('a#next_chap, a.btn-next').attr('href');
 
         return {
             id: `anf:${cleanSlug}`,

@@ -34,9 +34,10 @@ router.post('/resolve', async (req, res) => {
 });
 
 // Get novel details and chapter list
-router.get('/details/:id(*)', async (req, res) => {
+router.get(['/details/:id', '/details/*id'], async (req, res) => {
     try {
-        const id = req.params.id;
+        const rawId = req.params.id;
+        const id = Array.isArray(rawId) ? rawId.join('/') : rawId;
         const refresh = req.query.refresh === 'true';
         if (!id) {
             return res.status(400).json({ success: false, error: 'Novel ID is required' });
@@ -53,9 +54,10 @@ router.get('/details/:id(*)', async (req, res) => {
 });
 
 // Read chapter content
-router.get('/read/:chapterId(*)', async (req, res) => {
+router.get(['/read/:chapterId', '/read/*chapterId'], async (req, res) => {
     try {
-        const chapterId = req.params.chapterId;
+        const rawChapterId = req.params.chapterId;
+        const chapterId = Array.isArray(rawChapterId) ? rawChapterId.join('/') : rawChapterId;
         if (!chapterId) {
             return res.status(400).json({ success: false, error: 'Chapter ID is required' });
         }
