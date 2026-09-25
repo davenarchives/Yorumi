@@ -65,6 +65,7 @@
 
 ## [Unreleased]
 
+- Made Android release automation fall back to an installable debug-signed APK when repository signing secrets are absent, and standardized the published filename as `Yorumi v4.2.0.apk`.
 - Prepared the standalone v4.2.0 release notes, synchronized desktop/Android/website version metadata, and added signed Android APK GitHub Actions release automation using the existing npm release command.
 - Made Library network-aware: online cards retain full known Anime episode and Manga/LN chapter totals and open the complete details catalog, while offline mode shows only titles with local downloads and reports their locally available episode/chapter counts.
 - Kept the sticky mobile Library header below Android's status bar using the device safe-area inset, preventing its title and media tabs from merging with system-tray icons.

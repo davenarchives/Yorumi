@@ -1,6 +1,6 @@
 # Android release setup
 
-The `Build Android Release` workflow runs for version tags such as `v4.2.0` and can also be started manually. It uses the same `npm run android:build:release` command as a local Windows build. Stable signing credentials are required so users can install future versions over the existing app without losing app-local downloads.
+The `Build Android Release` workflow runs for version tags such as `v4.2.0` and can also be started manually. With signing secrets configured, it uses the same `npm run android:build:release` command as a local Windows build. Without those secrets it automatically publishes an installable debug-signed APK instead of failing. Configure stable release signing before future public updates so users can install newer versions over the existing app without removing local data.
 
 ## Android secrets
 
