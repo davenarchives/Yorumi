@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Yorumi</string>
+    <string name="title_activity_main">Yorumi</string>
+    <string name="package_name">com.yorumi.app</string>
+    <string name="custom_url_scheme">com.yorumi.app</string>
+</resources>

@@ -1,14 +1,20 @@
 {
   "name": "yorumi",
   "private": true,
-  "version": "4.1.0",
+  "version": "4.2.0",
   "description": "Yorumi - Anime & Manga Streamer",
   "author": "davenarchives",
   "main": "dist-electron/main.cjs",
   "type": "module",
   "scripts": {
     "dev": "concurrently \"npm run dev --prefix backend\" \"vite\" \"wait-on tcp:5173 && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron .\"",
+    "dev:mobile": "concurrently \"npm run dev --prefix backend\" \"vite --host 0.0.0.0\"",
+    "build:frontend": "tsc -b tsconfig.app.json tsconfig.node.json && vite build",
     "build": "npx esbuild backend/src/index.ts --bundle --platform=node --target=node18 --outfile=backend/dist/bundle.cjs --external:@sparticuz/chromium && tsc -b tsconfig.app.json tsconfig.node.json && vite build",
+    "android:sync": "npm run build:frontend && cap sync android",
+    "android:open": "cap open android",
+    "android:build:debug": "npm run android:sync && cd android && gradlew.bat assembleDebug",
+    "android:build:release": "npm run android:sync && cd android && gradlew.bat assembleRelease",
     "build:electron": "npm run build && node scripts/build-electron.cjs",
     "build:electron:win": "npm run build && node scripts/build-electron.cjs --win --x64 --arm64",
     "build:electron:win:x64": "npm run build && node scripts/build-electron.cjs --win --x64",
@@ -26,6 +32,10 @@
     "knip": "knip"
   },
   "dependencies": {
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/app": "^8.1.1",
+    "@capacitor/core": "^8.5.2",
+    "@capacitor/screen-orientation": "^8.0.1",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
     "@mui/icons-material": "^9.1.1",
@@ -47,11 +57,14 @@
     "hls.js": "^1.6.15",
     "lucide-react": "^0.562.0",
     "puppeteer-core": "^24.35.0",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-router-dom": "^7.12.0"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.5.2",
     "@eslint/js": "^9.39.1",
     "@types/node": "^24.13.2",
     "@types/react": "^19.2.5",

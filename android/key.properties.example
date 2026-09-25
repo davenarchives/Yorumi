@@ -1,0 +1,6 @@
+# Android Keystore configuration
+# Fill in the password you entered when creating the keystore
+storePassword=
+keyPassword=
+keyAlias=yorumi
+storeFile=yorumi-release.keystore
