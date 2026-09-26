@@ -1,6 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { Play, Pause, SkipBack, SkipForward, FastForward, Volume2, VolumeX, Settings, Maximize, Minimize, Mic, Gauge, Video, Monitor, ChevronLeft, CheckCircle2, Circle, X, RotateCcw, RotateCw, Captions, Lock, Unlock } from 'lucide-react';
-import RedoIcon from '@mui/icons-material/Redo';
 import type { StreamServerKey } from '../../../hooks/useStreams';
 import type { StreamLink, SubtitleTrack } from '../../../types/stream';
 import type { SkipTimestamp } from '../../../services/skipTimestamps';
@@ -86,6 +85,14 @@ const getSubtitleLabel = (language: string) => {
         pt: 'Portuguese', por: 'Portuguese', portuguese: 'Portuguese',
         th: 'Thai', tha: 'Thai', thai: 'Thai',
         vi: 'Vietnamese', vie: 'Vietnamese', vietnamese: 'Vietnamese',
+        it: 'Italian', ita: 'Italian', italian: 'Italian',
+        ko: 'Korean', kor: 'Korean', korean: 'Korean',
+        ru: 'Russian', rus: 'Russian', russian: 'Russian',
+        zh: 'Chinese', zho: 'Chinese', chi: 'Chinese', chinese: 'Chinese',
+        tr: 'Turkish', tur: 'Turkish', turkish: 'Turkish',
+        pl: 'Polish', pol: 'Polish', polish: 'Polish',
+        nl: 'Dutch', nld: 'Dutch', dut: 'Dutch', dutch: 'Dutch',
+        ro: 'Romanian', ron: 'Romanian', rum: 'Romanian', romanian: 'Romanian',
     };
     if (languageNames[normalized]) return languageNames[normalized];
     const base = normalized.split('-')[0];
@@ -194,6 +201,18 @@ export default function CustomVideoControls({
         setSelectedSubtitleIndex(0);
         setShowSubtitleMenu(false);
     }, [hasSubtitles, streamKey]);
+
+    useEffect(() => {
+        if (selectedAudio !== 'dub') return;
+        const tracks = videoRef.current?.textTracks;
+        if (tracks) {
+            for (let index = 0; index < tracks.length; index += 1) {
+                tracks[index].mode = 'disabled';
+            }
+        }
+        setSubtitlesEnabled(false);
+        setShowSubtitleMenu(false);
+    }, [selectedAudio, videoRef]);
 
     useEffect(() => {
         const video = videoRef.current;
@@ -645,11 +664,18 @@ export default function CustomVideoControls({
         const playerShell = videoRef.current?.closest('.watch-player-shell') as HTMLElement;
         if (playerShell) {
             playerShell.tabIndex = 0;
-            playerShell.addEventListener('mousemove', handleMouseMove);
-            playerShell.addEventListener('mouseleave', handleMouseLeave);
+            // Touch browsers can synthesize mousemove immediately before click. In
+            // page layout that raced the tap toggle: show on mousemove, then hide on
+            // click. Hover visibility belongs to the desktop player only.
+            if (!pageLayout) {
+                playerShell.addEventListener('mousemove', handleMouseMove);
+                playerShell.addEventListener('mouseleave', handleMouseLeave);
+            }
             const focusPlayer = () => playerShell.focus({ preventScroll: true });
             const handleGesturePointerDown = (event: PointerEvent) => {
-                if (!pageLayout || !event.isPrimary || event.button !== 0) return;
+                if (!pageLayout || isControlsLocked || !event.isPrimary || event.button !== 0) return;
+                const target = event.target as HTMLElement | null;
+                if (target?.closest('button, input, select, [data-player-interactive="true"]')) return;
                 startFastForwardGesture();
             };
             const handleGesturePointerUp = (event: PointerEvent) => {
@@ -672,6 +698,7 @@ export default function CustomVideoControls({
                 if (pageLayout) stopHoldGesture();
             };
             const handleKeyDown = (event: KeyboardEvent) => {
+                if (isControlsLocked) return;
                 const isPlaybackKey = event.code === 'Space' || event.code === 'ArrowLeft' || event.code === 'ArrowRight';
                 if (!isPlaybackKey) return;
 
@@ -713,8 +740,10 @@ export default function CustomVideoControls({
             
             return () => {
                 clearTimeout(initialTimer);
-                playerShell.removeEventListener('mousemove', handleMouseMove);
-                playerShell.removeEventListener('mouseleave', handleMouseLeave);
+                if (!pageLayout) {
+                    playerShell.removeEventListener('mousemove', handleMouseMove);
+                    playerShell.removeEventListener('mouseleave', handleMouseLeave);
+                }
                 playerShell.removeEventListener('pointerdown', focusPlayer);
                 playerShell.removeEventListener('pointerdown', handleGesturePointerDown, true);
                 playerShell.removeEventListener('pointerup', handleGesturePointerUp, true);
@@ -723,7 +752,7 @@ export default function CustomVideoControls({
                 playerShell.removeEventListener('keydown', handleKeyDown);
             };
         }
-    }, [videoRef, handleMouseMove, handleMouseLeave, pageLayout, startFastForwardGesture, stopHoldGesture, toggleVideoPlayback]);
+    }, [videoRef, handleMouseMove, handleMouseLeave, isControlsLocked, pageLayout, startFastForwardGesture, stopHoldGesture, toggleVideoPlayback]);
 
     // Cleanup the center animation state so it fully unmounts
     useEffect(() => {
@@ -888,11 +917,27 @@ export default function CustomVideoControls({
                 </div>
             )}
 
+            {showSettings && (
+                <div
+                    className="absolute inset-0 z-[79] pointer-events-auto"
+                    data-player-interactive="true"
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={(event) => {
+                        event.stopPropagation();
+                        setShowSettings(false);
+                        setSettingsView('main');
+                    }}
+                    aria-hidden="true"
+                />
+            )}
+
             {pageLayout && (
                 <div
-                    className={`pointer-events-auto absolute left-0 right-0 z-[80] h-16 -translate-y-1/2 ${isFastForwarding ? 'pointer-events-none opacity-0' : `transition-opacity duration-300 ${showControls ? 'opacity-100' : 'pointer-events-none opacity-0'}`}`}
-                    style={{ top: 'calc((100% - 104px) / 2)' }}
-                    onClick={(event) => event.stopPropagation()}
+                    className={`pointer-events-auto absolute inset-x-0 top-0 z-[80] ${isFastForwarding ? 'pointer-events-none opacity-0' : `transition-opacity duration-300 ${showControls ? 'opacity-100' : 'pointer-events-none opacity-0'}`}`}
+                    style={{ bottom: '104px' }}
+                    onClick={(event) => {
+                        if (event.target === event.currentTarget) handlePlayerSurfaceTap();
+                    }}
                 >
                     <button
                         type="button"
@@ -900,24 +945,21 @@ export default function CustomVideoControls({
                             setIsControlsLocked((locked) => !locked);
                             handleMouseMove();
                         }}
-                        className="absolute left-4 top-1/2 grid h-11 w-11 -translate-y-1/2 place-items-center text-white drop-shadow-lg"
+                        className="absolute left-7 top-1/2 grid h-10 w-10 -translate-y-1/2 place-items-center text-white drop-shadow-lg"
                         aria-label={isControlsLocked ? 'Unlock player controls' : 'Lock player controls'}
                     >
-                        {isControlsLocked ? <Lock className="h-7 w-7" /> : <Unlock className="h-7 w-7" />}
+                        {isControlsLocked ? <Lock className="h-6 w-6" /> : <Unlock className="h-6 w-6" />}
                     </button>
                     {!isControlsLocked && (
                         <>
-                            <button type="button" onClick={() => seekBy(-SEEK_SECONDS)} className="absolute top-1/2 grid h-12 w-12 -translate-x-1/2 -translate-y-1/2 place-items-center text-white drop-shadow-lg" style={{ left: 'calc(50% - 88px)' }} aria-label="Back 5 seconds">
+                            <button type="button" onClick={() => seekBy(-SEEK_SECONDS)} className="absolute top-1/2 grid h-10 w-10 -translate-x-1/2 -translate-y-1/2 place-items-center text-white drop-shadow-lg" style={{ left: 'calc(50% - 72px)' }} aria-label="Back 5 seconds">
                                 <SeekIcon direction="back" />
                             </button>
-                            <button type="button" onClick={togglePlay} className="absolute left-1/2 top-1/2 grid h-16 w-16 -translate-x-1/2 -translate-y-1/2 place-items-center text-white drop-shadow-xl" aria-label={isPlaying ? 'Pause' : 'Play'}>
-                                {isPlaying ? <Pause className="h-12 w-12 fill-current" /> : <Play className="ml-1 h-12 w-12 fill-current" />}
+                            <button type="button" onClick={togglePlay} className="absolute left-1/2 top-1/2 grid h-14 w-14 -translate-x-1/2 -translate-y-1/2 place-items-center text-white drop-shadow-xl" aria-label={isPlaying ? 'Pause' : 'Play'}>
+                                {isPlaying ? <Pause className="h-10 w-10 fill-current" /> : <Play className="ml-1 h-10 w-10 fill-current" />}
                             </button>
-                            <button type="button" onClick={() => seekBy(SEEK_SECONDS)} className="absolute top-1/2 grid h-12 w-12 -translate-x-1/2 -translate-y-1/2 place-items-center text-white drop-shadow-lg" style={{ left: 'calc(50% + 88px)' }} aria-label="Forward 5 seconds">
+                            <button type="button" onClick={() => seekBy(SEEK_SECONDS)} className="absolute top-1/2 grid h-10 w-10 -translate-x-1/2 -translate-y-1/2 place-items-center text-white drop-shadow-lg" style={{ left: 'calc(50% + 72px)' }} aria-label="Forward 5 seconds">
                                 <SeekIcon direction="forward" />
-                            </button>
-                            <button type="button" onClick={() => onNextEpisode?.()} disabled={!hasNextEpisode || !onNextEpisode} className="absolute right-4 top-1/2 grid h-11 w-11 -translate-y-1/2 place-items-center text-white drop-shadow-lg disabled:opacity-30" aria-label="Next episode">
-                                <SkipForward className="h-7 w-7 fill-current" />
                             </button>
                         </>
                     )}
@@ -927,16 +969,19 @@ export default function CustomVideoControls({
             {/* Top Bar - Server Selection */}
 
             <div 
-                className={`watch-controls-deck absolute bottom-0 left-0 right-0 pointer-events-none ${isFastForwarding ? '' : 'transition-opacity duration-300'} ${pageLayout ? `z-[80] h-[104px] border-t border-white/10 bg-black px-3 py-2 ${isControlsLocked || !showControls || isFastForwarding ? 'opacity-0' : 'opacity-100'}` : `z-[2147483647] p-2 sm:p-6 ${showControls || !isPlaying ? 'opacity-100' : 'opacity-0'}`}`}
+                className={`watch-controls-deck absolute pointer-events-none ${isFastForwarding ? '' : 'transition-opacity duration-300'} ${pageLayout ? `bottom-6 left-3 right-3 z-[80] h-[84px] bg-transparent px-2 py-1 ${isControlsLocked || !showControls || isFastForwarding ? 'opacity-0' : 'opacity-100'}` : `bottom-0 left-0 right-0 z-[2147483647] p-2 sm:p-6 ${showControls || !isPlaying ? 'opacity-100' : 'opacity-0'}`}`}
+                onClick={(event) => {
+                    if (event.target === event.currentTarget) handlePlayerSurfaceTap();
+                }}
             >
-                <div className="mx-auto max-w-5xl flex flex-col gap-3 sm:gap-4 pointer-events-auto">
+                {!isControlsLocked && <div className="mx-auto max-w-5xl flex flex-col gap-2 sm:gap-4 pointer-events-auto">
                     {/* Scrubber / Progress Bar */}
                     <div
-                        className="relative h-7 w-full cursor-pointer group/progress"
+                        className={`relative z-0 h-7 w-full cursor-pointer group/progress ${showSettings || showSubtitleMenu ? 'pointer-events-none' : ''}`}
                         onMouseMove={handleProgressHover}
                         onMouseLeave={handleProgressLeave}
                     >
-                        <div className="absolute left-0 right-0 top-1/2 h-2.5 -translate-y-1/2 overflow-hidden rounded-full bg-white/25 shadow-inner">
+                        <div className={`absolute left-0 right-0 top-1/2 -translate-y-1/2 overflow-hidden rounded-full bg-white/25 shadow-inner ${pageLayout ? 'h-2' : 'h-2.5'}`}>
                             {introSkip && (
                                 <div
                                     className="absolute top-0 h-full rounded-full bg-emerald-400/35"
@@ -955,7 +1000,7 @@ export default function CustomVideoControls({
                             />
                         </div>
                         <div
-                            className="absolute top-1/2 z-20 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow"
+                            className={`absolute top-1/2 z-20 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow ${pageLayout ? 'h-3.5 w-3.5' : 'h-4 w-4'}`}
                             style={{ left: `${progressPercentage}%` }}
                         />
                         <input
@@ -990,12 +1035,12 @@ export default function CustomVideoControls({
                                 </button>
                             )}
                             
-                            <div className={`${GLASS_PANEL_CLASS} group/volume flex items-center overflow-hidden transition-all duration-300 ${pageLayout ? 'h-11 w-11' : 'h-7 w-7 sm:h-10 sm:w-12 sm:hover:w-32'}`}>
+                            <div className={`${GLASS_PANEL_CLASS} group/volume flex items-center overflow-hidden transition-all duration-300 ${pageLayout ? 'h-9 w-9' : 'h-7 w-7 sm:h-10 sm:w-12 sm:hover:w-32'}`}>
                                 <button 
                                     onClick={toggleMute} 
-                                    className={`flex flex-shrink-0 items-center justify-center ${pageLayout ? 'h-11 w-11' : 'h-7 w-7 sm:h-10 sm:w-12'}`}
+                                    className={`flex flex-shrink-0 items-center justify-center ${pageLayout ? 'h-9 w-9' : 'h-7 w-7 sm:h-10 sm:w-12'}`}
                                 >
-                                    {isMuted || volume === 0 ? <VolumeX className={pageLayout ? 'h-6 w-6' : 'h-3.5 w-3.5 sm:h-5 sm:w-5'} /> : <Volume2 className={pageLayout ? 'h-6 w-6' : 'h-3.5 w-3.5 sm:h-5 sm:w-5'} />}
+                                    {isMuted || volume === 0 ? <VolumeX className={pageLayout ? 'h-5 w-5' : 'h-3.5 w-3.5 sm:h-5 sm:w-5'} /> : <Volume2 className={pageLayout ? 'h-5 w-5' : 'h-3.5 w-3.5 sm:h-5 sm:w-5'} />}
                                 </button>
                                 <input 
                                     type="range" 
@@ -1015,13 +1060,25 @@ export default function CustomVideoControls({
                                 />
                             </div>
 
-                            <div className={`${GLASS_PANEL_CLASS} flex items-center justify-center font-bold tracking-normal ${pageLayout ? 'h-11 min-w-[94px] px-3 text-xs' : 'h-7 min-w-[62px] px-1.5 text-[9px] sm:h-10 sm:min-w-0 sm:px-4 sm:text-xs sm:font-medium sm:tracking-wider'}`}>
+                            {pageLayout && hasNextEpisode && onNextEpisode && (
+                                <button
+                                    type="button"
+                                    onClick={(event) => { event.stopPropagation(); onNextEpisode(); setShowControls(false); }}
+                                    className={`${GLASS_BUTTON_CLASS} h-9 w-9`}
+                                    title="Next episode"
+                                    aria-label="Next episode"
+                                >
+                                    <SkipForward className="h-5 w-5 fill-current" />
+                                </button>
+                            )}
+
+                            <div className={`${GLASS_PANEL_CLASS} flex items-center justify-center font-bold tracking-normal ${pageLayout ? 'h-9 min-w-[88px] px-2 text-[11px]' : 'h-7 min-w-[62px] px-1.5 text-[9px] sm:h-10 sm:min-w-0 sm:px-4 sm:text-xs sm:font-medium sm:tracking-wider'}`}>
                                 {formatTime(currentTime)} / {formatTime(duration)}
                             </div>
                         </div>
 
                         {/* Right Controls */}
-                        <div className={`flex shrink-0 items-center ${pageLayout ? 'gap-2' : 'gap-1 sm:gap-2'}`}>
+                        <div className={`relative z-[100] flex shrink-0 items-center ${pageLayout ? 'gap-2' : 'gap-1 sm:gap-2'}`}>
                             {!pageLayout && <button
                                 onClick={() => seekBy(-SEEK_SECONDS)}
                                 className={`${GLASS_BUTTON_CLASS} h-7 w-7 sm:h-10 sm:w-12`}
@@ -1037,10 +1094,17 @@ export default function CustomVideoControls({
                                 <SeekIcon direction="forward" />
                             </button>}
 
-                            <div className={`${GLASS_PANEL_CLASS} relative flex items-center ${pageLayout ? 'h-11 gap-1 px-1.5' : 'h-7 gap-0 px-0 sm:h-10 sm:gap-1 sm:px-3'}`}>
+                            <div className={`${GLASS_PANEL_CLASS} relative flex items-center ${pageLayout ? 'h-9 gap-0.5 px-1' : 'h-7 gap-0 px-0 sm:h-10 sm:gap-1 sm:px-3'}`}>
                                 {/* Settings Popover */}
                                 {showSettings && (
-                                    <div className="absolute bottom-full right-0 mb-3 w-44 bg-[#1A1A1A]/95 backdrop-blur-xl rounded-xl p-1 shadow-2xl z-50">
+                                    <div
+                                        className="pointer-events-auto absolute bottom-full right-0 z-[200] mb-3 w-44 rounded-xl bg-[#1A1A1A]/95 p-1 shadow-2xl backdrop-blur-xl"
+                                        data-player-interactive="true"
+                                        onClick={(event) => event.stopPropagation()}
+                                        onPointerDown={(event) => event.stopPropagation()}
+                                        onMouseDown={(event) => event.stopPropagation()}
+                                        onTouchStart={(event) => event.stopPropagation()}
+                                    >
                                         {settingsView !== 'main' && (
                                             <button
                                                 onClick={() => setSettingsView('main')}
@@ -1090,7 +1154,7 @@ export default function CustomVideoControls({
                                                     className="flex items-center justify-between w-full p-2 hover:bg-white/10 rounded-lg transition-colors disabled:opacity-40"
                                                 >
                                                     <div className="flex items-center gap-2 text-white">
-                                                        <RedoIcon className="w-4 h-4" />
+                                                        <RotateCw className="h-4 w-4 shrink-0" strokeWidth={2} />
                                                         <span className="text-xs font-medium">Auto Skip</span>
                                                     </div>
                                                     <div className={`w-8 h-4 rounded-full relative shadow-inner transition-colors ${autoSkipEnabled ? 'bg-white' : 'bg-white/20'}`}>
@@ -1196,8 +1260,8 @@ export default function CustomVideoControls({
                                     </div>
                                 )}
 
-                                <button onClick={() => { setShowSettings(!showSettings); setShowSubtitleMenu(false); setSettingsView('main'); }} className={`rounded-full text-white transition-colors hover:bg-white/10 hover:text-white/80 ${pageLayout ? 'p-2.5' : 'p-1.5 sm:p-2'}`}>
-                                    <Settings className={pageLayout ? 'h-6 w-6' : 'h-3.5 w-3.5 sm:h-5 sm:w-5'} />
+                                <button onClick={() => { setShowSettings(!showSettings); setShowSubtitleMenu(false); setSettingsView('main'); }} className={`rounded-full text-white transition-colors hover:bg-white/10 hover:text-white/80 ${pageLayout ? 'p-2' : 'p-1.5 sm:p-2'}`}>
+                                    <Settings className={pageLayout ? 'h-5 w-5' : 'h-3.5 w-3.5 sm:h-5 sm:w-5'} />
                                 </button>
                                 {hasSubtitles && (
                                     <>
@@ -1240,24 +1304,24 @@ export default function CustomVideoControls({
                                                 setShowSubtitleMenu((visible) => !visible);
                                             }}
                                             type="button"
-                                            className={`rounded-full text-white transition-colors ${pageLayout ? 'p-2.5' : 'p-1.5 sm:p-2'} ${subtitlesEnabled ? 'bg-white/20 hover:bg-white/25' : 'hover:bg-white/10 hover:text-white/80'}`}
+                                            className={`rounded-full text-white transition-colors ${pageLayout ? 'p-2' : 'p-1.5 sm:p-2'} ${subtitlesEnabled ? 'bg-white/20 hover:bg-white/25' : 'hover:bg-white/10 hover:text-white/80'}`}
                                             title={subtitleTracks.length > 1
                                                 ? 'Choose subtitle language'
                                                 : (subtitlesEnabled ? 'Turn subtitles off' : 'Turn subtitles on')}
                                             aria-expanded={showSubtitleMenu}
                                             aria-pressed={subtitlesEnabled}
                                         >
-                                            <Captions className={pageLayout ? 'h-6 w-6' : 'h-3.5 w-3.5 sm:h-5 sm:w-5'} />
+                                            <Captions className={pageLayout ? 'h-5 w-5' : 'h-3.5 w-3.5 sm:h-5 sm:w-5'} />
                                         </button>
                                     </>
                                 )}
-                                <button onClick={toggleFullscreen} className={`rounded-full text-white transition-colors hover:bg-white/10 hover:text-white/80 ${pageLayout ? 'p-2.5' : 'p-1.5 sm:p-2'}`}>
-                                    {isFullscreen ? <Minimize className={pageLayout ? 'h-6 w-6' : 'h-3.5 w-3.5 sm:h-5 sm:w-5'} /> : <Maximize className={pageLayout ? 'h-6 w-6' : 'h-3.5 w-3.5 sm:h-5 sm:w-5'} />}
+                                <button onClick={toggleFullscreen} className={`rounded-full text-white transition-colors hover:bg-white/10 hover:text-white/80 ${pageLayout ? 'p-2' : 'p-1.5 sm:p-2'}`}>
+                                    {isFullscreen ? <Minimize className={pageLayout ? 'h-5 w-5' : 'h-3.5 w-3.5 sm:h-5 sm:w-5'} /> : <Maximize className={pageLayout ? 'h-5 w-5' : 'h-3.5 w-3.5 sm:h-5 sm:w-5'} />}
                                 </button>
                             </div>
                         </div>
                     </div>
-                </div>
+                </div>}
             </div>
         </>
     );

@@ -4,7 +4,7 @@ export default function MangaCardSkeleton() {
     return (
         <div className="animate-in fade-in duration-300 relative z-0">
             {/* Image Container Skeleton */}
-            <div className="relative aspect-[2/3] rounded-lg overflow-hidden mb-3 shadow-lg ring-0 outline-none transition-all duration-75 ease-out">
+            <div className="relative mb-1.5 aspect-[2/3] overflow-hidden rounded-lg md:mb-3">
                 <Skeleton className="w-full h-full absolute inset-0 rounded-none" />
                 
                 {/* Default Badges Skeletons */}
@@ -13,10 +13,9 @@ export default function MangaCardSkeleton() {
                     <Skeleton className="w-[45px] h-[24px] rounded" />
                 </div>
 
-                {/* Bottom Left: Type + Count Skeleton */}
+                {/* Bottom Left: the live card renders only its media type here. */}
                 <div className="absolute bottom-2 left-2 flex gap-1.5 z-10">
-                    <Skeleton className="w-[60px] h-[24px] rounded" /> {/* Type approx width */}
-                    <Skeleton className="w-[50px] h-[24px] rounded" /> {/* Chapters approx width */}
+                    <Skeleton className="h-5 w-14 rounded md:h-6 md:w-[60px]" />
                 </div>
             </div>
             

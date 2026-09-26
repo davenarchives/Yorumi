@@ -1,6 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { API_BASE } from '../../config/api';
 import { setLocalStorageWithCleanup } from '../../utils/localStorageQuota';
+import type { Anime } from '../../types/anime';
+import { tmdbService } from '../../services/tmdbService';
+import { isNativeMobile } from '../../platform/runtime';
 
 interface AnimeLogoImageProps {
     tmdbId?: number | null;
@@ -11,9 +14,12 @@ interface AnimeLogoImageProps {
     className?: string;
     style?: React.CSSProperties;
     size?: 'small' | 'medium' | 'large'; // small: 80px, medium: 120px, large: 160px
+    anime?: Anime;
+    preferLogo?: boolean;
 }
 
-const LOGO_CACHE_KEY = 'yorumi_logo_cache_v2';
+// Namespace bump clears stale negative entries written while logo rendering was disabled.
+const LOGO_CACHE_KEY = 'yorumi_logo_cache_v3';
 
 // Hydrate logo cache from localStorage on module load
 function loadCacheFromStorage(): Map<string, string | null> {
@@ -74,6 +80,7 @@ function persistCache() {
  * Call this when spotlight/trending anime data loads
  */
 export async function preloadLogos(tmdbIds: number[]): Promise<void> {
+    if (isNativeMobile()) return;
     // Filter out already cached IDs
     const uncachedIds = tmdbIds
         .map(getPositiveId)
@@ -115,9 +122,35 @@ export async function preloadLogos(tmdbIds: number[]): Promise<void> {
     }
 }
 
-export default function AnimeLogoImage({ tmdbId, title, year, episodes, format, className = '', size = 'medium', style }: AnimeLogoImageProps) {
+export async function preloadSpotlightLogos(animes: Anime[]): Promise<void> {
+    const spotlightAnime = animes.slice(0, 8);
+    await preloadLogos(spotlightAnime.map((anime) => anime.id || anime.mal_id).filter(Boolean));
+
+    let cursor = 0;
+    const workers = Array.from({ length: Math.min(2, spotlightAnime.length) }, async () => {
+        while (cursor < spotlightAnime.length) {
+            const anime = spotlightAnime[cursor++];
+            const id = getPositiveId(anime.id || anime.mal_id);
+            const title = anime.title_english || anime.title_romaji || anime.title;
+            const cacheKey = isNativeMobile()
+                ? getTitleCacheKey(`${title}:${anime.year || ''}`)
+                : id ? `id:${id}` : getTitleCacheKey(title);
+            if (!cacheKey || logoCache.get(cacheKey)) continue;
+
+            const logo = await tmdbService.getLogoForAnime(anime).catch(() => null);
+            if (logo) logoCache.set(cacheKey, logo);
+        }
+    });
+
+    await Promise.all(workers);
+    persistCache();
+}
+
+export default function AnimeLogoImage({ tmdbId, title, year, episodes, format, className = '', size = 'medium', style, anime, preferLogo = false }: AnimeLogoImageProps) {
     const [logoUrl, setLogoUrl] = useState<string | null>(null);
     const [hasError, setHasError] = useState(false);
+    const animeRef = useRef(anime);
+    animeRef.current = anime;
 
     // Determine max height based on size prop
     const getMaxHeight = () => {
@@ -130,12 +163,18 @@ export default function AnimeLogoImage({ tmdbId, title, year, episodes, format, 
     };
 
     useEffect(() => {
-        return; // Temporarily disabled: user requested text titles only for now
+        if (!preferLogo) {
+            setLogoUrl(null);
+            setHasError(true);
+            return;
+        }
         let isMounted = true;
         setLogoUrl(null);
         setHasError(false);
         const resolvedId = getPositiveId(tmdbId);
-        const cacheKey = resolvedId ? `id:${resolvedId}` : getTitleCacheKey(title);
+        const cacheKey = isNativeMobile()
+            ? getTitleCacheKey(`${title}:${year || ''}`)
+            : resolvedId ? `id:${resolvedId}` : getTitleCacheKey(title);
 
         if (!cacheKey) {
             setHasError(true);
@@ -149,15 +188,18 @@ export default function AnimeLogoImage({ tmdbId, title, year, episodes, format, 
             // Check cache first
             if (logoCache.has(key)) {
                 const cached = logoCache.get(key);
-                if (isMounted) {
-                    if (cached) {
-                        setLogoUrl(cached);
-                        setHasError(false);
-                    } else {
-                        setHasError(true);
-                    }
+                if (cached && isMounted) {
+                    setLogoUrl(cached);
+                    setHasError(false);
+                    return;
                 }
-                return;
+                // A Fanart miss must not prevent the per-title TMDB artwork
+                // fallback used by standalone Android and unconfigured hosts.
+                if (!animeRef.current) {
+                    if (isMounted) setHasError(true);
+                    return;
+                }
+                logoCache.delete(key);
             }
 
             // Check if there's already a pending request for this ID
@@ -182,24 +224,26 @@ export default function AnimeLogoImage({ tmdbId, title, year, episodes, format, 
                     if (year) params.set('year', String(year));
                     if (episodes) params.set('episodes', String(episodes));
                     if (format) params.set('format', format);
-                    const logoEndpoint = resolvedId
-                        ? `${API_BASE}/logo/${resolvedId}`
-                        : `${API_BASE}/logo/${resolvedId}`; // Should not happen, temporary fallback if we ever restore resolve
-                    const response = await fetch(logoEndpoint);
-
-                    if (!response.ok) {
-                        throw new Error('Failed to fetch logo');
+                    let resolvedLogo: string | null = null;
+                    if (!isNativeMobile() && resolvedId) {
+                        const response = await fetch(`${API_BASE}/logo/${resolvedId}`);
+                        if (response.ok) {
+                            const data = await response.json();
+                            if (data.logo && data.source === 'fanart') {
+                                resolvedLogo = data.logo;
+                                if (data.tmdbId) logoCache.set(`id:${data.tmdbId}`, data.logo);
+                            }
+                        }
                     }
 
-                    const data = await response.json();
+                    if (!resolvedLogo && animeRef.current) {
+                        resolvedLogo = await tmdbService.getLogoForAnime(animeRef.current);
+                    }
 
-                    if (data.logo && data.source === 'fanart') {
-                        logoCache.set(key, data.logo);
-                        if (data.tmdbId) {
-                            logoCache.set(`id:${data.tmdbId}`, data.logo);
-                        }
+                    if (resolvedLogo) {
+                        logoCache.set(key, resolvedLogo);
                         persistCache();
-                        return data.logo;
+                        return resolvedLogo;
                     } else {
                         logoCache.set(key, null);
                         persistCache();
@@ -233,10 +277,10 @@ export default function AnimeLogoImage({ tmdbId, title, year, episodes, format, 
         return () => {
             isMounted = false;
         };
-    }, [tmdbId, title, year, episodes, format]);
+    }, [tmdbId, title, year, episodes, format, preferLogo]);
 
     // If logo is available and no error, show the logo
-    if (false && logoUrl && !hasError) {
+    if (logoUrl && !hasError) {
         return (
             <img
                 src={logoUrl || undefined}

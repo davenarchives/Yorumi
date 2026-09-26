@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { Check, Plus, Play, Download, Loader2, CircleCheckBig, FolderOpen, ArrowLeft, Search, ChevronDown, ArrowUpDown, Grid2X2, List, User, Clock3 } from 'lucide-react';
+import { Check, Plus, Play, Download, Loader2, CircleCheckBig, FolderOpen, ArrowLeft, Search, ChevronDown, ArrowUpDown, ArrowDown, ArrowUp, Grid2X2, List, User, Clock3 } from 'lucide-react';
 import { useManga } from '../hooks/useManga';
 import { useReadList } from '../hooks/useReadList';
 import { useContinueReading } from '../hooks/useContinueReading';
@@ -91,9 +91,11 @@ const ChapterList = ({
                     <button 
                         type="button"
                         onClick={() => { setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc'); }}
-                        className="h-10 px-4 bg-white/5 hover:bg-white/10 rounded-2xl text-xs sm:text-sm font-bold text-gray-200 transition-colors flex items-center gap-1.5 cursor-pointer border border-white/5 shrink-0"
+                        className="grid h-10 w-10 shrink-0 place-items-center text-gray-400 transition-colors hover:text-white"
+                        title={sortOrder === 'desc' ? 'Newest first' : 'Oldest first'}
+                        aria-label={sortOrder === 'desc' ? 'Sort chapters newest first' : 'Sort chapters oldest first'}
                     >
-                        {sortOrder === 'desc' ? '↑ Newest' : '↓ Oldest'}
+                        {sortOrder === 'desc' ? <ArrowDown className="h-5 w-5" /> : <ArrowUp className="h-5 w-5" />}
                     </button>
                     {onViewModeChange && <ChapterViewToggle viewMode={viewMode} onViewModeChange={onViewModeChange} />}
                     {headerActions}
@@ -721,21 +723,21 @@ export default function MangaDetailsPage() {
                                             <button
                                                 type="button"
                                                 onClick={handleOpenFolder}
-                                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-semibold text-gray-300 hover:text-white transition-colors border border-white/5 cursor-pointer"
+                                                className="grid h-10 w-10 place-items-center text-gray-400 transition-colors hover:text-yorumi-manga"
                                                 title="Open downloaded files on your computer"
+                                                aria-label="Open downloads folder"
                                             >
-                                                <FolderOpen className="w-3.5 h-3.5 text-yorumi-manga" />
-                                                <span className="hidden sm:inline">Downloads Folder</span>
+                                                <FolderOpen className="h-5 w-5" />
                                             </button>
                                         )}
                                         <button
                                             type="button"
                                             onClick={handleDownloadAllManga}
-                                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-semibold text-gray-300 hover:text-white transition-colors border border-white/5 cursor-pointer"
+                                            className="grid h-10 w-10 place-items-center text-gray-400 transition-colors hover:text-yorumi-manga"
                                             title="Download all chapters for offline reading"
+                                            aria-label="Download all chapters"
                                         >
-                                            <Download className="w-3.5 h-3.5 text-yorumi-manga" />
-                                            <span className="hidden sm:inline">Download All</span>
+                                            <Download className="h-5 w-5" />
                                         </button>
                                     </>
                                 }

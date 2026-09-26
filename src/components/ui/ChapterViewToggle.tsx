@@ -34,17 +34,17 @@ interface ChapterViewToggleProps {
 
 export default function ChapterViewToggle({ viewMode, onViewModeChange }: ChapterViewToggleProps) {
     return (
-        <div className="flex items-center bg-[#141414] border border-white/10 rounded-2xl p-1 gap-1 shrink-0">
+        <div className="flex h-10 shrink-0 items-center gap-1">
             <button
                 type="button"
                 onClick={() => onViewModeChange('list')}
                 title="List View"
                 aria-label="List View"
                 aria-pressed={viewMode === 'list'}
-                className={`relative flex flex-col items-center justify-center w-9 h-9 rounded-lg transition-all duration-200 ${
+                className={`grid h-10 w-10 place-items-center transition-colors duration-200 ${
                     viewMode === 'list'
-                        ? 'bg-white/10 text-white shadow-sm'
-                        : 'text-gray-400 hover:text-gray-200 hover:bg-white/5'
+                        ? 'text-purple-400'
+                        : 'text-gray-500 hover:text-gray-200'
                 }`}
             >
                 <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
@@ -52,9 +52,6 @@ export default function ChapterViewToggle({ viewMode, onViewModeChange }: Chapte
                     <line x1="3" y1="12" x2="21" y2="12" />
                     <line x1="3" y1="18" x2="14" y2="18" />
                 </svg>
-                {viewMode === 'list' && (
-                    <span className="absolute bottom-1 w-2.5 h-1 bg-purple-500 rounded-full transition-all" />
-                )}
             </button>
             <button
                 type="button"
@@ -62,10 +59,10 @@ export default function ChapterViewToggle({ viewMode, onViewModeChange }: Chapte
                 title="Grid View"
                 aria-label="Grid View"
                 aria-pressed={viewMode === 'grid'}
-                className={`relative flex flex-col items-center justify-center w-9 h-9 rounded-lg transition-all duration-200 ${
+                className={`grid h-10 w-10 place-items-center transition-colors duration-200 ${
                     viewMode === 'grid'
-                        ? 'bg-white/10 text-white shadow-sm'
-                        : 'text-gray-400 hover:text-gray-200 hover:bg-white/5'
+                        ? 'text-purple-400'
+                        : 'text-gray-500 hover:text-gray-200'
                 }`}
             >
                 <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -74,9 +71,6 @@ export default function ChapterViewToggle({ viewMode, onViewModeChange }: Chapte
                     <rect x="14" y="14" width="7" height="7" rx="2" />
                     <rect x="3" y="14" width="7" height="7" rx="2" />
                 </svg>
-                {viewMode === 'grid' && (
-                    <span className="absolute bottom-1 w-2.5 h-1 bg-purple-500 rounded-full transition-all" />
-                )}
             </button>
         </div>
     );

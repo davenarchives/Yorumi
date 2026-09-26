@@ -5,10 +5,10 @@ interface CarouselProps {
     title?: string;
     children: React.ReactNode;
     variant?: 'portrait' | 'landscape';
-
+    gridColumns?: 4 | 6;
 }
 
-const Carousel: React.FC<CarouselProps> = ({ title, children, variant = 'portrait' }) => {
+const Carousel: React.FC<CarouselProps> = ({ title, children, variant = 'portrait', gridColumns }) => {
     const [emblaRef, emblaApi] = useEmblaCarousel({
         loop: false,
         align: 'center',
@@ -40,7 +40,7 @@ const Carousel: React.FC<CarouselProps> = ({ title, children, variant = 'portrai
             )}
 
             {/* Navigation Buttons - Only visible if 4+ items */}
-            {showControls && (
+            {showControls && !gridColumns && (
                 <>
                     <button
                         onClick={scrollPrev}
@@ -61,8 +61,15 @@ const Carousel: React.FC<CarouselProps> = ({ title, children, variant = 'portrai
             )}
 
             {/* Carousel Viewport */}
-            <div className="overflow-hidden" ref={emblaRef}>
-                <div className="flex gap-4 touch-pan-y">
+            {gridColumns ? (
+                <div className={`grid gap-x-4 gap-y-8 ${gridColumns === 4 ? 'grid-cols-4' : 'grid-cols-6'}`}>
+                    {React.Children.map(children, (child) => (
+                        <div className="min-w-0">{child}</div>
+                    ))}
+                </div>
+            ) : (
+                <div className="overflow-hidden" ref={emblaRef}>
+                    <div className="flex gap-4 touch-pan-y">
                     {/* Slides need to be wrapped to maintain gap */}
                     {React.Children.map(children, (child) => (
                         <div className={`${variant === 'landscape'
@@ -71,8 +78,9 @@ const Carousel: React.FC<CarouselProps> = ({ title, children, variant = 'portrai
                             {child}
                         </div>
                     ))}
+                    </div>
                 </div>
-            </div>
+            )}
 
             {/* Gradient Edges for overflow cue */}
         </div>

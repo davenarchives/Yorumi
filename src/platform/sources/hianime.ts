@@ -54,6 +54,40 @@ type AnimeMatch = { slug: string; animeId: string; title: string };
 export type EpisodeMatch = { epNumber: number; epId: string; title: string };
 type ResolvedEmbed = { m3u8: string; subtitles: SubtitleTrack[] };
 
+const normalizeSubtitleLanguage = (value: unknown) => {
+    const raw = String(value || '').trim().toLowerCase().replace(/_/g, '-');
+    const aliases: Record<string, string> = {
+        english: 'en', eng: 'en', arabic: 'ar', ara: 'ar', spanish: 'es', spa: 'es',
+        french: 'fr', fra: 'fr', german: 'de', deu: 'de', indonesian: 'id', ind: 'id',
+        japanese: 'ja', jpn: 'ja', korean: 'ko', kor: 'ko', portuguese: 'pt', por: 'pt',
+        russian: 'ru', rus: 'ru', thai: 'th', tha: 'th', vietnamese: 'vi', vie: 'vi',
+        chinese: 'zh', zho: 'zh',
+    };
+    return aliases[raw] || raw || 'und';
+};
+
+const detectSubtitleLanguage = (text: string) => {
+    if (/[\u0E00-\u0E7F]/u.test(text)) return 'th';
+    if (/[\u0600-\u06FF]/u.test(text)) return 'ar';
+    if (/[\uAC00-\uD7AF]/u.test(text)) return 'ko';
+    if (/[\u3040-\u30FF]/u.test(text)) return 'ja';
+    if (/[\u0400-\u04FF]/u.test(text)) return 'ru';
+    if (/[\u4E00-\u9FFF]/u.test(text)) return 'zh';
+    return 'und';
+};
+
+const resolveSubtitleLanguage = async (subtitle: { src?: string; lang?: string; label?: string; language?: string; name?: string }, referer: string) => {
+    if (subtitle.src) {
+        try {
+            const detected = detectSubtitleLanguage(await getText(subtitle.src, { Referer: referer }));
+            if (detected !== 'und') return detected;
+        } catch {
+            // Retain provider metadata when a device cannot sample the subtitle URL.
+        }
+    }
+    return normalizeSubtitleLanguage(subtitle.lang || subtitle.label || subtitle.language || subtitle.name);
+};
+
 const extractSlug = (href: string) => {
     try {
         return new URL(href, BASE_URL).pathname.replace(/^\/+/, '').split('?')[0];
@@ -142,11 +176,11 @@ const resolveEmbed = async (embedUrl: string): Promise<ResolvedEmbed | null> => 
         const data = JSON.parse(decodePayload(payload));
         if (!data?.src) return null;
         const referer = `${new URL(embedUrl).origin}/`;
-        const subtitles = await Promise.all((Array.isArray(data.subtitles) ? data.subtitles : []).flatMap((subtitle: { src?: string; lang?: string; label?: string }) =>
-            subtitle?.src ? [createLocalMediaProxyUrl(subtitle.src, referer).then((url) => ({
-                lang: subtitle.lang || subtitle.label?.toLowerCase() || (subtitle as any).language || (subtitle as any).name || 'und',
-                url,
-            }))] : []
+        const subtitles = await Promise.all((Array.isArray(data.subtitles) ? data.subtitles : []).flatMap((subtitle: { src?: string; lang?: string; label?: string; language?: string; name?: string }) =>
+            subtitle?.src ? [Promise.all([
+                resolveSubtitleLanguage(subtitle, referer),
+                createLocalMediaProxyUrl(subtitle.src, referer),
+            ]).then(([lang, url]) => ({ lang, url }))] : []
         ));
         return {
             m3u8: await createLocalMediaProxyUrl(data.src, referer),
@@ -234,4 +268,3 @@ export const getLocalHiAnimeEpisodes = async (
     if (!anime) return [];
     return await getEpisodes(anime);
 };
-

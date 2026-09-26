@@ -1,11 +1,12 @@
 import { memo, useState, useCallback, useEffect, useMemo } from 'react';
-import { CircleCheckBig, Download, Loader2, FolderOpen } from 'lucide-react';
+import { ArrowDown, ArrowUp, CircleCheckBig, Download, Loader2, FolderOpen } from 'lucide-react';
 import type { Episode, Anime } from '../../../../types/anime';
 import type { StreamLink } from '../../../../types/stream';
 import { getEpisodeWatchKey, getPlaybackEpisodeNumber } from '../../../../utils/episodeWatchKey';
 import { useDownloads } from '../../../../hooks/useDownloads';
 import { downloadService } from '../../../../services/downloadService';
 import { getStreamData } from '../../../../utils/streamUtils';
+import ChapterViewToggle from '../../../../components/ui/ChapterViewToggle';
 
 export type NormalizedEpisode = Episode & {
     title: string;
@@ -31,9 +32,46 @@ export interface SeasonChip {
     isVirtual?: boolean;
 }
 
-function EpisodeThumbnail({ src, fallback, label }: { src?: string; fallback?: string; label: string }) {
+const hasExplicitReleaseUnit = (value: string) =>
+    /\bseason\s*\d+\b|\b\d+(?:st|nd|rd|th)\s*season\b|\bcour\s*\d+\b|\b\d+(?:st|nd|rd|th)\s*cour\b|\bpart\s*\d+\b|\b\d+(?:st|nd|rd|th)\s*part\b/i.test(value);
+
+const getCompactSeasonLabel = (season: SeasonChip, baseSeasonId: number | undefined, animeTitle: string) => {
+    if (season.source === 'tmdb' && season.tmdbSeasonNumber) {
+        if (/^one\s+piece\b/i.test(animeTitle.trim())) {
+            const arcTitle = String(season.title || '')
+                .replace(/^season\s*\d+\s*[:\-–—]\s*/i, '')
+                .trim();
+            if (arcTitle && !/^season\s*\d+$/i.test(arcTitle)) return arcTitle;
+        }
+        return `Season ${season.tmdbSeasonNumber}`;
+    }
+
+    const title = String(season.title || season.label || '').trim();
+    const seasonMatch = title.match(/\bseason\s*(\d+)\b/i) || title.match(/\b(\d+)(?:st|nd|rd|th)\s*season\b/i);
+    const courMatch = title.match(/\bcour\s*(\d+)\b/i) || title.match(/\b(\d+)(?:st|nd|rd|th)\s*cour\b/i);
+    const partMatch = title.match(/\bpart\s*(\d+)\b/i) || title.match(/\b(\d+)(?:st|nd|rd|th)\s*part\b/i);
+    const explicitUnits = [
+        seasonMatch ? `Season ${seasonMatch[1]}` : '',
+        courMatch ? `Cour ${courMatch[1]}` : '',
+        partMatch ? `Part ${partMatch[1]}` : '',
+    ].filter(Boolean);
+
+    if (explicitUnits.length > 0) return explicitUnits.join(' ');
+    if (season.id === baseSeasonId) return 'Season 1';
+
+    const subtitleSeparator = title.search(/[:：]/);
+    if (subtitleSeparator >= 0) {
+        const subtitle = title.slice(subtitleSeparator + 1).trim();
+        if (subtitle) return subtitle;
+    }
+
+    return title || season.label;
+};
+
+function EpisodeThumbnail({ src, fallback, label, priority = false }: { src?: string; fallback?: string; label: string; priority?: boolean }) {
     const [failed, setFailed] = useState(false);
     const [useFallback, setUseFallback] = useState(false);
+    const [loaded, setLoaded] = useState(false);
 
     const displaySrc = useFallback ? fallback : (src || fallback);
 
@@ -45,20 +83,30 @@ function EpisodeThumbnail({ src, fallback, label }: { src?: string; fallback?: s
         );
     }
 
+    const showSeparateFallback = Boolean(fallback && displaySrc !== fallback);
+
     return (
-        <img
-            src={displaySrc}
-            alt=""
-            className="w-full h-full object-cover"
-            loading="lazy"
-            onError={() => {
-                if (!useFallback && fallback && displaySrc !== fallback) {
-                    setUseFallback(true);
-                } else {
-                    setFailed(true);
-                }
-            }}
-        />
+        <div className="relative h-full w-full bg-white/[0.03]">
+            {showSeparateFallback && (
+                <img src={fallback} alt="" className="absolute inset-0 h-full w-full object-cover" aria-hidden="true" />
+            )}
+            <img
+                src={displaySrc}
+                alt=""
+                className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-200 ${showSeparateFallback && !loaded ? 'opacity-0' : 'opacity-100'}`}
+                loading={priority ? 'eager' : 'lazy'}
+                fetchPriority={priority ? 'high' : 'auto'}
+                decoding="async"
+                onLoad={() => setLoaded(true)}
+                onError={() => {
+                    if (!useFallback && fallback && displaySrc !== fallback) {
+                        setUseFallback(true);
+                    } else {
+                        setFailed(true);
+                    }
+                }}
+            />
+        </div>
     );
 }
 
@@ -98,6 +146,7 @@ type EpisodeCardProps = {
     isDownloading: boolean;
     isResolvingDownload: boolean;
     hideEpisodeNumber?: boolean;
+    prioritizeThumbnail?: boolean;
 };
 
 function isEpisodeUnreleased(airDate?: string | null): boolean {
@@ -119,6 +168,7 @@ const EpisodeCard = memo(function EpisodeCard({
     isDownloading,
     isResolvingDownload,
     hideEpisodeNumber = false,
+    prioritizeThumbnail = false,
 }: EpisodeCardProps) {
     const cleanTitle = episode.title ? episode.title.split('<note-split>')[0].trim() : '';
     const displayTitle = cleanTitle || `Episode ${episode.episodeNumber}`;
@@ -137,8 +187,8 @@ const EpisodeCard = memo(function EpisodeCard({
                 ${isUnreleased ? 'opacity-60 cursor-not-allowed' : 'hover:scale-[1.02] cursor-pointer'}`}
             title={displayTitle}
         >
-            <div className="w-[44%] max-w-[180px] sm:w-32 aspect-video self-center shrink-0 relative bg-[#0a0a0a] rounded-xl md:rounded-none overflow-hidden">
-                <EpisodeThumbnail src={thumbnail} fallback={fallbackCoverImage} label={`E${episode.episodeNumber}`} />
+            <div className="ml-3 w-[38%] max-w-28 aspect-[4/3] self-center shrink-0 relative bg-[#0a0a0a] rounded-xl overflow-hidden">
+                <EpisodeThumbnail key={`${thumbnail || ''}:${fallbackCoverImage || ''}`} src={thumbnail} fallback={fallbackCoverImage} label={`E${episode.episodeNumber}`} priority={prioritizeThumbnail} />
                 {isActive ? (
                     <div className="absolute inset-0 bg-black/60 flex items-center justify-center backdrop-blur-[1px]">
                         <div className="flex items-center gap-1.5 text-white font-bold text-xs tracking-wider">
@@ -210,7 +260,7 @@ const EpisodeCard = memo(function EpisodeCard({
                             )}
                         </div>
                     </div>
-                    <span className={`hidden md:block font-semibold text-sm line-clamp-2 mt-0.5 leading-snug ${isWatched ? 'text-green-50' : 'text-white'}`}>{isUnreleased ? 'Unreleased' : displayTitle}</span>
+                    <span className={`hidden md:block font-semibold text-xs line-clamp-3 mt-0.5 leading-snug ${isWatched ? 'text-green-50' : 'text-white'}`}>{isUnreleased ? 'Unreleased' : displayTitle}</span>
                     {episode.overview && <p className="md:hidden mt-1 text-[13px] leading-[1.35] text-zinc-500 line-clamp-2">{episode.overview}</p>}
                 </div>
 
@@ -388,6 +438,13 @@ export default function DetailsEpisodeGrid({
         () => descending ? [...episodes].reverse() : episodes,
         [descending, episodes]
     );
+    const baseSeasonId = [...seasonChips]
+        .filter((season) => season.source !== 'tmdb' && !hasExplicitReleaseUnit(String(season.title || season.label || '')))
+        .sort((a, b) => {
+            const aYear = Number(a.anime?.year || a.anime?.aired?.from?.slice(0, 4) || 9999);
+            const bYear = Number(b.anime?.year || b.anime?.aired?.from?.slice(0, 4) || 9999);
+            return aYear - bYear;
+        })[0]?.id;
 
     return (
         <div className="pt-2 mt-2 md:mt-0">
@@ -399,26 +456,36 @@ export default function DetailsEpisodeGrid({
                     <div className="flex-1 h-px bg-white/10" />
                 </div>
                 {episodes.length > 0 && (
-                    <div className="flex items-center gap-2">
+                    <div className="hidden items-center gap-2 md:flex">
+                        <button
+                            type="button"
+                            onClick={() => setDescending((value) => !value)}
+                            className="grid h-10 w-10 place-items-center text-gray-400 transition-colors hover:text-white"
+                            title={descending ? 'Newest first' : 'Oldest first'}
+                            aria-label={descending ? 'Sort episodes newest first' : 'Sort episodes oldest first'}
+                        >
+                            {descending ? <ArrowDown className="h-5 w-5" /> : <ArrowUp className="h-5 w-5" />}
+                        </button>
+                        <ChapterViewToggle viewMode={mobileGrid ? 'grid' : 'list'} onViewModeChange={(mode) => setMobileGrid(mode === 'grid')} />
                         {isElectron && (
                             <button
                                 type="button"
                                 onClick={handleOpenFolder}
-                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs font-semibold text-gray-300 hover:text-white transition-colors border border-white/5"
+                                className="grid h-10 w-10 place-items-center text-gray-400 transition-colors hover:text-yorumi-accent"
                                 title="Open downloaded files on your computer"
+                                aria-label="Open downloads folder"
                             >
-                                <FolderOpen className="w-3.5 h-3.5 text-yorumi-accent" />
-                                <span>Downloads Folder</span>
+                                <FolderOpen className="h-5 w-5" />
                             </button>
                         )}
                         <button
                             type="button"
                             onClick={handleDownloadAll}
-                            className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs font-semibold text-gray-300 hover:text-white transition-colors border border-white/5"
+                            className="hidden h-10 w-10 place-items-center text-gray-400 transition-colors hover:text-blue-400 md:grid"
                             title="Download all released episodes"
+                            aria-label="Download all released episodes"
                         >
-                            <Download className="w-3.5 h-3.5 text-blue-400" />
-                            <span>Download All</span>
+                            <Download className="h-5 w-5" />
                         </button>
                     </div>
                 )}
@@ -440,7 +507,7 @@ export default function DetailsEpisodeGrid({
                                     : 'bg-white/[0.07] text-gray-300 hover:bg-white/[0.11] hover:text-white'
                             } disabled:cursor-default`}
                         >
-                            {season.label}
+                            {getCompactSeasonLabel(season, baseSeasonId, animeTitle)}
                         </button>
                     ))}
                 </div>
@@ -451,7 +518,7 @@ export default function DetailsEpisodeGrid({
                     {isLoading ? (
                         Array.from({ length: skeletonCount }).map((_, index) => <EpisodeCardSkeleton key={`episode-skeleton-${index}`} />)
                     ) : episodes.length > 0 ? (
-                        displayedEpisodes.map((ep) => {
+                        displayedEpisodes.map((ep, index) => {
                             const epNum = Number(ep.episodeNumber || ep.playbackEpisodeNumber || 1);
                             const watchedKey = getEpisodeWatchKey(ep);
                             const isWatched = watchedEpisodes.has(watchedKey);
@@ -513,6 +580,7 @@ export default function DetailsEpisodeGrid({
                                     isDownloading={isDownloading}
                                     isResolvingDownload={isResolving}
                                     hideEpisodeNumber={isMovie}
+                                    prioritizeThumbnail={index < 16}
                                 />
                             );
                         })

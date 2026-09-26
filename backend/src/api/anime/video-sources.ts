@@ -528,7 +528,7 @@ function orderedSources(requested: string) {
 export const animeVideoSources = {
     async getStream(anilistId: number, episode: number, requestedSource = 'frieren', options?: { title?: string, titles?: any, tmdbId?: number, format?: string, anilistId?: number }, nocache = false): Promise<StreamResponse | null> {
         const sourceId = String(requestedSource || 'frieren').trim().toLowerCase();
-        const cacheKey = `anime:stream:v119:${anilistId}:${episode}:${sourceId}`;
+        const cacheKey = `anime:stream:v120:${anilistId}:${episode}:${sourceId}`;
         if (!nocache) {
             const cached = await cacheGet<StreamResponse>(cacheKey);
             if (cached) return cached;

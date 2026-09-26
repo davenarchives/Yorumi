@@ -166,7 +166,7 @@ export const getLocalAniListAnimeHome = async () => {
     ]);
 
     return {
-        spotlight: trending.media.slice(0, 6),
+        spotlight: trending.media.slice(0, 8),
         latestEpisodes: seasonal.media.slice(0, 18),
         trending,
         seasonal,

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import useEmblaCarousel from 'embla-carousel-react';
 import Autoplay from 'embla-carousel-autoplay';
 import type { Anime } from '../../../types/anime';
-import AnimeLogoImage from '../../../components/anime/AnimeLogoImage';
+import AnimeLogoImage, { preloadSpotlightLogos } from '../../../components/anime/AnimeLogoImage';
 import SpotlightSkeleton from './SpotlightSkeleton';
 import { useTitleLanguage } from '../../../context/TitleLanguageContext';
 import { getDisplayTitle } from '../../../utils/titleLanguage';
@@ -142,6 +142,10 @@ const SpotlightHero: React.FC<SpotlightHeroProps> = ({ animeList, isLoading = fa
     ]);
     const [selectedIndex, setSelectedIndex] = useState(0);
     const [detailsById, setDetailsById] = useState<Record<string, Anime>>({});
+
+    useEffect(() => {
+        if (animeList.length > 0) void preloadSpotlightLogos(animeList);
+    }, [animeList]);
 
     // Update selected index when slide changes
     const onSelect = useCallback(() => {
@@ -289,6 +293,8 @@ const SpotlightHero: React.FC<SpotlightHeroProps> = ({ animeList, isLoading = fa
                                                 year={activeAnime.year}
                                                 episodes={activeAnime.latestEpisode || activeAnime.episodes}
                                                 format={activeAnime.type}
+                                                anime={activeAnime}
+                                                preferLogo
                                                 className="drop-shadow-2xl"
                                                 size="medium"
                                             />
@@ -429,14 +435,24 @@ const SpotlightHero: React.FC<SpotlightHeroProps> = ({ animeList, isLoading = fa
                                 {rating && <span className="rounded-full border border-white/15 bg-black/45 px-3 py-1.5">☆ {rating}</span>}
                                 {duration && <span className="rounded-full border border-white/15 bg-black/45 px-3 py-1.5">◷ {duration} mins</span>}
                             </div>
-                            <h2 className="max-w-[95%] text-[26px] font-extrabold leading-[1.16] tracking-tight text-white drop-shadow-lg">{displayTitle}</h2>
+                            <AnimeLogoImage
+                                tmdbId={displayAnime.id || displayAnime.mal_id}
+                                title={displayTitle}
+                                year={displayAnime.year}
+                                episodes={episodeCount}
+                                format={displayAnime.type}
+                                anime={displayAnime}
+                                preferLogo
+                                className="max-w-[95%] drop-shadow-lg"
+                                size="small"
+                            />
                             <div className="flex flex-wrap gap-2 text-xs font-medium text-white">
                                 {(displayAnime.genres || []).slice(0, 3).map((genre) => <span key={genre.name} className="rounded-full border border-white/20 bg-black/45 px-3 py-1.5">{genre.name}</span>)}
                                 {displayAnime.studios?.[0]?.name && <span className="rounded-full border border-white/20 bg-black/45 px-3 py-1.5">{displayAnime.studios[0].name}</span>}
                             </div>
-                            <div className="pointer-events-auto grid grid-cols-2 gap-2 pt-1">
-                                <button type="button" onClick={() => onAnimeClick(activeAnime)} className="flex h-12 items-center justify-center rounded-full border border-white/15 bg-black/70 text-sm font-bold text-white">ⓘ DETAILS</button>
-                                <button type="button" onClick={() => onWatchClick(activeAnime)} className="flex h-12 items-center justify-center rounded-full border border-white/15 bg-black/70 text-sm font-bold text-white">▶ WATCH NOW</button>
+                            <div className="pointer-events-auto flex gap-2 pt-1">
+                                <button type="button" onClick={() => onWatchClick(activeAnime)} className="flex h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-yorumi-accent px-3 text-sm font-bold text-black shadow-[0_0_16px_rgba(61,180,242,0.3)]">▶ Watch Now</button>
+                                <button type="button" onClick={() => onAnimeClick(activeAnime)} className="flex h-10 min-w-[112px] items-center justify-center gap-1.5 rounded-lg border border-white/20 bg-white/10 px-3 text-sm font-bold text-white">Detail <span aria-hidden="true">›</span></button>
                             </div>
                         </div>
                     </div>

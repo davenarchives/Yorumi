@@ -9,13 +9,13 @@ const AnimeCardSkeleton: React.FC<AnimeCardSkeletonProps> = ({ className = '' })
     return (
         <div className={`relative z-0 ${className}`}>
             {/* Poster Skeleton Wrapper */}
-            <div className="relative aspect-[2/3] rounded-lg overflow-hidden mb-3 shadow-lg ring-0 outline-none transition-all duration-75 ease-out">
+            <div className="relative mb-1.5 aspect-[2/3] overflow-hidden rounded-lg shadow-lg md:mb-3">
                 <Skeleton className="w-full h-full absolute inset-0 rounded-none" />
                 
                 {/* Badges Skeletons */}
                 <div className="absolute bottom-2 left-2 flex gap-1.5 z-10">
-                    <Skeleton className="w-[45px] h-[24px] rounded" /> {/* Type badge approx width */}
-                    <Skeleton className="w-[38px] h-[24px] rounded" /> {/* Episode badge approx width */}
+                    <Skeleton className="h-5 w-9 rounded md:h-6 md:w-[45px]" />
+                    <Skeleton className="h-5 w-8 rounded md:h-6 md:w-[38px]" />
                 </div>
             </div>
             

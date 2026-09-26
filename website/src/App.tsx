@@ -197,7 +197,7 @@ function AppPreviews() {
 }
 function App() {
   const [currentPage, setCurrentPage] = useState<'home' | 'get-started' | 'docs'>('home');
-  const [isDarkMode, setIsDarkMode] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(true);
   const [isScrolled, setIsScrolled] = useState(false);
   const [starCount, setStarCount] = useState<string>('...');
   const [activeDocTab, setActiveDocTab] = useState<DocTabId>('intro');
@@ -218,7 +218,7 @@ function App() {
     if (docTab) {
       setActiveDocTab(docTab);
     }
-    window.location.hash = page === 'home' ? '' : `#${page}`;
+    window.location.hash = page === 'home' ? '' : page === 'docs' && docTab ? `#docs-${docTab}` : `#${page}`;
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -234,7 +234,6 @@ function App() {
   };
 
   useEffect(() => {
-    setIsDarkMode(true);
     document.documentElement.classList.add('dark');
 
     const handleScroll = () => {
@@ -249,6 +248,10 @@ function App() {
         window.scrollTo({ top: 0, behavior: 'smooth' });
       } else if (hash === '#docs' || hash.startsWith('#docs-')) {
         setCurrentPage('docs');
+        const requestedTab = hash.replace('#docs-', '') as DocTabId;
+        if (['intro', 'setup', 'tmdb', 'scraper', 'cli'].includes(requestedTab)) {
+          setActiveDocTab(requestedTab);
+        }
         window.scrollTo({ top: 0, behavior: 'smooth' });
       } else if (hash === '' || hash === '#home') {
         setCurrentPage('home');
@@ -525,9 +528,9 @@ function App() {
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
               
               {/* macOS Platform */}
-              <div className="bg-yorumi-card rounded-3xl p-6 md:p-8 flex flex-col justify-between space-y-6 transition-all duration-300 group h-full kawaii-shadow hover:-translate-y-1">
+              <div className="bg-yorumi-card rounded-3xl p-6 md:p-7 xl:p-6 flex flex-col justify-between space-y-6 transition-all duration-300 group h-full kawaii-shadow hover:-translate-y-1">
                 <div className="space-y-5">
-                  <div className="flex items-center gap-3 text-yorumi-text">
+                  <div className="flex items-center gap-3 text-yorumi-text h-8">
                     <AppleIcon className="w-6 h-6 fill-current" />
                     <h4 className="text-xl font-bold font-display">macOS</h4>
                   </div>
@@ -535,39 +538,41 @@ function App() {
                   <div className="space-y-3 pt-2">
                     <a
                       href="https://github.com/davenarchives/Yorumi/releases/latest/download/Yorumi.dmg"
-                      className="w-full flex items-center justify-center gap-2 px-5 py-3 rounded-full bg-yorumi-text text-yorumi-bg font-semibold text-sm transition-all duration-200 hover:opacity-90 active:scale-[0.98]"
+                      className="w-full h-12 flex items-center justify-center gap-2 px-4 rounded-full bg-yorumi-text text-yorumi-bg font-semibold text-xs sm:text-[13px] transition-all duration-200 hover:opacity-90 active:scale-[0.98] whitespace-nowrap"
                     >
-                      <Download className="w-4 h-4" />
-                      <span>Download for Apple Silicon (.dmg)</span>
+                      <Download className="w-4 h-4 shrink-0" />
+                      <span>Apple Silicon (.dmg)</span>
                     </a>
 
                     <a
                       href="https://github.com/davenarchives/Yorumi/releases/latest/download/Yorumi.dmg"
-                      className="w-full flex items-center justify-center gap-2 px-5 py-2.5 rounded-full bg-yorumi-text/5 hover:bg-yorumi-text/10 text-yorumi-text font-semibold text-sm transition-all"
+                      className="w-full h-11 flex items-center justify-center gap-2 px-4 rounded-full bg-yorumi-text/5 hover:bg-yorumi-text/10 text-yorumi-text font-semibold text-xs sm:text-[13px] transition-all whitespace-nowrap"
                     >
-                      <Download className="w-4 h-4 text-yorumi-muted" />
-                      <span>Download for Intel (.dmg)</span>
+                      <Download className="w-4 h-4 text-yorumi-muted shrink-0" />
+                      <span>Intel 64-bit (.dmg)</span>
                     </a>
 
                     <a
-                      href="https://github.com/davenarchives/Yorumi/releases/latest/download/Yorumi.zip"
-                      className="w-full flex items-center justify-center gap-2 px-5 py-2 rounded-full hover:bg-yorumi-text/5 text-yorumi-muted hover:text-yorumi-text text-xs font-medium transition-all"
+                      href="https://github.com/davenarchives/Yorumi/releases/latest"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="w-full h-8 flex items-center justify-center gap-2 px-4 rounded-full hover:bg-yorumi-text/5 text-yorumi-muted hover:text-yorumi-text text-xs font-medium transition-all whitespace-nowrap"
                     >
-                      <span>Download Portable (.zip)</span>
+                      <span>View macOS Release Assets</span>
                     </a>
                   </div>
                 </div>
 
-                <div className="pt-4 mt-auto border-t border-yorumi-text/5 space-y-1 min-h-[58px] flex flex-col justify-start">
+                <div className="pt-4 mt-auto border-t border-yorumi-text/5 space-y-1 min-h-[64px] flex flex-col justify-start">
                   <div className="text-xs font-semibold text-yorumi-text">Minimum Requirements</div>
                   <div className="text-xs text-yorumi-muted leading-relaxed">macOS 10.15+ (Catalina) • Apple Silicon or Intel 64-bit</div>
                 </div>
               </div>
 
               {/* Windows Platform */}
-              <div className="bg-yorumi-card rounded-3xl p-6 md:p-8 flex flex-col justify-between space-y-6 transition-all duration-300 group h-full kawaii-shadow hover:-translate-y-1">
+              <div className="bg-yorumi-card rounded-3xl p-6 md:p-7 xl:p-6 flex flex-col justify-between space-y-6 transition-all duration-300 group h-full kawaii-shadow hover:-translate-y-1">
                 <div className="space-y-5">
-                  <div className="flex items-center gap-3 text-yorumi-text">
+                  <div className="flex items-center gap-3 text-yorumi-text h-8">
                     <WindowsIcon className="w-6 h-6 fill-current" />
                     <h4 className="text-xl font-bold font-display">Windows</h4>
                   </div>
@@ -575,17 +580,17 @@ function App() {
                   <div className="space-y-3 pt-2">
                     <a
                       href="https://github.com/davenarchives/Yorumi/releases/latest/download/Yorumi.exe"
-                      className="w-full flex items-center justify-center gap-2 px-5 py-3 rounded-full bg-yorumi-text text-yorumi-bg font-semibold text-sm transition-all duration-200 hover:opacity-90 active:scale-[0.98]"
+                      className="w-full h-12 flex items-center justify-center gap-2 px-4 rounded-full bg-yorumi-text text-yorumi-bg font-semibold text-xs sm:text-[13px] transition-all duration-200 hover:opacity-90 active:scale-[0.98] whitespace-nowrap"
                     >
-                      <Download className="w-4 h-4" />
+                      <Download className="w-4 h-4 shrink-0" />
                       <span>Download Installer (.exe)</span>
                     </a>
 
                     <a
                       href="https://github.com/davenarchives/Yorumi/releases/latest/download/Yorumi.zip"
-                      className="w-full flex items-center justify-center gap-2 px-5 py-2.5 rounded-full bg-yorumi-text/5 hover:bg-yorumi-text/10 text-yorumi-text font-semibold text-sm transition-all"
+                      className="w-full h-11 flex items-center justify-center gap-2 px-4 rounded-full bg-yorumi-text/5 hover:bg-yorumi-text/10 text-yorumi-text font-semibold text-xs sm:text-[13px] transition-all whitespace-nowrap"
                     >
-                      <Download className="w-4 h-4 text-yorumi-muted" />
+                      <Download className="w-4 h-4 text-yorumi-muted shrink-0" />
                       <span>Download Portable (.zip)</span>
                     </a>
 
@@ -593,23 +598,23 @@ function App() {
                       href="https://github.com/davenarchives/Yorumi/releases/latest"
                       target="_blank"
                       rel="noreferrer"
-                      className="w-full flex items-center justify-center gap-2 px-5 py-2 rounded-full hover:bg-yorumi-text/5 text-yorumi-muted hover:text-yorumi-text text-xs font-medium transition-all"
+                      className="w-full h-8 flex items-center justify-center gap-2 px-4 rounded-full hover:bg-yorumi-text/5 text-yorumi-muted hover:text-yorumi-text text-xs font-medium transition-all whitespace-nowrap"
                     >
                       <span>View Windows Release Assets</span>
                     </a>
                   </div>
                 </div>
 
-                <div className="pt-4 mt-auto border-t border-yorumi-text/5 space-y-1 min-h-[58px] flex flex-col justify-start">
+                <div className="pt-4 mt-auto border-t border-yorumi-text/5 space-y-1 min-h-[64px] flex flex-col justify-start">
                   <div className="text-xs font-semibold text-yorumi-text">Minimum Requirements</div>
                   <div className="text-xs text-yorumi-muted leading-relaxed">Windows 10 / 11 (64-bit or ARM64) • DirectX 11+</div>
                 </div>
               </div>
 
               {/* Linux Platform */}
-              <div className="bg-yorumi-card rounded-3xl p-6 md:p-8 flex flex-col justify-between space-y-6 transition-all duration-300 group h-full kawaii-shadow hover:-translate-y-1">
+              <div className="bg-yorumi-card rounded-3xl p-6 md:p-7 xl:p-6 flex flex-col justify-between space-y-6 transition-all duration-300 group h-full kawaii-shadow hover:-translate-y-1">
                 <div className="space-y-5">
-                  <div className="flex items-center gap-3 text-yorumi-text">
+                  <div className="flex items-center gap-3 text-yorumi-text h-8">
                     <LinuxIcon className="w-6 h-6 fill-current" />
                     <h4 className="text-xl font-bold font-display">Linux</h4>
                   </div>
@@ -617,17 +622,17 @@ function App() {
                   <div className="space-y-3 pt-2">
                     <a
                       href="https://github.com/davenarchives/Yorumi/releases/latest/download/Yorumi.AppImage"
-                      className="w-full flex items-center justify-center gap-2 px-5 py-3 rounded-full bg-yorumi-text text-yorumi-bg font-semibold text-sm transition-all duration-200 hover:opacity-90 active:scale-[0.98]"
+                      className="w-full h-12 flex items-center justify-center gap-2 px-4 rounded-full bg-yorumi-text text-yorumi-bg font-semibold text-xs sm:text-[13px] transition-all duration-200 hover:opacity-90 active:scale-[0.98] whitespace-nowrap"
                     >
-                      <Download className="w-4 h-4" />
-                      <span>Download for x64 (.AppImage)</span>
+                      <Download className="w-4 h-4 shrink-0" />
+                      <span>Download (.AppImage)</span>
                     </a>
 
                     <a
                       href="https://github.com/davenarchives/Yorumi/releases/latest/download/Yorumi.zip"
-                      className="w-full flex items-center justify-center gap-2 px-5 py-2.5 rounded-full bg-yorumi-text/5 hover:bg-yorumi-text/10 text-yorumi-text font-semibold text-sm transition-all"
+                      className="w-full h-11 flex items-center justify-center gap-2 px-4 rounded-full bg-yorumi-text/5 hover:bg-yorumi-text/10 text-yorumi-text font-semibold text-xs sm:text-[13px] transition-all whitespace-nowrap"
                     >
-                      <Download className="w-4 h-4 text-yorumi-muted" />
+                      <Download className="w-4 h-4 text-yorumi-muted shrink-0" />
                       <span>Download Portable (.zip)</span>
                     </a>
 
@@ -635,23 +640,23 @@ function App() {
                       href="https://github.com/davenarchives/Yorumi/releases/latest"
                       target="_blank"
                       rel="noreferrer"
-                      className="w-full flex items-center justify-center gap-2 px-5 py-2 rounded-full hover:bg-yorumi-text/5 text-yorumi-muted hover:text-yorumi-text text-xs font-medium transition-all"
+                      className="w-full h-8 flex items-center justify-center gap-2 px-4 rounded-full hover:bg-yorumi-text/5 text-yorumi-muted hover:text-yorumi-text text-xs font-medium transition-all whitespace-nowrap"
                     >
                       <span>View Linux Release Assets</span>
                     </a>
                   </div>
                 </div>
 
-                <div className="pt-4 mt-auto border-t border-yorumi-text/5 space-y-1 min-h-[58px] flex flex-col justify-start">
+                <div className="pt-4 mt-auto border-t border-yorumi-text/5 space-y-1 min-h-[64px] flex flex-col justify-start">
                   <div className="text-xs font-semibold text-yorumi-text">Minimum Requirements</div>
                   <div className="text-xs text-yorumi-muted leading-relaxed">glibc 2.28+ • Ubuntu 20.04+, Fedora 34+, Arch Linux</div>
                 </div>
               </div>
 
               {/* Android Platform (APK) */}
-              <div className="bg-yorumi-card rounded-3xl p-6 md:p-8 flex flex-col justify-between space-y-6 transition-all duration-300 group h-full kawaii-shadow">
+              <div className="bg-yorumi-card rounded-3xl p-6 md:p-7 xl:p-6 flex flex-col justify-between space-y-6 transition-all duration-300 group h-full kawaii-shadow hover:-translate-y-1">
                 <div className="space-y-5">
-                  <div className="flex items-center gap-3 text-yorumi-text">
+                  <div className="flex items-center gap-3 text-yorumi-text h-8">
                     <Smartphone className="w-6 h-6 text-yorumi-main" />
                     <h4 className="text-xl font-bold font-display">Android</h4>
                     <span className="ml-auto px-2 py-0.5 rounded-full text-[10px] font-bold bg-yorumi-main/15 text-yorumi-main uppercase tracking-wide">New ☆</span>
@@ -660,29 +665,38 @@ function App() {
                   <div className="space-y-3 pt-2">
                     <a
                       href="https://github.com/davenarchives/Yorumi/releases/latest/download/Yorumi.apk"
-                      className="w-full flex items-center justify-center gap-2 px-5 py-3 rounded-full bg-yorumi-main text-white font-semibold text-sm transition-all duration-200 hover:opacity-90 hover:scale-[1.02] active:scale-[0.98] kawaii-shadow"
+                      className="w-full h-12 flex items-center justify-center gap-2 px-4 rounded-full bg-yorumi-main text-white font-semibold text-xs sm:text-[13px] transition-all duration-200 hover:opacity-90 hover:scale-[1.02] active:scale-[0.98] kawaii-shadow whitespace-nowrap"
                     >
-                      <Download className="w-4 h-4" />
-                      <span>Download APK</span>
+                      <Download className="w-4 h-4 shrink-0" />
+                      <span>Download APK (.apk)</span>
                     </a>
 
                     <a
                       href="https://github.com/davenarchives/Yorumi/releases/latest"
                       target="_blank"
                       rel="noreferrer"
-                      className="w-full flex items-center justify-center gap-2 px-5 py-2 rounded-full hover:bg-yorumi-text/5 text-yorumi-muted hover:text-yorumi-text text-xs font-medium transition-all"
+                      className="w-full h-11 flex items-center justify-center gap-2 px-4 rounded-full bg-yorumi-text/5 hover:bg-yorumi-text/10 text-yorumi-text font-semibold text-xs sm:text-[13px] transition-all whitespace-nowrap"
+                    >
+                      <Download className="w-4 h-4 text-yorumi-muted shrink-0" />
+                      <span>Download via GitHub</span>
+                    </a>
+
+                    <a
+                      href="https://github.com/davenarchives/Yorumi/releases/latest"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="w-full h-8 flex items-center justify-center gap-2 px-4 rounded-full hover:bg-yorumi-text/5 text-yorumi-muted hover:text-yorumi-text text-xs font-medium transition-all whitespace-nowrap"
                     >
                       <span>View Android Release Assets</span>
                     </a>
                   </div>
                 </div>
 
-                <div className="pt-4 mt-auto border-t border-yorumi-text/5 space-y-1 min-h-[58px] flex flex-col justify-start">
+                <div className="pt-4 mt-auto border-t border-yorumi-text/5 space-y-1 min-h-[64px] flex flex-col justify-start">
                   <div className="text-xs font-semibold text-yorumi-text">Minimum Requirements</div>
                   <div className="text-xs text-yorumi-muted leading-relaxed">Android 7.0+ (Nougat) • arm64-v8a • offline downloads supported</div>
                 </div>
               </div>
-
             </div>
 
             {/* What's New In Release Card */}

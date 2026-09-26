@@ -276,7 +276,7 @@ export default function Sidebar() {
                 style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
                 aria-label="Primary navigation"
             >
-                <div className="grid h-[62px] grid-cols-5 items-center px-1">
+                <div className="grid h-[80px] grid-cols-5 items-center px-1">
                     <MobileNavItem
                         icon={Tv}
                         label="Anime"
@@ -356,13 +356,13 @@ function MobileNavItem({ icon: Icon, label, onClick, isActive = false, activeCol
     return (
         <button
             onClick={onClick}
-            className="flex min-w-0 flex-col items-center justify-center gap-0.5 py-1 outline-none"
+            className="flex min-w-0 h-full flex-col items-center justify-center gap-1 py-1 outline-none select-none"
             aria-current={isActive ? 'page' : undefined}
         >
-            <div className={`flex items-center justify-center px-4 py-1 rounded-full transition-all duration-200 ${isActive ? `${activePillBg} ${activeColor}` : 'text-white/50'}`}>
-                <Icon className={`h-5 w-5 ${isActive ? 'stroke-[2.5]' : 'stroke-2'}`} />
+            <div className={`flex items-center justify-center h-8 w-14 sm:w-16 rounded-full transition-all duration-200 ${isActive ? `${activePillBg} ${activeColor}` : 'text-white/60 hover:text-white/80'}`}>
+                <Icon className={`h-5 w-5 ${isActive ? 'stroke-[2.4]' : 'stroke-[1.9]'}`} />
             </div>
-            <span className={`truncate text-[10.5px] tracking-tight transition-colors ${isActive ? 'text-white font-semibold' : 'text-white/50'}`}>
+            <span className={`truncate text-[11px] tracking-tight transition-colors ${isActive ? 'text-white font-semibold' : 'text-white/60 font-medium'}`}>
                 {label}
             </span>
         </button>

@@ -1,72 +1,72 @@
 import React from 'react';
 
-const SpotlightSkeleton: React.FC = () => {
+type SpotlightSkeletonVariant = 'anime' | 'manga' | 'ln';
+
+interface SpotlightSkeletonProps {
+    variant?: SpotlightSkeletonVariant;
+}
+
+const variantStyles: Record<SpotlightSkeletonVariant, { primary: string; titleWidth: string }> = {
+    anime: { primary: 'bg-yorumi-accent/45', titleWidth: 'w-[72%]' },
+    manga: { primary: 'bg-yorumi-manga/45', titleWidth: 'w-[82%]' },
+    ln: { primary: 'bg-amber-400/45', titleWidth: 'w-[78%]' },
+};
+
+const SpotlightSkeleton: React.FC<SpotlightSkeletonProps> = ({ variant = 'anime' }) => {
+    const styles = variantStyles[variant];
+
     return (
-        <div className="relative w-full h-[50vh] md:h-[60vh] min-h-[400px] md:min-h-[480px] group bg-[#0a0a0a] overflow-hidden mb-8">
-            {/* Background Shimmer */}
-            <div className="absolute inset-0 z-0">
-                <div className="absolute right-0 top-0 w-full md:w-[70%] h-full bg-gradient-to-r from-gray-800/50 to-gray-700/50 animate-pulse" />
-                <div className="absolute inset-0 bg-black/60 md:bg-black/40 z-0" />
-                <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#0a0a0a]/60 to-[#0a0a0a] z-0" />
-                <div className="absolute inset-0 bg-gradient-to-r from-[#0a0a0a] via-[#0a0a0a]/80 to-transparent pointer-events-none z-0" />
-            </div>
+        <div className="relative mb-8 h-[58vh] min-h-[440px] w-full overflow-hidden bg-[#0a0a0a] md:h-[60vh] md:min-h-[480px]">
+            <div className="absolute inset-0 animate-pulse bg-gradient-to-br from-white/[0.08] via-white/[0.04] to-transparent" />
+            <div className="absolute inset-x-0 bottom-0 h-[60%] bg-gradient-to-t from-[#0a0a0a] via-[#0a0a0a]/80 to-transparent" />
+            <div className="absolute inset-0 hidden bg-gradient-to-r from-[#0a0a0a] via-[#0a0a0a]/80 to-transparent md:block" />
 
-            {/* Fixed Overlay Content */}
-            <div className="absolute inset-0 flex flex-col md:flex-row gap-12 items-center w-full max-w-7xl mx-auto px-8 md:px-14 mt-12 z-10">
-                {/* Text Info (Left) */}
-                <div className="flex-1 w-full max-w-2xl flex flex-col justify-end h-[360px] md:h-[380px]">
-                    {/* Top Section: Mobile Cover & Title */}
-                    <div className="w-full mb-4">
-                        <div className="flex items-center gap-3 mb-3">
-                            <div className="md:hidden h-24 w-16 rounded-md overflow-hidden bg-gray-700/50 animate-pulse border border-white/10" />
-                        </div>
-                        <div className="flex items-start">
-                            <div className="h-16 md:h-20 w-[80%] bg-gradient-to-r from-gray-700/50 to-gray-600/50 rounded animate-pulse" />
-                        </div>
-                    </div>
-
-                    {/* Middle Section: Chips */}
-                    <div className="w-full flex items-center flex-wrap gap-4 select-none mb-4">
-                        <div className="h-8 w-16 bg-white/10 rounded-lg animate-pulse" />
-                        <div className="h-8 w-16 bg-[#22c55e]/50 rounded-lg animate-pulse" />
-                        <div className="h-8 w-20 bg-yorumi-accent/20 border border-yorumi-accent/50 rounded-lg animate-pulse" />
-                    </div>
-
-                    {/* Bottom Section: Synopsis & Buttons */}
-                    <div className="w-full mb-6 space-y-2">
-                        <div className="h-4 w-[90%] bg-gray-700/40 rounded animate-pulse" />
-                        <div className="h-4 w-[90%] bg-gray-700/40 rounded animate-pulse" />
-                        <div className="h-4 w-[60%] bg-gray-700/40 rounded animate-pulse" />
-                    </div>
-
-                    <div className="w-full flex gap-4">
-                        <div className="h-10 md:h-11 w-32 md:w-36 bg-yorumi-accent/30 rounded-lg animate-pulse" />
-                        <div className="h-10 md:h-11 w-28 md:w-32 bg-white/10 border border-white/20 rounded-lg animate-pulse" />
-                    </div>
+            <div className="absolute inset-0 z-10 flex animate-pulse flex-col justify-between px-4 pb-4 md:hidden" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 1.25rem)' }}>
+                <div className="flex items-start justify-between">
+                    <div className="h-9 w-24 rounded-full bg-black/55" />
+                    <div className="h-9 w-16 rounded-full bg-black/55" />
                 </div>
-
-                {/* Coverflow Images (Right - Portrait) */}
-                <div className="ml-auto lg:mr-12 xl:mr-20 relative w-56 lg:w-64 h-[336px] lg:h-[384px]">
-                    <div className="absolute inset-0">
-                        <div className="w-full h-full rounded-xl overflow-hidden border border-white/10 bg-gradient-to-b from-gray-700/50 to-gray-800/50 animate-pulse shadow-[0_0_40px_rgba(0,0,0,0.6)]" />
+                <div className="space-y-3 pb-1">
+                    <div className="flex gap-2">
+                        <div className="h-7 w-16 rounded-full border border-white/10 bg-black/45" />
+                        <div className="h-7 w-14 rounded-full border border-white/10 bg-black/45" />
+                        <div className="h-7 w-20 rounded-full border border-white/10 bg-black/45" />
+                    </div>
+                    <div className="space-y-2">
+                        <div className={`h-8 rounded bg-white/15 ${styles.titleWidth}`} />
+                        <div className="h-8 w-[52%] rounded bg-white/15" />
+                    </div>
+                    <div className="flex gap-2">
+                        <div className="h-7 w-20 rounded-full border border-white/10 bg-black/45" />
+                        <div className="h-7 w-24 rounded-full border border-white/10 bg-black/45" />
+                        <div className="h-7 w-16 rounded-full border border-white/10 bg-black/45" />
+                    </div>
+                    <div className="flex gap-2 pt-1">
+                        <div className={`h-10 flex-1 rounded-lg ${styles.primary}`} />
+                        <div className="h-10 min-w-[112px] rounded-lg border border-white/15 bg-white/10" />
                     </div>
                 </div>
             </div>
 
-            {/* Navigation Dots Skeleton */}
-            <div className="absolute z-20 flex gap-2 right-4 top-1/2 -translate-y-1/2 flex-col md:flex-row md:bottom-6 md:left-1/2 md:-translate-x-1/2 md:top-auto md:right-auto md:translate-y-0">
-                {[...Array(5)].map((_, idx) => (
-                    <div
-                        key={idx}
-                        className={`rounded-full bg-white/30 animate-pulse ${idx === 0 ? 'w-2 h-2 md:w-6 md:h-2' : 'w-2 h-2'}`}
-                        style={{ animationDelay: `${idx * 100}ms` }}
-                    />
-                ))}
-            </div>
-
-            {/* Shimmer Effect Overlay */}
-            <div className="absolute inset-0 z-[5] pointer-events-none">
-                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent animate-shimmer" />
+            <div className="absolute inset-0 z-10 mx-auto hidden w-full max-w-7xl animate-pulse items-center gap-12 px-14 pt-12 md:flex">
+                <div className="flex h-[380px] w-full max-w-2xl flex-1 flex-col justify-end">
+                    <div className="mb-4 h-16 w-[70%] rounded bg-white/10" />
+                    <div className="mb-4 flex gap-4">
+                        <div className="h-8 w-16 rounded-lg bg-white/10" />
+                        <div className="h-8 w-20 rounded-lg bg-white/10" />
+                        <div className="h-8 w-20 rounded-lg bg-white/10" />
+                    </div>
+                    <div className="mb-6 space-y-2">
+                        <div className="h-4 w-[90%] rounded bg-white/10" />
+                        <div className="h-4 w-[75%] rounded bg-white/10" />
+                        <div className="h-4 w-[55%] rounded bg-white/10" />
+                    </div>
+                    <div className="flex gap-4">
+                        <div className={`h-11 w-36 rounded-lg ${styles.primary}`} />
+                        <div className="h-11 w-32 rounded-lg border border-white/15 bg-white/10" />
+                    </div>
+                </div>
+                <div className="ml-auto h-[384px] w-64 rounded-xl bg-white/10 shadow-[0_0_40px_rgba(0,0,0,0.6)]" />
             </div>
         </div>
     );

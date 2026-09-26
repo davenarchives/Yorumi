@@ -8,6 +8,7 @@ interface LNContinueReadingProps {
     onReadClick: (novelId: string | number, novelTitle: string, chapterId: string) => void;
     onRemove: (novelId: string | number) => void;
     title?: string;
+    gridColumns?: 4 | 6;
 }
 
 export default function LNContinueReading({
@@ -15,6 +16,7 @@ export default function LNContinueReading({
     onReadClick,
     onRemove,
     title = 'Continue Reading Light Novels',
+    gridColumns,
 }: LNContinueReadingProps) {
     if (items.length === 0) return null;
 
@@ -27,7 +29,7 @@ export default function LNContinueReading({
     });
 
     return (
-        <Carousel title={title} variant="portrait">
+        <Carousel title={title} variant="portrait" gridColumns={gridColumns}>
             {dedupedItems.map((item) => (
                 <div
                     key={item.novelId}

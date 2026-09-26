@@ -45,6 +45,9 @@ nul
 graphify-out/
 .graphify_*
 
+# Freebuff
+.freebuff/
+
 # Vault Easter Egg (Stealth Directories)
 
 

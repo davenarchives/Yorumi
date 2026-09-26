@@ -57,6 +57,13 @@ type TmdbTitleDetails = {
     original_title?: string;
 };
 
+type TmdbLogo = {
+    file_path?: string | null;
+    iso_639_1?: string | null;
+    vote_average?: number;
+    width?: number;
+};
+
 export type TmdbEpisode = {
     id: number;
     name: string;
@@ -340,6 +347,25 @@ export const tmdbService = {
 
     async getTvDetailsForAnime(anime: Anime): Promise<TmdbTvDetails | null> {
         return resolveTvDetails(anime);
+    },
+
+    async getLogoForAnime(anime: Anime): Promise<string | null> {
+        if (!readToken()) return null;
+        const details = await resolveTvDetails(anime);
+        if (!details?.id) return null;
+
+        const images = await tmdbFetch<{ logos?: TmdbLogo[] }>(
+            `/tv/${details.id}/images?include_image_language=en,ja,null`
+        ).catch(() => null);
+        const logos = images?.logos || [];
+        const languageRank = (language?: string | null) => language === 'en' ? 3 : language === 'ja' ? 2 : 1;
+        const selected = [...logos].sort((a, b) =>
+            languageRank(b.iso_639_1) - languageRank(a.iso_639_1)
+            || Number(b.vote_average || 0) - Number(a.vote_average || 0)
+            || Number(b.width || 0) - Number(a.width || 0)
+        )[0];
+
+        return selected?.file_path ? buildTmdbImageUrl(selected.file_path, 'original') : null;
     },
 
     async getTvSeasonsForAnime(anime: Anime): Promise<TmdbSeason[]> {

@@ -9,6 +9,7 @@ interface MangaContinueReadingProps {
     onRemove: (mangaId: string) => void;
     title?: string;
     onBack?: () => void;
+    gridColumns?: 4 | 6;
 }
 
 export default function MangaContinueReading({
@@ -17,7 +18,8 @@ export default function MangaContinueReading({
     onReadClick,
     onRemove,
     title,
-    onBack
+    onBack,
+    gridColumns,
 }: MangaContinueReadingProps) {
     if (items.length === 0) return null;
 
@@ -83,6 +85,7 @@ export default function MangaContinueReading({
         <Carousel
             title={title || "Continue Reading"}
             variant="portrait"
+            gridColumns={gridColumns}
 
         >
             {dedupedItems.map((item) => (

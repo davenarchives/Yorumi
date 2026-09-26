@@ -14,7 +14,6 @@ import { PersistentPlayerProvider } from './features/player/context/PersistentPl
 import { gentleTransition } from './utils/motion';
 import { tmdbService } from './services/tmdbService';
 import ScrollRestoration from './components/layout/ScrollRestoration';
-import UpdateModal from './components/modals/UpdateModal';
 import OTAUpdateModal from './components/modals/OTAUpdateModal';
 import OfflineBanner from './components/shared/OfflineBanner';
 import discordRPCService from './services/discordRPCService';
@@ -62,11 +61,14 @@ function App() {
 
         let listener: PluginListenerHandle | undefined;
         void CapacitorApp.addListener('backButton', () => {
-            const currentHash = window.location.hash.replace(/^#/, '').split('?')[0] || '/';
+            const rawHash = window.location.hash.replace(/^#/, '') || '/';
+            const [currentHash, rawSearch = ''] = rawHash.split('?');
+            const currentSearch = new URLSearchParams(rawSearch);
 
-            // 1. If at Home root ('/'), exit the app
+            // 1. Home follows normal Android behavior without terminating the
+            // process, so returning to Yorumi preserves the current session.
             if (currentHash === '/') {
-                void CapacitorApp.exitApp();
+                void CapacitorApp.minimizeApp();
                 return;
             }
 
@@ -91,9 +93,15 @@ function App() {
                 return;
             }
 
-            // 3. Details pages always leave their media flow instead of replaying
-            // player/query-string entries from the history stack.
+            // 3. The anime player is query-driven. Back closes playback first,
+            // revealing the same details page; a second Back returns Home.
             if (currentHash.startsWith('/anime/details/')) {
+                if (currentSearch.has('ep')) {
+                    currentSearch.delete('ep');
+                    const search = currentSearch.toString();
+                    navigate({ pathname: currentHash, search: search ? `?${search}` : '' }, { replace: true });
+                    return;
+                }
                 navigate('/', { replace: true });
                 return;
             }
@@ -108,14 +116,21 @@ function App() {
                 return;
             }
 
-            // 4. If there is history depth in this session, navigate back
+            // 4. Secondary roots always return to Anime Home, regardless of
+            // unrelated browser history accumulated during the session.
+            if (currentHash === '/manga' || currentHash === '/ln' || currentHash === '/library' || currentHash === '/profile') {
+                navigate('/');
+                return;
+            }
+
+            // 5. If there is history depth in this session, navigate back
             const historyIdx = (window.history.state as { idx?: number })?.idx ?? 0;
             if (historyIdx > 0) {
                 navigate(-1);
                 return;
             }
 
-            // 5. Fallbacks when history stack has no prior entry:
+            // 6. Fallbacks when history stack has no prior entry:
             if (currentHash.startsWith('/manga/genre/') || currentHash.startsWith('/manga/')) {
                 navigate('/manga');
                 return;
@@ -127,12 +142,6 @@ function App() {
             }
 
             if (currentHash.startsWith('/genre/') || currentHash.startsWith('/anime/')) {
-                navigate('/');
-                return;
-            }
-
-            // 6. If on secondary root tabs (/manga, /ln, /library, /profile), back takes you to Home
-            if (currentHash === '/manga' || currentHash === '/ln' || currentHash === '/library' || currentHash === '/profile') {
                 navigate('/');
                 return;
             }
@@ -208,7 +217,7 @@ function App() {
 
                     <Sidebar />
 
-                    <div className={`relative flex min-h-screen w-full flex-1 flex-col md:ml-[70px] md:w-[calc(100%-70px)] md:pb-0 ${isImmersiveRoute ? 'pb-0' : 'pb-[calc(4.5rem+env(safe-area-inset-bottom))]'}`}>
+                    <div className={`relative flex min-h-screen w-full flex-1 flex-col md:ml-[70px] md:w-[calc(100%-70px)] md:pb-0 ${isImmersiveRoute ? 'pb-0' : 'pb-[calc(5.5rem+env(safe-area-inset-bottom))]'}`}>
                         <PersistentPlayerProvider>
                             <ScrollRestoration />
                             <AppRoutes />
@@ -222,7 +231,6 @@ function App() {
                         )}
                     </div>
                     
-                    <UpdateModal />
                     <OTAUpdateModal />
                     <OfflineBanner />
                 </div>

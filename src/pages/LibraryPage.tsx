@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { X, Tv, BookOpen, BookText, Play, Trash2, Download } from 'lucide-react';
+import { X, Tv, BookOpen, BookText, Play, Trash2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import Carousel from '../components/ui/Carousel';
 import ContinueWatching from '../features/anime/components/ContinueWatching';
@@ -30,6 +30,12 @@ type MobileLibraryItem = {
 };
 
 const STORAGE_KEY = 'yorumi_library_tab';
+
+const normalizeLibraryTitle = (title: string) => title
+    .normalize('NFKD')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
 
 const getAnimeRouteId = (item: WatchListItem) => {
     const scraperId = item.scraperId;
@@ -84,12 +90,32 @@ export default function LibraryPage() {
         };
     }, []);
 
-    const filteredWatching = isOffline ? [] : continueWatchingList;
-    const filteredReading = isOffline ? [] : continueReadingList;
-    const filteredLN = isOffline ? [] : continueLNList;
-    const filteredWatchList = isOffline ? [] : watchList;
-    const filteredReadList = isOffline ? [] : readList;
-    const filteredLNList = isOffline ? [] : lnReadList;
+    const filteredWatching = useMemo(() => {
+        if (isOffline) return [];
+        const entries = new Map<string, (typeof continueWatchingList)[number]>();
+        continueWatchingList.forEach((item) => {
+            const key = normalizeLibraryTitle(item.animeTitle) || String(item.animeId);
+            const current = entries.get(key);
+            if (!current || (item.lastWatched || item.timestamp || 0) > (current.lastWatched || current.timestamp || 0)) {
+                entries.set(key, item);
+            }
+        });
+        return [...entries.values()].sort((a, b) => (b.lastWatched || b.timestamp || 0) - (a.lastWatched || a.timestamp || 0));
+    }, [continueWatchingList, isOffline]);
+    const filteredReading = useMemo(() => isOffline ? [] : continueReadingList, [continueReadingList, isOffline]);
+    const filteredLN = useMemo(() => isOffline ? [] : continueLNList, [continueLNList, isOffline]);
+    const filteredWatchList = useMemo(() => {
+        if (isOffline) return [];
+        const entries = new Map<string, (typeof watchList)[number]>();
+        watchList.forEach((item) => {
+            const key = normalizeLibraryTitle(item.title) || String(item.id);
+            const current = entries.get(key);
+            if (!current || item.addedAt > current.addedAt) entries.set(key, item);
+        });
+        return [...entries.values()].sort((a, b) => b.addedAt - a.addedAt);
+    }, [isOffline, watchList]);
+    const filteredReadList = useMemo(() => isOffline ? [] : readList, [isOffline, readList]);
+    const filteredLNList = useMemo(() => isOffline ? [] : lnReadList, [isOffline, lnReadList]);
 
     const mobileLibraryItems = useMemo<MobileLibraryItem[]>(() => {
         const items = new Map<string, MobileLibraryItem>();
@@ -272,10 +298,17 @@ export default function LibraryPage() {
                                 <>
                                     <ContinueWatching
                                         title={`Continue Watching (${filteredWatching.length})`}
+                                        gridColumns={4}
                                         items={filteredWatching}
-                                        onRemove={removeWatchingHistory}
+                                        onRemove={(animeId) => {
+                                            const selected = filteredWatching.find((item) => String(item.animeId) === String(animeId));
+                                            const selectedTitle = selected ? normalizeLibraryTitle(selected.animeTitle) : '';
+                                            const matches = selectedTitle
+                                                ? continueWatchingList.filter((item) => normalizeLibraryTitle(item.animeTitle) === selectedTitle)
+                                                : continueWatchingList.filter((item) => String(item.animeId) === String(animeId));
+                                            matches.forEach((item) => void removeWatchingHistory(item.animeId));
+                                        }}
                                         onWatchClick={(anime, episodeNumber, startSeconds) => {
-                                            const title = slugify(anime.title || 'anime');
                                             const routeId = anime.scraperId || anime.id || anime.mal_id;
                                             const resume = Number.isFinite(startSeconds) ? Math.max(0, Math.floor(startSeconds || 0)) : 0;
                                             navigate(`/anime/details/${routeId}?ep=${episodeNumber}${resume > 0 ? `&t=${resume}` : ''}`);
@@ -283,7 +316,7 @@ export default function LibraryPage() {
                                     />
 
                                     {filteredWatchList.length > 0 && (
-                                        <Carousel title={`Watchlist (${filteredWatchList.length})`} variant="portrait">
+                                        <Carousel title={`Watchlist (${filteredWatchList.length})`} variant="portrait" gridColumns={4}>
                                             {filteredWatchList.map((item) => (
                                                 <div
                                                     key={item.id}
@@ -294,7 +327,6 @@ export default function LibraryPage() {
                                                                 (item.title && w.animeTitle?.toLowerCase() === item.title.toLowerCase())
                                                         );
                                                         if (progress) {
-                                                            const title = slugify(progress.animeTitle || item.title || 'anime');
                                                             const routeId = progress.animeId || getAnimeRouteId(item);
                                                             const resume = Number.isFinite(progress.positionSeconds) ? Math.max(0, Math.floor(progress.positionSeconds || 0)) : 0;
                                                             navigate(`/anime/details/${routeId}?ep=${progress.episodeNumber}${resume > 0 ? `&t=${resume}` : ''}`);
@@ -311,7 +343,10 @@ export default function LibraryPage() {
                                                             className="absolute top-2 right-2 p-1.5 rounded-full bg-black/60 backdrop-blur hover:bg-red-500/80 text-white/80 hover:text-white transition-all opacity-0 group-hover:opacity-100 z-10"
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
-                                                                removeFromWatchList(item.id);
+                                                                const titleKey = normalizeLibraryTitle(item.title);
+                                                                watchList
+                                                                    .filter((entry) => normalizeLibraryTitle(entry.title) === titleKey)
+                                                                    .forEach((entry) => removeFromWatchList(entry.id));
                                                             }}
                                                             title="Remove from watchlist"
                                                         >
@@ -327,11 +362,11 @@ export default function LibraryPage() {
                                     )}
 
                                     {downloads.length > 0 && (
-                                        <Carousel title={`Downloads (${downloads.length})`} variant="portrait">
+                                        <Carousel title={`Downloads (${downloads.length})`} variant="portrait" gridColumns={4}>
                                             {(() => {
                                                 const map = new Map<string, { animeId: string; animeTitle: string; animeImage: string; items: typeof downloads; totalSize: number }>();
                                                 downloads.forEach((item) => {
-                                                    const key = String(item.animeId || item.animeTitle || '').trim();
+                                                    const key = normalizeLibraryTitle(item.animeTitle) || String(item.animeId || '').trim();
                                                     if (!map.has(key)) {
                                                         map.set(key, {
                                                             animeId: item.animeId,
@@ -439,6 +474,7 @@ export default function LibraryPage() {
                                 <>
                                     <MangaContinueReading
                                         title={`Continue Reading (${filteredReading.length})`}
+                                        gridColumns={6}
                                         items={filteredReading}
                                         onRemove={removeReadingHistory}
                                         onReadClick={(mangaId, mangaTitle, chapterNumber) => {
@@ -448,7 +484,7 @@ export default function LibraryPage() {
                                     />
 
                                     {filteredReadList.length > 0 && (
-                                        <Carousel title={`Manga Readlist (${filteredReadList.length})`} variant="portrait">
+                                        <Carousel title={`Manga Readlist (${filteredReadList.length})`} variant="portrait" gridColumns={6}>
                                             {filteredReadList.map((item) => (
                                                 <div
                                                     key={item.id}
@@ -483,7 +519,7 @@ export default function LibraryPage() {
                                     )}
 
                                     {mangaDownloads.length > 0 && (
-                                        <Carousel title={`Downloads (${mangaDownloads.length})`} variant="portrait">
+                                        <Carousel title={`Downloads (${mangaDownloads.length})`} variant="portrait" gridColumns={6}>
                                             {(() => {
                                                 const map = new Map<string, { mangaId: string; mangaTitle: string; mangaImage: string; items: typeof mangaDownloads }>();
                                                 mangaDownloads.forEach((item) => {
@@ -586,6 +622,7 @@ export default function LibraryPage() {
                                 <>
                                     <LNContinueReading
                                         title={`Continue Reading Light Novels (${filteredLN.length})`}
+                                        gridColumns={6}
                                         items={filteredLN}
                                         onRemove={removeLNProgress}
                                         onReadClick={(novelId, novelTitle, chapterId) => {
@@ -595,7 +632,7 @@ export default function LibraryPage() {
                                     />
 
                                     {filteredLNList.length > 0 && (
-                                        <Carousel title={`Novellist (${filteredLNList.length})`} variant="portrait">
+                                        <Carousel title={`Novellist (${filteredLNList.length})`} variant="portrait" gridColumns={6}>
                                             {filteredLNList.map((item) => (
                                                 <div
                                                     key={item.id}
@@ -629,7 +666,7 @@ export default function LibraryPage() {
                                     )}
 
                                     {lnDownloads.length > 0 && (
-                                        <Carousel title={`Downloads (${lnDownloads.length})`} variant="portrait">
+                                        <Carousel title={`Downloads (${lnDownloads.length})`} variant="portrait" gridColumns={6}>
                                             {(() => {
                                                 const map = new Map<string, { novelId: string; novelTitle: string; novelImage: string; items: typeof lnDownloads }>();
                                                 lnDownloads.forEach((item) => {

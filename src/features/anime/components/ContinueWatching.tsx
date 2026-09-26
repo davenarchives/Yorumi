@@ -20,6 +20,7 @@ interface ContinueWatchingProps {
     onRemove: (animeId: string | number) => void;
     title?: string;
     onBack?: () => void;
+    gridColumns?: 4 | 6;
 }
 
 export default function ContinueWatching({
@@ -28,7 +29,8 @@ export default function ContinueWatching({
     onWatchClick,
     onRemove,
     title,
-    onBack
+    onBack,
+    gridColumns,
 }: ContinueWatchingProps) {
     if (items.length === 0) return null;
     const isAnimePaheSessionRoute = (value: unknown) => {
@@ -137,6 +139,7 @@ export default function ContinueWatching({
         <Carousel
             title={title || "Continue Watching"}
             variant="landscape"
+            gridColumns={gridColumns}
 
         >
             {items.map((item) => (

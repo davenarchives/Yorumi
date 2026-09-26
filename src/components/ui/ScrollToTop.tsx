@@ -56,10 +56,10 @@ export default function ScrollToTop({ threshold = 400, className = '', activeTab
             whileTap={pressMotion}
             className={`
                 fixed bottom-6 right-6 z-50
+                hidden md:flex items-center justify-center
                 w-12 h-12 rounded-full
                 ${bgColor}
                 shadow-lg
-                flex items-center justify-center
                 transition-all duration-300 ease-out
                 hover:scale-110 ${hoverColor}
                 active:scale-95

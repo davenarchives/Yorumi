@@ -12,7 +12,7 @@ type PersistentPlayerContextValue = {
 
 const PersistentPlayerContext = createContext<PersistentPlayerContextValue | null>(null);
 
-const MINI_PLAYER_WIDTH = 'min(430px, calc(100vw - 32px))';
+const MINI_PLAYER_WIDTH = 'min(480px, calc(100vw - 32px))';
 const MINI_PLAYER_MARGIN = 24;
 
 type MiniPosition = {
@@ -21,7 +21,7 @@ type MiniPosition = {
 };
 
 const getMiniSize = () => {
-    const width = Math.min(430, Math.max(280, window.innerWidth - 32));
+    const width = Math.min(480, Math.max(320, window.innerWidth - 32));
     return {
         width,
         height: width * 9 / 16,

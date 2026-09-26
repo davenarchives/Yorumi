@@ -7,7 +7,7 @@ import { useContinueLNReading } from '../hooks/useContinueLNReading';
 import { useTitleLanguage } from '../context/TitleLanguageContext';
 import { getDisplayTitle } from '../utils/titleLanguage';
 import { slugify } from '../utils/slugify';
-import { Play, Plus, Check, Search, Star, Download, Loader2, CircleCheckBig, FolderOpen, ArrowLeft, ChevronDown, ArrowUpDown, Grid2X2, List, User, Clock3 } from 'lucide-react';
+import { Play, Plus, Check, Search, Star, Download, Loader2, CircleCheckBig, FolderOpen, ArrowLeft, ChevronDown, ArrowUpDown, ArrowDown, ArrowUp, Grid2X2, List, User, Clock3 } from 'lucide-react';
 import ChapterViewToggle, { useChapterViewMode, type ChapterViewMode } from '../components/ui/ChapterViewToggle';
 import { useLNDownloads } from '../hooks/useLNDownloads';
 import { downloadService } from '../services/downloadService';
@@ -85,9 +85,11 @@ const LNChapterList = ({
                         onClick={() => {
                             setSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'));
                         }}
-                        className="h-10 px-4 bg-white/5 hover:bg-white/10 rounded-2xl text-xs sm:text-sm font-bold text-gray-200 transition-colors flex items-center gap-1.5 cursor-pointer border border-white/5 shrink-0"
+                        className="grid h-10 w-10 shrink-0 place-items-center text-gray-400 transition-colors hover:text-white"
+                        title={sortOrder === 'asc' ? 'Oldest first' : 'Newest first'}
+                        aria-label={sortOrder === 'asc' ? 'Sort chapters oldest first' : 'Sort chapters newest first'}
                     >
-                        {sortOrder === 'asc' ? '↓ Oldest First' : '↑ Newest First'}
+                        {sortOrder === 'asc' ? <ArrowUp className="h-5 w-5" /> : <ArrowDown className="h-5 w-5" />}
                     </button>
                     {onViewModeChange && <ChapterViewToggle viewMode={viewMode} onViewModeChange={onViewModeChange} />}
                     {headerActions}
@@ -727,21 +729,21 @@ export default function LNDetailsPage() {
                                             <button
                                                 type="button"
                                                 onClick={handleOpenFolder}
-                                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-semibold text-gray-300 hover:text-white transition-colors border border-white/5 cursor-pointer"
+                                                className="grid h-10 w-10 place-items-center text-gray-400 transition-colors hover:text-amber-400"
                                                 title="Open downloaded files on your computer"
+                                                aria-label="Open downloads folder"
                                             >
-                                                <FolderOpen className="w-3.5 h-3.5 text-amber-400" />
-                                                <span className="hidden sm:inline">Downloads Folder</span>
+                                                <FolderOpen className="h-5 w-5" />
                                             </button>
                                         )}
                                         <button
                                             type="button"
                                             onClick={handleDownloadAllLN}
-                                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-semibold text-gray-300 hover:text-white transition-colors border border-white/5 cursor-pointer"
+                                            className="grid h-10 w-10 place-items-center text-gray-400 transition-colors hover:text-amber-400"
                                             title="Download all chapters for offline reading"
+                                            aria-label="Download all chapters"
                                         >
-                                            <Download className="w-3.5 h-3.5 text-amber-400" />
-                                            <span className="hidden sm:inline">Download All</span>
+                                            <Download className="h-5 w-5" />
                                         </button>
                                     </>
                                 }

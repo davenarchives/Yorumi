@@ -8,6 +8,7 @@ import { useTitleLanguage } from '../../../context/TitleLanguageContext';
 import { getDisplayTitle } from '../../../utils/titleLanguage';
 import { AnimatePresence, m } from 'framer-motion';
 import CCIcon from '../../../components/ui/CCIcon';
+import SpotlightSkeleton from '../../anime/components/SpotlightSkeleton';
 
 interface LNSpotlightProps {
     onLNClick: (lnId: string, autoRead?: boolean, lnData?: LightNovel) => void;
@@ -140,35 +141,7 @@ export default function LNSpotlight({ onLNClick }: LNSpotlightProps) {
     }, [emblaApi]);
 
     if (loading) {
-        return (
-            <div className="relative w-full h-[50vh] md:h-[60vh] min-h-[400px] md:min-h-[480px] overflow-hidden mb-8 bg-[#0a0a0a] animate-pulse">
-                <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#0a0a0a]/60 to-[#0a0a0a]" />
-                <div className="absolute inset-0 bg-gradient-to-r from-[#0a0a0a] via-[#0a0a0a]/80 to-transparent" />
-
-                <div className="absolute inset-0 flex items-center px-8 md:px-14 z-10">
-                    <div className="flex flex-col md:flex-row gap-12 items-center w-full max-w-7xl mx-auto mt-12">
-                        <div className="flex-1 w-full max-w-2xl">
-                            <div className="h-5 w-32 rounded bg-white/10 mb-4" />
-                            <div className="h-10 md:h-14 w-4/5 rounded bg-white/10 mb-4" />
-                            <div className="h-10 md:h-14 w-3/5 rounded bg-white/10 mb-8" />
-                            <div className="flex gap-3 mb-6">
-                                <div className="h-8 w-24 rounded-lg bg-white/10" />
-                                <div className="h-8 w-28 rounded-lg bg-white/10" />
-                            </div>
-                            <div className="space-y-2 mb-8">
-                                <div className="h-4 w-full rounded bg-white/10" />
-                                <div className="h-4 w-4/5 rounded bg-white/10" />
-                            </div>
-                            <div className="flex gap-4">
-                                <div className="h-12 w-40 rounded-full bg-white/10" />
-                                <div className="h-12 w-32 rounded-full bg-white/10" />
-                            </div>
-                        </div>
-                        <div className="hidden md:block w-56 lg:w-64 h-[360px] rounded-xl bg-white/10" />
-                    </div>
-                </div>
-            </div>
-        );
+        return <SpotlightSkeleton variant="ln" />;
     }
 
     if (lns.length === 0) return null;
@@ -366,9 +339,9 @@ export default function LNSpotlight({ onLNClick }: LNSpotlightProps) {
                             <div className="flex flex-wrap gap-2 text-xs font-medium text-white">
                                 {(displayLN.genres || []).slice(0, 3).map((genre) => <span key={genre.name} className="rounded-full border border-white/15 bg-black/45 px-3 py-1.5">{genre.name}</span>)}
                             </div>
-                            <div className="pointer-events-auto grid grid-cols-2 gap-2 pt-1">
-                                <button type="button" onClick={() => onLNClick(String(activeLN.id), false, activeLN)} className="flex h-12 items-center justify-center rounded-full border border-white/15 bg-black/70 text-sm font-bold text-white">ⓘ DETAILS</button>
-                                <button type="button" onClick={() => onLNClick(String(activeLN.id), true, activeLN)} className="flex h-12 items-center justify-center rounded-full border border-white/15 bg-black/70 text-sm font-bold text-white">▶ READ NOW</button>
+                            <div className="pointer-events-auto flex gap-2 pt-1">
+                                <button type="button" onClick={() => onLNClick(String(activeLN.id), true, activeLN)} className="flex h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-amber-400 px-3 text-sm font-bold text-black shadow-[0_0_16px_rgba(251,191,36,0.3)]">▶ Read Now</button>
+                                <button type="button" onClick={() => onLNClick(String(activeLN.id), false, activeLN)} className="flex h-10 min-w-[112px] items-center justify-center gap-1.5 rounded-lg border border-white/20 bg-white/10 px-3 text-sm font-bold text-white">Detail <span aria-hidden="true">›</span></button>
                             </div>
                         </div>
                     </div>

@@ -554,7 +554,10 @@ function AnimeDetailsPageContent() {
     const { isFavorite, addFavorite, removeFavorite } = useFavoriteAnime();
     const tmdbRouteId = id?.startsWith('tmdb-') ? Number.parseInt(id.substring(5), 10) : 0;
     const parsedRouteId = tmdbRouteId || Number.parseInt(id || '', 10);
-    const activeSeasonId = (Number.isFinite(parsedRouteId) && parsedRouteId > 0 ? parsedRouteId : 0) || Number(selectedAnime?.id || 0);
+    const selectedAnimeId = Number(selectedAnime?.id || 0);
+    const activeSeasonId = tmdbRouteId
+        || (Number.isFinite(selectedAnimeId) && selectedAnimeId > 0 ? selectedAnimeId : 0)
+        || (Number.isFinite(parsedRouteId) && parsedRouteId > 0 ? parsedRouteId : 0);
     const initialSeasonChips = useMemo(
         () => selectedAnime ? buildSeasonChips([selectedAnime, ...getRelatedSeasonCandidates(selectedAnime)], activeSeasonId) : [],
         [activeSeasonId, selectedAnime]
@@ -664,11 +667,36 @@ function AnimeDetailsPageContent() {
         ?? seasonChips.find(c => c.isActive && c.source === 'tmdb')?.tmdbSeasonNumber
         ?? fallbackTmdbSeasonNumber;
 
+    const normalizeSeasonIdentity = (value: unknown) => String(value || '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, ' ')
+        .trim();
+    const selectedSeasonTitles = new Set([
+        selectedAnime?.title,
+        selectedAnime?.title_english,
+        selectedAnime?.title_romaji,
+        selectedAnime?.title_japanese,
+    ].map(normalizeSeasonIdentity).filter(Boolean));
+    const selectedAniListId = Number(selectedAnime?.id || 0);
+    const matchedAniListChip = seasonChips.find((chip) =>
+        selectedAniListId > 0 && chip.source !== 'tmdb' && (
+            Number(chip.id || 0) === selectedAniListId ||
+            Number(chip.anilistId || 0) === selectedAniListId
+        )
+    ) || seasonChips.find((chip) =>
+        chip.source !== 'tmdb' && (
+            Number(chip.id || 0) === activeSeasonId ||
+            Number(chip.anilistId || 0) === activeSeasonId
+        )
+    ) || seasonChips.find((chip) =>
+        chip.source !== 'tmdb' && selectedSeasonTitles.has(normalizeSeasonIdentity(chip.title))
+    );
+
     const displayChips = seasonChips.map((chip) => {
         if (chip.source === 'tmdb') {
             return { ...chip, isActive: chip.tmdbSeasonNumber === activeTmdbSeasonNumber };
         }
-        return { ...chip, isActive: chip.id === activeSeasonId };
+        return { ...chip, isActive: chip.id === matchedAniListChip?.id };
     });
     const activeDisplayChip = displayChips.find((chip) => chip.isActive);
     const requestedTmdbSeasonNumber = activeDisplayChip?.tmdbSeasonNumber ?? activeTmdbSeasonNumber ?? null;

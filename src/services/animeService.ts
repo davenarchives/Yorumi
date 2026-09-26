@@ -392,7 +392,7 @@ const scraperSearchCache = new Map<string, { data: any[]; timestamp: number }>()
 const SCRAPER_SEARCH_TTL = 5 * 60 * 1000;
 const AZ_LIST_CACHE_TTL = 10 * 60 * 1000;
 const PERSISTED_CACHE_PREFIX = 'yorumi_api_cache_v11';
-const STREAM_CACHE_VERSION = 'v25';
+const STREAM_CACHE_VERSION = 'v26';
 const PERSISTED_STREAM_CACHE_PREFIX = `yorumi_stream_cache_${STREAM_CACHE_VERSION}`;
 
 const readPersistedCache = (key: string, ttl: number) => {
@@ -590,7 +590,7 @@ export const animeService = {
     },
 
     async getHomeFastData() {
-        const cacheKey = 'home-fast-data-v29';
+        const cacheKey = 'home-fast-data-v30';
         const cached = getCached(cacheKey, DETAIL_CACHE_TTL);
         if (cached) return cached;
 

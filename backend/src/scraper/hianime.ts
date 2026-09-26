@@ -92,11 +92,9 @@ async function resolveSubtitleLanguage(subtitle: any, referer: string): Promise<
     const explicit = normalizeSubtitleLanguage(
         subtitle?.lang || subtitle?.label || subtitle?.language || subtitle?.name || subtitle?.title || subtitle?.srclang
     );
-    if (explicit) return explicit;
 
     const sourceUrl = String(subtitle?.src || '');
     const urlHint = sourceUrl.match(/(?:^|[\/_?&=.-])(english|eng|en|arabic|ara|ar|thai|tha|th|spanish|spa|es|french|fra|fr|german|deu|de|indonesian|ind|id|japanese|jpn|ja|korean|kor|ko|portuguese|por|pt|russian|rus|ru|vietnamese|vie|vi|chinese|zho|zh)(?:[\/_?&=.-]|$)/i)?.[1];
-    if (urlHint) return normalizeSubtitleLanguage(urlHint);
 
     try {
         const { data } = await axios.get<string>(sourceUrl, {
@@ -105,10 +103,17 @@ async function resolveSubtitleLanguage(subtitle: any, referer: string): Promise<
             responseType: 'text',
             maxContentLength: 256 * 1024,
         });
-        return detectSubtitleLanguage(String(data || ''));
+        const detected = detectSubtitleLanguage(String(data || ''));
+        // Embed metadata is frequently copied as "English" for every track.
+        // A distinctive subtitle script is stronger evidence than that label.
+        if (detected !== 'und') return detected;
     } catch {
-        return 'und';
+        // Fall through to the provider metadata when the subtitle cannot be sampled.
     }
+
+    if (explicit) return explicit;
+    if (urlHint) return normalizeSubtitleLanguage(urlHint);
+    return 'und';
 }
 
 // In-memory caches to eliminate lookup latency on repeat queries

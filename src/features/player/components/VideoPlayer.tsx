@@ -18,6 +18,63 @@ const HAVE_FUTURE_DATA = 3;
 const isElectron = typeof window !== 'undefined' && (window.location.protocol === 'file:' || Boolean((window as any).electron || (window as any).electronAPI));
 const isNativeMobile = getRuntimePlatform() === 'android' || getRuntimePlatform() === 'ios';
 
+const LATIN_LANGUAGE_WORDS: Record<string, string[]> = {
+    en: ['the', 'you', 'and', 'that', 'this', 'what', 'are', 'have', 'not', 'with', 'your', 'for', 'but', 'was', 'will'],
+    es: ['que', 'los', 'las', 'una', 'por', 'para', 'con', 'como', 'pero', 'está', 'esto', 'del', 'más', 'tienes', 'porque'],
+    fr: ['que', 'les', 'des', 'une', 'pour', 'avec', 'pas', 'vous', 'nous', 'est', 'dans', 'mais', 'plus', 'tout', 'être'],
+    de: ['und', 'der', 'die', 'das', 'nicht', 'ich', 'ist', 'mit', 'ein', 'eine', 'für', 'was', 'auf', 'den', 'wir'],
+    it: ['che', 'non', 'una', 'per', 'con', 'sono', 'questo', 'come', 'del', 'della', 'hai', 'ma', 'più', 'tutto', 'essere'],
+    pt: ['que', 'não', 'uma', 'para', 'com', 'você', 'por', 'isso', 'como', 'mas', 'está', 'mais', 'dos', 'das', 'tem'],
+    id: ['yang', 'dan', 'tidak', 'ini', 'itu', 'dengan', 'untuk', 'aku', 'kamu', 'saya', 'dari', 'ada', 'apa', 'akan', 'bisa'],
+    tr: ['bir', 've', 'bu', 'değil', 'için', 'ben', 'sen', 'ile', 'ne', 'ama', 'var', 'çok', 'gibi', 'daha', 'olan'],
+    pl: ['nie', 'się', 'jest', 'jak', 'ale', 'dla', 'ten', 'tak', 'mam', 'czy', 'co', 'już', 'tylko', 'tego', 'będzie'],
+    nl: ['niet', 'een', 'het', 'van', 'dat', 'voor', 'met', 'maar', 'wat', 'zijn', 'heb', 'deze', 'als', 'ook', 'kan'],
+    ro: ['și', 'este', 'nu', 'pentru', 'din', 'sunt', 'asta', 'dar', 'mai', 'ce', 'cu', 'care', 'fost', 'poate', 'acum'],
+    vi: ['không', 'một', 'của', 'và', 'tôi', 'bạn', 'cho', 'được', 'này', 'đó', 'nhưng', 'với', 'có', 'là', 'gì'],
+};
+
+const detectLatinSubtitleLanguage = (text: string): string | null => {
+    const words = text
+        .replace(/^WEBVTT.*$/gim, ' ')
+        .replace(/\d{1,2}:\d{2}[^\n]*/g, ' ')
+        .replace(/<[^>]+>|\{[^}]+\}/g, ' ')
+        .toLocaleLowerCase()
+        .match(/[\p{L}]+/gu) || [];
+    if (words.length < 12) return null;
+
+    const counts = new Map<string, number>();
+    words.slice(0, 1500).forEach((word) => counts.set(word, (counts.get(word) || 0) + 1));
+    const ranked = Object.entries(LATIN_LANGUAGE_WORDS)
+        .map(([language, markers]) => ({
+            language,
+            score: markers.reduce((total, marker) => total + Math.min(counts.get(marker) || 0, 4), 0),
+        }))
+        .sort((left, right) => right.score - left.score);
+    const best = ranked[0];
+    const runnerUp = ranked[1];
+    return best && best.score >= 4 && best.score >= runnerUp.score + 2 ? best.language : null;
+};
+
+const detectSubtitleLanguage = (text: string, url: string): string | null => {
+    if (/[\u0600-\u06ff]/u.test(text)) return 'ar';
+    if (/[\u0e00-\u0e7f]/u.test(text)) return 'th';
+    if (/[\uac00-\ud7af]/u.test(text)) return 'ko';
+    if (/[\u3040-\u30ff]/u.test(text)) return 'ja';
+    if (/[\u0400-\u04ff]/u.test(text)) return 'ru';
+    if (/[\u4e00-\u9fff]/u.test(text)) return 'zh';
+
+    const detectedLatinLanguage = detectLatinSubtitleLanguage(text);
+    if (detectedLatinLanguage) return detectedLatinLanguage;
+
+    const hint = decodeURIComponent(url).match(/(?:^|[\/_?&=.-])(english|eng|en|arabic|ara|ar|spanish|spa|es|french|fra|fr|german|deu|de|italian|ita|it|indonesian|ind|id|portuguese|por|pt|vietnamese|vie|vi)(?:[\/_?&=.-]|$)/i)?.[1]?.toLowerCase();
+    const aliases: Record<string, string> = {
+        english: 'en', eng: 'en', arabic: 'ar', ara: 'ar', spanish: 'es', spa: 'es',
+        french: 'fr', fra: 'fr', german: 'de', deu: 'de', italian: 'it', ita: 'it',
+        indonesian: 'id', ind: 'id', portuguese: 'pt', por: 'pt', vietnamese: 'vi', vie: 'vi',
+    };
+    return hint ? (aliases[hint] || hint) : null;
+};
+
 class CustomHlsLoader extends (Hls.DefaultConfig.loader as any) {
     constructor(config: any) {
         super(config);
@@ -271,6 +328,45 @@ export default function VideoPlayer(props: VideoPlayerProps) {
         return url;
     }, [streamUrl]);
 
+    const resolveSubtitleUrl = useCallback((url: string) => {
+        if (!url) return url;
+        if (url.startsWith('/api/')) return `${API_ORIGIN}${url}`;
+        return url;
+    }, []);
+
+    const [detectedSubtitleLanguages, setDetectedSubtitleLanguages] = useState<Record<string, string>>({});
+    const subtitleTrackSignature = useMemo(() => (Array.isArray(props.subtitles) ? props.subtitles : [])
+        .map((track) => `${track.url}|${track.lang}`)
+        .join('::'), [props.subtitles]);
+
+    useEffect(() => {
+        const tracks = Array.isArray(props.subtitles) ? props.subtitles : [];
+        const controller = new AbortController();
+        let active = true;
+
+        Promise.all(tracks.map(async (track) => {
+            const url = String(track?.url || '').trim();
+            if (!url) return null;
+            try {
+                const response = await fetch(resolveSubtitleUrl(url), { signal: controller.signal });
+                if (!response.ok) return null;
+                const language = detectSubtitleLanguage((await response.text()).slice(0, 262144), url);
+                return language ? [url, language] as const : null;
+            } catch {
+                return null;
+            }
+        })).then((results) => {
+            if (!active) return;
+            const detected = Object.fromEntries(results.filter((result): result is readonly [string, string] => Boolean(result)));
+            setDetectedSubtitleLanguages(detected);
+        });
+
+        return () => {
+            active = false;
+            controller.abort();
+        };
+    }, [subtitleTrackSignature, resolveSubtitleUrl]);
+
     const subtitleTracks = useMemo(() => {
         const tracks = Array.isArray(props.subtitles) ? props.subtitles : [];
         const subtitleLanguageRank = (language: string) => {
@@ -285,20 +381,18 @@ export default function VideoPlayer(props: VideoPlayerProps) {
         const uniqueTracks = new Map<string, SubtitleTrack>();
         tracks.forEach((track) => {
             const url = String(track?.url || '').trim();
-            if (url && !uniqueTracks.has(url)) uniqueTracks.set(url, track);
+            if (url && !uniqueTracks.has(url)) {
+                uniqueTracks.set(url, detectedSubtitleLanguages[url]
+                    ? { ...track, lang: detectedSubtitleLanguages[url] }
+                    : track);
+            }
         });
 
         return Array.from(uniqueTracks.values())
             .sort((left, right) => (
                 subtitleLanguageRank(String(left.lang || '')) - subtitleLanguageRank(String(right.lang || ''))
             ));
-    }, [props.subtitles]);
-
-    const resolveSubtitleUrl = useCallback((url: string) => {
-        if (!url) return url;
-        if (url.startsWith('/api/')) return `${API_ORIGIN}${url}`;
-        return url;
-    }, []);
+    }, [detectedSubtitleLanguages, props.subtitles]);
 
     const isOfflineStream = useMemo(() => {
         return Boolean(
@@ -1010,7 +1104,7 @@ export default function VideoPlayer(props: VideoPlayerProps) {
                                 <video
                                     ref={videoRef}
                                     src={isHls || /\.m3u8/i.test(resolvedStreamUrl) ? undefined : resolvedStreamUrl}
-                                    className={`w-full bg-black cursor-pointer object-contain ${props.mobilePageLayout ? 'h-[calc(100%_-_104px)] self-start' : 'h-full'}`}
+                                    className={`block w-full max-w-none bg-black cursor-pointer object-contain ${props.mobilePageLayout ? 'h-[calc(100%_-_104px)] self-start' : 'h-full min-h-full'}`}
                                     onClick={() => {
                                         if (!videoRef.current || !resolvedStreamUrl) return;
                                         if (videoRef.current.paused) videoRef.current.play().catch(() => {});
@@ -1058,7 +1152,7 @@ export default function VideoPlayer(props: VideoPlayerProps) {
                                     }}
                                     onEnded={handleNativeEnded}
                                 >
-                                    {subtitleTracks.map((track, index) => {
+                                    {(selectedAudio === 'dub' ? [] : subtitleTracks).map((track, index) => {
                                         const lang = String(track.lang || '').trim() || 'und';
                                         return (
                                             <track
@@ -1108,8 +1202,8 @@ export default function VideoPlayer(props: VideoPlayerProps) {
                                     animeImage={props.animeImage}
                                     episodeNumber={props.episodeNumber}
                                     episodeTitle={props.episodeTitle}
-                                    hasSubtitles={subtitleTracks.length > 0}
-                                    subtitleTracks={subtitleTracks}
+                                    hasSubtitles={selectedAudio !== 'dub' && subtitleTracks.length > 0}
+                                    subtitleTracks={selectedAudio === 'dub' ? [] : subtitleTracks}
                                     pageLayout={props.mobilePageLayout}
                                 />
                             </>
@@ -1223,7 +1317,7 @@ export default function VideoPlayer(props: VideoPlayerProps) {
                     className={`watch-player-top-controls absolute top-0 left-0 right-0 p-4 sm:p-6 transition-opacity duration-300 z-[2147483647] flex items-center justify-between pointer-events-none ${showServerMenu || !resolvedStreamUrl || !shouldUseNativeVideo || isLoading || isServerSwitching ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
                 >
                     {/* Left: Server Menu or Offline Badge */}
-                    <div className="pointer-events-auto relative">
+                    <div className={`pointer-events-auto relative ${props.mobilePageLayout ? 'hidden' : ''}`}>
                         {isOfflineStream ? (
                             <div className="flex items-center gap-2 rounded-full watch-control-glass px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-green-400 shadow-[0_8px_28px_rgba(0,0,0,0.28)]">
                                 <CheckCircle2 className="h-3.5 w-3.5 text-green-400" />
