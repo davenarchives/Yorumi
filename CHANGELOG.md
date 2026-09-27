@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- **Total releases download badge in README**: Added a Shields.io `for-the-badge` styled badge with the official Yorumi icon right before the React badge in the header, displaying all-time total downloads across all GitHub releases linked directly to the project releases page.
+
 - **Website platform download cards visual hierarchy alignment**: Standardized button dimensions, typography, and vertical spacing across macOS, Windows, Linux, and Android download cards on the website. All primary download buttons now share an identical 48px height with single-line labels, all secondary buttons share a 44px height (including adding a GitHub release mirror button to Android), tertiary release asset links and minimum requirement sections are aligned horizontally, and card hover animations are unified.
 - **Material 3 bottom navbar and mobile back-to-top cleanup**: Adjusted the mobile bottom navigation bar height from 62px to the standard 80px container height to match Material Design 3 / Tachiyomi / Mihon proportions with centered pill indicators, increased page bottom padding clearance in App layout, and completely removed the floating back-to-top button on mobile while preserving it for desktop viewports.
 - **Current-season mobile episode drawer**: Made the loaded anime identity authoritative when resolving franchise season chips, preventing a base-series route ID from selecting Season 1 episodes while watching later named entries such as JoJo's Bizarre Adventure: Steel Ball Run.
