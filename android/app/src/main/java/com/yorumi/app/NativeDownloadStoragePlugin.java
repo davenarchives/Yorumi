@@ -2,6 +2,7 @@ package com.yorumi.app;
 
 import android.os.Environment;
 import android.net.Uri;
+import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
@@ -83,6 +84,15 @@ public class NativeDownloadStoragePlugin extends Plugin {
                 result.put("fileUrl", LocalMediaProxyPlugin.getFileUrl(target));
                 result.put("fileSize", target.length());
                 result.put("duration", stats.duration);
+                JSArray hlsSegments = new JSArray();
+                for (SegmentRange segment : stats.segments) {
+                    JSObject item = new JSObject();
+                    item.put("offset", segment.offset);
+                    item.put("size", segment.size);
+                    item.put("duration", segment.duration);
+                    hlsSegments.put(item);
+                }
+                result.put("hlsSegments", hlsSegments);
                 call.resolve(result);
             } catch (Exception error) {
                 if (temp != null && temp.exists()) temp.delete();
@@ -157,6 +167,7 @@ public class NativeDownloadStoragePlugin extends Plugin {
     private DownloadStats downloadHls(String operationId, String playlistUrl, String referer, File target, int maxHeight) throws Exception {
         Playlist playlist = resolveMediaPlaylist(playlistUrl, referer, 0, maxHeight);
         long written = 0;
+        List<SegmentRange> segmentRanges = new ArrayList<>();
         HlsProgressTracker progressTracker = new HlsProgressTracker(operationId, playlist.segments.size());
         File segmentDirectory = new File(target.getAbsolutePath() + ".segments");
         deleteRecursively(segmentDirectory);
@@ -190,6 +201,10 @@ public class NativeDownloadStoragePlugin extends Plugin {
                 for (int index = 0; index < playlist.segments.size(); index++) {
                     waitIfPaused(operationId);
                     File segmentFile = new File(segmentDirectory, String.format("%06d.part", index));
+                    if (segmentFile.length() <= 0) {
+                        throw new IOException("Downloaded HLS segment " + (index + 1) + " is empty");
+                    }
+                    long segmentOffset = written;
                     try (BufferedInputStream input = new BufferedInputStream(new FileInputStream(segmentFile))) {
                         int read;
                         while ((read = input.read(buffer)) != -1) {
@@ -197,13 +212,18 @@ public class NativeDownloadStoragePlugin extends Plugin {
                             written += read;
                         }
                     }
+                    segmentRanges.add(new SegmentRange(
+                        segmentOffset,
+                        written - segmentOffset,
+                        playlist.segmentDurations.get(index)
+                    ));
                 }
             }
         } finally {
             executor.shutdownNow();
             deleteRecursively(segmentDirectory);
         }
-        return new DownloadStats(written, playlist.duration);
+        return new DownloadStats(written, playlist.duration, segmentRanges);
     }
 
     private void downloadHlsSegment(
@@ -289,17 +309,24 @@ public class NativeDownloadStoragePlugin extends Plugin {
         if (bestVariant != null) return resolveMediaPlaylist(bestVariant, source.referer, depth + 1, maxHeight);
 
         List<String> segments = new ArrayList<>();
+        List<Double> segmentDurations = new ArrayList<>();
         double duration = 0;
+        double pendingDuration = 0;
         for (String raw : lines) {
             String line = raw.trim();
             if (line.startsWith("#EXTINF:")) {
-                try { duration += Double.parseDouble(line.substring(8).split(",")[0]); } catch (Exception ignored) {}
+                try { pendingDuration = Double.parseDouble(line.substring(8).split(",")[0]); } catch (Exception ignored) {
+                    pendingDuration = 0;
+                }
             } else if (!line.isEmpty() && !line.startsWith("#")) {
                 segments.add(absoluteUrl(source.url, line));
+                segmentDurations.add(pendingDuration);
+                duration += pendingDuration;
+                pendingDuration = 0;
             }
         }
         if (segments.isEmpty()) throw new IOException("No HLS video segments found");
-        return new Playlist(segments, duration, source.referer);
+        return new Playlist(segments, segmentDurations, duration, source.referer);
     }
 
     private DownloadStats copy(String operationId, BufferedInputStream input, BufferedOutputStream output, long total, int start, int span) throws Exception {
@@ -408,13 +435,22 @@ public class NativeDownloadStoragePlugin extends Plugin {
     }
 
     private static final class DownloadStats {
-        final long bytes; final double duration;
-        DownloadStats(long bytes, double duration) { this.bytes = bytes; this.duration = duration; }
+        final long bytes; final double duration; final List<SegmentRange> segments;
+        DownloadStats(long bytes, double duration) { this(bytes, duration, new ArrayList<>()); }
+        DownloadStats(long bytes, double duration, List<SegmentRange> segments) {
+            this.bytes = bytes; this.duration = duration; this.segments = segments;
+        }
     }
     private static final class Playlist {
-        final List<String> segments; final double duration; final String referer;
-        Playlist(List<String> segments, double duration, String referer) {
-            this.segments = segments; this.duration = duration; this.referer = referer;
+        final List<String> segments; final List<Double> segmentDurations; final double duration; final String referer;
+        Playlist(List<String> segments, List<Double> segmentDurations, double duration, String referer) {
+            this.segments = segments; this.segmentDurations = segmentDurations; this.duration = duration; this.referer = referer;
+        }
+    }
+    private static final class SegmentRange {
+        final long offset; final long size; final double duration;
+        SegmentRange(long offset, long size, double duration) {
+            this.offset = offset; this.size = size; this.duration = duration;
         }
     }
     private static final class RequestTarget {

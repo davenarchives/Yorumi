@@ -13,6 +13,11 @@ type NativeDownloadResult = {
     fileUrl: string;
     fileSize: number;
     duration?: number;
+    hlsSegments?: Array<{
+        offset: number;
+        size: number;
+        duration: number;
+    }>;
 };
 
 type NativeDownloadStoragePlugin = {

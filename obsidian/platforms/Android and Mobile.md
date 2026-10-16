@@ -32,6 +32,7 @@ The generic registry currently contains MangaKatana and NovelBin; anime-specific
 - `nativeHttp.ts` uses Capacitor HTTP for requests blocked in a WebView.
 - `localMediaProxy.ts` bridges to `LocalMediaProxyPlugin` for protected and offline media.
 - `nativeDownloadStorage.ts` bridges to `NativeDownloadStoragePlugin`, which streams Anime and Manga files into app-owned storage and writes Light Novel chapter files without routing large payloads through WebView IndexedDB.
+- Native Anime HLS downloads return exact per-segment byte ranges and durations to IndexedDB. Offline playback reconstructs a local VOD playlist from those boundaries and reads each range through `LocalMediaProxyPlugin`.
 - `ImmersiveModePlugin` controls fullscreen system UI behavior.
 - `MainActivity` registers custom plugins.
 

@@ -26,6 +26,13 @@ export interface DownloadedEpisode {
     subtitles?: SubtitleTrack[];
     isHls?: boolean;
     duration?: number;
+    hlsSegments?: OfflineHlsSegment[];
+}
+
+export interface OfflineHlsSegment {
+    offset: number;
+    size: number;
+    duration: number;
 }
 
 export interface ActiveDownloadProgress {
@@ -206,30 +213,74 @@ async function persistSubtitleTracks(subtitles?: SubtitleTrack[]): Promise<Subti
     }));
 }
 
-function createOfflineHlsPlaylist(mediaUrl: string, fileSize: number, duration: number): string {
+function createOfflineHlsPlaylist(
+    mediaUrl: string,
+    fileSize: number,
+    duration: number,
+    storedSegments?: OfflineHlsSegment[]
+): string {
     const packetSize = 188;
     const preferredChunkSize = 8 * 1024 * 1024;
     const chunkSize = Math.floor(preferredChunkSize / packetSize) * packetSize;
     const safeFileSize = Math.max(1, fileSize);
     const safeDuration = Math.max(1, duration);
-    const segmentDuration = safeDuration * (chunkSize / safeFileSize);
+    const hasStoredSegments = Boolean(storedSegments?.length) && storedSegments!.every((segment, index) => {
+        const previous = storedSegments![index - 1];
+        const expectedOffset = previous ? previous.offset + previous.size : 0;
+        return Number.isFinite(segment.offset)
+            && Number.isFinite(segment.size)
+            && Number.isFinite(segment.duration)
+            && segment.offset === expectedOffset
+            && segment.size > 0
+            && segment.duration >= 0
+            && segment.offset + segment.size <= safeFileSize;
+    }) && storedSegments![storedSegments!.length - 1].offset
+        + storedSegments![storedSegments!.length - 1].size === safeFileSize;
+    const playlistSegments = hasStoredSegments
+        ? storedSegments!
+        : Array.from({ length: Math.ceil(safeFileSize / chunkSize) }, (_, index) => {
+            const offset = index * chunkSize;
+            const size = Math.min(chunkSize, safeFileSize - offset);
+            return { offset, size, duration: safeDuration * (size / safeFileSize) };
+        });
+    const fallbackDuration = safeDuration / Math.max(1, playlistSegments.length);
+    const targetDuration = Math.max(...playlistSegments.map((segment) => segment.duration || fallbackDuration));
     const lines = [
         '#EXTM3U',
         '#EXT-X-VERSION:4',
-        `#EXT-X-TARGETDURATION:${Math.max(1, Math.ceil(segmentDuration))}`,
+        `#EXT-X-TARGETDURATION:${Math.max(1, Math.ceil(targetDuration))}`,
         '#EXT-X-MEDIA-SEQUENCE:0',
         '#EXT-X-PLAYLIST-TYPE:VOD',
     ];
 
-    for (let offset = 0; offset < safeFileSize; offset += chunkSize) {
-        const size = Math.min(chunkSize, safeFileSize - offset);
-        const currentDuration = safeDuration * (size / safeFileSize);
-        lines.push(`#EXTINF:${currentDuration.toFixed(3)},`);
-        lines.push(`#EXT-X-BYTERANGE:${size}@${offset}`);
+    for (const segment of playlistSegments) {
+        lines.push(`#EXTINF:${(segment.duration || fallbackDuration).toFixed(3)},`);
+        lines.push(`#EXT-X-BYTERANGE:${segment.size}@${segment.offset}`);
         lines.push(mediaUrl);
     }
     lines.push('#EXT-X-ENDLIST');
     return lines.join('\n');
+}
+
+async function purgeLegacyAndroidHlsDownloads(items: DownloadedEpisode[]): Promise<DownloadedEpisode[]> {
+    if (!isAndroidDownloadStorageAvailable()) return items;
+    const staleItems = items.filter((item) => item.filePath && item.isHls && !item.hlsSegments?.length);
+    if (!staleItems.length) return items;
+
+    await Promise.all(staleItems.map((item) => deleteNativeDownload(item.filePath).catch((error) => {
+        console.warn('Failed to remove an incompatible Android HLS download:', error);
+    })));
+
+    const db = await getDB();
+    await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction(STORE_NAME, 'readwrite');
+        const store = tx.objectStore(STORE_NAME);
+        staleItems.forEach((item) => store.delete(item.id));
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+        tx.onabort = () => reject(tx.error);
+    });
+    return items.filter((item) => !staleItems.some((stale) => stale.id === item.id));
 }
 
 function getFetchableUrl(rawUrl: string): string {
@@ -420,14 +471,15 @@ export const downloadService = {
 
         try {
             const db = await getDB();
-            const idbItems = await new Promise<DownloadedEpisode[]>((resolve, reject) => {
+            const storedItems = await new Promise<DownloadedEpisode[]>((resolve, reject) => {
                 const tx = db.transaction(STORE_NAME, 'readonly');
                 const store = tx.objectStore(STORE_NAME);
                 const req = store.getAll();
                 req.onsuccess = () => resolve((req.result || []) as DownloadedEpisode[]);
                 req.onerror = () => reject(req.error);
             });
-            if (idbItems && idbItems.length > 0) {
+            const idbItems = await purgeLegacyAndroidHlsDownloads(storedItems);
+            if (idbItems.length > 0) {
                 const existingIds = new Set(items.map((i) => i.id));
                 idbItems.forEach((item) => {
                     if (!existingIds.has(item.id) && hasUsableDownloadedMedia(item)) {
@@ -539,7 +591,7 @@ export const downloadService = {
             if (isTs) {
                 isHls = true;
                 const duration = downloaded.duration || (downloaded.fileSize ? Math.max(300, Math.round((downloaded.fileSize * 8) / 1_600_000)) : 1400);
-                const playlistText = createOfflineHlsPlaylist(rawFileUrl, downloaded.fileSize || 1, duration);
+                const playlistText = createOfflineHlsPlaylist(rawFileUrl, downloaded.fileSize || 1, duration, downloaded.hlsSegments);
                 const playlistBlob = new Blob([playlistText], { type: 'application/x-mpegurl' });
                 streamUrl = URL.createObjectURL(playlistBlob);
             } else {
@@ -756,6 +808,7 @@ export const downloadService = {
                     subtitles: offlineSubtitles,
                     isHls,
                     duration: nativeResult.duration,
+                    hlsSegments: nativeResult.hlsSegments,
                 };
                 await this.saveDownload(downloadedItem);
                 reportProgress({

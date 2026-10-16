@@ -2,6 +2,8 @@
 
 ## [4.3.0] - 2026-10-16
 
+- **Complete Android offline Anime playback**: Fixed downloaded HLS episodes freezing after the first synthetic byte-range chunk (commonly around 23 seconds). Native downloads now preserve every source segment's exact duration and byte boundary, offline playback sends explicit range requests to the loopback file server, empty segments fail the download, and incompatible v4.3.0 Android HLS downloads are removed from storage so users re-download them in the corrected format.
+
 - **Correct v4.3.0 Android release asset**: Replaced the v4.2.0 APK that had been attached to the v4.3.0 GitHub release through the unsigned CI fallback, refreshed the bundled fallback with the signed v4.3.0 build, and made mobile release CI reject bundled APKs whose embedded version does not match `package.json`.
 
 - **Current website downloads and compact mobile actions**: Pinned the marketing site's downloads to the verified v4.3.0 GitHub release assets, removed invalid Windows/Linux portable links, corrected the macOS downloads to the published universal DMG and ZIP, removed the heart from the download heading, and kept Download and Development docs on one mobile row.

@@ -111,7 +111,11 @@ class CustomHlsLoader extends (Hls.DefaultConfig.loader as any) {
     }
 
     load(context: any, config: any, callbacks: any) {
-        if (typeof context?.url === 'string' && (context.url.startsWith('blob:') || context.url.includes('/api/scraper/local-file'))) {
+        if (typeof context?.url === 'string' && (
+            context.url.startsWith('blob:')
+            || context.url.includes('/api/scraper/local-file')
+            || /^http:\/\/(?:127\.0\.0\.1|localhost):18765\/file\?/i.test(context.url)
+        )) {
             const targetUrl = context.url.startsWith('/api/') ? `${API_ORIGIN}${context.url}` : context.url;
             const startTime = performance.now();
             const headers = new Headers();

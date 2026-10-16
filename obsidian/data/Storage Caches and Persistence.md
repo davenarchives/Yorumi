@@ -24,7 +24,7 @@ Additional local keys cover title language, local user, profile visuals, activit
 - Season-chain, AniZip metadata, and TMDB caches are independently versioned.
 - Backend mapping downloads use a time-bounded cache with stale fallback.
 - Stream/session cache is proactively cleared on app boot.
-- Downloads use IndexedDB; images use browser offline storage.
+- Downloads use IndexedDB; images use browser offline storage. Android Anime HLS records include exact source-segment byte ranges; legacy native HLS records without that metadata are deliberately purged because their synthetic fixed-size ranges are not safely playable.
 
 ## Cache Change Checklist
 
@@ -36,4 +36,3 @@ Additional local keys cover title language, local user, profile visuals, activit
 6. Preserve user progress and downloaded media unless migration is deliberate.
 
 See [[runbooks/Debugging Data and Cache Bugs]].
-
