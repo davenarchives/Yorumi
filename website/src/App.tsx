@@ -19,6 +19,13 @@ import { motion, useScroll, useTransform, AnimatePresence } from 'framer-motion'
 import type { Variants } from 'framer-motion';
 import { DocumentationGuide, type DocTabId } from './Documentation';
 
+const RELEASE_VERSION = '4.3.0';
+const RELEASE_TAG = `v${RELEASE_VERSION}`;
+const RELEASES_URL = 'https://github.com/davenarchives/Yorumi/releases';
+const RELEASE_URL = `${RELEASES_URL}/tag/${RELEASE_TAG}`;
+const RELEASE_DOWNLOAD_URL = `${RELEASES_URL}/download/${RELEASE_TAG}`;
+const releaseDownloadUrl = (assetName: string) => `${RELEASE_DOWNLOAD_URL}/${assetName}`;
+
 // Cute sparkle accent used across the site
 function Sparkle({ className = "w-4 h-4", color = "var(--color-main)", style }: { className?: string; color?: string; style?: CSSProperties }) {
   return (
@@ -389,12 +396,12 @@ function App() {
                     </motion.h1>
                     <motion.a
                       variants={itemVariants}
-                      href="https://github.com/davenarchives/Yorumi/releases"
+                      href={RELEASE_URL}
                       target="_blank"
                       rel="noreferrer"
                       className="text-yorumi-main font-semibold text-sm tracking-wide hover:opacity-80 transition-opacity"
                     >
-                      v4.3.0
+                      {RELEASE_TAG}
                     </motion.a>
                   </div>
                   
@@ -403,21 +410,21 @@ function App() {
                   </motion.p>
                 </div>
                 
-                <motion.div variants={itemVariants} className="flex flex-wrap items-center gap-4 pt-4">
+                <motion.div variants={itemVariants} className="flex flex-nowrap items-center gap-1 sm:gap-4 pt-4">
                   <button 
                     type="button"
                     onClick={() => navigateTo('get-started')}
-                    className="group flex items-center justify-center gap-2.5 bg-yorumi-main hover:bg-yorumi-main/90 text-white px-6 py-2.5 rounded-full font-semibold text-sm md:text-base tracking-wide transition-all duration-200 hover:scale-[1.05] active:scale-[0.95] cursor-pointer kawaii-shadow hover:kawaii-shadow-lg"
+                    className="group flex shrink-0 items-center justify-center gap-2 sm:gap-2.5 bg-yorumi-main hover:bg-yorumi-main/90 text-white px-4 sm:px-6 py-2.5 rounded-full font-semibold text-xs sm:text-sm md:text-base tracking-wide transition-all duration-200 hover:scale-[1.05] active:scale-[0.95] cursor-pointer kawaii-shadow hover:kawaii-shadow-lg"
                   >
                     <Download className="w-4 h-4 transition-transform group-hover:translate-y-0.5" />
                     <span>Download</span>
-                    <Sparkle className="w-3.5 h-3.5 opacity-90 transition-transform duration-300 group-hover:rotate-90" />
+                    <Sparkle className="hidden min-[360px]:block w-3.5 h-3.5 opacity-90 transition-transform duration-300 group-hover:rotate-90" />
                   </button>
               
               <button 
                 type="button"
                 onClick={() => handleOpenDoc('intro')}
-                className="group flex items-center justify-center gap-2 text-yorumi-text hover:text-yorumi-main px-4 py-2.5 font-medium text-sm md:text-base transition-colors"
+                className="group flex min-w-0 items-center justify-center gap-1.5 sm:gap-2 text-yorumi-text hover:text-yorumi-main px-2 sm:px-4 py-2.5 font-medium text-xs sm:text-sm md:text-base whitespace-nowrap transition-colors"
               >
                 <span>Development docs</span>
                 <ExternalLink className="w-4 h-4 opacity-70 group-hover:opacity-100 transition-opacity" />
@@ -453,7 +460,7 @@ function App() {
           >
             <div className="space-y-3 max-w-3xl">
               <h2 className="text-4xl md:text-5xl lg:text-6xl font-display font-bold tracking-tight text-yorumi-text">
-                Download Yorumi <span className="text-yorumi-main">♡</span>
+                Download Yorumi
               </h2>
               <p className="text-base md:text-lg text-yorumi-muted font-normal">
                 Pick your platform — desktop for macOS, Windows & Linux, plus a pocket-sized Android app. All free, forever~
@@ -461,7 +468,7 @@ function App() {
             </div>
 
             <a
-              href="https://github.com/davenarchives/Yorumi/releases"
+              href={RELEASES_URL}
               target="_blank"
               rel="noreferrer"
               className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-yorumi-card hover:bg-yorumi-card/80 text-yorumi-text text-sm font-semibold transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] shrink-0 self-start md:self-auto"
@@ -520,7 +527,7 @@ function App() {
             <div className="flex items-center gap-3">
               <h3 className="text-2xl md:text-3xl font-display font-bold text-yorumi-text">Yorumi Desktop</h3>
               <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-yorumi-main/15 text-yorumi-main">
-                v4.3.0
+                {RELEASE_TAG}
               </span>
             </div>
 
@@ -537,23 +544,23 @@ function App() {
 
                   <div className="space-y-3 pt-2">
                     <a
-                      href="https://github.com/davenarchives/Yorumi/releases/latest/download/Yorumi.dmg"
+                      href={releaseDownloadUrl('Yorumi.dmg')}
                       className="w-full h-12 flex items-center justify-center gap-2 px-4 rounded-full bg-yorumi-text text-yorumi-bg font-semibold text-xs sm:text-[13px] transition-all duration-200 hover:opacity-90 active:scale-[0.98] whitespace-nowrap"
                     >
                       <Download className="w-4 h-4 shrink-0" />
-                      <span>Apple Silicon (.dmg)</span>
+                      <span>Universal (.dmg)</span>
                     </a>
 
                     <a
-                      href="https://github.com/davenarchives/Yorumi/releases/latest/download/Yorumi.dmg"
+                      href={releaseDownloadUrl('Yorumi.zip')}
                       className="w-full h-11 flex items-center justify-center gap-2 px-4 rounded-full bg-yorumi-text/5 hover:bg-yorumi-text/10 text-yorumi-text font-semibold text-xs sm:text-[13px] transition-all whitespace-nowrap"
                     >
                       <Download className="w-4 h-4 text-yorumi-muted shrink-0" />
-                      <span>Intel 64-bit (.dmg)</span>
+                      <span>Universal (.zip)</span>
                     </a>
 
                     <a
-                      href="https://github.com/davenarchives/Yorumi/releases/latest"
+                      href={RELEASE_URL}
                       target="_blank"
                       rel="noreferrer"
                       className="w-full h-8 flex items-center justify-center gap-2 px-4 rounded-full hover:bg-yorumi-text/5 text-yorumi-muted hover:text-yorumi-text text-xs font-medium transition-all whitespace-nowrap"
@@ -579,7 +586,7 @@ function App() {
 
                   <div className="space-y-3 pt-2">
                     <a
-                      href="https://github.com/davenarchives/Yorumi/releases/latest/download/Yorumi.exe"
+                      href={releaseDownloadUrl('Yorumi.exe')}
                       className="w-full h-12 flex items-center justify-center gap-2 px-4 rounded-full bg-yorumi-text text-yorumi-bg font-semibold text-xs sm:text-[13px] transition-all duration-200 hover:opacity-90 active:scale-[0.98] whitespace-nowrap"
                     >
                       <Download className="w-4 h-4 shrink-0" />
@@ -587,15 +594,7 @@ function App() {
                     </a>
 
                     <a
-                      href="https://github.com/davenarchives/Yorumi/releases/latest/download/Yorumi.zip"
-                      className="w-full h-11 flex items-center justify-center gap-2 px-4 rounded-full bg-yorumi-text/5 hover:bg-yorumi-text/10 text-yorumi-text font-semibold text-xs sm:text-[13px] transition-all whitespace-nowrap"
-                    >
-                      <Download className="w-4 h-4 text-yorumi-muted shrink-0" />
-                      <span>Download Portable (.zip)</span>
-                    </a>
-
-                    <a
-                      href="https://github.com/davenarchives/Yorumi/releases/latest"
+                      href={RELEASE_URL}
                       target="_blank"
                       rel="noreferrer"
                       className="w-full h-8 flex items-center justify-center gap-2 px-4 rounded-full hover:bg-yorumi-text/5 text-yorumi-muted hover:text-yorumi-text text-xs font-medium transition-all whitespace-nowrap"
@@ -621,7 +620,7 @@ function App() {
 
                   <div className="space-y-3 pt-2">
                     <a
-                      href="https://github.com/davenarchives/Yorumi/releases/latest/download/Yorumi.AppImage"
+                      href={releaseDownloadUrl('Yorumi.AppImage')}
                       className="w-full h-12 flex items-center justify-center gap-2 px-4 rounded-full bg-yorumi-text text-yorumi-bg font-semibold text-xs sm:text-[13px] transition-all duration-200 hover:opacity-90 active:scale-[0.98] whitespace-nowrap"
                     >
                       <Download className="w-4 h-4 shrink-0" />
@@ -629,15 +628,7 @@ function App() {
                     </a>
 
                     <a
-                      href="https://github.com/davenarchives/Yorumi/releases/latest/download/Yorumi.zip"
-                      className="w-full h-11 flex items-center justify-center gap-2 px-4 rounded-full bg-yorumi-text/5 hover:bg-yorumi-text/10 text-yorumi-text font-semibold text-xs sm:text-[13px] transition-all whitespace-nowrap"
-                    >
-                      <Download className="w-4 h-4 text-yorumi-muted shrink-0" />
-                      <span>Download Portable (.zip)</span>
-                    </a>
-
-                    <a
-                      href="https://github.com/davenarchives/Yorumi/releases/latest"
+                      href={RELEASE_URL}
                       target="_blank"
                       rel="noreferrer"
                       className="w-full h-8 flex items-center justify-center gap-2 px-4 rounded-full hover:bg-yorumi-text/5 text-yorumi-muted hover:text-yorumi-text text-xs font-medium transition-all whitespace-nowrap"
@@ -664,7 +655,7 @@ function App() {
 
                   <div className="space-y-3 pt-2">
                     <a
-                      href="https://github.com/davenarchives/Yorumi/releases/latest/download/Yorumi.apk"
+                      href={releaseDownloadUrl('Yorumi.apk')}
                       className="w-full h-12 flex items-center justify-center gap-2 px-4 rounded-full bg-yorumi-main text-white font-semibold text-xs sm:text-[13px] transition-all duration-200 hover:opacity-90 hover:scale-[1.02] active:scale-[0.98] kawaii-shadow whitespace-nowrap"
                     >
                       <Download className="w-4 h-4 shrink-0" />
@@ -672,17 +663,7 @@ function App() {
                     </a>
 
                     <a
-                      href="https://github.com/davenarchives/Yorumi/releases/latest"
-                      target="_blank"
-                      rel="noreferrer"
-                      className="w-full h-11 flex items-center justify-center gap-2 px-4 rounded-full bg-yorumi-text/5 hover:bg-yorumi-text/10 text-yorumi-text font-semibold text-xs sm:text-[13px] transition-all whitespace-nowrap"
-                    >
-                      <Download className="w-4 h-4 text-yorumi-muted shrink-0" />
-                      <span>Download via GitHub</span>
-                    </a>
-
-                    <a
-                      href="https://github.com/davenarchives/Yorumi/releases/latest"
+                      href={RELEASE_URL}
                       target="_blank"
                       rel="noreferrer"
                       className="w-full h-8 flex items-center justify-center gap-2 px-4 rounded-full hover:bg-yorumi-text/5 text-yorumi-muted hover:text-yorumi-text text-xs font-medium transition-all whitespace-nowrap"
@@ -702,9 +683,9 @@ function App() {
             {/* What's New In Release Card */}
             <div className="bg-yorumi-card rounded-3xl p-6 md:p-8 space-y-4">
               <div className="flex items-center justify-between flex-wrap gap-2">
-                <div className="text-sm font-semibold text-yorumi-text">What&apos;s new in version 4.3.0?</div>
+                <div className="text-sm font-semibold text-yorumi-text">What&apos;s new in version {RELEASE_VERSION}?</div>
                 <a
-                  href="https://github.com/davenarchives/Yorumi/releases"
+                  href={RELEASE_URL}
                   target="_blank"
                   rel="noreferrer"
                   className="inline-flex items-center gap-1.5 text-xs font-semibold text-yorumi-main hover:underline"
@@ -717,7 +698,7 @@ function App() {
               <div className="space-y-3 pt-2">
                 <div className="flex items-center gap-2 text-sm font-bold text-yorumi-main">
                   <Sparkles className="w-4 h-4 shrink-0 animate-kawaii-wiggle" />
-                  <span>✦ What's new in v4.3.0 — library & experience refinement! ✦</span>
+                  <span>✦ What&apos;s new in {RELEASE_TAG} — library &amp; experience refinement! ✦</span>
                 </div>
                 <ul className="list-disc list-inside text-sm text-yorumi-muted space-y-2 pl-1 leading-relaxed">
                   <li>

@@ -2,6 +2,8 @@
 
 ## [4.3.0] - 2026-10-16
 
+- **Current website downloads and compact mobile actions**: Pinned the marketing site's downloads to the verified v4.3.0 GitHub release assets, removed invalid Windows/Linux portable links, corrected the macOS downloads to the published universal DMG and ZIP, removed the heart from the download heading, and kept Download and Development docs on one mobile row.
+
 - **Library Category Management & Deletion Modal**: Added full category lifecycle support across desktop and mobile, allowing users to create custom categories, edit category names with an ergonomic inline save button, reorder categories, and delete custom categories with an interactive dialog offering options to reassign existing entries to Default or remove them entirely.
 
 - **Sticky Controls & Leveled Library Grid**: Converted the library controls and category navigation bar into a sticky header with frosted glass backdrop blur (`backdrop-blur-md`), preventing layout jumps while scrolling. Aligned card content top levels across both comfortable and compact grid display modes, standardizing title height clamping and sub-info row placement (progress badges, episode counters, and download indicators).

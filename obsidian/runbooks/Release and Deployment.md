@@ -33,11 +33,12 @@ source_paths:
 - `vercel.json` routes `/api/*` through the serverless entry and sends frontend routes to `index.html` with security headers.
 - `firebase.json` points to `firestore.rules`.
 - `website/` is a separate Vite marketing build.
+- Website download buttons are pinned to the release tag declared by `RELEASE_VERSION` in `website/src/App.tsx`; every linked filename must match an asset attached to that GitHub release. The macOS DMG and ZIP are universal builds, while Windows and Linux currently publish only the EXE and AppImage respectively.
 
 ## Version Checklist
 
 1. Update package versions consistently.
-2. Update the hardcoded badge in `website/src/App.tsx`.
+2. Update `RELEASE_VERSION` in `website/src/App.tsx`, which drives the website badge, release page, and direct download URLs.
 3. Update release notes and workflow references if version-specific filenames change.
 4. Validate desktop, backend, website, and Android as applicable.
 5. Confirm generated artifacts are not accidentally committed.
