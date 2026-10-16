@@ -2,6 +2,8 @@
 
 ## [4.3.0] - 2026-10-16
 
+- **Correct v4.3.0 Android release asset**: Replaced the v4.2.0 APK that had been attached to the v4.3.0 GitHub release through the unsigned CI fallback, refreshed the bundled fallback with the signed v4.3.0 build, and made mobile release CI reject bundled APKs whose embedded version does not match `package.json`.
+
 - **Current website downloads and compact mobile actions**: Pinned the marketing site's downloads to the verified v4.3.0 GitHub release assets, removed invalid Windows/Linux portable links, corrected the macOS downloads to the published universal DMG and ZIP, removed the heart from the download heading, and kept Download and Development docs on one mobile row.
 
 - **Library Category Management & Deletion Modal**: Added full category lifecycle support across desktop and mobile, allowing users to create custom categories, edit category names with an ergonomic inline save button, reorder categories, and delete custom categories with an interactive dialog offering options to reassign existing entries to Default or remove them entirely.

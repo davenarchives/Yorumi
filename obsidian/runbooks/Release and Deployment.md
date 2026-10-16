@@ -25,6 +25,7 @@ source_paths:
 - `.github/workflows/mobile-release.yml` uses Node 20 and Java 21.
 - Signed builds require `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, and `ANDROID_KEY_PASSWORD` secrets.
 - With signing configured, CI runs `npm run android:build:release` and uploads `Yorumi.apk`.
+- Without signing secrets, CI may use `release-assets/Yorumi.apk`, but first verifies its signature and requires its embedded `versionName` to match the root `package.json`; a stale bundled APK fails the workflow instead of being attached to a new release.
 - Release details and manual procedures are in `MOBILE_RELEASE.md`.
 
 ## Hosted Services

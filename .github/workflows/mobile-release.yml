@@ -61,6 +61,21 @@ jobs:
         if: steps.android-signing.outputs.signed == 'true'
         run: npm run android:build:release
 
+      - name: Validate Bundled Release APK
+        if: steps.android-signing.outputs.signed != 'true'
+        run: |
+          expected_version="$(node -p "require('./package.json').version")"
+          build_tools_dir="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          actual_version="$("$build_tools_dir/aapt" dump badging release-assets/Yorumi.apk | sed -n "s/.*versionName='\([^']*\)'.*/\1/p" | head -n 1)"
+
+          "$build_tools_dir/apksigner" verify release-assets/Yorumi.apk
+
+          if [ "$actual_version" != "$expected_version" ]; then
+            echo "Bundled APK version $actual_version does not match package version $expected_version."
+            echo 'Refusing to publish a stale Android release asset.'
+            exit 1
+          fi
+
       - name: Collect APK
         env:
           SIGNED: ${{ steps.android-signing.outputs.signed }}
