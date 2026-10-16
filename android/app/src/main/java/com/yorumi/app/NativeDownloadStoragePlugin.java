@@ -21,8 +21,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CompletionService;
-import java.util.concurrent.ExecutorCompletionService;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -36,6 +35,8 @@ import okhttp3.ResponseBody;
 public class NativeDownloadStoragePlugin extends Plugin {
     private static final int BUFFER_SIZE = 128 * 1024;
     private static final int HLS_CONCURRENCY = 6;
+    private static final int HLS_PREFETCH_WINDOW = HLS_CONCURRENCY * 2;
+    private static final long HLS_STORAGE_BUFFER_BYTES = 64L * 1024L * 1024L;
     private static final int SEGMENT_RETRIES = 3;
     private final Map<String, Boolean> pausedOperations = new ConcurrentHashMap<>();
     private final OkHttpClient client = new OkHttpClient.Builder()
@@ -165,7 +166,8 @@ public class NativeDownloadStoragePlugin extends Plugin {
     }
 
     private DownloadStats downloadHls(String operationId, String playlistUrl, String referer, File target, int maxHeight) throws Exception {
-        Playlist playlist = resolveMediaPlaylist(playlistUrl, referer, 0, maxHeight);
+        Playlist playlist = resolveMediaPlaylist(playlistUrl, referer, 0, maxHeight, 0);
+        ensureHlsStorageAvailable(target, playlist.estimatedBytes);
         long written = 0;
         List<SegmentRange> segmentRanges = new ArrayList<>();
         HlsProgressTracker progressTracker = new HlsProgressTracker(operationId, playlist.segments.size());
@@ -174,32 +176,22 @@ public class NativeDownloadStoragePlugin extends Plugin {
         if (!segmentDirectory.mkdirs()) throw new IOException("Unable to create HLS staging directory");
         ExecutorService executor = Executors.newFixedThreadPool(HLS_CONCURRENCY);
         try {
-            CompletionService<Integer> downloads = new ExecutorCompletionService<>(executor);
-            for (int segmentIndex = 0; segmentIndex < playlist.segments.size(); segmentIndex++) {
-                final int index = segmentIndex;
-                final File segmentFile = new File(segmentDirectory, String.format("%06d.part", index));
-                downloads.submit(() -> {
-                    downloadHlsSegment(
-                        operationId,
-                        playlist.segments.get(index),
-                        playlist.referer,
-                        index,
-                        playlist.segments.size(),
-                        progressTracker,
-                        segmentFile
-                    );
-                    return index;
-                });
-            }
+            List<Future<Integer>> downloads = new ArrayList<>();
             for (int index = 0; index < playlist.segments.size(); index++) {
-                Future<Integer> future = downloads.take();
-                future.get();
+                downloads.add(null);
+            }
+            int initialDownloads = Math.min(HLS_PREFETCH_WINDOW, playlist.segments.size());
+            for (int index = 0; index < initialDownloads; index++) {
+                downloads.set(index, submitHlsSegmentDownload(
+                    executor, operationId, playlist, progressTracker, segmentDirectory, index
+                ));
             }
 
             try (BufferedOutputStream output = new BufferedOutputStream(new FileOutputStream(target))) {
                 byte[] buffer = new byte[BUFFER_SIZE];
                 for (int index = 0; index < playlist.segments.size(); index++) {
                     waitIfPaused(operationId);
+                    awaitHlsSegment(downloads.get(index));
                     File segmentFile = new File(segmentDirectory, String.format("%06d.part", index));
                     if (segmentFile.length() <= 0) {
                         throw new IOException("Downloaded HLS segment " + (index + 1) + " is empty");
@@ -217,6 +209,16 @@ public class NativeDownloadStoragePlugin extends Plugin {
                         written - segmentOffset,
                         playlist.segmentDurations.get(index)
                     ));
+                    if (!segmentFile.delete()) {
+                        throw new IOException("Unable to clear HLS segment " + (index + 1));
+                    }
+
+                    int nextIndex = index + HLS_PREFETCH_WINDOW;
+                    if (nextIndex < playlist.segments.size()) {
+                        downloads.set(nextIndex, submitHlsSegmentDownload(
+                            executor, operationId, playlist, progressTracker, segmentDirectory, nextIndex
+                        ));
+                    }
                 }
             }
         } finally {
@@ -224,6 +226,55 @@ public class NativeDownloadStoragePlugin extends Plugin {
             deleteRecursively(segmentDirectory);
         }
         return new DownloadStats(written, playlist.duration, segmentRanges);
+    }
+
+    private Future<Integer> submitHlsSegmentDownload(
+        ExecutorService executor,
+        String operationId,
+        Playlist playlist,
+        HlsProgressTracker progressTracker,
+        File segmentDirectory,
+        int index
+    ) {
+        File segmentFile = new File(segmentDirectory, String.format("%06d.part", index));
+        return executor.submit(() -> {
+            downloadHlsSegment(
+                operationId,
+                playlist.segments.get(index),
+                playlist.referer,
+                index,
+                playlist.segments.size(),
+                progressTracker,
+                segmentFile
+            );
+            return index;
+        });
+    }
+
+    private void awaitHlsSegment(Future<Integer> download) throws Exception {
+        if (download == null) throw new IOException("HLS segment was not scheduled");
+        try {
+            download.get();
+        } catch (ExecutionException error) {
+            Throwable cause = error.getCause();
+            if (cause instanceof Exception) throw (Exception) cause;
+            throw new IOException("HLS segment download failed", cause);
+        }
+    }
+
+    private void ensureHlsStorageAvailable(File target, long estimatedBytes) throws IOException {
+        File parent = target.getParentFile();
+        if (parent == null || estimatedBytes <= 0) return;
+        long availableBytes = parent.getUsableSpace();
+        long requiredBytes = estimatedBytes + HLS_STORAGE_BUFFER_BYTES;
+        if (availableBytes > 0 && availableBytes < requiredBytes) {
+            long requiredMb = (requiredBytes + (1024L * 1024L) - 1) / (1024L * 1024L);
+            long availableMb = availableBytes / (1024L * 1024L);
+            throw new IOException(
+                "Not enough storage for this episode. About " + requiredMb
+                    + " MB is required; " + availableMb + " MB is available."
+            );
+        }
     }
 
     private void downloadHlsSegment(
@@ -264,12 +315,13 @@ public class NativeDownloadStoragePlugin extends Plugin {
             }
         }
         throw new IOException(
-            "Failed HLS segment " + (segmentIndex + 1) + "/" + segmentCount,
+            "Failed HLS segment " + (segmentIndex + 1) + "/" + segmentCount
+                + (lastError != null && lastError.getMessage() != null ? ": " + lastError.getMessage() : ""),
             lastError
         );
     }
 
-    private Playlist resolveMediaPlaylist(String url, String referer, int depth, int maxHeight) throws Exception {
+    private Playlist resolveMediaPlaylist(String url, String referer, int depth, int maxHeight, long selectedBandwidth) throws Exception {
         if (depth > 5) throw new IOException("Too many HLS playlist redirects");
         RequestTarget source = resolveRequestTarget(url, referer);
         String text;
@@ -305,8 +357,13 @@ public class NativeDownloadStoragePlugin extends Plugin {
                 }
             }
         }
-        if (bestVariant == null) bestVariant = smallestVariant;
-        if (bestVariant != null) return resolveMediaPlaylist(bestVariant, source.referer, depth + 1, maxHeight);
+        if (bestVariant == null) {
+            bestVariant = smallestVariant;
+            bestBandwidth = smallestBandwidth;
+        }
+        if (bestVariant != null) {
+            return resolveMediaPlaylist(bestVariant, source.referer, depth + 1, maxHeight, bestBandwidth);
+        }
 
         List<String> segments = new ArrayList<>();
         List<Double> segmentDurations = new ArrayList<>();
@@ -326,7 +383,10 @@ public class NativeDownloadStoragePlugin extends Plugin {
             }
         }
         if (segments.isEmpty()) throw new IOException("No HLS video segments found");
-        return new Playlist(segments, segmentDurations, duration, source.referer);
+        long estimatedBytes = selectedBandwidth > 0 && duration > 0
+            ? (long) Math.ceil((selectedBandwidth * duration) / 8d)
+            : 0;
+        return new Playlist(segments, segmentDurations, duration, source.referer, estimatedBytes);
     }
 
     private DownloadStats copy(String operationId, BufferedInputStream input, BufferedOutputStream output, long total, int start, int span) throws Exception {
@@ -443,8 +503,10 @@ public class NativeDownloadStoragePlugin extends Plugin {
     }
     private static final class Playlist {
         final List<String> segments; final List<Double> segmentDurations; final double duration; final String referer;
-        Playlist(List<String> segments, List<Double> segmentDurations, double duration, String referer) {
-            this.segments = segments; this.segmentDurations = segmentDurations; this.duration = duration; this.referer = referer;
+        final long estimatedBytes;
+        Playlist(List<String> segments, List<Double> segmentDurations, double duration, String referer, long estimatedBytes) {
+            this.segments = segments; this.segmentDurations = segmentDurations; this.duration = duration;
+            this.referer = referer; this.estimatedBytes = estimatedBytes;
         }
     }
     private static final class SegmentRange {
