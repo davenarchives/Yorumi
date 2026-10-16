@@ -62,11 +62,16 @@ const getAnimeRouteId = (item: WatchListItem) => {
     if (scraperId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(scraperId.replace(/^s:/, ''))) {
         return `s:${scraperId.replace(/^s:/, '')}`;
     }
-    return getAnimeDetailsRouteId({
+    const computed = getAnimeDetailsRouteId({
         id: item.anilistId || item.id,
         mal_id: item.malId,
         scraperId: item.scraperId,
     });
+    if (computed) return computed;
+    const rawId = String(item.id || item.anilistId || '').trim();
+    const parsed = parseAnimeRouteId(rawId);
+    if (parsed) return buildAnimeRouteId(parsed);
+    return rawId || '';
 };
 
 const normalizeStoredAnimeRouteId = (value: unknown) => {
@@ -307,23 +312,29 @@ export default function LibraryPage() {
             filteredWatchList.forEach((item) => {
                 const progress = filteredWatching.find((entry) => String(entry.animeId) === String(item.id) || entry.animeTitle?.toLowerCase() === item.title.toLowerCase());
                 const routeId = getAnimeRouteId(item);
+                const finalRouteId = routeId || String(item.id || item.anilistId || '');
+                const parsedRouteRef = parseAnimeRouteId(finalRouteId);
                 const rawId = String(item.anilistId || item.id || '').trim();
                 const parsedId = Number.parseInt(rawId, 10);
                 const hasNumericId = Number.isFinite(parsedId) && /^\d+$/.test(rawId);
-                const malId = Number.parseInt(String(item.malId || '0'), 10) || 0;
-                const scraperId = String(item.scraperId || '').trim() || (!hasNumericId ? rawId : undefined);
+                const malId = Number.parseInt(String(item.malId || '0'), 10) || (parsedRouteRef?.source === 'mal' ? Number(parsedRouteRef.id) : 0);
+                const anilistId = parsedRouteRef?.source === 'anilist' ? Number(parsedRouteRef.id) : (hasNumericId ? parsedId : 0);
+                const tmdbId = parsedRouteRef?.source === 'tmdb' ? Number(parsedRouteRef.id) : undefined;
+                const scraperId = String(item.scraperId || '').trim() || (parsedRouteRef?.source === 'scraper' ? String(parsedRouteRef.id) : (!hasNumericId ? rawId : undefined));
 
                 items.set(String(item.id), {
                     id: String(item.id),
                     title: item.title,
                     image: item.image,
                     count: item.totalCount || progress?.totalCount || progress?.episodeNumber,
-                    route: `/anime/details/${encodeURIComponent(routeId)}`,
+                    route: `/anime/details/${encodeURIComponent(finalRouteId)}`,
                     state: {
                         anime: {
-                            id: hasNumericId ? parsedId : 0,
+                            id: anilistId,
                             mal_id: malId,
-                            scraperId: scraperId,
+                            tmdbId,
+                            scraperId,
+                            source: parsedRouteRef?.source,
                             title: item.title,
                             title_english: item.title,
                             images: { jpg: { image_url: item.image, large_image_url: item.image } },
@@ -342,10 +353,12 @@ export default function LibraryPage() {
                 const rawId = String(item.animeId || '').trim();
                 const parsedRef = parseAnimeRouteId(rawId);
                 const routeId = parsedRef ? buildAnimeRouteId(parsedRef) : rawId;
+                const finalRouteId = routeId || rawId;
                 const parsedId = Number.parseInt(rawId, 10);
                 const hasNumericId = Number.isFinite(parsedId) && /^\d+$/.test(rawId);
                 const anilistId = parsedRef?.source === 'anilist' ? Number(parsedRef.id) : (hasNumericId ? parsedId : 0);
                 const malId = parsedRef?.source === 'mal' ? Number(parsedRef.id) : 0;
+                const tmdbId = parsedRef?.source === 'tmdb' ? Number(parsedRef.id) : undefined;
                 const scraperId = parsedRef?.source === 'scraper' ? String(parsedRef.id) : (!hasNumericId ? rawId : undefined);
 
                 items.set(String(item.animeId), {
@@ -353,12 +366,14 @@ export default function LibraryPage() {
                     title: item.animeTitle,
                     image: item.animePoster || item.animeImage,
                     count: item.totalCount || item.episodeNumber,
-                    route: `/anime/details/${encodeURIComponent(routeId)}`,
+                    route: `/anime/details/${encodeURIComponent(finalRouteId)}`,
                     state: {
                         anime: {
                             id: anilistId,
                             mal_id: malId,
-                            scraperId: scraperId,
+                            tmdbId,
+                            scraperId,
+                            source: parsedRef?.source,
                             title: item.animeTitle,
                             title_english: item.animeTitle,
                             images: { jpg: { image_url: item.animePoster || item.animeImage, large_image_url: item.animePoster || item.animeImage } },

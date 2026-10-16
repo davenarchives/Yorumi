@@ -438,8 +438,11 @@ const readRouteSeasonChips = (value: unknown, activeId: number): SeasonChip[] =>
 
 const doesAnimeMatchRouteRef = (anime: Partial<Anime> | null | undefined, ref: AnimeRouteRef): boolean => {
     if (!anime) return false;
-    const record = anime as Partial<Anime> & { tmdbId?: unknown; tmdb_id?: unknown };
-    if (ref.source === 'anilist' && Number(record.id || 0) === Number(ref.id)) return true;
+    const record = anime as Partial<Anime> & { tmdbId?: unknown; tmdb_id?: unknown; anilistId?: unknown };
+    if (ref.source === 'anilist') {
+        const targetId = Number(ref.id);
+        if (Number(record.id || 0) === targetId || Number(record.anilistId || 0) === targetId) return true;
+    }
     if (ref.source === 'mal' && Number(record.mal_id || 0) === Number(ref.id)) return true;
     if (ref.source === 'tmdb' && Number(record.tmdbId ?? record.tmdb_id ?? 0) === Number(ref.id)) return true;
     const routeScraperId = buildAnimeRouteId(ref);
@@ -447,7 +450,12 @@ const doesAnimeMatchRouteRef = (anime: Partial<Anime> | null | undefined, ref: A
     const cleanRefId = String(ref.id || '').replace(/^s:/i, '').toLowerCase().trim();
     const cleanRecordId = String(record.scraperId || record.id || '').replace(/^s:/i, '').toLowerCase().trim();
     if (cleanRefId && cleanRecordId && cleanRefId === cleanRecordId) return true;
-    if (record.title && cleanRefId && record.title.toLowerCase().trim() === cleanRefId) return true;
+
+    // Title matching (normalized to handle hyphens vs spaces and punctuation)
+    const normRef = cleanRefId.replace(/[^a-z0-9]+/g, ' ').trim();
+    const normTitle = String(record.title || record.title_english || record.title_romaji || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    if (normRef && normTitle && (normRef === normTitle || normRef.includes(normTitle) || normTitle.includes(normRef))) return true;
+
     return false;
 };
 
@@ -1350,7 +1358,14 @@ function AnimeDetailsPageContent() {
         return null;
     }, [matchingDownloads, stateAnime]);
 
-    const activeSelectedAnime = selectedAnime || (hasOfflineDownloads ? downloadFallbackAnime : null);
+    const stateAnimeMatch = stateAnime && currentRouteRef && doesAnimeMatchRouteRef(stateAnime, currentRouteRef)
+        ? (stateAnime as Anime)
+        : (stateAnime?.title ? (stateAnime as Anime) : null);
+
+    const activeSelectedAnime = (selectedAnime && currentRouteRef && doesAnimeMatchRouteRef(selectedAnime, currentRouteRef) ? selectedAnime : null)
+        || stateAnimeMatch
+        || (hasOfflineDownloads ? downloadFallbackAnime : null)
+        || selectedAnime;
 
     // The page remains mounted while search navigation changes the route. Never
     // paint the prior title's hero/poster while the new title is resolving.

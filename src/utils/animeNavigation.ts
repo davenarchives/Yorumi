@@ -27,7 +27,8 @@ const isGenericScraperSessionId = (value: unknown): boolean =>
     /^[a-z0-9-]+$/i.test(String(value || '').trim());
 
 const isProviderScraperSessionId = (value: unknown): boolean =>
-    /^(consumet|hi|hianime):[a-z0-9-_]+/i.test(String(value || '').trim());
+    /^[a-z0-9_-]+:[a-z0-9-_]+/i.test(String(value || '').trim()) ||
+    /^(consumet|hi|hianime|allmanga|anikoto|animegg|reanime|animepahe):[a-z0-9-_]+/i.test(String(value || '').trim());
 
 const isHiAnimeSessionId = (value: unknown): boolean =>
     /^hi[-:][a-z0-9-_]+/i.test(String(value || '').trim());
@@ -86,6 +87,15 @@ export const buildAnimeRouteId = (ref: AnimeRouteRef): string => {
 };
 
 export const getAnimeDetailsRouteId = (item: AnimeRouteTarget): string => {
+    if (!item) return '';
+
+    for (const candidate of [item.id, item.anilistId, item.scraperId]) {
+        if (candidate !== undefined && candidate !== null && String(candidate).trim()) {
+            const parsed = parseAnimeRouteId(candidate);
+            if (parsed) return buildAnimeRouteId(parsed);
+        }
+    }
+
     const explicitAnilistId = toPositiveNumber(item.anilistId);
     const anilistId = toPositiveNumber(item.id);
     const malId = toPositiveNumber(item.mal_id);
@@ -98,7 +108,14 @@ export const getAnimeDetailsRouteId = (item: AnimeRouteTarget): string => {
     if (anilistId) return buildAnimeRouteId({ source: 'anilist', id: anilistId });
     if (tmdbId) return buildAnimeRouteId({ source: 'tmdb', id: tmdbId });
     if (malId) return buildAnimeRouteId({ source: 'mal', id: malId });
-    return getDirectScraperRouteId(item.scraperId);
+
+    const directScraper = getDirectScraperRouteId(item.scraperId);
+    if (directScraper) return directScraper;
+
+    const fallbackScraper = getDirectScraperRouteId(item.id);
+    if (fallbackScraper) return fallbackScraper;
+
+    return '';
 };
 
 export const getAnimeWatchRouteId = getAnimeDetailsRouteId;
