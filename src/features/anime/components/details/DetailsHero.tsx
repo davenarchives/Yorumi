@@ -11,29 +11,40 @@ interface DetailsHeroProps {
 
 export default function DetailsHero({ anime }: DetailsHeroProps) {
     const { language } = useTitleLanguage();
-    const bannerImage = anime.anilist_banner_image
-        || anime.images?.jpg?.large_image_url
+    const poster = anime.images?.jpg?.large_image_url
         || anime.images?.jpg?.image_url
         || '';
+    const bannerImage = anime.anilist_banner_image || poster;
     const displayTitle = getDisplayTitle(anime as unknown as Record<string, unknown>, language);
 
     return (
         <div className="relative h-[30vh] md:h-[40vh] w-full overflow-hidden">
             <div className="absolute inset-0 select-none">
                 <AnimatePresence mode="popLayout">
-                    <m.img
-                        key={anime.id || anime.mal_id || bannerImage}
-                        src={bannerImage}
-                        alt={displayTitle}
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        transition={{ duration: 0.5 }}
-                        className={`w-full h-full object-cover absolute inset-0 ${!anime.anilist_banner_image ? 'blur-xl opacity-50 scale-110' : ''}`}
-                        loading="eager"
-                        decoding="async"
-                        fetchPriority="high"
-                    />
+                    {bannerImage ? (
+                        <m.img
+                            key={anime.id || anime.mal_id || bannerImage}
+                            src={bannerImage}
+                            alt={displayTitle}
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            transition={{ duration: 0.5 }}
+                            className={`w-full h-full object-cover absolute inset-0 ${!anime.anilist_banner_image ? 'blur-xl opacity-50 scale-110' : ''}`}
+                            loading="eager"
+                            decoding="async"
+                            fetchPriority="high"
+                            onError={(e) => {
+                                const img = e.currentTarget;
+                                if (poster && img.src !== poster) {
+                                    img.src = poster;
+                                    img.className = 'w-full h-full object-cover absolute inset-0 blur-xl opacity-50 scale-110';
+                                } else {
+                                    img.style.display = 'none';
+                                }
+                            }}
+                        />
+                    ) : null}
                 </AnimatePresence>
                 <div className="absolute inset-x-0 bottom-0 h-[60%] bg-gradient-to-t from-[#0a0a0a] via-[#0a0a0a]/60 to-transparent z-10 pointer-events-none" />
             </div>

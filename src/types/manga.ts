@@ -1,3 +1,5 @@
+import type { ContentAvailability, ExternalIds, MappingStatus } from '../utils/contentIdentity';
+
 export interface Manga {
     id?: number | string; // AniList ID or Scraper ID
     mal_id: number | string;
@@ -31,6 +33,10 @@ export interface Manga {
     countryOfOrigin?: string;
     synonyms?: string[];
     scraper_id?: string;
+    yorumiId?: string;
+    externalIds?: ExternalIds;
+    mappingStatus?: MappingStatus;
+    readingProvider?: string;
     characters?: {
         edges: {
             role: string;
@@ -65,6 +71,12 @@ export interface MangaChapter {
     title: string;
     url: string;
     uploadDate: string;
+    provider?: string;
+    providerId?: string;
+    language?: string;
+    volume?: string;
+    number?: number;
+    availability?: ContentAvailability;
 }
 
 export interface MangaPage {

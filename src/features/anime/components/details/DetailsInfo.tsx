@@ -5,6 +5,7 @@ import type { Anime } from '../../../../types/anime';
 import { useTitleLanguage } from '../../../../context/TitleLanguageContext';
 import { getDisplayTitle } from '../../../../utils/titleLanguage';
 import { isAnimeAiring, getAiringLabel, getSeasonYearLabel } from '../../../../utils/animeAiring';
+import { handleImageError } from '../../../../utils/image';
 
 interface DetailsInfoProps {
     anime: Anime;
@@ -37,7 +38,7 @@ export default function DetailsInfo({ anime, episodesCount, isLoading = false, i
 
     return (
         <div className="flex flex-col gap-6">
-            <div className="flex flex-row gap-4 md:gap-8 lg:gap-12 items-start md:items-end">
+            <div className="flex flex-row items-start gap-4 md:gap-8 lg:gap-12">
                 {/* Portrait Image */}
             <div className="flex-shrink-0 w-28 sm:w-36 md:w-56 lg:w-60 relative aspect-[2/3]">
                 <div className="rounded-xl overflow-hidden shadow-2xl shadow-black/50 w-full h-full relative bg-[#121212] border border-white/5">
@@ -51,13 +52,14 @@ export default function DetailsInfo({ anime, episodesCount, isLoading = false, i
                             exit={{ opacity: 0 }}
                             transition={{ duration: 0.4 }}
                             className="w-full h-full object-cover absolute inset-0"
+                            onError={(e) => handleImageError(e, displayTitle)}
                         />
                     </AnimatePresence>
                 </div>
             </div>
 
             {/* Details */}
-            <div className="flex-1 text-left flex flex-col justify-end md:h-[336px] lg:h-[360px] gap-3 md:gap-4 min-w-0 relative">
+            <div className="relative flex min-w-0 flex-1 flex-col justify-start gap-3 text-left md:min-h-[336px] md:gap-4 lg:min-h-[360px]">
                 <AnimatePresence mode="wait">
                     <m.div
                         key={anime.id || anime.mal_id}
@@ -65,11 +67,11 @@ export default function DetailsInfo({ anime, episodesCount, isLoading = false, i
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -10 }}
                         transition={{ duration: 0.3 }}
-                        className="flex flex-col gap-3 md:gap-4 justify-end h-full w-full"
+                        className="flex h-full w-full flex-col justify-start gap-3 md:gap-4"
                     >
                         {/* Title */}
                         <div className="space-y-1">
-                            <h1 className="text-[24px] sm:text-3xl md:text-4xl lg:text-5xl font-semibold md:font-black text-white md:uppercase tracking-tight leading-[1.12]">
+                            <h1 className="line-clamp-3 break-words overflow-hidden text-[24px] sm:text-3xl md:text-4xl lg:text-5xl font-semibold md:font-black text-white md:uppercase tracking-tight leading-[1.12]">
                                 {anime.title_english || anime.title || displayTitle}
                             </h1>
                         </div>
@@ -121,8 +123,23 @@ export default function DetailsInfo({ anime, episodesCount, isLoading = false, i
                         </div>
 
                         {/* Synopsis */}
-                        <div className="hidden md:block text-gray-300 text-sm md:text-base leading-relaxed max-w-4xl line-clamp-4">
-                            {anime.synopsis || 'No synopsis.'}
+                        <div className="relative hidden max-w-4xl md:block">
+                            <p className={`overflow-hidden text-sm leading-relaxed text-gray-300 transition-[max-height] duration-500 ease-out md:text-base ${synopsisExpanded ? 'max-h-none' : 'max-h-[6.75rem]'}`}>
+                                {anime.synopsis || 'No synopsis.'}
+                            </p>
+                            {!synopsisExpanded && (anime.synopsis || '').length > 140 && (
+                                <div className="pointer-events-none absolute inset-x-0 bottom-7 h-12 bg-gradient-to-t from-[#0a0a0a] via-[#0a0a0a]/85 to-transparent" />
+                            )}
+                            {(anime.synopsis || '').length > 140 && (
+                                <button
+                                    type="button"
+                                    onClick={() => setSynopsisExpanded((value) => !value)}
+                                    className="mx-auto mt-1 flex h-7 w-9 items-center justify-center text-white/85 transition-colors hover:text-white"
+                                    aria-label={synopsisExpanded ? 'Show less synopsis' : 'Show more synopsis'}
+                                >
+                                    <ChevronDown className={`h-5 w-5 transition-transform duration-300 ${synopsisExpanded ? 'rotate-180' : ''}`} />
+                                </button>
+                            )}
                         </div>
 
                         {/* Actions */}

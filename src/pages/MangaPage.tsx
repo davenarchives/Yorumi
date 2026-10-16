@@ -7,13 +7,15 @@ import AllTimePopularManga from '../features/manga/components/AllTimePopularMang
 import Top100Manga from '../features/manga/components/Top100Manga';
 import LatestMangaUpdates from '../features/manga/components/LatestMangaUpdates';
 import type { Manga } from '../types/manga';
+import { getMangaDetailsRouteId } from '../utils/mangaNavigation';
 
 export default function MangaPage() {
     const navigate = useNavigate();
 
 
     const handleSpotlightClick = (mangaId: string, autoRead?: boolean, mangaData?: Manga) => {
-        navigate(`/manga/details/${mangaId}`, { state: { autoRead, manga: mangaData } });
+        const routeId = getMangaDetailsRouteId(mangaData) || mangaId;
+        navigate(`/manga/details/${encodeURIComponent(routeId)}`, { state: { autoRead, manga: mangaData } });
     };
 
 

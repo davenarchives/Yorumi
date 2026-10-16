@@ -1,6 +1,7 @@
 import { ArrowLeft, X } from 'lucide-react';
 import Carousel from '../../../components/ui/Carousel';
 import type { Anime } from '../../../types/anime';
+import { parseAnimeRouteId } from '../../../utils/animeNavigation';
 
 interface ContinueWatchingItem {
     animeId: string;
@@ -23,6 +24,18 @@ interface ContinueWatchingProps {
     gridColumns?: 4 | 6;
 }
 
+const buildContinueAnime = (item: ContinueWatchingItem): Anime => {
+    const route = parseAnimeRouteId(item.animeId);
+    return {
+        id: route?.source === 'anilist' ? Number(route.id) : 0,
+        mal_id: route?.source === 'mal' ? Number(route.id) : 0,
+        tmdbId: route?.source === 'tmdb' ? Number(route.id) : undefined,
+        source: route?.source,
+        scraperId: route?.source === 'scraper' ? String(route.id) : undefined,
+        title: item.animeTitle,
+    } as Anime;
+};
+
 export default function ContinueWatching({
     items,
     variant = 'dashboard',
@@ -33,11 +46,6 @@ export default function ContinueWatching({
     gridColumns,
 }: ContinueWatchingProps) {
     if (items.length === 0) return null;
-    const isAnimePaheSessionRoute = (value: unknown) => {
-        const raw = String(value || '').trim();
-        const normalized = raw.startsWith('s:') ? raw.slice(2) : raw;
-        return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(normalized);
-    };
 
     const formatClock = (seconds: number) => {
         const safe = Math.max(0, Math.floor(seconds || 0));
@@ -96,12 +104,7 @@ export default function ContinueWatching({
                             key={item.animeId}
                             className="relative group cursor-pointer"
                             onClick={() => {
-                                const isHybrid = isAnimePaheSessionRoute(item.animeId);
-                                onWatchClick({
-                                    mal_id: isHybrid ? 0 : parseInt(item.animeId),
-                                    scraperId: isHybrid ? item.animeId : undefined,
-                                    title: item.animeTitle
-                                } as Anime, item.episodeNumber, item.positionSeconds);
+                                onWatchClick(buildContinueAnime(item), item.episodeNumber, item.positionSeconds);
                             }}
                         >
                             <div className="relative aspect-video rounded-lg overflow-hidden mb-3 shadow-lg border border-white/5 transition-colors">
@@ -147,12 +150,7 @@ export default function ContinueWatching({
                     key={item.animeId}
                     className="relative group h-full flex-[0_0_200px] sm:flex-[0_0_240px] md:flex-[0_0_280px]"
                     onClick={() => {
-                        const isHybrid = isAnimePaheSessionRoute(item.animeId);
-                        onWatchClick({
-                            mal_id: isHybrid ? 0 : parseInt(item.animeId),
-                            scraperId: isHybrid ? item.animeId : undefined,
-                            title: item.animeTitle
-                        } as Anime, item.episodeNumber, item.positionSeconds);
+                        onWatchClick(buildContinueAnime(item), item.episodeNumber, item.positionSeconds);
                     }}
                 >
                     <div className="relative aspect-video rounded-lg overflow-hidden mb-3 shadow-lg border border-white/5 transition-colors cursor-pointer">

@@ -50,6 +50,10 @@ graphify-out/
 
 # Vault Easter Egg (Stealth Directories)
 
+# Obsidian vault workspace state (knowledge notes remain tracked)
+/obsidian/.obsidian/
+.obsidian/
+
 
 # Android signing
 *.keystore

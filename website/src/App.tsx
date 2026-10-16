@@ -394,7 +394,7 @@ function App() {
                       rel="noreferrer"
                       className="text-yorumi-main font-semibold text-sm tracking-wide hover:opacity-80 transition-opacity"
                     >
-                      v4.2.0
+                      v4.3.0
                     </motion.a>
                   </div>
                   
@@ -520,7 +520,7 @@ function App() {
             <div className="flex items-center gap-3">
               <h3 className="text-2xl md:text-3xl font-display font-bold text-yorumi-text">Yorumi Desktop</h3>
               <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-yorumi-main/15 text-yorumi-main">
-                v4.2.0
+                v4.3.0
               </span>
             </div>
 
@@ -702,7 +702,7 @@ function App() {
             {/* What's New In Release Card */}
             <div className="bg-yorumi-card rounded-3xl p-6 md:p-8 space-y-4">
               <div className="flex items-center justify-between flex-wrap gap-2">
-                <div className="text-sm font-semibold text-yorumi-text">What&apos;s new in version 4.2.0?</div>
+                <div className="text-sm font-semibold text-yorumi-text">What&apos;s new in version 4.3.0?</div>
                 <a
                   href="https://github.com/davenarchives/Yorumi/releases"
                   target="_blank"
@@ -717,20 +717,20 @@ function App() {
               <div className="space-y-3 pt-2">
                 <div className="flex items-center gap-2 text-sm font-bold text-yorumi-main">
                   <Sparkles className="w-4 h-4 shrink-0 animate-kawaii-wiggle" />
-                  <span>✦ What's new in v4.2.0 — mobile era begins! ✦</span>
+                  <span>✦ What's new in v4.3.0 — library & experience refinement! ✦</span>
                 </div>
                 <ul className="list-disc list-inside text-sm text-yorumi-muted space-y-2 pl-1 leading-relaxed">
                   <li>
-                    <span className="font-semibold text-yorumi-text">android app & apk releases:</span> A standalone Capacitor Android app with signed APK release automation, edge-to-edge layouts, and offline downloads.
+                    <span className="font-semibold text-yorumi-text">custom category management:</span> Full library organization with custom category creation, sleek inline save controls, category reordering, and dedicated delete modal with item reassignment.
                   </li>
                   <li>
-                    <span className="font-semibold text-yorumi-text">multi-season & hero sync:</span> Switching season chips dynamically updates hero art, poster thumbnails, synopsis, and 16:9 episode preview cards.
+                    <span className="font-semibold text-yorumi-text">sticky controls & leveled grids:</span> Pinned library toolbar with frosted glass blur effect, aligned card headers across comfortable and compact views, and click-outside search dismissal.
                   </li>
                   <li>
-                    <span className="font-semibold text-yorumi-text">standalone discord rich presence:</span> Self-contained `discord-rpc` binary packaging across Windows, macOS, and Linux desktop distributions.
+                    <span className="font-semibold text-yorumi-text">scraper detail routing & episode metadata:</span> Instant navigation from library entries to anime details with reliable scraper ID resolution, sub/dub badges, and multi-season sync.
                   </li>
                   <li>
-                    <span className="font-semibold text-yorumi-text">optimized scraper pipeline:</span> Sub-second video stream resolution and multi-tier caching for seamless playback.
+                    <span className="font-semibold text-yorumi-text">mobile-first search & navigation:</span> Clean mobile library layout with ergonomic bottom search placement and responsive category filters.
                   </li>
                 </ul>
               </div>

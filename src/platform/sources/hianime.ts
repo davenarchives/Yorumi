@@ -6,16 +6,33 @@ const BASE_URL = 'https://hianime.at';
 const EMBED_KEY = new TextEncoder().encode('otaku-embed-v1');
 
 const parseHtml = (html: string) => new DOMParser().parseFromString(html, 'text/html');
+export const extractLocalHiAnimeSeasonNumber = (title: string) => {
+    const value = String(title || '').trim();
+    const match = value.match(/\bseason\s*(\d+)\b/i)
+        || value.match(/\b(\d+)(?:st|nd|rd|th)\s*season\b/i)
+        || value.match(/\b(?:series|part|cour)\s*(\d+)\b/i)
+        || value.match(/\s([2-9])\s*$/);
+    const parsed = Number(match?.[1] || 0);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+};
+
 const cleanTitle = (value: string) => value.toLowerCase()
     .replace(/&amp;/gi, '&')
     .replace(/&#0*39;|&apos;|&#x27;/gi, "'")
     .replace(/&quot;/gi, '"')
-    .replace(/\b(season|part|cour|nd|rd|th|st)\s*\d+\b/gi, ' ')
+    .replace(/\bseason\s*\d+\b/gi, ' ')
+    .replace(/\b\d+(?:st|nd|rd|th)\s*season\b/gi, ' ')
+    .replace(/\b(?:series|part|cour)\s*\d+\b/gi, ' ')
+    .replace(extractLocalHiAnimeSeasonNumber(value) > 1 ? /\s+\d+\s*$/ : /$^/, ' ')
     .replace(/[^a-z0-9\s]/gi, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 
-const isSafeTitleMatch = (query: string, candidateTitle: string) => {
+export const isSafeLocalHiAnimeTitleMatch = (query: string, candidateTitle: string) => {
+    const expectedSeason = extractLocalHiAnimeSeasonNumber(query) || 1;
+    const actualSeason = extractLocalHiAnimeSeasonNumber(candidateTitle) || 1;
+    if (expectedSeason !== actualSeason) return false;
+
     const expected = cleanTitle(query);
     const actual = cleanTitle(candidateTitle);
     if (!expected || !actual) return false;
@@ -111,7 +128,7 @@ const search = async (query: string): Promise<AnimeMatch | null> => {
         if (candidates.length === 0) return null;
 
         const asksMovie = /\b(movie|film)\b/i.test(query);
-        const safeCandidates = candidates.filter((candidate) => isSafeTitleMatch(query, candidate.title));
+        const safeCandidates = candidates.filter((candidate) => isSafeLocalHiAnimeTitleMatch(query, candidate.title));
         if (safeCandidates.length === 0) return null;
 
         return safeCandidates.sort((left, right) => {

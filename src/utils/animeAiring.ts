@@ -95,3 +95,99 @@ export function getDisplayMetaLabel(anime: Partial<Anime>): string {
     if (seasonYear) return seasonYear;
     return getStatusLabel(anime.status);
 }
+
+/**
+ * Checks whether an individual episode is unreleased based on air date.
+ */
+export function isEpisodeUnreleased(airDate?: string | null): boolean {
+    if (!airDate) return false;
+    const time = new Date(airDate).getTime();
+    return Number.isFinite(time) && time > Date.now();
+}
+
+/**
+ * Checks whether an anime series or season is released / aired.
+ */
+export function isAnimeReleased(anime: Partial<Anime> | null | undefined): boolean {
+    if (!anime) return false;
+    const status = String(anime.status || '').trim().toUpperCase().replace(/[\s-]+/g, '_');
+    if (status === 'NOT_YET_RELEASED') return false;
+
+    if (anime.aired?.from) {
+        const time = new Date(anime.aired.from).getTime();
+        if (Number.isFinite(time) && time > Date.now()) {
+            return false;
+        }
+    }
+
+    const currentYear = new Date().getFullYear();
+    if (anime.year && Number.isFinite(anime.year) && anime.year > currentYear) {
+        return false;
+    }
+
+    return true;
+}
+
+/**
+ * Filters out unreleased episodes so unreleased episodes are never displayed.
+ */
+export function filterReleasedEpisodes<T extends {
+    episodeNumber?: string | number;
+    airDate?: string | null;
+    playbackEpisodeNumber?: number;
+    session?: string;
+}>(
+    episodes: T[],
+    options?: {
+        status?: string | null;
+        latestEpisode?: number | null;
+        nextAiringEpisodeNumber?: number | null;
+    }
+): T[] {
+    if (!Array.isArray(episodes) || episodes.length === 0) return [];
+
+    const isNotYetReleased = options?.status?.trim().toUpperCase() === 'NOT_YET_RELEASED';
+    if (isNotYetReleased) return [];
+
+    // Find the earliest episode number with a confirmed future air date
+    let earliestFutureAirNum = Infinity;
+    for (const ep of episodes) {
+        if (isEpisodeUnreleased(ep.airDate)) {
+            const num = Number(ep.episodeNumber || ep.playbackEpisodeNumber || 0);
+            if (num > 0 && num < earliestFutureAirNum) {
+                earliestFutureAirNum = num;
+            }
+        }
+    }
+
+    const isAiring = isAnimeAiring(options?.status);
+    const knownLatest = Number(options?.latestEpisode || 0);
+    const nextAiring = Number(options?.nextAiringEpisodeNumber || 0);
+
+    return episodes.filter((ep, index) => {
+        // Direct future air date check
+        if (isEpisodeUnreleased(ep.airDate)) {
+            return false;
+        }
+
+        const epNum = Number(ep.episodeNumber || ep.playbackEpisodeNumber || (index + 1));
+
+        // If an earlier episode has a future air date, any subsequent episode cannot be released
+        if (earliestFutureAirNum !== Infinity && epNum >= earliestFutureAirNum) {
+            return false;
+        }
+
+        // If anime is currently airing, cap by next airing or known latest episode
+        if (isAiring) {
+            if (nextAiring > 0 && epNum >= nextAiring) {
+                return false;
+            }
+            if (knownLatest > 0 && epNum > knownLatest) {
+                return false;
+            }
+        }
+
+        return true;
+    });
+}
+

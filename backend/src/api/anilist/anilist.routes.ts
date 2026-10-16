@@ -29,7 +29,7 @@ const mapScraperMangaToAniListMedia = (items: any[]) =>
     }));
 
 const router = Router();
-const HOME_FAST_CACHE_KEY = 'anilist:home:fast:v21';
+const HOME_FAST_CACHE_KEY = 'anilist:home:fast:v23';
 const HOME_FAST_TTL_SECONDS = 120;
 let homeFastMemoryCache: { data: any; timestamp: number } | null = null;
 let homeFastRefreshPromise: Promise<any> | null = null;
@@ -413,31 +413,31 @@ const buildHomeFastPayload = async () => {
             return fallback;
         }
     };
-    const [spotlightRaw, latestEpisodesRaw, trending, seasonal, monthly, topAnime] = await Promise.all([
-        withTimeout(anilistService.getNativeSpotlightAnime(8), 5000, [] as any[]),
+    const [homeSections, latestEpisodesRaw] = await Promise.all([
+        withTimeout(anilistService.getAnimeHomeSections(30, 24), 5000, {
+            trending: { media: [], pageInfo: {} },
+            seasonal: { media: [], pageInfo: {} },
+            monthly: { media: [], pageInfo: {} },
+            topAnime: { media: [], pageInfo: {} },
+        }),
         withTimeout(
-            scraperService.getAllMangaLatestUpdates(1, 10).then((result) =>
+            scraperService.getAllMangaLatestUpdates(1, 18).then((result) =>
                 Array.isArray(result?.data) ? result.data : []
             ),
-            5500,
+            1800,
             [] as any[]
         ),
-        withTimeout(anilistService.getTrendingAnime(1, 30), 4000, { media: [] }),
-        withTimeout(anilistService.getPopularThisSeason(1, 24), 4000, { media: [] }),
-        withTimeout(anilistService.getPopularThisMonth(1, 24), 4000, { media: [] }),
-        withTimeout(anilistService.getTopAnime(1, 24), 4000, { media: [], pageInfo: { lastPage: 1, currentPage: 1, hasNextPage: false } }),
     ]);
+    const trending = homeSections.trending;
+    const seasonal = homeSections.seasonal;
+    const monthly = homeSections.monthly;
+    const topAnime = homeSections.topAnime;
+    const spotlightRaw = (trending?.media || []).slice(0, 8);
     console.log(`[Spotlight] Source: AniList native (${Array.isArray(spotlightRaw) ? spotlightRaw.length : 0} items)`);
     const latestRawItems = Array.isArray(latestEpisodesRaw) ? latestEpisodesRaw : [];
-    const latestEpisodes = await Promise.race([
-        enrichAnimeKaiItems(latestRawItems),
-        new Promise<any[]>((resolve) => setTimeout(() => resolve(buildAnimeKaiFallbackItems(latestRawItems)), 2500)),
-    ]);
+    const latestEpisodes = buildAnimeKaiFallbackItems(latestRawItems);
     const spotlightEnriched = wrapAniListMediaItems(Array.isArray(spotlightRaw) ? spotlightRaw : []);
-    const spotlight = await Promise.race([
-        applyTmdbSpotlightBanners(spotlightEnriched),
-        new Promise<any[]>((resolve) => setTimeout(() => resolve(clearSpotlightBanners(spotlightEnriched)), 3500)),
-    ]);
+    const spotlight = spotlightEnriched;
 
     return {
         spotlight: Array.isArray(spotlight) ? spotlight : [],
@@ -573,6 +573,13 @@ router.get('/native-spotlight', async (_req, res) => {
 });
 
 // Get top/popular manga (by SCORE)
+router.get('/manga/home-sections', async (req, res) => {
+    const page = parseInt(req.query.page as string) || 1;
+    const result = await anilistService.getMangaHomeSections(page, 24);
+    res.set('Cache-Control', 'public, max-age=300, s-maxage=3600, stale-while-revalidate=3600');
+    res.json(result);
+});
+
 router.get('/top/manga', async (req, res) => {
     try {
         const page = req.query.page ? parseInt(req.query.page as string) : 1;
@@ -761,6 +768,29 @@ router.get('/search', async (req, res) => {
     } catch (error) {
         console.error('Error in search route:', error);
         res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.get('/season-chain', async (req, res) => {
+    try {
+        const title = String(req.query.title || '').replace(/\s+/g, ' ').trim();
+        const id = Number(req.query.id || 0);
+        if (!title) {
+            res.status(400).json({ error: 'Query parameter "title" is required' });
+            return;
+        }
+
+        const data = await anilistService.getAnimeSeasonChain(title, id);
+        if (!data) {
+            res.status(404).json({ error: 'Anime season chain not found' });
+            return;
+        }
+
+        res.set('Cache-Control', 'public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800');
+        res.json(data);
+    } catch (error) {
+        console.error('Error in season-chain route:', error);
+        res.status(500).json({ error: 'Failed to resolve anime season chain' });
     }
 });
 

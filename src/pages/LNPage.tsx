@@ -11,7 +11,8 @@ export default function LNPage() {
     const navigate = useNavigate();
 
     const handleLNClick = (lnId: string, autoRead?: boolean, lnData?: LightNovel) => {
-        navigate(`/ln/details/${lnId}`, { state: { autoRead, ln: lnData } });
+        const routeId = String(lnData?.id || lnId).trim();
+        navigate(`/ln/details/${encodeURIComponent(routeId)}`, { state: { autoRead, ln: lnData } });
     };
 
     return (

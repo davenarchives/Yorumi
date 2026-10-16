@@ -2609,7 +2609,9 @@ function createWindow() {
         "discord.gg",
         "discord.com",
         "anilist.co",
-        "myanimelist.net"
+        "myanimelist.net",
+        "themoviedb.org",
+        "yorumi.vercel.app"
       ].some((d) => url.hostname.endsWith(d) || url.hostname === d)) import_electron.shell.openExternal(details.url);
       else console.log("Blocked unauthorized popup/ad:", details.url);
     } catch (e) {

@@ -1,9 +1,17 @@
 import { useState, useEffect, useCallback } from 'react';
-import { downloadService, isDownloadTitleMatch, type DownloadedEpisode, type ActiveDownloadProgress } from '../services/downloadService';
+import { downloadService, isDownloadAnimeIdMatch, isDownloadTitleMatch, type DownloadedEpisode, type ActiveDownloadProgress } from '../services/downloadService';
 import type { SubtitleTrack } from '../types/stream';
+import {
+    completeDownloadNotification,
+    failDownloadNotification,
+    onNativeDownloadControl,
+    showDownloadNotification,
+    updateDownloadNotification,
+} from '../platform/downloadNotification';
 
 const activeDownloadsMap = new Map<string, ActiveDownloadProgress>();
 const listeners = new Set<() => void>();
+let animeDownloadQueue: Promise<void> = Promise.resolve();
 
 function notifyListeners() {
     listeners.forEach((fn) => fn());
@@ -45,6 +53,14 @@ export function useDownloads() {
         };
     }, [loadDownloads]);
 
+    useEffect(() => {
+        let handle: { remove: () => Promise<void> } | null = null;
+        void onNativeDownloadControl(({ animeId, episodeNumber, paused }) => {
+            downloadService.setDownloadPaused(animeId, episodeNumber, paused);
+        }).then((listener) => { handle = listener; });
+        return () => { void handle?.remove(); };
+    }, []);
+
     const isEpisodeDownloaded = useCallback(
         (
             animeId: string | number | undefined,
@@ -68,9 +84,9 @@ export function useDownloads() {
                 const dAnimeId = String(d.animeId || '').trim().toLowerCase();
                 const dKey = String(d.id || '').toLowerCase();
 
-                if (targetId && (dAnimeId === targetId || dAnimeId.includes(targetId) || targetId.includes(dAnimeId) || dKey.startsWith(`${targetId}_ep_`))) return true;
+                if (targetId && (isDownloadAnimeIdMatch(dAnimeId, targetId, anilistStr) || dKey.startsWith(`${targetId}_ep_`))) return true;
                 if (anilistStr && (dAnimeId === anilistStr || dKey.startsWith(`${anilistStr}_ep_`))) return true;
-                if (animeTitle && downloadService && isDownloadTitleMatch(d.animeTitle, animeTitle)) return true;
+                if (!targetId && !anilistStr && animeTitle && isDownloadTitleMatch(d.animeTitle, animeTitle)) return true;
 
                 return false;
             });
@@ -101,9 +117,9 @@ export function useDownloads() {
                 const dAnimeId = String(d.animeId || '').trim().toLowerCase();
                 const dKey = String(d.id || '').toLowerCase();
 
-                if (targetId && (dAnimeId === targetId || dAnimeId.includes(targetId) || targetId.includes(dAnimeId) || dKey.startsWith(`${targetId}_ep_`))) return true;
+                if (targetId && (isDownloadAnimeIdMatch(dAnimeId, targetId, anilistStr) || dKey.startsWith(`${targetId}_ep_`))) return true;
                 if (anilistStr && (dAnimeId === anilistStr || dKey.startsWith(`${anilistStr}_ep_`))) return true;
-                if (animeTitle && downloadService && isDownloadTitleMatch(d.animeTitle, animeTitle)) return true;
+                if (!targetId && !anilistStr && animeTitle && isDownloadTitleMatch(d.animeTitle, animeTitle)) return true;
 
                 return false;
             });
@@ -141,7 +157,7 @@ export function useDownloads() {
             }
 
             for (const prog of activeDownloads.values()) {
-                if (epNums.includes(Number(prog.episodeNumber))) {
+                if (epNums.includes(Number(prog.episodeNumber)) && isDownloadAnimeIdMatch(prog.animeId, strId, strAnilist)) {
                     return prog;
                 }
             }
@@ -171,7 +187,7 @@ export function useDownloads() {
                 animeId: params.animeId,
                 episodeNumber: params.episodeNumber,
                 progress: 0,
-                status: 'downloading',
+                status: 'queued',
                 receivedBytes: 0,
                 totalBytes: 0,
             };
@@ -179,30 +195,68 @@ export function useDownloads() {
             activeDownloadsMap.set(legacyKey, initialProg);
             notifyListeners();
 
-            try {
-                const downloaded = await downloadService.downloadStream(params, (progress) => {
+            const runDownload = async () => {
+                const startedProgress: ActiveDownloadProgress = { ...initialProg, status: 'downloading' };
+                activeDownloadsMap.set(key, startedProgress);
+                activeDownloadsMap.set(legacyKey, startedProgress);
+                notifyListeners();
+
+                const notificationBase = {
+                    animeId: params.animeId,
+                    episodeNumber: params.episodeNumber,
+                    animeTitle: params.animeTitle,
+                    episodeTitle: params.episodeTitle || `Episode ${params.episodeNumber}`,
+                };
+                void showDownloadNotification({ ...notificationBase, progress: 0 });
+
+                try {
+                    const downloaded = await downloadService.downloadStream(params, (progress) => {
                     activeDownloadsMap.set(key, progress);
                     activeDownloadsMap.set(legacyKey, progress);
                     notifyListeners();
-                });
+                    if (progress.status === 'downloading' || progress.status === 'paused' || progress.status === 'saving') {
+                        void updateDownloadNotification({ ...notificationBase, progress: progress.progress });
+                    }
+                    });
+
+                    void completeDownloadNotification({ ...notificationBase, progress: 100 });
+                    window.dispatchEvent(new CustomEvent('yorumi-downloads-updated'));
 
                 // Clear from active after completion delay
-                setTimeout(() => {
-                    activeDownloadsMap.delete(key);
-                    activeDownloadsMap.delete(legacyKey);
-                    notifyListeners();
-                }, 1500);
+                    setTimeout(() => {
+                        activeDownloadsMap.delete(key);
+                        activeDownloadsMap.delete(legacyKey);
+                        notifyListeners();
+                    }, 1500);
 
-                return downloaded;
-            } catch (error) {
-                console.error('Download failed:', error);
-                setTimeout(() => {
-                    activeDownloadsMap.delete(key);
-                    activeDownloadsMap.delete(legacyKey);
+                    return downloaded;
+                } catch (error) {
+                    console.error('Download failed:', error);
+                    const failedProgress: ActiveDownloadProgress = {
+                        animeId: params.animeId,
+                        episodeNumber: params.episodeNumber,
+                        progress: 0,
+                        status: 'error',
+                        receivedBytes: 0,
+                        totalBytes: 0,
+                        error: error instanceof Error ? error.message : 'Download failed',
+                    };
+                    activeDownloadsMap.set(key, failedProgress);
+                    activeDownloadsMap.set(legacyKey, failedProgress);
                     notifyListeners();
-                }, 3000);
-                throw error;
-            }
+                    void failDownloadNotification({ ...notificationBase, progress: 0, message: failedProgress.error || 'Download failed' });
+                    setTimeout(() => {
+                        activeDownloadsMap.delete(key);
+                        activeDownloadsMap.delete(legacyKey);
+                        notifyListeners();
+                    }, 10_000);
+                    throw error;
+                }
+            };
+
+            const queuedDownload = animeDownloadQueue.then(runDownload, runDownload);
+            animeDownloadQueue = queuedDownload.then(() => undefined, () => undefined);
+            return queuedDownload;
         },
         []
     );
@@ -210,6 +264,7 @@ export function useDownloads() {
     const deleteDownload = useCallback(async (animeId: string, episodeNumber: number) => {
         try {
             await downloadService.deleteDownload(animeId, episodeNumber);
+            window.dispatchEvent(new CustomEvent('yorumi-downloads-updated'));
         } catch (error) {
             console.error('Failed to delete download:', error);
         }

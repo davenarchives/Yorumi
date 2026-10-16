@@ -377,8 +377,76 @@ const MEDIA_FIELDS = `
     }
 `;
 
+const ANIME_SEASON_CHAIN_NODE_FIELDS = `
+    id idMal
+    title { romaji english native }
+    coverImage { large extraLarge }
+    bannerImage format episodes status season seasonYear isAdult
+    startDate { year month day }
+`;
+
 
 export const anilistService = {
+    async getAnimeHomeSections(trendingPerPage: number = 30, perPage: number = 24) {
+        const safeTrendingCount = Math.max(10, Math.min(trendingPerPage, 50));
+        const safePerPage = Math.max(10, Math.min(perPage, 50));
+        const now = new Date();
+        const month = now.getMonth() + 1;
+        const season = month <= 3 ? 'WINTER' : month <= 6 ? 'SPRING' : month <= 9 ? 'SUMMER' : 'FALL';
+        const seasonYear = now.getFullYear();
+        const monthStart = new Date(seasonYear, now.getMonth(), 1);
+        const monthEnd = new Date(seasonYear, now.getMonth() + 1, 0);
+        const cacheKey = getCacheKey('anime_home_sections_v1', safeTrendingCount, safePerPage, season, seasonYear, month);
+        const cached = getFromCache(cacheKey);
+        if (cached) return cached;
+
+        const query = `
+            query AnimeHomeSections(
+                $trendingPerPage: Int!, $perPage: Int!, $season: MediaSeason!, $seasonYear: Int!,
+                $startDateGreater: FuzzyDateInt!, $startDateLesser: FuzzyDateInt!
+            ) {
+                trending: Page(page: 1, perPage: $trendingPerPage) {
+                    pageInfo { total currentPage lastPage hasNextPage }
+                    media(type: ANIME, sort: TRENDING_DESC, isAdult: false) { ${MEDIA_FIELDS} }
+                }
+                seasonal: Page(page: 1, perPage: $perPage) {
+                    pageInfo { total currentPage lastPage hasNextPage }
+                    media(type: ANIME, season: $season, seasonYear: $seasonYear, sort: POPULARITY_DESC, isAdult: false) { ${MEDIA_FIELDS} }
+                }
+                monthly: Page(page: 1, perPage: $perPage) {
+                    pageInfo { total currentPage lastPage hasNextPage }
+                    media(type: ANIME, startDate_greater: $startDateGreater, startDate_lesser: $startDateLesser, sort: POPULARITY_DESC, isAdult: false) { ${MEDIA_FIELDS} }
+                }
+                topAnime: Page(page: 1, perPage: $perPage) {
+                    pageInfo { total currentPage lastPage hasNextPage }
+                    media(type: ANIME, sort: POPULARITY_DESC, isAdult: false) { ${MEDIA_FIELDS} }
+                }
+            }
+        `;
+
+        try {
+            const response = await rateLimitedRequest(query, {
+                trendingPerPage: safeTrendingCount,
+                perPage: safePerPage,
+                season,
+                seasonYear,
+                startDateGreater: toDateInt(monthStart) - 1,
+                startDateLesser: toDateInt(monthEnd) + 1,
+            }, { cacheTtlSeconds: 600 });
+            const result = response.data;
+            setCache(cacheKey, result, CACHE_TTL.seasonal);
+            setCache(getCacheKey('trending_anime', 1, safeTrendingCount), result.trending, CACHE_TTL.trending);
+            setCache(getCacheKey('popular_season', 1, safePerPage, season, seasonYear), result.seasonal, CACHE_TTL.seasonal);
+            setCache(getCacheKey('popular_month', 1, safePerPage, seasonYear, month), result.monthly, CACHE_TTL.monthly);
+            setCache(getCacheKey('top_anime', 1, safePerPage, 'all'), result.topAnime, CACHE_TTL.top);
+            return result;
+        } catch (error) {
+            console.error('Error fetching batched Anime home sections:', error);
+            const emptyPage = { media: [], pageInfo: {} };
+            return { trending: emptyPage, seasonal: emptyPage, monthly: emptyPage, topAnime: emptyPage };
+        }
+    },
+
     async getNativeSpotlightAnime(perPage: number = 8) {
         const limit = Math.max(1, Math.min(perPage, 20));
         const cacheKey = getCacheKey('native_spotlight_anime', limit);
@@ -1346,6 +1414,106 @@ export const anilistService = {
         return best?.media || null;
     },
 
+    async getAnimeSeasonChain(search: string, id?: number) {
+        const normalizedSearch = String(search || '').replace(/\s+/g, ' ').trim();
+        const anilistId = Number(id || 0);
+        if (!normalizedSearch) return null;
+
+        const cacheKey = getCacheKey('anime_season_chain_v7', anilistId || normalizedSearch.toLowerCase());
+        const cached = getFromCache(cacheKey);
+        if (cached) return cached;
+
+        const query = `
+            query ($id: Int, $hasId: Boolean!, $search: String!, $perPage: Int!) {
+                rootById: Media(id: $id, type: ANIME) @include(if: $hasId) {
+                    ${MEDIA_FIELDS}
+                    relations {
+                        edges {
+                            relationType
+                            node { ${ANIME_SEASON_CHAIN_NODE_FIELDS} }
+                        }
+                    }
+                }
+                rootBySearch: Media(search: $search, type: ANIME) {
+                    ${MEDIA_FIELDS}
+                    relations {
+                        edges {
+                            relationType
+                            node { ${ANIME_SEASON_CHAIN_NODE_FIELDS} }
+                        }
+                    }
+                }
+                candidates: Page(page: 1, perPage: $perPage) {
+                    media(search: $search, type: ANIME, sort: SEARCH_MATCH) {
+                        ${ANIME_SEASON_CHAIN_NODE_FIELDS}
+                        relations {
+                            edges {
+                                relationType
+                                node { ${ANIME_SEASON_CHAIN_NODE_FIELDS} }
+                            }
+                        }
+                    }
+                }
+            }
+        `;
+
+        try {
+            const response = await rateLimitedRequest(query, {
+                id: anilistId > 0 ? anilistId : undefined,
+                hasId: anilistId > 0,
+                search: normalizedSearch,
+                perPage: 50,
+            }, { cacheTtlSeconds: 86400 });
+            const root = response.data?.rootById || response.data?.rootBySearch || null;
+            if (!root || root.isAdult) return null;
+
+            const media = (Array.isArray(response.data?.candidates?.media) ? response.data.candidates.media : [])
+                .filter((item: any) => item && !item.isAdult);
+            const byId = new Map<number, any>(media.map((item: any) => [Number(item.id), item]));
+            byId.set(Number(root.id), byId.get(Number(root.id)) || root);
+
+            const visited = new Set<number>();
+            const pending = [Number(root.id)];
+            const included = new Set<number>();
+            const seasonChain: any[] = [];
+            while (pending.length > 0) {
+                const currentId = Number(pending.shift() || 0);
+                if (!currentId || visited.has(currentId)) continue;
+                visited.add(currentId);
+
+                const current = byId.get(currentId);
+                if (!current) continue;
+                const currentFormat = String(current.format || '').toUpperCase();
+                const currentStatus = String(current.status || '').toUpperCase();
+                const startYear = Number(current.startDate?.year || 0);
+                const startMonth = Number(current.startDate?.month || 1);
+                const startDay = Number(current.startDate?.day || 1);
+                const now = new Date();
+                const today = now.getFullYear() * 10000 + (now.getMonth() + 1) * 100 + now.getDate();
+                const startDate = startYear > 0 ? startYear * 10000 + startMonth * 100 + startDay : 0;
+                const hasStartedAiring = currentStatus !== 'NOT_YET_RELEASED' && (!startDate || startDate <= today);
+                if (['TV', 'TV_SHORT'].includes(currentFormat) && hasStartedAiring && !included.has(currentId)) {
+                    included.add(currentId);
+                    seasonChain.push(current);
+                }
+
+                for (const edge of current.relations?.edges || []) {
+                    const nodeId = Number(edge.node?.id || 0);
+                    if (!nodeId || edge.node?.isAdult) continue;
+                    if (!byId.has(nodeId)) byId.set(nodeId, edge.node);
+                    if (edge.relationType === 'PREQUEL' || edge.relationType === 'SEQUEL') pending.push(nodeId);
+                }
+            }
+
+            const result = { ...root, seasonChain };
+            setCache(cacheKey, result, 24 * 60 * 60 * 1000);
+            return result;
+        } catch (error) {
+            console.error('Error resolving AniList season chain:', error);
+            return null;
+        }
+    },
+
     async searchManga(search: string, page: number = 1, perPage: number = 24) {
         const query = `
             query ($search: String, $page: Int, $perPage: Int) {
@@ -1518,6 +1686,64 @@ export const anilistService = {
         } catch (error: any) {
             if (error?.response?.status !== 404) {
                 console.error('Error fetching anime by ID:', error?.message || error);
+            }
+            return null;
+        }
+    },
+
+    async getMangaHomeSections(page: number = 1, perPage: number = 24) {
+        const cacheKey = getCacheKey('manga_home_sections', page, perPage);
+        const cached = getFromCache(cacheKey);
+        if (cached) return cached;
+
+        const query = `
+            query ($page: Int, $perPage: Int) {
+                top: Page(page: $page, perPage: $perPage) {
+                    pageInfo { total currentPage lastPage hasNextPage }
+                    media(type: MANGA, sort: SCORE_DESC, isAdult: false) { ${MEDIA_FIELDS} }
+                }
+                popular: Page(page: $page, perPage: $perPage) {
+                    pageInfo { total currentPage lastPage hasNextPage }
+                    media(type: MANGA, sort: POPULARITY_DESC, isAdult: false) { ${MEDIA_FIELDS} }
+                }
+                manhwa: Page(page: $page, perPage: $perPage) {
+                    pageInfo { total currentPage lastPage hasNextPage }
+                    media(type: MANGA, countryOfOrigin: "KR", sort: POPULARITY_DESC, isAdult: false) { ${MEDIA_FIELDS} }
+                }
+            }
+        `;
+
+        try {
+            const response = await rateLimitedRequest(query, { page, perPage }, { cacheTtlSeconds: 3600 });
+            const result = {
+                top: response.data.top,
+                popular: response.data.popular,
+                manhwa: response.data.manhwa,
+            };
+            setCache(cacheKey, result, CACHE_TTL.popular);
+            setCache(getCacheKey('top_manga', page, perPage), result.top, CACHE_TTL.top);
+            setCache(getCacheKey('popular_manga', page, perPage), result.popular, CACHE_TTL.popular);
+            setCache(getCacheKey('popular_manhwa', page, perPage), result.manhwa, CACHE_TTL.popular);
+            return result;
+        } catch (error) {
+            console.error('Error fetching Manga home sections:', error);
+            return { top: { media: [], pageInfo: {} }, popular: { media: [], pageInfo: {} }, manhwa: { media: [], pageInfo: {} } };
+        }
+    },
+
+    async getAnimeByMalId(idMal: number) {
+        const query = `
+            query ($idMal: Int) {
+                Media(idMal: $idMal, type: ANIME) { id }
+            }
+        `;
+        try {
+            const response = await rateLimitedRequest(query, { idMal }, { cacheTtlSeconds: 3600 });
+            const anilistId = Number(response.data?.Media?.id || 0);
+            return anilistId > 0 ? this.getAnimeById(anilistId) : null;
+        } catch (error: any) {
+            if (error?.response?.status !== 404) {
+                console.error('Error fetching anime by MAL ID:', error?.message || error);
             }
             return null;
         }

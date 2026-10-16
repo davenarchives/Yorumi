@@ -346,8 +346,8 @@ export default function DetailsVideoPlayer({ animeId, animeTitle, onClose, isWat
                 )}
 
                 {/* Main Video */}
-                <div className="relative z-20 w-full aspect-video rounded-2xl overflow-hidden bg-black transition-all duration-300">
-                    <div ref={setInlinePlayerElement} className="w-full h-full bg-black" />
+                <div className="yorumi-details-player-frame relative z-20 w-full aspect-video rounded-2xl overflow-hidden bg-black transition-all duration-300">
+                    <div ref={setInlinePlayerElement} className="yorumi-player-mount w-full h-full bg-black" />
                 </div>
             </div>
         </div>

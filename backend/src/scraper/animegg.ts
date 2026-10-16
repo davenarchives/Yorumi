@@ -1,5 +1,6 @@
 import axios from 'axios';
 import type { VideoSource, StreamResponse } from '../api/anime/video-sources.js';
+import { extractExplicitSeasonNumber } from './hianime';
 import { logger } from '../core/logger.js';
 
 const BASE = 'https://www.animegg.org';
@@ -16,6 +17,9 @@ function normalizeText(text: string): string {
 }
 
 function isSafeSlugMatch(query: string, slug: string): boolean {
+    const requestedSeason = extractExplicitSeasonNumber(query) || 1;
+    const candidateSeason = extractExplicitSeasonNumber(slug.replace(/-/g, ' ')) || 1;
+    if (requestedSeason !== candidateSeason) return false;
     const target = normalizeText(query);
     const actual = normalizeText(slug);
     return Boolean(target && actual && (actual === target || actual.includes(target) || target.includes(actual)));

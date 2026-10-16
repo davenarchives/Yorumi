@@ -1,0 +1,27 @@
+# Yorumi v4.3.0
+
+Yorumi 4.3.0 brings comprehensive library organization improvements, leveled layout alignments, mobile-first search ergonomics, and refined media playback routing across desktop and mobile platforms.
+
+## Library & Category Management
+
+- **Full Custom Category Lifecycle**: Create custom library categories, reorder tabs, and easily organize anime, manga, and light novels into personalized collections.
+- **Ergonomic Category Controls**: Added inline save buttons alongside category names with refined heights and styling for comfortable interaction.
+- **Dedicated Category Deletion Dialog**: Added an interactive deletion confirmation modal allowing users to safely reassign existing titles to Default or remove them entirely when deleting a custom category.
+- **Sticky Controls Header**: Converted the library filter, sorting, display mode, and category toolbar into a sticky pinned bar with frosted glass backdrop blur (`backdrop-blur-md`), keeping library navigation accessible while scrolling large collections.
+- **Leveled Card Grid Alignments**: Aligned card header baselines and sub-info rows across both comfortable and compact display modes, preventing vertical shifting and ensuring consistent multi-line title clamping.
+- **Click-Outside Search Dismissal**: Library search input now automatically closes upon clicking or tapping anywhere outside the search container.
+
+## Mobile Ergonomics & Navigation
+
+- **Ergonomic Mobile Search Placement**: Positioned the mobile library search bar down within easy one-handed reach while keeping responsive toggle states synchronized.
+- **Responsive Category Tabs**: Streamlined category chips and selectors across narrow touchscreens for seamless tab switching.
+
+## Media Routing & Scraper Integration
+
+- **Direct Scraper Route Resolution**: Fixed library click navigation for scraper-backed entries, resolving provider-qualified routes accurately to prevent blank detail pages or failed season loads.
+- **Episode & Metadata Synchronization**: Preserved episode numbering and sub/dub metadata synchronization across season boundaries and multi-provider searches.
+
+## Multi-Platform Builds
+
+- **Desktop Releases**: Universal binaries and installers for Windows (NSIS & portable), macOS (Universal DMG & zip), and Linux (AppImage & deb).
+- **Mobile Release**: Standalone signed Android APK release packaging with offline downloads, native media handling, and edge-to-edge support.

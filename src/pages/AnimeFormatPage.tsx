@@ -1,13 +1,12 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { animeService } from '../services/animeService';
-import { slugify } from '../utils/slugify';
 import type { Anime } from '../types/anime';
 import AnimeCard from '../features/anime/components/AnimeCard';
 import AnimeCardSkeleton from '../features/anime/components/AnimeCardSkeleton';
 import Pagination from '../components/ui/Pagination';
 import { useAnime } from '../hooks/useAnime';
-import { getDirectScraperRouteId } from '../utils/animeNavigation';
+import { buildAnimeDetailsPath } from '../utils/animeNavigation';
 
 const FORMAT_CONFIG: Record<string, { label: string; anilistFormat: string | undefined }> = {
     popular:  { label: 'Most Popular', anilistFormat: undefined },
@@ -23,10 +22,6 @@ export default function AnimeFormatPage() {
     const format = location.pathname.split('/').pop() || '';
     const navigate = useNavigate();
     const { prefetchEpisodes } = useAnime();
-    const toPositiveNumber = (value: unknown): number => {
-        const parsed = Number(value);
-        return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
-    };
 
     const config = FORMAT_CONFIG[format];
 
@@ -92,16 +87,15 @@ export default function AnimeFormatPage() {
     };
 
     const handleAnimeClick = (item: Anime) => {
-        const id = toPositiveNumber(item.id) || toPositiveNumber(item.mal_id) || getDirectScraperRouteId(item.scraperId);
-        if (!id) return;
-        navigate(`/anime/details/${id}`, { state: { anime: item } });
+        const path = buildAnimeDetailsPath(item);
+        if (!path) return;
+        navigate(path, { state: { anime: item } });
     };
 
     const handleWatchClick = (item: Anime) => {
-        const title = slugify(item.title || item.title_english || 'anime');
-        const id = getDirectScraperRouteId(item.scraperId) || toPositiveNumber(item.id) || toPositiveNumber(item.mal_id);
-        if (!id) return;
-        navigate(`/anime/details/${id}?ep=1`, { state: { anime: item } });
+        const path = buildAnimeDetailsPath(item, { episode: 1 });
+        if (!path) return;
+        navigate(path, { state: { anime: item } });
     };
 
     if (!config) {

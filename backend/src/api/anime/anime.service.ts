@@ -1,6 +1,5 @@
 import { tmdbService } from '../scraper/tmdb.service';
 import { cacheGet, cacheSet } from '../../utils/redis-cache';
-import { anilistService } from '../anilist/anilist.service';
 
 const FIVE_MINUTES_SECONDS = 5 * 60;
 const ONE_DAY_SECONDS = 24 * 60 * 60;
@@ -50,11 +49,29 @@ function mapTmdbStatus(status: string | undefined): string {
     }
 }
 
+const TMDB_ANIME_GENRES: Record<string, number> = {
+    action: 10759,
+    adventure: 10759,
+    comedy: 35,
+    drama: 18,
+    fantasy: 10765,
+    'sci-fi': 10765,
+    'science fiction': 10765,
+    mystery: 9648,
+    romance: 18,
+    horror: 27,
+    thriller: 9648,
+    supernatural: 10765,
+    sports: 10759,
+    music: 35,
+};
+
 function mapTmdbToAnilistMedia(item: any, isFullDetails = false): any {
     if (!item) return null;
     return {
-        id: item.id,
+        id: 0,
         tmdbId: item.id,
+        source: 'tmdb',
         title: {
             romaji: item.name || item.original_name || item.title,
             english: item.name || item.title,
@@ -108,7 +125,7 @@ export const streambertAnimeService = {
     },
 
     async getMetadata(tmdbId: number, format?: string) {
-        const cacheKey = `anime:tmdb:meta:v9:${tmdbId}:${format || 'unknown'}`;
+        const cacheKey = `anime:tmdb:meta:v11:${tmdbId}:${format || 'unknown'}`;
         const cached = await cacheGet<any>(cacheKey);
         if (cached) return cached;
 
@@ -153,58 +170,19 @@ export const streambertAnimeService = {
             }));
         }
 
-        if (media) {
-            try {
-                const titles = [
-                    media.title?.english,
-                    media.title?.romaji,
-                    media.title?.native,
-                    payload.name,
-                    payload.original_name,
-                ].filter(Boolean);
-
-                const anilistMatch = await anilistService.findBestAnimeMatch({
-                    titles,
-                    format: media.format,
-                    year: media.seasonYear,
-                    episodes: media.episodes,
-                    perPage: 5,
-                }).catch(() => null);
-
-                if (anilistMatch?.id) {
-                    const fullAnilist = await anilistService.getAnimeById(anilistMatch.id).catch(() => null);
-                    if (fullAnilist) {
-                        media.id = fullAnilist.id;
-                        media.idMal = fullAnilist.idMal || fullAnilist.id;
-                        media.relations = fullAnilist.relations || media.relations;
-                        if (fullAnilist.title) media.title = fullAnilist.title;
-                        if (fullAnilist.characters?.edges?.length) media.characters = fullAnilist.characters;
-                        if (fullAnilist.episodes) media.episodes = fullAnilist.episodes;
-                        if (fullAnilist.status) media.status = fullAnilist.status;
-                        if (fullAnilist.nextAiringEpisode) (media as any).nextAiringEpisode = fullAnilist.nextAiringEpisode;
-                        if (fullAnilist.studios?.nodes?.length) media.studios = fullAnilist.studios;
-                    } else {
-                        if (anilistMatch.nextAiringEpisode) {
-                            (media as any).nextAiringEpisode = anilistMatch.nextAiringEpisode;
-                        }
-                        if (anilistMatch.status) {
-                            media.status = anilistMatch.status;
-                        }
-                        if (anilistMatch.studios?.nodes?.length) {
-                            media.studios = anilistMatch.studios;
-                        }
-                        if (anilistMatch.episodes) {
-                            media.episodes = media.episodes || anilistMatch.episodes;
-                        }
-                    }
-                }
-            } catch {
-                // Keep base media if AniList match fails
-            }
-        }
-
         await cacheSet(cacheKey, media, ONE_DAY_SECONDS);
         return media;
+    },
+
+    async getMetadataFromAniListId(anilistId: number, format?: string) {
+        const tmdbId = await tmdbService.resolveTmdbIdFromAniZip(anilistId).catch(() => null);
+        return tmdbId ? this.getMetadata(tmdbId, format) : null;
+    },
+
+    async findMetadataByTitle(title: string, format?: string) {
+        const searchResult = await this.search({ query: title, page: 1, perPage: 10 });
+        const match = searchResult?.media?.find((item: any) => Number(item?.tmdbId || 0) > 0);
+        return match?.tmdbId ? this.getMetadata(Number(match.tmdbId), format) : null;
     },
 
     async search(filters: any) {
@@ -355,6 +333,29 @@ export const streambertAnimeService = {
 
     async seasonal(season: string, year: number, page: number, perPage: number) {
         return this.search({ page, perPage, season, seasonYear: year, sort: ['POPULARITY_DESC'] });
+    },
+
+    async genre(genre: string, page: number, perPage: number) {
+        const genreId = TMDB_ANIME_GENRES[String(genre || '').trim().toLowerCase()];
+        const params: Record<string, unknown> = {
+            with_genres: genreId && genreId !== 16 ? `16,${genreId}` : '16',
+            with_original_language: 'ja',
+            sort_by: 'popularity.desc',
+            page,
+            include_adult: false,
+        };
+        const payload = await tmdbService.get<any>('/discover/tv', params);
+        const media = (payload?.results || []).slice(0, perPage).map((item: any) => mapTmdbToAnilistMedia(item));
+        return {
+            pageInfo: {
+                total: payload?.total_results || media.length,
+                perPage,
+                currentPage: payload?.page || page,
+                lastPage: payload?.total_pages || page,
+                hasNextPage: (payload?.page || page) < (payload?.total_pages || page),
+            },
+            media,
+        };
     },
 };
 

@@ -1,6 +1,14 @@
 // In-app IndexedDB storage and downloader for offline anime playback
 import type { SubtitleTrack, StreamLink } from '../types/stream';
 import { API_BASE, API_ORIGIN } from '../config/api';
+import { selectEnglishSubtitleTracks } from '../utils/subtitles';
+import { cacheImage, getCachedImage, prefetchImages } from './offlineImageCache';
+import {
+    deleteNativeDownload,
+    downloadToNativeStorage,
+    isAndroidDownloadStorageAvailable,
+    setNativeDownloadPaused,
+} from '../platform/nativeDownloadStorage';
 
 export interface DownloadedEpisode {
     id: string; // Format: `${animeId}_ep_${episodeNumber}`
@@ -24,11 +32,28 @@ export interface ActiveDownloadProgress {
     animeId: string;
     episodeNumber: number;
     progress: number; // 0 to 100
-    status: 'downloading' | 'completed' | 'error' | 'saving';
+    status: 'queued' | 'downloading' | 'paused' | 'completed' | 'error' | 'saving';
     receivedBytes: number;
     totalBytes: number;
     error?: string;
 }
+
+type DownloadControl = {
+    paused: boolean;
+    waiters: Set<() => void>;
+    latestProgress: ActiveDownloadProgress;
+    onProgress?: (progress: ActiveDownloadProgress) => void;
+};
+
+const downloadControls = new Map<string, DownloadControl>();
+
+const getControlKey = (animeId: string | number, episodeNumber: string | number) =>
+    `${String(animeId).trim()}_ep_${Number(episodeNumber)}`;
+
+const waitUntilResumed = async (control?: DownloadControl) => {
+    if (!control?.paused) return;
+    await new Promise<void>((resolve) => control.waiters.add(resolve));
+};
 
 const DB_NAME = 'yorumi_downloads_v1';
 const STORE_NAME = 'episodes';
@@ -76,11 +101,15 @@ export function resolveHlsUrl(baseUrl: string, relativeOrAbsolute: string): stri
     const trimmed = String(relativeOrAbsolute || '').trim();
     if (!trimmed) return '';
 
+    if (trimmed.startsWith('/api/scraper/proxy?')) {
+        return `${API_ORIGIN}${trimmed}`;
+    }
+
     if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
         return trimmed;
     }
 
-    if (baseUrl.includes('/api/scraper/proxy?')) {
+    if (baseUrl.includes('/api/scraper/proxy?') || isLocalMediaProxyUrl(baseUrl)) {
         try {
             const parsed = new URL(baseUrl, typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3001');
             const targetUrl = parsed.searchParams.get('url');
@@ -113,14 +142,101 @@ function isLocalMediaProxyUrl(rawUrl: string): boolean {
     }
 }
 
+function getDownloadIdVariants(value: unknown): Set<string> {
+    const raw = String(value ?? '').trim().toLowerCase();
+    const variants = new Set<string>();
+    if (!raw) return variants;
+    variants.add(raw);
+    const stripped = raw
+        .replace(/^(al|anilist|mal|tmdb)-/i, '')
+        .replace(/^s:/i, '')
+        .replace(/^scraper-/i, '')
+        .trim();
+    if (stripped) variants.add(stripped);
+    if (/^\d+$/.test(stripped)) {
+        variants.add(`al-${stripped}`);
+        variants.add(`mal-${stripped}`);
+        variants.add(`tmdb-${stripped}`);
+    }
+    return variants;
+}
+
+export function isDownloadAnimeIdMatch(
+    downloadedAnimeId: unknown,
+    targetAnimeId: unknown,
+    anilistId?: unknown
+): boolean {
+    const dVariants = getDownloadIdVariants(downloadedAnimeId);
+    if (dVariants.size === 0) return false;
+    const tVariants = new Set<string>();
+    getDownloadIdVariants(targetAnimeId).forEach((v) => tVariants.add(v));
+    getDownloadIdVariants(anilistId).forEach((v) => tVariants.add(v));
+    for (const v of dVariants) {
+        if (tVariants.has(v)) return true;
+    }
+    return false;
+}
+
+function hasUsableDownloadedMedia(downloaded: DownloadedEpisode): boolean {
+    if (downloaded.videoBlob) return downloaded.videoBlob.size > 0;
+    if (!downloaded.filePath) return false;
+    if (/\.tmp(?:\.ts)?$/i.test(downloaded.filePath)) {
+        downloaded.filePath = downloaded.filePath.replace(/\.tmp(?:\.ts)?$/i, '.mp4');
+    }
+    return downloaded.fileSize === undefined || downloaded.fileSize > 0;
+}
+
+async function persistSubtitleTracks(subtitles?: SubtitleTrack[]): Promise<SubtitleTrack[] | undefined> {
+    const englishSubtitles = selectEnglishSubtitleTracks(subtitles);
+    if (!englishSubtitles.length) return undefined;
+    return Promise.all(englishSubtitles.map(async (subtitle) => {
+        if (/^(data:|blob:)/i.test(subtitle.url)) return subtitle;
+        try {
+            const response = await fetch(getFetchableUrl(subtitle.url));
+            if (!response.ok) return subtitle;
+            let text = await response.text();
+            if (!/^WEBVTT(?:\s|$)/i.test(text)) {
+                text = `WEBVTT\n\n${text.replace(/(\d{2}:\d{2}:\d{2}),([0-9]{3})/g, '$1.$2')}`;
+            }
+            return { ...subtitle, url: `data:text/vtt;charset=utf-8,${encodeURIComponent(text)}` };
+        } catch (error) {
+            console.warn('Failed to persist subtitle for offline playback:', error);
+            return subtitle;
+        }
+    }));
+}
+
+function createOfflineHlsPlaylist(mediaUrl: string, fileSize: number, duration: number): string {
+    const packetSize = 188;
+    const preferredChunkSize = 8 * 1024 * 1024;
+    const chunkSize = Math.floor(preferredChunkSize / packetSize) * packetSize;
+    const safeFileSize = Math.max(1, fileSize);
+    const safeDuration = Math.max(1, duration);
+    const segmentDuration = safeDuration * (chunkSize / safeFileSize);
+    const lines = [
+        '#EXTM3U',
+        '#EXT-X-VERSION:4',
+        `#EXT-X-TARGETDURATION:${Math.max(1, Math.ceil(segmentDuration))}`,
+        '#EXT-X-MEDIA-SEQUENCE:0',
+        '#EXT-X-PLAYLIST-TYPE:VOD',
+    ];
+
+    for (let offset = 0; offset < safeFileSize; offset += chunkSize) {
+        const size = Math.min(chunkSize, safeFileSize - offset);
+        const currentDuration = safeDuration * (size / safeFileSize);
+        lines.push(`#EXTINF:${currentDuration.toFixed(3)},`);
+        lines.push(`#EXT-X-BYTERANGE:${size}@${offset}`);
+        lines.push(mediaUrl);
+    }
+    lines.push('#EXT-X-ENDLIST');
+    return lines.join('\n');
+}
+
 function getFetchableUrl(rawUrl: string): string {
     if (!rawUrl) return '';
     if (rawUrl.startsWith('/')) {
         return `${API_ORIGIN}${rawUrl}`;
     }
-    // Android playback URLs are already proxied by the on-device native
-    // server. Sending these through the backend makes 127.0.0.1 point at the
-    // PC/server instead of the phone and fails with ECONNREFUSED.
     if (isLocalMediaProxyUrl(rawUrl)) {
         return rawUrl;
     }
@@ -144,7 +260,8 @@ async function isMpegTsBlob(blob: Blob): Promise<boolean> {
 
 async function downloadHlsStream(
     playlistUrl: string,
-    onProgress?: (receivedBytes: number, progress: number) => void
+    onProgress?: (receivedBytes: number, progress: number) => void,
+    control?: DownloadControl
 ): Promise<{ blob: Blob; totalBytes: number; duration: number }> {
     let currentUrl = playlistUrl;
     let text = '';
@@ -152,13 +269,13 @@ async function downloadHlsStream(
     let maxRedirects = 5;
 
     while (maxRedirects-- > 0) {
+        await waitUntilResumed(control);
         const fetchUrl = getFetchableUrl(currentUrl);
         const res = await fetch(fetchUrl);
         if (!res.ok) throw new Error(`Failed to fetch HLS playlist (${res.status})`);
         text = await res.text();
         lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
 
-        // Check if master playlist containing variant URLs
         if (text.includes('#EXT-X-STREAM-INF')) {
             let bestVariantUrl = '';
             let bestBandwidth = -1;
@@ -213,9 +330,11 @@ async function downloadHlsStream(
 
     const BATCH_SIZE = 4;
     for (let i = 0; i < totalSegments; i += BATCH_SIZE) {
+        await waitUntilResumed(control);
         const batchIndices = Array.from({ length: Math.min(BATCH_SIZE, totalSegments - i) }, (_, k) => i + k);
         await Promise.all(
             batchIndices.map(async (idx) => {
+                await waitUntilResumed(control);
                 const url = segmentUrls[idx];
                 const segFetchUrl = getFetchableUrl(url);
                 const sRes = await fetch(segFetchUrl);
@@ -254,6 +373,25 @@ export function isDownloadTitleMatch(t1?: string, t2?: string): boolean {
 }
 
 export const downloadService = {
+    setDownloadPaused(animeId: string | number, episodeNumber: string | number, paused: boolean): boolean {
+        const operationId = getControlKey(animeId, episodeNumber);
+        void setNativeDownloadPaused(operationId, paused);
+        const control = downloadControls.get(operationId);
+        if (!control) return false;
+        control.paused = paused;
+        const nextProgress: ActiveDownloadProgress = {
+            ...control.latestProgress,
+            status: paused ? 'paused' : 'downloading',
+        };
+        control.latestProgress = nextProgress;
+        control.onProgress?.(nextProgress);
+        if (!paused) {
+            control.waiters.forEach((resolve) => resolve());
+            control.waiters.clear();
+        }
+        return true;
+    },
+
     getEpisodeKey(animeId: string, episodeNumber: number, _title?: string): string {
         const strId = String(animeId || '').trim();
         return `${strId}_ep_${episodeNumber}`;
@@ -269,34 +407,54 @@ export const downloadService = {
     },
 
     async getDownloads(): Promise<DownloadedEpisode[]> {
+        let items: DownloadedEpisode[] = [];
         const isElectron = typeof window !== 'undefined' && Boolean(window.electronAPI?.getLocalDownloads);
         if (isElectron && window.electronAPI) {
             try {
-                const items = await window.electronAPI.getLocalDownloads();
-                return items || [];
+                const local = await window.electronAPI.getLocalDownloads();
+                items = (local || []).filter(hasUsableDownloadedMedia);
             } catch (error) {
                 console.error('Failed to get Electron downloads:', error);
-                return [];
             }
         }
 
         try {
             const db = await getDB();
-            return new Promise((resolve, reject) => {
+            const idbItems = await new Promise<DownloadedEpisode[]>((resolve, reject) => {
                 const tx = db.transaction(STORE_NAME, 'readonly');
                 const store = tx.objectStore(STORE_NAME);
                 const req = store.getAll();
-                req.onsuccess = () => {
-                    const results = (req.result || []) as DownloadedEpisode[];
-                    results.sort((a, b) => b.downloadedAt - a.downloadedAt);
-                    resolve(results);
-                };
+                req.onsuccess = () => resolve((req.result || []) as DownloadedEpisode[]);
                 req.onerror = () => reject(req.error);
             });
+            if (idbItems && idbItems.length > 0) {
+                const existingIds = new Set(items.map((i) => i.id));
+                idbItems.forEach((item) => {
+                    if (!existingIds.has(item.id) && hasUsableDownloadedMedia(item)) {
+                        items.push(item);
+                    }
+                });
+            }
         } catch (error) {
-            console.error('Failed to get downloads:', error);
-            return [];
+            console.error('Failed to get IndexedDB downloads:', error);
         }
+
+        items.sort((a, b) => b.downloadedAt - a.downloadedAt);
+
+        // Preload/cache offline posters in background when online
+        if (typeof navigator !== 'undefined' && navigator.onLine) {
+            prefetchImages(items.map((i) => i.animeImage)).catch(() => undefined);
+        }
+
+        // Return items with cached offline poster URLs when available
+        const withCachedImages = await Promise.all(
+            items.map(async (item) => {
+                const cached = await getCachedImage(item.animeImage).catch(() => null);
+                return cached ? { ...item, animeImage: cached } : item;
+            })
+        );
+
+        return withCachedImages;
     },
 
     async getDownload(
@@ -317,7 +475,9 @@ export const downloadService = {
                     anilistId,
                     alternateEpNumbers,
                 });
-                if (match) return match;
+                if (match && hasUsableDownloadedMedia(match)) {
+                    return match;
+                }
             } catch (error) {
                 console.error('Failed to get Electron download:', error);
             }
@@ -348,11 +508,9 @@ export const downloadService = {
                 const dAnimeId = String(d.animeId || '').trim().toLowerCase();
                 const dKey = String(d.id || '').toLowerCase();
 
-                const idMatch = Boolean(targetId && (dAnimeId === targetId || dAnimeId.includes(targetId) || targetId.includes(dAnimeId) || dKey.startsWith(`${targetId}_ep_`)));
+                const idMatch = Boolean(targetId && (isDownloadAnimeIdMatch(dAnimeId, targetId, anilistStr) || dKey.startsWith(`${targetId}_ep_`)));
                 const anilistMatch = Boolean(anilistStr && (dAnimeId === anilistStr || dKey.startsWith(`${anilistStr}_ep_`)));
-                const isNum = (s: string) => /^\d+$/.test(s.trim());
-                const isDifferentSeries = Boolean(isNum(dAnimeId) && isNum(anilistStr || targetId) && dAnimeId !== (anilistStr || targetId));
-                const titleMatch = Boolean(title && !isDifferentSeries && isDownloadTitleMatch(d.animeTitle, title));
+                const titleMatch = Boolean(title && isDownloadTitleMatch(d.animeTitle, title));
 
                 return idMatch || anilistMatch || titleMatch;
             });
@@ -369,19 +527,19 @@ export const downloadService = {
         let isHls = false;
 
         if (downloaded?.filePath) {
-            const rawFileUrl = `${API_BASE}/scraper/local-file?path=${encodeURIComponent(downloaded.filePath)}`;
-            const isTs = downloaded.isHls !== undefined ? downloaded.isHls : downloaded.filePath.endsWith('.ts');
+            let actualPath = downloaded.filePath;
+            if (/\.tmp(?:\.ts)?$/i.test(actualPath)) {
+                actualPath = actualPath.replace(/\.tmp(?:\.ts)?$/i, '.mp4');
+            }
+            const rawFileUrl = isAndroidDownloadStorageAvailable()
+                ? `http://127.0.0.1:18765/file?path=${encodeURIComponent(actualPath)}`
+                : `${API_BASE}/scraper/local-file?path=${encodeURIComponent(actualPath)}`;
+            const isTs = downloaded.isHls !== undefined ? downloaded.isHls : actualPath.endsWith('.ts');
 
             if (isTs) {
                 isHls = true;
                 const duration = downloaded.duration || (downloaded.fileSize ? Math.max(300, Math.round((downloaded.fileSize * 8) / 1_600_000)) : 1400);
-                const playlistText = `#EXTM3U
-#EXT-X-VERSION:3
-#EXT-X-TARGETDURATION:${Math.ceil(duration)}
-#EXT-X-MEDIA-SEQUENCE:0
-#EXTINF:${duration.toFixed(3)},
-${rawFileUrl}
-#EXT-X-ENDLIST`;
+                const playlistText = createOfflineHlsPlaylist(rawFileUrl, downloaded.fileSize || 1, duration);
                 const playlistBlob = new Blob([playlistText], { type: 'application/x-mpegurl' });
                 streamUrl = URL.createObjectURL(playlistBlob);
             } else {
@@ -391,20 +549,12 @@ ${rawFileUrl}
         } else if (downloaded?.videoBlob && downloaded.videoBlob.size > 0) {
             try {
                 const rawBlobUrl = URL.createObjectURL(downloaded.videoBlob);
-                const isTs = downloaded.isHls !== undefined
-                    ? downloaded.isHls
-                    : await isMpegTsBlob(downloaded.videoBlob);
+                const isTs = (await isMpegTsBlob(downloaded.videoBlob)) || Boolean(downloaded.isHls);
 
                 if (isTs) {
                     isHls = true;
                     const duration = downloaded.duration || (downloaded.fileSize ? Math.max(300, Math.round((downloaded.fileSize * 8) / 1_600_000)) : 1400);
-                    const playlistText = `#EXTM3U
-#EXT-X-VERSION:3
-#EXT-X-TARGETDURATION:${Math.ceil(duration)}
-#EXT-X-MEDIA-SEQUENCE:0
-#EXTINF:${duration.toFixed(3)},
-${rawBlobUrl}
-#EXT-X-ENDLIST`;
+                    const playlistText = createOfflineHlsPlaylist(rawBlobUrl, downloaded.videoBlob.size, duration);
                     const playlistBlob = new Blob([playlistText], { type: 'application/x-mpegurl' });
                     streamUrl = URL.createObjectURL(playlistBlob);
                 } else {
@@ -422,59 +572,66 @@ ${rawBlobUrl}
             url: streamUrl,
             directUrl: streamUrl,
             isHls,
-            isEmbed: false,
+            subtitles: downloaded.subtitles || [],
+            duration: downloaded.duration || (downloaded.fileSize ? Math.max(300, Math.round((downloaded.fileSize * 8) / 1_600_000)) : undefined),
             provider: 'Offline Storage',
-            server: 'hianime',
-            subtitles: downloaded.subtitles,
-            duration: downloaded.duration,
+            server: 'offline',
         };
     },
 
-    async saveDownload(item: DownloadedEpisode): Promise<void> {
+    async isEpisodeDownloaded(animeId: string, episodeNumber: number, title?: string, anilistId?: number | string): Promise<boolean> {
+        const ep = await this.getDownload(animeId, episodeNumber, title, anilistId);
+        return Boolean(ep && ((ep.filePath && (ep.fileSize || 0) > 0) || (ep.videoBlob && ep.videoBlob.size > 0)));
+    },
+
+    async saveDownload(episode: DownloadedEpisode): Promise<void> {
         const db = await getDB();
         return new Promise((resolve, reject) => {
             const tx = db.transaction(STORE_NAME, 'readwrite');
             const store = tx.objectStore(STORE_NAME);
-            const req = store.put(item);
-            req.onsuccess = () => {
-                window.dispatchEvent(new CustomEvent('yorumi-downloads-updated'));
-                resolve();
-            };
+            const req = store.put(episode);
+            req.onsuccess = () => resolve();
             req.onerror = () => reject(req.error);
         });
     },
 
-    async deleteDownload(animeId: string, episodeNumber: number): Promise<void> {
+    async deleteDownload(animeId: string, episodeNumber: number, title?: string, anilistId?: number | string): Promise<boolean> {
         const isElectron = typeof window !== 'undefined' && Boolean(window.electronAPI?.deleteLocalDownload);
         if (isElectron && window.electronAPI) {
             try {
-                await window.electronAPI.deleteLocalDownload({ animeId, episodeNumber });
-                window.dispatchEvent(new CustomEvent('yorumi-downloads-updated'));
-                return;
+                await window.electronAPI.deleteLocalDownload({
+                    animeId: String(animeId),
+                    episodeNumber: Number(episodeNumber),
+                });
             } catch (error) {
                 console.error('Failed to delete Electron download:', error);
             }
         }
 
-        const key = this.getEpisodeKey(animeId, episodeNumber);
-        const db = await getDB();
-        return new Promise((resolve, reject) => {
-            const tx = db.transaction(STORE_NAME, 'readwrite');
-            const store = tx.objectStore(STORE_NAME);
-            const req = store.delete(key);
-            req.onsuccess = () => {
-                window.dispatchEvent(new CustomEvent('yorumi-downloads-updated'));
-                resolve();
-            };
-            req.onerror = () => reject(req.error);
-        });
+        try {
+            const db = await getDB();
+            const target = await this.getDownload(animeId, episodeNumber, title, anilistId);
+            const keyToDelete = target ? target.id : this.getEpisodeKey(animeId, episodeNumber);
+            if (target?.filePath) await deleteNativeDownload(target.filePath);
+
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction(STORE_NAME, 'readwrite');
+                const store = tx.objectStore(STORE_NAME);
+                const req = store.delete(keyToDelete);
+                req.onsuccess = () => resolve(true);
+                req.onerror = () => reject(req.error);
+            });
+        } catch (error) {
+            console.error('Failed to delete download:', error);
+            return false;
+        }
     },
 
-    async openDownloadsFolder(category?: 'Anime' | 'Manga' | 'LightNovels'): Promise<boolean> {
-        const isElectron = typeof window !== 'undefined' && Boolean(window.electronAPI?.openDownloadsFolder);
-        if (isElectron && window.electronAPI) {
+    openDownloadsFolder(category: 'Anime' | 'Manga' | 'LightNovels' = 'Anime'): boolean {
+        if (typeof window !== 'undefined' && window.electronAPI?.openDownloadsFolder) {
             try {
-                return await window.electronAPI.openDownloadsFolder(category);
+                window.electronAPI.openDownloadsFolder(category);
+                return true;
             } catch (error) {
                 console.error('Failed to open downloads folder:', error);
             }
@@ -497,6 +654,13 @@ ${rawBlobUrl}
         },
         onProgress?: (progress: ActiveDownloadProgress) => void
     ): Promise<DownloadedEpisode> {
+        // Pre-cache anime poster for offline mode
+        if (params.animeImage) {
+            cacheImage(params.animeImage).catch(() => undefined);
+        }
+
+        const offlineSubtitles = await persistSubtitleTracks(params.subtitles);
+        const downloadableParams = { ...params, subtitles: offlineSubtitles };
         const isElectron = typeof window !== 'undefined' && Boolean(window.electronAPI?.downloadEpisodeChunked);
         if (isElectron && window.electronAPI) {
             let unsubscribe: ((event: unknown, progress: ActiveDownloadProgress) => void) | null = null;
@@ -506,13 +670,17 @@ ${rawBlobUrl}
                     const matchesEp = Number(p.episodeNumber) === Number(params.episodeNumber);
                     const pId = String(p.animeId || '').trim().toLowerCase();
                     const targetId = String(params.animeId || '').trim().toLowerCase();
-                    if (matchesEp && (pId === targetId || !pId || !targetId || pId.includes(targetId) || targetId.includes(pId))) {
+                    if (matchesEp && (!pId || !targetId || isDownloadAnimeIdMatch(pId, targetId))) {
                         onProgress(p);
                     }
                 });
             }
             try {
-                const downloaded = await window.electronAPI.downloadEpisodeChunked(params);
+                const downloaded = await window.electronAPI.downloadEpisodeChunked(downloadableParams);
+                if (!downloaded || !downloaded.id || (!downloaded.filePath && !downloaded.videoBlob)) {
+                    const message = (downloaded as DownloadedEpisode & { error?: string } | undefined)?.error;
+                    throw new Error(message || 'The desktop downloader did not create a media file');
+                }
                 window.dispatchEvent(new CustomEvent('yorumi-downloads-updated'));
                 return downloaded;
             } finally {
@@ -522,8 +690,99 @@ ${rawBlobUrl}
             }
         }
 
-        const { animeId, animeTitle, animeImage, episodeNumber, episodeTitle, streamUrl, quality, audio, subtitles } = params;
+        const { animeId, animeTitle, animeImage, episodeNumber, episodeTitle, streamUrl, quality, audio } = downloadableParams;
         const key = this.getEpisodeKey(animeId, episodeNumber);
+        const control: DownloadControl = {
+            paused: false,
+            waiters: new Set(),
+            latestProgress: {
+                animeId,
+                episodeNumber,
+                progress: 0,
+                status: 'downloading',
+                receivedBytes: 0,
+                totalBytes: 0,
+            },
+            onProgress,
+        };
+        downloadControls.set(key, control);
+
+        const reportProgress = (progress: ActiveDownloadProgress) => {
+            control.latestProgress = progress;
+            onProgress?.(progress);
+        };
+
+        if (isAndroidDownloadStorageAvailable()) {
+            try {
+                const isHls = params.isHls === true || streamUrl.includes('.m3u8') || streamUrl.includes('m3u8');
+                const extension = isHls ? 'ts' : 'mp4';
+                const nativeResult = await downloadToNativeStorage({
+                    operationId: key,
+                    url: streamUrl,
+                    relativePath: `Anime/${animeId}/${animeTitle} - Episode ${episodeNumber}.${extension}`,
+                    hls: isHls,
+                    maxHeight: Number(quality?.match(/(\d{3,4})p?/i)?.[1]) || 720,
+                }, (progress) => {
+                    reportProgress({
+                        animeId,
+                        episodeNumber,
+                        progress: progress.progress,
+                        status: 'downloading',
+                        receivedBytes: progress.receivedBytes,
+                        totalBytes: progress.totalBytes,
+                    });
+                });
+
+                reportProgress({
+                    animeId,
+                    episodeNumber,
+                    progress: 99,
+                    status: 'saving',
+                    receivedBytes: nativeResult.fileSize,
+                    totalBytes: nativeResult.fileSize,
+                });
+                const downloadedItem: DownloadedEpisode = {
+                    id: key,
+                    animeId,
+                    animeTitle,
+                    animeImage,
+                    episodeNumber,
+                    episodeTitle,
+                    quality: quality || 'HD',
+                    audio: audio || 'sub',
+                    fileSize: nativeResult.fileSize,
+                    downloadedAt: Date.now(),
+                    filePath: nativeResult.filePath,
+                    subtitles: offlineSubtitles,
+                    isHls,
+                    duration: nativeResult.duration,
+                };
+                await this.saveDownload(downloadedItem);
+                reportProgress({
+                    animeId,
+                    episodeNumber,
+                    progress: 100,
+                    status: 'completed',
+                    receivedBytes: nativeResult.fileSize,
+                    totalBytes: nativeResult.fileSize,
+                });
+                return downloadedItem;
+            } catch (error) {
+                const message = error instanceof Error ? error.message : 'Native download failed';
+                reportProgress({
+                    animeId,
+                    episodeNumber,
+                    progress: 0,
+                    status: 'error',
+                    receivedBytes: 0,
+                    totalBytes: 0,
+                    error: message,
+                });
+                throw error;
+            } finally {
+                downloadControls.delete(key);
+            }
+        }
 
         try {
             let videoBlob: Blob;
@@ -534,7 +793,7 @@ ${rawBlobUrl}
 
             if (isHls) {
                 const result = await downloadHlsStream(streamUrl, (bytes, progress) => {
-                    onProgress?.({
+                    reportProgress({
                         animeId,
                         episodeNumber,
                         progress,
@@ -542,7 +801,7 @@ ${rawBlobUrl}
                         receivedBytes: bytes,
                         totalBytes: bytes,
                     });
-                });
+                }, control);
                 videoBlob = result.blob;
                 finalSize = result.totalBytes;
                 hlsDuration = result.duration;
@@ -561,6 +820,7 @@ ${rawBlobUrl}
 
                 if (reader) {
                     while (true) {
+                        await waitUntilResumed(control);
                         const { done, value } = await reader.read();
                         if (done) break;
 
@@ -571,7 +831,7 @@ ${rawBlobUrl}
                                 ? Math.min(99, Math.round((receivedBytes / totalBytes) * 100))
                                 : Math.min(99, Math.round(receivedBytes / (1024 * 1024 * 300) * 100));
 
-                            onProgress?.({
+                            reportProgress({
                                 animeId,
                                 episodeNumber,
                                 progress,
@@ -592,7 +852,7 @@ ${rawBlobUrl}
                 finalSize = videoBlob.size;
             }
 
-            onProgress?.({
+            reportProgress({
                 animeId,
                 episodeNumber,
                 progress: 99,
@@ -600,31 +860,6 @@ ${rawBlobUrl}
                 receivedBytes: finalSize,
                 totalBytes: finalSize,
             });
-
-            // Pre-fetch subtitles for offline availability if present
-            let offlineSubtitles: SubtitleTrack[] | undefined = subtitles;
-            if (subtitles && subtitles.length > 0) {
-                try {
-                    offlineSubtitles = await Promise.all(
-                        subtitles.map(async (sub) => {
-                            try {
-                                const subUrl = getFetchableUrl(sub.url);
-                                const subRes = await fetch(subUrl);
-                                if (subRes.ok) {
-                                    const subText = await subRes.text();
-                                    const subBlob = new Blob([subText], { type: 'text/vtt' });
-                                    return { ...sub, url: URL.createObjectURL(subBlob) };
-                                }
-                            } catch (e) {
-                                console.warn('Failed to pre-fetch subtitle for offline download:', e);
-                            }
-                            return sub;
-                        })
-                    );
-                } catch {
-                    offlineSubtitles = subtitles;
-                }
-            }
 
             const downloadedItem: DownloadedEpisode = {
                 id: key,
@@ -645,7 +880,7 @@ ${rawBlobUrl}
 
             await this.saveDownload(downloadedItem);
 
-            onProgress?.({
+            reportProgress({
                 animeId,
                 episodeNumber,
                 progress: 100,
@@ -657,7 +892,7 @@ ${rawBlobUrl}
             return downloadedItem;
         } catch (error: unknown) {
             const errMessage = error instanceof Error ? error.message : 'Download failed';
-            onProgress?.({
+            reportProgress({
                 animeId,
                 episodeNumber,
                 progress: 0,
@@ -667,6 +902,8 @@ ${rawBlobUrl}
                 error: errMessage,
             });
             throw error;
+        } finally {
+            downloadControls.delete(key);
         }
     }
 };

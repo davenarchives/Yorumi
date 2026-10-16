@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import VideoPlayer, { type VideoPlayerProps } from '../components/VideoPlayer';
 import { isNativeMobile } from '../../../platform/runtime';
 import { setSystemPictureInPictureEnabled } from '../../../platform/immersiveMode';
+import { arePlayerAnimeIdsEquivalent } from '../../../utils/playerIdentity';
 
 type PersistentPlayerContextValue = {
     registerPlayer: (props: VideoPlayerProps, watchUrl: string, watchState?: any) => void;
@@ -167,32 +168,21 @@ export function PersistentPlayerProvider({ children }: { children: ReactNode }) 
             const currentEpNum = Number(currentProps.episodeNumber);
             const incomingEpNum = Number(props.episodeNumber);
 
-            const isDifferentNumericId = (idA?: string, idB?: string): boolean => {
-                const a = String(idA || '').trim();
-                const b = String(idB || '').trim();
-                if (!a || !b) return false;
-                return /^\d+$/.test(a) && /^\d+$/.test(b) && a !== b;
-            };
-
             const cleanA = (currentProps.animeTitle || '').trim().toLowerCase();
             const cleanB = (props.animeTitle || '').trim().toLowerCase();
-            const titleMatches = Boolean(cleanA && cleanB && (
-                cleanA === cleanB ||
-                cleanA.includes(cleanB) ||
-                cleanB.includes(cleanA)
-            ));
+            const hasBothAnimeIds = Boolean(currentProps.animeId && props.animeId);
+            const titleMatches = Boolean(!hasBothAnimeIds && cleanA && cleanB && cleanA === cleanB);
 
             const isSameAnime = Boolean(
-                (currentProps.animeId && props.animeId && (
-                    currentProps.animeId === props.animeId ||
-                    !isDifferentNumericId(currentProps.animeId, props.animeId)
-                )) ||
+                arePlayerAnimeIdsEquivalent(currentProps.animeId, props.animeId) ||
                 titleMatches
             );
 
             const isSameEpisode = Boolean(
-                (currentProps.episodeSession && props.episodeSession && currentProps.episodeSession === props.episodeSession) ||
-                (isSameAnime && Number.isFinite(currentEpNum) && Number.isFinite(incomingEpNum) && currentEpNum === incomingEpNum)
+                isSameAnime && (
+                    (currentProps.episodeSession && props.episodeSession && currentProps.episodeSession === props.episodeSession) ||
+                    (Number.isFinite(currentEpNum) && Number.isFinite(incomingEpNum) && currentEpNum === incomingEpNum)
+                )
             );
 
             if (!isSameEpisode) {
@@ -319,8 +309,8 @@ export function PersistentPlayerProvider({ children }: { children: ReactNode }) 
             {children}
             {shouldRenderPlayer && effectivePlayerProps && containerStyle && createPortal(
                 <div
-                    className={`persistent-player-surface shadow-2xl shadow-black/80 bg-black transition-[border-radius] duration-200 ease-out ${
-                        isInlineMode ? 'absolute z-40' : 'fixed cursor-grab active:cursor-grabbing z-[2147483646]'
+                    className={`persistent-player-surface bg-black transition-[border-radius] duration-200 ease-out ${
+                        isInlineMode ? 'absolute z-40 shadow-none' : 'fixed cursor-grab active:cursor-grabbing z-[2147483646] shadow-2xl shadow-black/80'
                     }`}
                     style={containerStyle}
                     onPointerDown={!isInlineMode ? handleMiniPointerDown : undefined}

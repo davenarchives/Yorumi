@@ -1,3 +1,7 @@
+import type { ContentAvailability, ExternalIds, MappingStatus } from '../utils/contentIdentity';
+
+export type NovelEditionKind = 'light-novel' | 'web-novel' | 'unknown';
+
 export interface LightNovel {
     [key: string]: any;
     id: number | string;
@@ -26,6 +30,12 @@ export interface LightNovel {
     source?: string;
     scraper_id?: string;
     bannerImage?: string;
+    yorumiId?: string;
+    externalIds?: ExternalIds;
+    mappingStatus?: MappingStatus;
+    readingProvider?: string;
+    editionKind?: NovelEditionKind;
+    editionId?: string;
     relations?: {
         edges: {
             relationType: string;
@@ -57,6 +67,11 @@ export interface LNChapter {
     title: string;
     url: string;
     releaseDate?: string;
+    provider?: string;
+    providerId?: string;
+    editionId?: string;
+    volume?: string;
+    availability?: ContentAvailability;
 }
 
 export interface LNChapterContent {
@@ -67,6 +82,10 @@ export interface LNChapterContent {
     content: string;
     prevChapterId?: string | null;
     nextChapterId?: string | null;
+    provider?: string;
+    providerId?: string;
+    editionId?: string;
+    availability?: ContentAvailability;
 }
 
 export interface LNReaderSettings {

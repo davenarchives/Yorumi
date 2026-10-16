@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { mangaService } from '../../../services/mangaService';
 import type { Manga } from '../../../types/manga';
 import MangaCard from './MangaCard';
+import { getMangaDetailsRouteId } from '../../../utils/mangaNavigation';
 
 interface AllTimePopularMangaProps {
     onMangaClick: (mangaId: string, autoRead?: boolean, manga?: Manga) => void;
@@ -18,7 +19,7 @@ const AllTimePopularManga: React.FC<AllTimePopularMangaProps> = ({ onMangaClick 
         const fetchManga = async () => {
             try {
                 // Use getPopularManga for all-time popularity (POPULARITY_DESC)
-                const { data } = await mangaService.getPopularManga(1);
+                const data = (await mangaService.getHomeSections()).popular;
                 if (data) {
                     const visible = data.slice(0, 12);
                     setMangaList(visible);
@@ -78,7 +79,7 @@ const AllTimePopularManga: React.FC<AllTimePopularMangaProps> = ({ onMangaClick 
                     >
                         <MangaCard
                             manga={manga as unknown as Manga}
-                            onClick={(mangaObj) => onMangaClick((mangaObj.scraper_id || mangaObj.id || mangaObj.mal_id).toString(), false, mangaObj)}
+                            onClick={(mangaObj) => onMangaClick(getMangaDetailsRouteId(mangaObj), false, mangaObj)}
                             disableTilt
                         />
                     </div>

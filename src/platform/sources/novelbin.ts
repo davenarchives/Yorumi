@@ -107,18 +107,28 @@ export const novelBinSource: LocalSourceAdapter<NovelBinDetails, LNChapterConten
     async getDetails(input) {
         const slug = normalizeSlug(input).split('/chapter-')[0];
         const url = `${BASE_URL}/novel-bin/${slug}/`;
-        const html = await getText(url, { Referer: BASE_URL });
+        const [htmlResult, chapterListResult] = await Promise.allSettled([
+            getText(url, { Referer: BASE_URL }),
+            getJson<{ chapters?: Array<{ index?: number; title?: string; url?: string }> }>(
+                `${BASE_URL}/ajax/chapter-list?slug=${encodeURIComponent(slug)}`,
+                { Referer: url },
+            ),
+        ]);
+        if (htmlResult.status === 'rejected') throw htmlResult.reason;
+        const html = htmlResult.value;
         const document = parseHtml(html);
         const schema = [...document.querySelectorAll<HTMLScriptElement>('script[type="application/ld+json"]')]
             .map((script) => {
                 try { return JSON.parse(script.textContent || ''); } catch { return null; }
             })
             .find((value) => value?.['@type'] === 'Book');
-        const chapterResponse = await getJson<{
-            chapters?: Array<{ index?: number; title?: string; url?: string }>;
-        }>(`${BASE_URL}/ajax/chapter-list?slug=${encodeURIComponent(slug)}`, { Referer: url });
-        const chapters: LNChapter[] = Array.isArray(chapterResponse?.chapters)
-            ? chapterResponse.chapters.map((chapter: { index?: number; title?: string; url?: string }, index: number) => {
+        const chapterResponse = chapterListResult.status === 'fulfilled' ? chapterListResult.value : null;
+        if (chapterListResult.status === 'rejected') {
+            console.warn('[NovelBin] Full chapter list failed; using the inline chapter list.', chapterListResult.reason);
+        }
+
+        let chapters: LNChapter[] = Array.isArray(chapterResponse?.chapters)
+            ? chapterResponse.chapters.map((chapter, index: number) => {
                 const chapterSlug = normalizeSlug(chapter.url || '');
                 return {
                     id: `nb:${chapterSlug}`,
@@ -126,8 +136,22 @@ export const novelBinSource: LocalSourceAdapter<NovelBinDetails, LNChapterConten
                     title: chapter.title || `Chapter ${index + 1}`,
                     url: absoluteUrl(chapter.url || ''),
                 };
-            }).filter((chapter: LNChapter) => Boolean(chapter.url))
+            }).filter((chapter) => chapter.id.startsWith(`nb:${slug}/chapter-`) && Boolean(chapter.url))
             : [];
+
+        if (chapters.length === 0) {
+            chapters = [...document.querySelectorAll<HTMLAnchorElement>('ol.almanac-chapter-list a[href*="/chapter-"], #list-chapter a[href*="/chapter-"], .chapter-list a[href*="/chapter-"]')]
+                .map((link, index) => {
+                    const chapterSlug = normalizeSlug(link.getAttribute('href') || '');
+                    return {
+                        id: `nb:${chapterSlug}`,
+                        number: index + 1,
+                        title: text(link) || `Chapter ${index + 1}`,
+                        url: absoluteUrl(link.getAttribute('href') || ''),
+                    };
+                })
+                .filter((chapter) => chapter.id.startsWith(`nb:${slug}/chapter-`) && Boolean(chapter.url));
+        }
 
         return {
             id: `nb:${slug}`,
@@ -150,12 +174,17 @@ export const novelBinSource: LocalSourceAdapter<NovelBinDetails, LNChapterConten
         const prevHref = document.querySelector<HTMLAnchorElement>('#prev_chap, a.btn-prev, a[class*="prev"]')?.getAttribute('href');
         const nextHref = document.querySelector<HTMLAnchorElement>('#next_chap, a.btn-next, a[class*="next"]')?.getAttribute('href');
         const numberMatch = slug.match(/chapter-([\d.]+)/i);
+        const content = cleanChapterContent(document.querySelector('#chr-content, .chapter-content, article#chapter, .chr-c, .reading-content, #chapter-content'));
+        const readableText = text(parseHtml(content).body);
+        if (!readableText || /429 Too Many Requests|Just a moment|Access denied/i.test(readableText)) {
+            throw new Error(`NovelBin returned no readable chapter content for ${slug}`);
+        }
         return {
             id: `nb:${slug}`,
             novelId: `nb:${slug.split('/chapter-')[0]}`,
-            title: text([...document.querySelectorAll('h1, h2, .chr-title, .chapter-title')].find((element) => /chapter/i.test(text(element))) || null) || 'Chapter',
+            title: text(document.querySelector('#chapter h1, main h1, .chr-title, .chapter-title, h1')) || 'Chapter',
             chapterNumber: numberMatch ? Number.parseFloat(numberMatch[1]) : 1,
-            content: cleanChapterContent(document.querySelector('#chr-content, .chapter-content, article#chapter, .chr-c, .reading-content, #chapter-content')),
+            content,
             prevChapterId: prevHref && !prevHref.includes('javascript:') ? `nb:${normalizeSlug(prevHref)}` : null,
             nextChapterId: nextHref && !nextHref.includes('javascript:') ? `nb:${normalizeSlug(nextHref)}` : null,
         };

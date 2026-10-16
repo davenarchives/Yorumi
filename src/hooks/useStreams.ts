@@ -4,7 +4,7 @@ import type { Episode } from '../types/anime';
 import type { StreamLink } from '../types/stream';
 import { animeService } from '../services/animeService';
 import { getStreamData, getMappedQuality } from '../utils/streamUtils';
-import { downloadService, isDownloadTitleMatch } from '../services/downloadService';
+import { downloadService, isDownloadAnimeIdMatch, isDownloadTitleMatch } from '../services/downloadService';
 import { isNativeMobile } from '../platform/runtime';
 
 const getSourceKey = (stream: StreamLink) => {
@@ -94,20 +94,19 @@ export function useStreams(scraperSession: string | null, animeTitle?: string, a
     // Must be consistent across ensureStreamDataForServer, loadStream, bustEpisodeCache, handleServerChange.
     const getEpisodeCacheKey = useCallback((server: StreamServerKey, episode: Episode) => {
         const epKey = String(episode.session || episode.episodeNumber || episode._tmdbAbsolute || 'ep');
-        const isMovieLookup = String(metadataFormat || '').toUpperCase() === 'MOVIE';
-        const metadataKey = isMovieLookup
-            ? [
-                animeTitle,
-                metadataTitlesKey,
-                metadataYear,
-                metadataFormat,
-            ]
-                .map((value) => String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''))
-                .filter(Boolean)
-                .join(':')
-            : '';
+        const metadataKey = [
+            animeMetadata?.anilistId,
+            scraperSession,
+            animeTitle,
+            metadataTitlesKey,
+            metadataYear,
+            metadataFormat,
+        ]
+            .map((value) => String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''))
+            .filter(Boolean)
+            .join(':');
         return `${server}:${epKey}${metadataKey ? `:${metadataKey}` : ''}`;
-    }, [animeTitle, metadataTitlesKey, metadataYear, metadataFormat]);
+    }, [animeMetadata?.anilistId, scraperSession, animeTitle, metadataTitlesKey, metadataYear, metadataFormat]);
 
     const normalizeAudio = (value: string) => {
         const lower = String(value || '').trim().toLowerCase();
@@ -169,13 +168,10 @@ export function useStreams(scraperSession: string | null, animeTitle?: string, a
                             const dKey = String(d.id || '').toLowerCase();
 
                             if (d.id === episode.session) return true;
-                            if (targetStr && (dAnimeId === targetStr || dKey.startsWith(`${targetStr}_ep_`))) return true;
+                            if (targetStr && (isDownloadAnimeIdMatch(dAnimeId, targetStr, anilistStr) || dKey.startsWith(`${targetStr}_ep_`))) return true;
                             if (anilistStr && (dAnimeId === anilistStr || dKey.startsWith(`${anilistStr}_ep_`))) return true;
-                            if (animeTitle && isDownloadTitleMatch(d.animeTitle, animeTitle)) {
-                                const isNum = (s: string) => /^\d+$/.test(s.trim());
-                                if (isNum(anilistStr) && isNum(dAnimeId) && dAnimeId !== anilistStr) return false;
-                                return true;
-                            }
+                            if (animeTitle && isDownloadTitleMatch(d.animeTitle, animeTitle)) return true;
+                            if (targetStr && isDownloadTitleMatch(d.animeTitle, targetStr)) return true;
                             return false;
                         }) || null;
                     }
@@ -193,12 +189,8 @@ export function useStreams(scraperSession: string | null, animeTitle?: string, a
                     console.warn('Error checking offline download:', e);
                 }
 
-                if (offlineStream) {
-                    return [offlineStream];
-                }
-
                 if (!navigator.onLine) {
-                    return [];
+                    return offlineStream ? [offlineStream] : [];
                 }
 
                 try {
@@ -213,13 +205,13 @@ export function useStreams(scraperSession: string | null, animeTitle?: string, a
                     });
                     if (!Array.isArray(data) || data.length === 0) {
                         streamCache.current.delete(cacheKey);
-                        return [];
+                        return offlineStream ? [offlineStream] : [];
                     }
-                    return data;
+                    return offlineStream ? [offlineStream, ...data] : data;
                 } catch (error) {
                     console.error('Error fetching stream:', error);
                     streamCache.current.delete(cacheKey);
-                    return [];
+                    return offlineStream ? [offlineStream] : [];
                 }
             })();
             streamCache.current.set(cacheKey, promise);
@@ -306,7 +298,8 @@ export function useStreams(scraperSession: string | null, animeTitle?: string, a
 
     const filterStreams = useCallback((raw: StreamLink[], audio: 'sub' | 'dub') => {
         const next = raw.filter((s) => normalizeAudio(s.audio) === audio);
-        const sorted = [...next].sort((a, b) => scoreStream(b) - scoreStream(a));
+        const candidateStreams = next.length > 0 ? next : raw;
+        const sorted = [...candidateStreams].sort((a, b) => scoreStream(b) - scoreStream(a));
         const dedupedBySourceQuality = new Map<string, StreamLink>();
 
         sorted.forEach((stream) => {

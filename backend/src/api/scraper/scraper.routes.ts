@@ -15,8 +15,8 @@ let latestUpdatesMemCache: { latestEpisodes: any[] } | null = null;
 const newReleasesMemCache = new Map<string, { data: any[]; pagination: any }>();
 const SPOTLIGHT_REDIS_KEY = 'anilist:native-spotlight:enriched:v2';
 const LATEST_HOME_LIMIT = 10;
-const LATEST_REDIS_KEY = 'allmanga:latest-updates:cards:v2';
-const NEW_RELEASES_REDIS_PREFIX = 'allmanga:new-releases:cards:v2';
+const LATEST_REDIS_KEY = 'allmanga:latest-updates:cards:v3';
+const NEW_RELEASES_REDIS_PREFIX = 'allmanga:new-releases:cards:v3';
 const CACHE_TTL_SECONDS = 300; // 5 min fresh window
 
 const buildAnimeKaiFallbackItems = (items: any[]) => {
@@ -1029,6 +1029,7 @@ router.get('/proxy', async (req, res) => {
             stream.on('error', reject);
         });
         const target = new URL(targetUrl);
+        const targetLooksLikePlaylist = /\.m3u8(?:[?#]|$)/i.test(targetUrl);
         const cookieKey = target.origin;
         const storedCookie = sanitizeCookie(upstreamCookieJar.get(cookieKey) || '');
         const refererCandidates = [
@@ -1053,7 +1054,7 @@ router.get('/proxy', async (req, res) => {
                             Referer: referer,
                             ...(includeOrigin ? { Origin: new URL(referer).origin } : {}),
                             Accept: '*/*',
-                            ...(req.headers.range ? { Range: req.headers.range } : {}),
+                            ...(!targetLooksLikePlaylist && req.headers.range ? { Range: req.headers.range } : {}),
                             ...((requestedCookie || storedCookie) ? { Cookie: requestedCookie || storedCookie } : {}),
                         },
                         timeout: 15000,
@@ -1091,11 +1092,14 @@ router.get('/proxy', async (req, res) => {
             targetUrl.includes('.m3u8');
 
         if (isSubtitle) {
-            res.status(response.status);
+            res.status(200);
             res.set('Content-Type', normalizedContentType);
             res.set('Access-Control-Allow-Origin', '*');
+            res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
             const text = (await streamToBuffer(response.data)).toString('utf-8');
-            return res.send(text);
+            // Bypass Express' automatic ETag/freshness handling. A 304 has no
+            // body, which leaves text tracks empty in Chromium/Electron.
+            return res.end(text);
         }
 
         if (!isM3u8) {
@@ -1199,12 +1203,14 @@ router.get('/proxy', async (req, res) => {
             return response.data.pipe(res);
         }
 
-        res.status(response.status);
+        // HLS manifests must always include a body. Express otherwise creates
+        // an ETag for res.send() and can turn a repeat request into an empty
+        // 304 response, which hls.js treats as a fatal playlist error.
+        res.status(200);
         res.set('Content-Type', normalizedContentType);
         res.set('Access-Control-Allow-Origin', '*');
         res.set('Access-Control-Expose-Headers', 'Content-Length, Content-Range, Accept-Ranges');
-        if (response.headers['content-range']) res.set('Content-Range', response.headers['content-range']);
-        if (response.headers['accept-ranges']) res.set('Accept-Ranges', response.headers['accept-ranges']);
+        res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
         // The playlist body is rewritten below, so the upstream byte length is
         // no longer valid. Leaving it attached truncates proxy URLs in Hls.js.
         res.removeHeader('Content-Length');
@@ -1212,6 +1218,7 @@ router.get('/proxy', async (req, res) => {
         const body = (await streamToBuffer(response.data)).toString('utf-8');
         const urlObj = new URL(targetUrl);
         const basePath = targetUrl.substring(0, targetUrl.lastIndexOf('/') + 1);
+        const proxyBase = `${getPublicBase(req)}/api/scraper/proxy`;
         const nextReferer = requestedReferer || `${urlObj.origin}/`;
         const nextCookie = sanitizeCookie(upstreamCookieJar.get(cookieKey) || requestedCookie);
 
@@ -1265,7 +1272,7 @@ router.get('/proxy', async (req, res) => {
         };
 
         if (!body.includes('#EXT')) {
-            logger.warn(`[scraper-proxy] Upstream for ${targetUrl} did not return a valid HLS playlist`);
+            console.warn(`[scraper-proxy] Upstream for ${targetUrl} did not return a valid HLS playlist`);
             return res.status(502).send('Invalid upstream HLS manifest');
         }
 
@@ -1280,7 +1287,7 @@ router.get('/proxy', async (req, res) => {
                         const absoluteUri = uri.startsWith('http')
                             ? uri
                             : (uri.startsWith('//') ? `${urlObj.protocol}${uri}` : (uri.startsWith('/') ? `${urlObj.origin}${uri}` : `${basePath}${uri}`));
-                        return `URI="/api/scraper/proxy?url=${encodeURIComponent(absoluteUri)}&referer=${encodeURIComponent(nextReferer)}${nextCookie ? `&cookie=${encodeURIComponent(nextCookie)}` : ''}${proxyMediaSegments ? '&proxyMedia=1' : ''}${req.query.maskCheck === '1' ? '&maskCheck=1' : ''}${requestedAudio ? `&audio=${encodeURIComponent(requestedAudio)}` : ''}"`;
+                        return `URI="${proxyBase}?url=${encodeURIComponent(absoluteUri)}&referer=${encodeURIComponent(nextReferer)}${nextCookie ? `&cookie=${encodeURIComponent(nextCookie)}` : ''}${proxyMediaSegments ? '&proxyMedia=1' : ''}${req.query.maskCheck === '1' ? '&maskCheck=1' : ''}${requestedAudio ? `&audio=${encodeURIComponent(requestedAudio)}` : ''}"`;
                     });
                 }
 
@@ -1311,12 +1318,12 @@ router.get('/proxy', async (req, res) => {
                     targetUrl.includes('narutokun')
                 ) {
                     // Always proxy all segments when proxyMedia=1 or for AniDB / AniKoto / Krussdomi (needed for Referer authentication).
-                    return `/api/scraper/proxy?url=${encodeURIComponent(absolute)}${proxySuffix}`;
+                    return `${proxyBase}?url=${encodeURIComponent(absolute)}${proxySuffix}`;
                 }
 
                 // Sub-playlist lines must pass through the proxy for CORS.
                 if (!isMediaSegment(trimmed) && isLikelySubPlaylist(trimmed)) {
-                    return `/api/scraper/proxy?url=${encodeURIComponent(absolute)}${proxySuffix}`;
+                    return `${proxyBase}?url=${encodeURIComponent(absolute)}${proxySuffix}`;
                 }
 
                 // Direct absolute URL for media segments — browser fetches from CDN, not Vercel.
@@ -1324,7 +1331,7 @@ router.get('/proxy', async (req, res) => {
             })
             .join('\n');
 
-        return res.send(rewritten);
+        return res.end(rewritten);
     } catch (error: any) {
         console.error('Scraper proxy error:', targetUrl, error?.message || error);
         return res.status(error?.response?.status || 500).send('Proxy error');

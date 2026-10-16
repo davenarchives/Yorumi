@@ -30,9 +30,10 @@ export function useChapterViewMode(initialMode: ChapterViewMode = 'list') {
 interface ChapterViewToggleProps {
     viewMode: ChapterViewMode;
     onViewModeChange: (mode: ChapterViewMode) => void;
+    activeClassName?: string;
 }
 
-export default function ChapterViewToggle({ viewMode, onViewModeChange }: ChapterViewToggleProps) {
+export default function ChapterViewToggle({ viewMode, onViewModeChange, activeClassName = 'text-purple-400' }: ChapterViewToggleProps) {
     return (
         <div className="flex h-10 shrink-0 items-center gap-1">
             <button
@@ -43,7 +44,7 @@ export default function ChapterViewToggle({ viewMode, onViewModeChange }: Chapte
                 aria-pressed={viewMode === 'list'}
                 className={`grid h-10 w-10 place-items-center transition-colors duration-200 ${
                     viewMode === 'list'
-                        ? 'text-purple-400'
+                        ? activeClassName
                         : 'text-gray-500 hover:text-gray-200'
                 }`}
             >
@@ -61,7 +62,7 @@ export default function ChapterViewToggle({ viewMode, onViewModeChange }: Chapte
                 aria-pressed={viewMode === 'grid'}
                 className={`grid h-10 w-10 place-items-center transition-colors duration-200 ${
                     viewMode === 'grid'
-                        ? 'text-purple-400'
+                        ? activeClassName
                         : 'text-gray-500 hover:text-gray-200'
                 }`}
             >

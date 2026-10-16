@@ -16,6 +16,7 @@ import { mangaService } from '../services/mangaService';
 import useEmblaCarousel from 'embla-carousel-react';
 import { DEFAULT_BANNER_URL, resolveStaticAssetUrl } from '../config/cloudinaryAssets';
 import { API_BASE } from '../config/api';
+import { getAnimeDetailsRouteId } from '../utils/animeNavigation';
 
 type TabType = 'profile' | 'anime-overview' | 'manga-overview' | 'import-export';
 
@@ -23,10 +24,11 @@ const isAnimeSessionId = (value: string) =>
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 
 const getStoredAnimeRouteId = (item: any) => {
-    const scraperId = String(item.scraperId || '').trim();
-    if (isAnimeSessionId(scraperId)) return `s:${scraperId}`;
-
-    return String(item.anilistId || item.id || '').trim();
+    return getAnimeDetailsRouteId({
+        id: item.anilistId || item.id,
+        mal_id: item.malId,
+        scraperId: item.scraperId,
+    });
 };
 
 const buildStoredAnimeState = (item: any) => {

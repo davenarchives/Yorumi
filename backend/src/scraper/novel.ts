@@ -16,10 +16,44 @@ const headers = {
     'Referer': NOVELBIN_BASE,
 };
 
-const axiosNB = axios.create({ baseURL: NOVELBIN_BASE, headers, timeout: 10000 });
+const axiosNB = axios.create({ baseURL: NOVELBIN_BASE, headers, timeout: 8000 });
 const axiosWuxia = axios.create({ baseURL: WUXIA_BASE, headers, timeout: 10000 });
 const axiosRR = axios.create({ baseURL: ROYALROAD_BASE, headers, timeout: 10000 });
 const axiosANF = axios.create({ baseURL: ALLNOVELFULL_BASE, headers, timeout: 10000 });
+
+const sleep = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+let novelBinRequestQueue: Promise<void> = Promise.resolve();
+let lastNovelBinRequestAt = 0;
+
+async function waitForNovelBinRequestSlot() {
+    const previous = novelBinRequestQueue;
+    let release!: () => void;
+    novelBinRequestQueue = new Promise<void>((resolve) => { release = resolve; });
+    await previous;
+
+    try {
+        const delay = Math.max(0, 1_500 - (Date.now() - lastNovelBinRequestAt));
+        if (delay) await sleep(delay);
+        lastNovelBinRequestAt = Date.now();
+    } finally {
+        release();
+    }
+}
+
+async function getNovelBin<T = string>(url: string): Promise<T> {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+        await waitForNovelBinRequestSlot();
+        try {
+            const { data } = await axiosNB.get<T>(url);
+            return data;
+        } catch (error) {
+            const isRateLimited = axios.isAxiosError(error) && error.response?.status === 429;
+            if (!isRateLimited || attempt === 1) throw error;
+            await sleep(1_500);
+        }
+    }
+    throw new Error('NovelBin request exhausted without a response');
+}
 
 export interface NovelSearchResult {
     id: string; // e.g. "nb:classroom-of-the-elite-ln-2" or "wx:solo-leveling-ragnarok"
@@ -95,7 +129,7 @@ function sanitizeChapterHtml(rawHtml: string): string {
 
 export async function searchNovelBin(query: string): Promise<NovelSearchResult[]> {
     try {
-        const { data: html } = await axiosNB.get(`/search?keyword=${encodeURIComponent(query)}`);
+        const html = await getNovelBin(`/search?keyword=${encodeURIComponent(query)}`);
         const $ = cheerio.load(html);
         const results: NovelSearchResult[] = [];
         const seenHrefs = new Set<string>();
@@ -143,7 +177,12 @@ export async function getNovelBinDetails(slug: string): Promise<NovelDetails | n
     try {
         const cleanSlug = slug.replace(/^nb:/i, '').replace(/\/$/, '');
         const targetUrl = `/novel-bin/${cleanSlug}/`;
-        const { data: html } = await axiosNB.get(targetUrl);
+        const [htmlResult, chapterListResult] = await Promise.allSettled([
+            getNovelBin(targetUrl),
+            getNovelBin<{ chapters?: Array<{ index?: number; title?: string; url?: string }> }>(`/ajax/chapter-list?slug=${cleanSlug}`),
+        ]);
+        if (htmlResult.status === 'rejected') throw htmlResult.reason;
+        const html = htmlResult.value;
         const $ = cheerio.load(html);
 
         const title = $('h1').first().text().trim() || $('.title').first().text().trim() || $('h3.title').text().trim() || 'Light Novel';
@@ -183,7 +222,8 @@ export async function getNovelBinDetails(slug: string): Promise<NovelDetails | n
 
         // Try NovelBin AJAX chapter list by slug first (returns full catalog in JSON)
         try {
-            const { data: ajaxData } = await axiosNB.get(`/ajax/chapter-list?slug=${cleanSlug}`);
+            if (chapterListResult.status === 'rejected') throw chapterListResult.reason;
+            const ajaxData = chapterListResult.value;
             if (ajaxData?.chapters && Array.isArray(ajaxData.chapters) && ajaxData.chapters.length > 0) {
                 const seenSlugs = new Set<string>();
                 for (const ch of ajaxData.chapters) {
@@ -192,7 +232,7 @@ export async function getNovelBinDetails(slug: string): Promise<NovelDetails | n
                         .replace(/^https?:\/\/novel-bin\.com\/novel-bin\//, '')
                         .replace(/^\/novel-bin\//, '')
                         .replace(/\/$/, '');
-                    if (!cSlug || seenSlugs.has(cSlug)) continue;
+                    if (!cSlug.startsWith(`${cleanSlug}/chapter-`) || seenSlugs.has(cSlug)) continue;
                     seenSlugs.add(cSlug);
 
                     chapters.push({
@@ -212,7 +252,7 @@ export async function getNovelBinDetails(slug: string): Promise<NovelDetails | n
             let chapterHtml = html;
             if (novelIdAttr) {
                 try {
-                    const { data: ajaxHtml } = await axiosNB.get(`/ajax/chapter-archive?novelId=${novelIdAttr}`);
+                    const ajaxHtml = await getNovelBin(`/ajax/chapter-archive?novelId=${novelIdAttr}`);
                     if (ajaxHtml && (ajaxHtml.includes('list-chapter') || ajaxHtml.includes('<a'))) {
                         chapterHtml = ajaxHtml;
                     }
@@ -233,7 +273,7 @@ export async function getNovelBinDetails(slug: string): Promise<NovelDetails | n
                 const cHref = $c(el).attr('href') || '';
                 if (cTitle && cHref && cHref.includes('/chapter-')) {
                     const cSlug = cHref.replace(/^https?:\/\/novel-bin\.com\/novel-bin\//, '').replace(/^\/novel-bin\//, '').replace(/\/$/, '');
-                    if (!cSlug || seenSlugs.has(cSlug)) return;
+                    if (!cSlug.startsWith(`${cleanSlug}/chapter-`) || seenSlugs.has(cSlug)) return;
                     seenSlugs.add(cSlug);
 
                     chapters.push({
@@ -271,13 +311,17 @@ export async function getNovelBinChapterContent(chapterSlug: string): Promise<No
             .replace(/^novel-bin\//i, '')
             .replace(/\/$/, '');
         const targetUrl = `/novel-bin/${cleanSlug}`;
-        const { data: html } = await axiosNB.get(targetUrl);
+        const html = await getNovelBin(targetUrl);
         const $ = cheerio.load(html);
 
-        const title = $('.chr-title, .chapter-title, h1, h2').filter((_, el) => /chapter/i.test($(el).text())).first().text().trim() || $('.chr-title').text().trim() || 'Chapter';
+        const title = $('#chapter h1, main h1, .chr-title, .chapter-title, h1').first().text().trim() || 'Chapter';
         const contentBlock = AdaptiveEngine.queryOne($, '#chr-content, .chr-c, .reading-content, #chapter-content, .chapter-content', 'chapterContentBlock');
         const rawContent = contentBlock.html() || '';
         const sanitizedContent = sanitizeChapterHtml(rawContent);
+        const readableText = cheerio.load(sanitizedContent).text().replace(/\s+/g, ' ').trim();
+        if (!readableText || /429 Too Many Requests|Just a moment|Access denied/i.test(readableText)) {
+            throw new Error(`NovelBin returned no readable chapter content for ${cleanSlug}`);
+        }
 
         const prevHref = $('#prev_chap, a.btn-prev, a[class*="prev"]').first().attr('href');
         const nextHref = $('#next_chap, a.btn-next, a[class*="next"]').first().attr('href');

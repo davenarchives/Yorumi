@@ -1,6 +1,7 @@
 package com.yorumi.app;
 
 import android.graphics.Color;
+import android.content.Intent;
 import android.os.Build;
 import android.os.Bundle;
 import android.app.PictureInPictureParams;
@@ -37,14 +38,38 @@ public class MainActivity extends BridgeActivity {
         AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_YES);
         registerPlugin(ImmersiveModePlugin.class);
         registerPlugin(LocalMediaProxyPlugin.class);
+        registerPlugin(DownloadNotificationPlugin.class);
+        registerPlugin(NativeDownloadStoragePlugin.class);
         super.onCreate(savedInstanceState);
 
         if (getBridge() != null && getBridge().getWebView() != null) {
             getBridge().getWebView().getSettings().setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
         }
 
+        openDownloadEntry(getIntent());
+
         applyEdgeToEdge();
         getWindow().getDecorView().post(this::applyEdgeToEdge);
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        openDownloadEntry(intent);
+    }
+
+    private void openDownloadEntry(Intent intent) {
+        if (intent == null || getBridge() == null || getBridge().getWebView() == null) return;
+        String animeId = intent.getStringExtra("downloadAnimeId");
+        if (animeId == null || animeId.trim().isEmpty()) return;
+        String quotedId = org.json.JSONObject.quote(animeId.trim());
+        getBridge().getWebView().post(() -> getBridge().getWebView().evaluateJavascript(
+            "window.history.pushState({},'', '/anime/details/'+encodeURIComponent(" + quotedId + "));" +
+                "window.dispatchEvent(new PopStateEvent('popstate'));",
+            null
+        ));
+        intent.removeExtra("downloadAnimeId");
     }
 
     @Override

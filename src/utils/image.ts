@@ -1,3 +1,4 @@
+import React from 'react';
 import { API_BASE, USES_LOCAL_SOURCES } from '../config/api';
 
 const IMAGE_PROXY_BASE = `${API_BASE}/image/proxy?url=`;
@@ -27,4 +28,26 @@ export const getDisplayImageUrl = (url?: string | null): string => {
     } catch {
         return value;
     }
+};
+
+export { getCachedImage, cacheImage, prefetchImages, generateTitlePlaceholder } from '../services/offlineImageCache';
+
+export const handleImageError = (
+    event: React.SyntheticEvent<HTMLImageElement, Event>,
+    fallbackTitle?: string
+) => {
+    const img = event.currentTarget;
+    if (img.dataset.fallbackApplied === 'true') return;
+    img.dataset.fallbackApplied = 'true';
+
+    import('../services/offlineImageCache').then(({ getCachedImage, generateTitlePlaceholder }) => {
+        const originalSrc = img.src;
+        getCachedImage(originalSrc).then((cached) => {
+            if (cached && cached !== originalSrc) {
+                img.src = cached;
+            } else if (fallbackTitle) {
+                img.src = generateTitlePlaceholder(fallbackTitle);
+            }
+        });
+    });
 };

@@ -233,6 +233,95 @@ body.watch-safe-mode {
   background: rgba(255, 255, 255, 0.35);
 }
 
+/* The ambient projectors sit behind the watch page, matching youtube-ambilight's
+   compositing model instead of tinting UI and text from above. */
+body.yorumi-ambient-light-active .anime-details-page {
+  background: transparent;
+}
+
+body.yorumi-ambient-light-active .yorumi-ambient-projectors {
+  isolation: isolate;
+}
+
+body.yorumi-ambient-light-active .yorumi-desktop-sidebar {
+  background: rgba(10, 10, 10, 0.32);
+}
+
+body.yorumi-ambient-light-active .yorumi-episode-card {
+  background: rgba(10, 10, 10, 0.28) !important;
+}
+
+body.yorumi-ambient-light-active .yorumi-episode-card:hover {
+  background: rgba(10, 10, 10, 0.38) !important;
+}
+
+body.yorumi-ambient-light-active .yorumi-episode-thumbnail {
+  background: transparent;
+}
+
+body.yorumi-ambient-light-active .yorumi-player-popover {
+  background: rgba(18, 18, 18, 0.58) !important;
+}
+
+.yorumi-ambient-slider {
+  --ambient-progress: 0%;
+  appearance: none;
+  height: 18px;
+  border: 0;
+  border-radius: 9999px;
+  outline: none;
+  background:
+    linear-gradient(
+      to right,
+      rgb(56 189 248) 0 var(--ambient-progress),
+      rgb(255 255 255 / 0.28) var(--ambient-progress) 100%
+    ) center / 100% 5px no-repeat;
+}
+
+.yorumi-ambient-slider::-webkit-slider-runnable-track {
+  height: 5px;
+  border: 0;
+  background: transparent;
+}
+
+.yorumi-ambient-slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  margin-top: -6.5px;
+  border: 0;
+  border-radius: 9999px;
+  background: rgb(56 189 248);
+}
+
+.yorumi-ambient-slider::-moz-range-track {
+  height: 5px;
+  border: 0;
+  background: transparent;
+}
+
+.yorumi-ambient-slider::-moz-range-progress {
+  height: 5px;
+  background: transparent;
+}
+
+.yorumi-ambient-slider::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border: 0;
+  border-radius: 9999px;
+  background: rgb(56 189 248);
+}
+
+body.yorumi-ambient-light-active .watch-player-shell,
+body.yorumi-ambient-light-active .persistent-player-surface,
+body.yorumi-ambient-light-active .yorumi-player-surface,
+body.yorumi-ambient-light-active .yorumi-player-video,
+body.yorumi-ambient-light-active .yorumi-details-player-frame,
+body.yorumi-ambient-light-active .yorumi-player-mount {
+  background-color: transparent !important;
+}
+
 body.yorumi-player-landscape {
   overflow: hidden !important;
   -webkit-text-size-adjust: 100%;
@@ -292,4 +381,14 @@ body.yorumi-player-controls-hidden .watch-player-top-controls {
   .numbered-media-sections > section:not(.animate-pulse) > .flex.items-center.gap-4.mb-6 > div:last-child:not(.h-px) {
     display: none;
   }
+}
+
+/* Preserve a stable 16:9 viewport for 4:3 and other legacy sources. Ambient
+   mode changes only its backing paint; it never removes or resizes the frame. */
+.yorumi-details-player-frame {
+  aspect-ratio: 16 / 9;
+  background-color: #000;
+}
+body.yorumi-library-modal-open .yorumi-mobile-navbar {
+  display: none;
 }

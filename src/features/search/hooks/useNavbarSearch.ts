@@ -8,6 +8,8 @@ interface UseNavbarSearchOptions {
     language: TitleLanguage;
 }
 
+const SEARCH_CACHE_TTL_MS = 3 * 60 * 1000;
+
 export function useNavbarSearch({ activeTab, language }: UseNavbarSearchOptions) {
     const [searchQuery, setSearchQuery] = useState('');
     const [searchResults, setSearchResults] = useState<SearchPreviewItem[]>([]);
@@ -15,8 +17,6 @@ export function useNavbarSearch({ activeTab, language }: UseNavbarSearchOptions)
     const searchRequestIdRef = useRef(0);
     const searchCacheRef = useRef(new Map<string, { data: SearchPreviewItem[]; timestamp: number }>());
     const debouncedSearchQuery = useDebounce(searchQuery, 280);
-    const SEARCH_CACHE_TTL_MS = 3 * 60 * 1000;
-
     useEffect(() => {
         const performSearch = async () => {
             const term = debouncedSearchQuery.trim();
@@ -49,13 +49,19 @@ export function useNavbarSearch({ activeTab, language }: UseNavbarSearchOptions)
                 if (requestId !== searchRequestIdRef.current) return;
 
                 setSearchResults(results);
-                searchCacheRef.current.set(cacheKey, {
-                    data: results,
-                    timestamp: Date.now(),
-                });
-            } catch {
+                if (results.length > 0) {
+                    searchCacheRef.current.set(cacheKey, {
+                        data: results,
+                        timestamp: Date.now(),
+                    });
+                } else {
+                    searchCacheRef.current.delete(cacheKey);
+                }
+            } catch (error) {
+                console.warn(`[Search] ${activeTab} preview failed for "${term}"`, error);
                 if (requestId === searchRequestIdRef.current) {
                     setSearchResults([]);
+                    searchCacheRef.current.delete(cacheKey);
                 }
             } finally {
                 if (requestId === searchRequestIdRef.current) {

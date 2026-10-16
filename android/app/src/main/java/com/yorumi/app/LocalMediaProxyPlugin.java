@@ -8,6 +8,8 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 
 import java.io.ByteArrayInputStream;
 import java.io.FilterInputStream;
+import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
@@ -34,11 +36,17 @@ public class LocalMediaProxyPlugin extends Plugin {
     public void load() {
         super.load();
         try {
-            server = new LocalProxyServer();
+            File external = getContext().getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS);
+            File base = external != null ? external : getContext().getFilesDir();
+            server = new LocalProxyServer(new File(base, "Yorumi"));
             server.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
         } catch (IOException error) {
             server = null;
         }
+    }
+
+    public static String getFileUrl(File file) {
+        return "http://127.0.0.1:" + PORT + "/file?path=" + URLEncoder.encode(file.getAbsolutePath(), StandardCharsets.UTF_8);
     }
 
     @PluginMethod
@@ -55,6 +63,7 @@ public class LocalMediaProxyPlugin extends Plugin {
     }
 
     private static final class LocalProxyServer extends NanoHTTPD {
+        private final File allowedFileRoot;
         private final OkHttpClient client = new OkHttpClient.Builder()
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
@@ -62,7 +71,10 @@ public class LocalMediaProxyPlugin extends Plugin {
             .followSslRedirects(true)
             .build();
 
-        LocalProxyServer() { super("127.0.0.1", PORT); }
+        LocalProxyServer(File allowedFileRoot) {
+            super("127.0.0.1", PORT);
+            this.allowedFileRoot = allowedFileRoot;
+        }
 
         String proxyUrl(String target, String referer) {
             return "http://127.0.0.1:" + PORT + "/proxy?url=" + encode(target) + "&referer=" + encode(referer);
@@ -78,6 +90,9 @@ public class LocalMediaProxyPlugin extends Plugin {
                 }
 
                 Map<String, String> params = session.getParms();
+                if ("/file".equals(session.getUri())) {
+                    return serveLocalFile(session, params.get("path"));
+                }
                 String target = params.get("url");
                 if (target == null || target.isEmpty()) {
                     return newFixedLengthResponse(Status.BAD_REQUEST, "text/plain", "Missing url");
@@ -145,6 +160,59 @@ public class LocalMediaProxyPlugin extends Plugin {
                 }
             } catch (Exception error) {
                 Response response = newFixedLengthResponse(getStatus(502, "Bad Gateway"), "text/plain", "Proxy error: " + error.getMessage());
+                addCors(response);
+                return response;
+            }
+        }
+
+        private Response serveLocalFile(IHTTPSession session, String rawPath) {
+            try {
+                if (rawPath == null || rawPath.isEmpty()) return newFixedLengthResponse(Status.BAD_REQUEST, "text/plain", "Missing path");
+                File root = allowedFileRoot.getCanonicalFile();
+                File file = new File(rawPath).getCanonicalFile();
+                if (!file.getPath().startsWith(root.getPath() + File.separator) || !file.isFile()) {
+                    return newFixedLengthResponse(Status.NOT_FOUND, "text/plain", "Download not found");
+                }
+
+                long fileLength = file.length();
+                long start = 0;
+                long end = fileLength - 1;
+                String range = session.getHeaders().get("range");
+                boolean partial = range != null && range.startsWith("bytes=");
+                if (partial) {
+                    String[] values = range.substring(6).split("-", 2);
+                    if (!values[0].isEmpty()) start = Long.parseLong(values[0]);
+                    if (values.length > 1 && !values[1].isEmpty()) end = Math.min(end, Long.parseLong(values[1]));
+                    if (start < 0 || start >= fileLength || end < start) {
+                        Response invalid = newFixedLengthResponse(Status.RANGE_NOT_SATISFIABLE, "text/plain", "Invalid range");
+                        invalid.addHeader("Content-Range", "bytes */" + fileLength);
+                        addCors(invalid);
+                        return invalid;
+                    }
+                }
+
+                FileInputStream input = new FileInputStream(file);
+                long skipped = 0;
+                while (skipped < start) {
+                    long amount = input.skip(start - skipped);
+                    if (amount <= 0) break;
+                    skipped += amount;
+                }
+                long length = end - start + 1;
+                String mime = file.getName().endsWith(".ts") ? "video/mp2t"
+                    : file.getName().endsWith(".mp4") ? "video/mp4"
+                    : file.getName().endsWith(".webp") ? "image/webp"
+                    : file.getName().endsWith(".png") ? "image/png"
+                    : file.getName().endsWith(".html") ? "text/html; charset=utf-8"
+                    : "image/jpeg";
+                Response response = newFixedLengthResponse(partial ? Status.PARTIAL_CONTENT : Status.OK, mime, input, length);
+                response.addHeader("Accept-Ranges", "bytes");
+                response.addHeader("Content-Length", String.valueOf(length));
+                if (partial) response.addHeader("Content-Range", "bytes " + start + "-" + end + "/" + fileLength);
+                addCors(response);
+                return response;
+            } catch (Exception error) {
+                Response response = newFixedLengthResponse(Status.INTERNAL_ERROR, "text/plain", "File error: " + error.getMessage());
                 addCors(response);
                 return response;
             }

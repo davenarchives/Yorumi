@@ -7,10 +7,11 @@ import { useContinueLNReading } from '../hooks/useContinueLNReading';
 import { useTitleLanguage } from '../context/TitleLanguageContext';
 import { getDisplayTitle } from '../utils/titleLanguage';
 import { slugify } from '../utils/slugify';
-import { Play, Plus, Check, Search, Star, Download, Loader2, CircleCheckBig, FolderOpen, ArrowLeft, ChevronDown, ArrowUpDown, ArrowDown, ArrowUp, Grid2X2, List, User, Clock3 } from 'lucide-react';
+import { Play, Plus, Check, Search, Star, Download, FolderOpen, ArrowLeft, ChevronDown, ArrowUpDown, ArrowDown, ArrowUp, Grid2X2, List, User, Clock3 } from 'lucide-react';
 import ChapterViewToggle, { useChapterViewMode, type ChapterViewMode } from '../components/ui/ChapterViewToggle';
 import { useLNDownloads } from '../hooks/useLNDownloads';
 import { downloadService } from '../services/downloadService';
+import DownloadStateIcon from '../components/ui/DownloadStateIcon';
 
 // Chapter Grid Component matching Manga details format
 const LNChapterList = ({
@@ -91,7 +92,7 @@ const LNChapterList = ({
                     >
                         {sortOrder === 'asc' ? <ArrowUp className="h-5 w-5" /> : <ArrowDown className="h-5 w-5" />}
                     </button>
-                    {onViewModeChange && <ChapterViewToggle viewMode={viewMode} onViewModeChange={onViewModeChange} />}
+                    {onViewModeChange && <ChapterViewToggle viewMode={viewMode} onViewModeChange={onViewModeChange} activeClassName="text-amber-400" />}
                     {headerActions}
                 </div>
             </div>
@@ -143,13 +144,32 @@ const LNChapterList = ({
                                         {subtitleStr}
                                     </span>
                                 )}
-                                <div className="absolute top-1.5 right-1.5" onClick={(e) => e.stopPropagation()}>
-                                    {isDownloading ? (
-                                        <Loader2 className="w-3 h-3 animate-spin text-amber-400" />
-                                    ) : isDownloaded ? (
-                                        <CircleCheckBig className="w-3 h-3 text-amber-400" />
-                                    ) : null}
-                                </div>
+                                <span
+                                    role="button"
+                                    tabIndex={0}
+                                    className="absolute top-1 right-1 text-zinc-400"
+                                    aria-label={isDownloaded ? 'Delete downloaded chapter' : 'Download chapter'}
+                                    aria-disabled={isDownloading}
+                                    onClick={(event) => {
+                                        event.stopPropagation();
+                                        if (isDownloading) return;
+                                        if (isDownloaded) {
+                                            if (novelId) deleteDownload(novelId, ch.id);
+                                        } else {
+                                            startDownload({
+                                                novelId: novelId || '',
+                                                novelTitle: novelTitle || 'Novel',
+                                                novelImage: novelImage || '',
+                                                chapter: ch,
+                                            });
+                                        }
+                                    }}
+                                    onKeyDown={(event) => {
+                                        if (event.key === 'Enter' || event.key === ' ') event.currentTarget.click();
+                                    }}
+                                >
+                                    <DownloadStateIcon state={isDownloading ? 'downloading' : isDownloaded ? 'downloaded' : 'available'} progress={progress?.progress || 0} className="h-5 w-5" />
+                                </span>
                             </button>
                         );
                     })}
@@ -215,12 +235,12 @@ const LNChapterList = ({
                                             }
                                         }}
                                         disabled={isDownloading}
-                                        className={`p-2 rounded-full border transition-all cursor-pointer ${
+                                        className={`grid h-10 w-10 place-items-center rounded-full transition-colors cursor-pointer ${
                                             isDownloaded
-                                                ? 'border-amber-500/30 text-amber-400 bg-amber-500/10 hover:bg-red-500/20 hover:text-red-400 hover:border-red-500/30'
+                                                ? 'text-zinc-400 hover:bg-red-500/20 hover:text-red-400'
                                                 : isDownloading
-                                                ? 'border-amber-400/30 text-amber-400 bg-amber-400/10'
-                                                : 'border-white/10 text-zinc-400 hover:text-white hover:bg-white/10 hover:border-white/20'
+                                                ? 'text-zinc-400'
+                                                : 'text-zinc-400 hover:text-white hover:bg-white/10'
                                         }`}
                                         title={
                                             isDownloaded
@@ -230,16 +250,11 @@ const LNChapterList = ({
                                                 : 'Download chapter'
                                         }
                                     >
-                                        {isDownloading ? (
-                                            <div className="flex items-center gap-1 text-[11px] font-bold text-amber-400">
-                                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                                <span>{progress?.progress || 0}%</span>
-                                            </div>
-                                        ) : isDownloaded ? (
-                                            <CircleCheckBig className="w-4 h-4 text-amber-400" />
-                                        ) : (
-                                            <Download className="w-4 h-4" />
-                                        )}
+                                        <DownloadStateIcon
+                                            state={isDownloading ? 'downloading' : isDownloaded ? 'downloaded' : 'available'}
+                                            progress={progress?.progress || 0}
+                                            className="h-[26px] w-[26px]"
+                                        />
                                     </button>
                                 </div>
                             </div>
@@ -265,7 +280,7 @@ export default function LNDetailsPage() {
 
     const routeLN = (location.state as { ln?: LightNovel } | null)?.ln ?? null;
 
-    const [ln, setLn] = useState<LightNovel | null>(routeLN);
+    const [serverLN, setServerLN] = useState<LightNovel | null>(routeLN);
     const [chapters, setChapters] = useState<LNChapter[]>([]);
     const [loading, setLoading] = useState(true);
     const [loadingChapters, setLoadingChapters] = useState(true);
@@ -327,7 +342,7 @@ export default function LNDetailsPage() {
                         : fullDetails;
                 }
                 if (mounted && fetchedLN) {
-                    setLn(fetchedLN);
+                    setServerLN(fetchedLN);
                     setLoading(false);
                 }
 
@@ -362,7 +377,7 @@ export default function LNDetailsPage() {
                     if (scraperDetails.chapters) {
                         setChapters(scraperDetails.chapters);
                     }
-                    setLn((prev) => prev ? {
+                    setServerLN((prev) => prev ? {
                         ...prev,
                         author: scraperDetails.author && scraperDetails.author !== 'Unknown' && scraperDetails.author !== 'Unknown Author' ? scraperDetails.author : prev.author,
                         synopsis: scraperDetails.description || prev.synopsis,
@@ -387,19 +402,43 @@ export default function LNDetailsPage() {
         };
     }, [id, routeLN]);
 
-    const displayTitle = ln ? getDisplayTitle(ln, language) : 'Light Novel';
-    const cover = ln?.images?.jpg?.large_image_url || ln?.images?.jpg?.image_url || '';
-    const lnId = String(ln?.id || id);
-
     const matchingLNDownloads = useMemo(() => {
-        if (!id && !ln) return [];
-        const targetTitle = (displayTitle || '').toLowerCase().trim();
+        if (!id && !serverLN) return [];
+        const targetTitle = (serverLN?.title || routeLN?.title || '').toLowerCase().trim();
         return lnDownloads.filter((d) => {
-            if (String(d.novelId) === String(id) || String(d.novelId) === String(lnId)) return true;
+            if (String(d.novelId) === String(id)) return true;
             if (targetTitle && d.novelTitle.toLowerCase().trim() === targetTitle) return true;
             return false;
         });
-    }, [lnDownloads, id, lnId, displayTitle, ln]);
+    }, [lnDownloads, id, serverLN, routeLN]);
+
+    const fallbackLN = useMemo<LightNovel | null>(() => {
+        if (matchingLNDownloads.length > 0) {
+            const first = matchingLNDownloads[0];
+            return {
+                id: first.novelId,
+                mal_id: first.novelId,
+                title: first.novelTitle,
+                title_english: first.novelTitle,
+                images: {
+                    jpg: {
+                        image_url: first.novelImage,
+                        large_image_url: first.novelImage,
+                    },
+                },
+                chapters: matchingLNDownloads.length,
+                status: 'Completed',
+                type: 'NOVEL',
+                score: 0,
+            } as LightNovel;
+        }
+        return null;
+    }, [matchingLNDownloads]);
+
+    const ln: LightNovel | null = serverLN || fallbackLN;
+    const displayTitle = ln ? getDisplayTitle(ln, language) : 'Light Novel';
+    const cover = ln?.images?.jpg?.large_image_url || ln?.images?.jpg?.image_url || '';
+    const lnId = String(ln?.id || id);
 
     const downloadedLNChapters: LNChapter[] = useMemo(() => {
         return matchingLNDownloads.map((d) => ({
@@ -474,7 +513,6 @@ export default function LNDetailsPage() {
     }
 
     const isBookmarked = isInLNReadList(lnId);
-
     const handleBack = () => {
         navigate('/ln', { replace: true });
     };
@@ -511,6 +549,7 @@ export default function LNDetailsPage() {
                         src={ln.bannerImage || cover}
                         alt={displayTitle}
                         className="w-full h-full object-cover blur-sm opacity-55 scale-105"
+                        onError={(e) => { e.currentTarget.style.display = 'none'; }}
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0a] via-[#0a0a0a]/40 to-black/10" />
                     <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-[#0a0a0a] to-transparent" />

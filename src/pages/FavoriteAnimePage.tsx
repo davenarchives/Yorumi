@@ -3,8 +3,8 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AnimeCard from '../features/anime/components/AnimeCard';
 import { useFavoriteAnime } from '../hooks/useFavoriteAnime';
-import { slugify } from '../utils/slugify';
 import { animeService } from '../services/animeService';
+import { buildAnimeRouteId, parseAnimeRouteId } from '../utils/animeNavigation';
 
 export default function FavoriteAnimePage() {
     const navigate = useNavigate();
@@ -65,8 +65,14 @@ export default function FavoriteAnimePage() {
                 ) : (
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-5">
                         {favorites.map((item) => {
+                            const routeRef = parseAnimeRouteId(item.id);
+                            const routeId = routeRef ? buildAnimeRouteId(routeRef) : '';
                             const animeData: any = {
-                                mal_id: parseInt(item.id),
+                                id: routeRef?.source === 'anilist' ? Number(routeRef.id) : 0,
+                                mal_id: routeRef?.source === 'mal' ? Number(routeRef.id) : 0,
+                                tmdbId: routeRef?.source === 'tmdb' ? Number(routeRef.id) : undefined,
+                                scraperId: routeRef?.source === 'scraper' ? String(routeRef.id) : undefined,
+                                source: routeRef?.source,
                                 title: item.title,
                                 images: { jpg: { large_image_url: item.image, image_url: item.image } },
                                 score: 0,
@@ -81,10 +87,9 @@ export default function FavoriteAnimePage() {
                                 <AnimeCard
                                     key={item.id}
                                     anime={animeData}
-                                    onClick={() => navigate(`/anime/details/${item.id}`)}
+                                    onClick={() => routeId && navigate(`/anime/details/${routeId}`, { state: { anime: animeData } })}
                                     onWatchClick={() => {
-                                        const title = slugify(item.title || 'anime');
-                                        navigate(`/anime/details/${item.id}?ep=1`, { state: { anime: animeData } });
+                                        if (routeId) navigate(`/anime/details/${routeId}?ep=1`, { state: { anime: animeData } });
                                     }}
                                     inList={true}
                                     onToggleList={() => removeFavorite(item.id)}

@@ -6,7 +6,11 @@ import { normalizeEpisodeHistoryKey, storage, type EpisodeHistoryKey } from '../
 import { preloadLogos } from '../components/anime/AnimeLogoImage';
 import { useAuth } from './AuthContext';
 import { getDisplayImageUrl } from '../utils/image';
-import { isSupportedScraperSessionId } from '../utils/animeNavigation';
+import {
+    getAnimeDetailsRouteId,
+    getCanonicalAnimeKey,
+    isSupportedScraperSessionId,
+} from '../utils/animeNavigation';
 import { setLocalStorageWithCleanup } from '../utils/localStorageQuota';
 import { USES_LOCAL_SOURCES } from '../config/api';
 import { getLocalHiAnimeEpisodes } from '../platform/sources/hianime';
@@ -26,6 +30,7 @@ interface AnimeContextType {
     showAnimeDetails: boolean;
     showWatchModal: boolean;
     episodes: Episode[];
+    episodesAnimeKey: string | null;
     scraperSession: string | null;
     epLoading: boolean;
     episodesResolved: boolean;
@@ -93,8 +98,9 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
     const { user } = useAuth();
 
     // Cache reader (defined early so useState initializers can use it)
-    const HOME_CACHE_PREFIX = 'yorumi_home_cache_v29';
+    const HOME_CACHE_PREFIX = 'yorumi_home_cache_v38';
     const HOME_LATEST_MIN_ITEMS = 10;
+    const HOME_TRENDING_MIN_ITEMS = 10;
     const readHomeCache = <T,>(key: string, ttlMs: number): T | null => {
         try {
             const raw = localStorage.getItem(`${HOME_CACHE_PREFIX}:${key}`);
@@ -159,6 +165,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
 
     // Episode State
     const [episodes, setEpisodes] = useState<Episode[]>([]);
+    const [episodesAnimeKey, setEpisodesAnimeKey] = useState<string | null>(null);
     const [scraperSession, setScraperSession] = useState<string | null>(null);
     const [epLoading, setEpLoading] = useState(false);
     const [episodesResolved, setEpisodesResolved] = useState(false);
@@ -193,25 +200,16 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
         const parsed = Number(value);
         return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
     };
-    const getPreferredDetailsId = (target: Partial<Anime> | null | undefined): string | number | undefined => {
-        const anilistId = toPositiveNumber(target?.id);
-        if (anilistId > 0) return anilistId;
-
-        const malId = toPositiveNumber(target?.mal_id);
-        if (malId > 0) return malId;
-
-        const scraperId = normalizeScraperId(target?.scraperId);
-        return scraperId ? `s:${scraperId}` : undefined;
+    const getPreferredDetailsId = (target: Partial<Anime> | null | undefined): string | undefined => {
+        if (!target) return undefined;
+        return getAnimeDetailsRouteId(target) || undefined;
     };
     const extractDirectScraperSession = (value: unknown): string => normalizeScraperId(value);
     const getAnimeCacheKey = (target: Anime): string | null => {
-        const aid = Number(target?.id);
-        if (Number.isFinite(aid) && aid > 0) return `anilist:${aid}`;
-        const mal = Number(target?.mal_id);
-        if (Number.isFinite(mal) && mal > 0) return `mal:${mal}`;
-        const sid = normalizeScraperId(target?.scraperId);
-        if (sid) return `scraper:${sid}`;
-        return null;
+        const canonicalKey = getCanonicalAnimeKey(target);
+        const mappingId = toPositiveNumber(target.mappingId);
+        if (!canonicalKey) return null;
+        return mappingId ? `${canonicalKey}:mapping:${mappingId}` : canonicalKey;
     };
     const normalizeEpisodeNumber = (value: unknown, fallbackIndex: number): string => {
         if (typeof value === 'number' && Number.isFinite(value)) return String(value);
@@ -314,7 +312,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
     };
 
     // SessionStorage-backed episode cache (survives in-app navigation)
-    const EPISODE_CACHE_PREFIX = 'yorumi_ep_cache_v4';
+    const EPISODE_CACHE_PREFIX = 'yorumi_ep_cache_v7';
     const readEpisodeSessionCache = (animeKey: string): { session: string; episodes: Episode[] } | null => {
         try {
             const raw = sessionStorage.getItem(`${EPISODE_CACHE_PREFIX}:${animeKey}`);
@@ -464,6 +462,14 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
             nextAnime.tmdbId = hintedTmdbId;
         }
 
+        const hintedMappingId = toPositiveNumber(hint.mappingId);
+        if (hintedMappingId) {
+            nextAnime.mappingId = hintedMappingId;
+            // Mapping hints affect playback boundaries only. Display identity,
+            // titles and artwork must always come from resolved metadata.
+            nextAnime.episodes = hint.episodes ?? nextAnime.episodes;
+        }
+
         if (String(hint.type || '').toUpperCase() === 'MOVIE') {
             nextAnime.type = 'MOVIE';
             if (!nextAnime.episodes || Number(nextAnime.episodes) <= 0) {
@@ -505,6 +511,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
         if (!hasEnoughEpisodes(targetAnime, nextEpisodes)) return false;
 
         setEpisodes(nextEpisodes);
+        setEpisodesAnimeKey(getAnimeCacheKey(targetAnime) || null);
         setScraperSession(session);
         if (hasEnoughEpisodes(targetAnime, nextEpisodes)) {
             episodesCache.current.set(session, nextEpisodes);
@@ -561,7 +568,9 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
             if (Array.isArray(fast?.trendingAnime) && fast.trendingAnime.length > 0) {
                 setTrendingAnime(fast.trendingAnime);
                 setTrendingLoading(false);
-                writeHomeCache('trending', fast.trendingAnime);
+                if (fast.trendingAnime.length >= HOME_TRENDING_MIN_ITEMS) {
+                    writeHomeCache('trending', fast.trendingAnime);
+                }
                 applied = true;
             }
             if (Array.isArray(fast?.popularSeason) && fast.popularSeason.length > 0) {
@@ -611,7 +620,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
             preloadLogos(cachedLatest.map((a: Anime) => a.id || a.mal_id).filter(Boolean));
         }
         const cachedTrending = readHomeCache<Anime[]>('trending', HOME_TTL.trending);
-        if (cachedTrending?.length) {
+        if (cachedTrending && cachedTrending.length >= HOME_TRENDING_MIN_ITEMS) {
             setTrendingAnime(cachedTrending);
             setTrendingLoading(false);
         }
@@ -685,9 +694,9 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
         };
 
         const fetchTrending = async () => {
-            if (trendingAnime.length > 0) return;
+            if (trendingAnime.length >= HOME_TRENDING_MIN_ITEMS) return;
             const cached = readHomeCache<Anime[]>('trending', HOME_TTL.trending);
-            if (cached && cached.length > 0) {
+            if (cached && cached.length >= HOME_TRENDING_MIN_ITEMS) {
                 setTrendingAnime(cached);
                 setTrendingLoading(false);
                 preloadLogos(cached.map((a: Anime) => a.id || a.mal_id).filter(Boolean));
@@ -698,7 +707,9 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
                 const tData = await animeService.getTrendingAnime(1, 24);
                 if (tData?.data) {
                     setTrendingAnime(tData.data);
-                    writeHomeCache('trending', tData.data);
+                    if (tData.data.length >= HOME_TRENDING_MIN_ITEMS) {
+                        writeHomeCache('trending', tData.data);
+                    }
                     preloadLogos(tData.data.map((a: Anime) => a.id || a.mal_id).filter(Boolean));
                 }
             } catch (e) { console.error(e); }
@@ -799,7 +810,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
             tasks.push(fetchSpotlight());
         }
         tasks.push(fetchLatestUpdates());
-        if (!hasAnimeItems(fastBundle?.trendingAnime)) {
+        if (!Array.isArray(fastBundle?.trendingAnime) || fastBundle.trendingAnime.length < HOME_TRENDING_MIN_ITEMS) {
             tasks.push(fetchTrending());
         }
         if (!hasAnimeItems(fastBundle?.popularSeason)) {
@@ -1347,6 +1358,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
                 } else {
                     if (isStale()) return;
                     setEpisodes(cachedEpisodes);
+                    setEpisodesAnimeKey(cacheKey);
                     setScraperSession(session);
                     setEpLoading(false);
                     setEpisodesResolved(true);
@@ -1370,6 +1382,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
                     scraperSessionCache.current.set(cacheKey, sessionCached.session);
                     episodesCache.current.set(sessionCached.session, sessionCached.episodes);
                     setEpisodes(sessionCached.episodes);
+                    setEpisodesAnimeKey(cacheKey);
                     setScraperSession(sessionCached.session);
                     setEpLoading(false);
                     setEpisodesResolved(true);
@@ -1385,6 +1398,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
             if (session) setScraperSession(session);
             if (eps.length > 0) {
                 setEpisodes(eps);
+                setEpisodesAnimeKey(cacheKey || inFlightKey);
                 setEpLoading(false);
                 setEpisodesResolved(true);
                 return;
@@ -1399,6 +1413,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
                 if (isStale()) return;
                 if (retrySession) setScraperSession(retrySession);
                 setEpisodes(retryEpisodes);
+                setEpisodesAnimeKey(cacheKey || inFlightKey);
             } catch (e) {
                 console.error('Failed to retry episode preload', e);
             } finally {
@@ -1414,6 +1429,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
         setEpisodesResolved(false);
         if (options?.resetState !== false) {
             setEpisodes([]);
+            setEpisodesAnimeKey(null);
             setScraperSession(null);
         }
 
@@ -1427,6 +1443,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
             if (isStale()) return;
             if (session) setScraperSession(session);
             setEpisodes(eps);
+            setEpisodesAnimeKey(cacheKey || inFlightKey);
         } catch (e) {
             console.error('Failed to preload episodes', e);
         } finally {
@@ -1543,8 +1560,15 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
 
         let detailsId: string | number | undefined = getPreferredDetailsId(anime);
 
-        const cachedDetails = detailsId ? animeService.peekAnimeDetailsCache(detailsId) : null;
-        const cachedFast = detailsId ? animeService.peekAnimeDetailsFastCache(detailsId) : null;
+        const isMappedSeasonRequest = toPositiveNumber(anime.mappingId) > 0;
+        const cachedDetails = !isMappedSeasonRequest && detailsId
+            ? animeService.peekAnimeDetailsCache(detailsId)
+            : null;
+        // A fast-details cache is show-scoped and can contain another season's
+        // scraper session. A mapped season must resolve its own provider session.
+        const cachedFast = !isMappedSeasonRequest && detailsId
+            ? animeService.peekAnimeDetailsFastCache(detailsId)
+            : null;
         const hydratedAnime = hydrateFastDetails(cachedFast, (cachedDetails?.data || anime) as Anime);
 
         if (hasRenderablePrimaryDetails(hydratedAnime) || cachedDetails?.data || cachedFast?.data) {
@@ -1556,6 +1580,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
         const hydratedEpisodesApplied = applyHydratedEpisodes(hydratedAnime, cachedFast);
         if (!hydratedEpisodesApplied) {
             setEpisodes([]);
+            setEpisodesAnimeKey(null);
             setScraperSession(null);
             setEpLoading(true);
             setEpisodesResolved(false);
@@ -1581,7 +1606,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
             if (!detailsId && !anime.title) throw new Error('Could not identify anime ID');
 
             let fastPromiseSettled = false;
-            const fastPromise = detailsId ? animeService.getAnimeDetailsFast(detailsId, currentAnime?.type)
+            const fastPromise = detailsId && !isMappedSeasonRequest ? animeService.getAnimeDetailsFast(detailsId, currentAnime?.type)
                 .catch(() => null)
                 .finally(() => {
                     fastPromiseSettled = true;
@@ -1717,6 +1742,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
         setShowAnimeDetails(false);
         setSelectedAnime(null);
         setEpisodes([]);
+        setEpisodesAnimeKey(null);
     };
 
     const changePage = (page: number) => {
@@ -1822,7 +1848,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
     return (
         <AnimeContext.Provider value={{
             topAnime, spotlightAnime, latestUpdates, trendingAnime, popularSeason, popularMonth, topTenToday, topTenWeek, topTenMonth, selectedAnime,
-            showAnimeDetails, showWatchModal, episodes, scraperSession, epLoading, episodesResolved,
+            showAnimeDetails, showWatchModal, episodes, episodesAnimeKey, scraperSession, epLoading, episodesResolved,
             episodesBackgroundLoading,
             detailsLoading, loading, spotlightLoading, latestUpdatesLoading, trendingLoading, popularSeasonLoading, popularMonthLoading, topTenLoading, currentPage, lastVisiblePage,
             error, episodeSearchQuery, viewAllAnime, viewAllLoading, viewAllPagination,

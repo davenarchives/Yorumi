@@ -14,6 +14,24 @@ interface LNSpotlightProps {
     onLNClick: (lnId: string, autoRead?: boolean, lnData?: LightNovel) => void;
 }
 
+const mergeLightNovelDetails = (seed: LightNovel, details?: LightNovel): LightNovel => {
+    if (!details) return seed;
+    return {
+        ...seed,
+        ...details,
+        id: seed.id || details.id,
+        title: details.title || seed.title,
+        title_english: details.title_english || seed.title_english,
+        title_romaji: details.title_romaji || seed.title_romaji,
+        images: details.images || seed.images,
+        synopsis: details.synopsis || seed.synopsis,
+        author: details.author && details.author !== 'Unknown Author' ? details.author : seed.author,
+        chapters: details.chapters || seed.chapters,
+        volumes: details.volumes || seed.volumes,
+        genres: details.genres?.length ? details.genres : seed.genres,
+    };
+};
+
 // 3D Tilt Component for Spotlight Cover
 const SpotlightCover: React.FC<{ thumbnail: string; title: string }> = ({ thumbnail, title }) => {
     const cardRef = React.useRef<HTMLDivElement>(null);
@@ -127,7 +145,7 @@ export default function LNSpotlight({ onLNClick }: LNSpotlightProps) {
         const activeLN = lns[selectedIndex];
         const id = activeLN?.id || activeLN?.mal_id || activeLN?.scraper_id;
         const key = String(id || '');
-        if (!id || detailsById[key] || (activeLN.author && activeLN.author !== 'Unknown Author' && activeLN.chapters)) return;
+        if (!id || detailsById[key]) return;
 
         let cancelled = false;
         void lnService.getDetails(id).then((details) => {
@@ -180,8 +198,10 @@ export default function LNSpotlight({ onLNClick }: LNSpotlightProps) {
                 <AnimatePresence>
                     {lns[selectedIndex] && (() => {
                         const activeLN = lns[selectedIndex];
-                        const displayTitle = getDisplayTitle(activeLN, language);
-                        const cover = activeLN.images.jpg.large_image_url || activeLN.images.jpg.image_url;
+                        const details = detailsById[String(activeLN.id || activeLN.mal_id || activeLN.scraper_id || '')];
+                        const displayLN = mergeLightNovelDetails(activeLN, details);
+                        const displayTitle = getDisplayTitle(displayLN, language);
+                        const cover = displayLN.images.jpg.large_image_url || displayLN.images.jpg.image_url;
 
                         return (
                             <m.div
@@ -214,38 +234,38 @@ export default function LNSpotlight({ onLNClick }: LNSpotlightProps) {
                                     {/* Middle Chips */}
                                     <div className="spotlight-meta w-full flex items-center flex-wrap gap-4 text-white select-none mb-4">
                                         {/* Author Chip */}
-                                        {activeLN.author && activeLN.author !== 'Unknown Author' && (
+                                        {displayLN.author && displayLN.author !== 'Unknown Author' && (
                                             <span className="flex items-center justify-center gap-1.5 bg-white/10 px-3 h-8 rounded-lg text-sm font-bold">
                                                 <svg className="w-4 h-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                                                 </svg>
-                                                {activeLN.author}
+                                                {displayLN.author}
                                             </span>
                                         )}
 
                                         {/* Score / Chapter Chip */}
-                                        {activeLN.score ? (
+                                        {displayLN.score ? (
                                             <span className="flex items-center justify-center gap-1.5 bg-amber-500 text-black px-3 h-8 rounded-lg text-sm font-black">
-                                                ★ {activeLN.score.toFixed(1)}
+                                                ★ {displayLN.score.toFixed(1)}
                                             </span>
                                         ) : null}
 
                                         {/* Format Chip (Light Yellow Accent) */}
                                         <span className="flex items-center justify-center px-3 h-8 rounded-lg bg-amber-400/20 text-amber-300 text-sm font-extrabold border border-amber-400/50 uppercase">
-                                            {activeLN.type || 'NOVEL'}
+                                            {displayLN.type || 'NOVEL'}
                                         </span>
                                     </div>
 
                                     {/* Synopsis & Buttons */}
                                     <div className="w-full mb-6">
                                         <p className="text-gray-300 text-sm md:text-base line-clamp-3 max-w-xl leading-relaxed">
-                                            {activeLN.synopsis}
+                                            {displayLN.synopsis}
                                         </p>
                                     </div>
 
                                     <div className="spotlight-actions w-full flex gap-4">
                                         <button
-                                            onClick={() => onLNClick(String(activeLN.id), true, activeLN)}
+                                            onClick={() => onLNClick(String(displayLN.id), true, displayLN)}
                                             className="bg-amber-400 text-black px-5 py-2.5 rounded-lg font-black hover:bg-white hover:text-black transition-all duration-300 flex items-center gap-2 shadow-[0_0_15px_rgba(251,191,36,0.4)] hover:shadow-[0_0_25px_rgba(251,191,36,0.6)] text-sm md:text-base"
                                         >
                                             <svg className="w-4 h-4 ml-0.5" fill="currentColor" viewBox="0 0 24 24">
@@ -254,7 +274,7 @@ export default function LNSpotlight({ onLNClick }: LNSpotlightProps) {
                                             Read Now
                                         </button>
                                         <button
-                                            onClick={() => onLNClick(String(activeLN.id), false, activeLN)}
+                                            onClick={() => onLNClick(String(displayLN.id), false, displayLN)}
                                             className="bg-white/10 border border-white/20 text-white px-5 py-2.5 rounded-lg font-bold hover:bg-white/20 transition-all duration-300 flex items-center gap-2 text-sm md:text-base"
                                         >
                                             Detail{' '}
@@ -319,7 +339,7 @@ export default function LNSpotlight({ onLNClick }: LNSpotlightProps) {
             {lns[selectedIndex] && (() => {
                 const activeLN = lns[selectedIndex];
                 const details = detailsById[String(activeLN.id || activeLN.mal_id || activeLN.scraper_id || '')];
-                const displayLN = details ? { ...details, ...activeLN, chapters: activeLN.chapters || details.chapters, author: activeLN.author && activeLN.author !== 'Unknown Author' ? activeLN.author : details.author, genres: activeLN.genres?.length ? activeLN.genres : details.genres } : activeLN;
+                const displayLN = mergeLightNovelDetails(activeLN, details);
                 const displayTitle = getDisplayTitle(displayLN, language);
                 const chapterCount = displayLN.chapters || displayLN.volumes;
                 const rating = displayLN.score && displayLN.score > 0 ? displayLN.score.toFixed(1) : null;
@@ -340,8 +360,8 @@ export default function LNSpotlight({ onLNClick }: LNSpotlightProps) {
                                 {(displayLN.genres || []).slice(0, 3).map((genre) => <span key={genre.name} className="rounded-full border border-white/15 bg-black/45 px-3 py-1.5">{genre.name}</span>)}
                             </div>
                             <div className="pointer-events-auto flex gap-2 pt-1">
-                                <button type="button" onClick={() => onLNClick(String(activeLN.id), true, activeLN)} className="flex h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-amber-400 px-3 text-sm font-bold text-black shadow-[0_0_16px_rgba(251,191,36,0.3)]">▶ Read Now</button>
-                                <button type="button" onClick={() => onLNClick(String(activeLN.id), false, activeLN)} className="flex h-10 min-w-[112px] items-center justify-center gap-1.5 rounded-lg border border-white/20 bg-white/10 px-3 text-sm font-bold text-white">Detail <span aria-hidden="true">›</span></button>
+                                <button type="button" onClick={() => onLNClick(String(displayLN.id), true, displayLN)} className="flex h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-amber-400 px-3 text-sm font-bold text-black shadow-[0_0_16px_rgba(251,191,36,0.3)]">▶ Read Now</button>
+                                <button type="button" onClick={() => onLNClick(String(displayLN.id), false, displayLN)} className="flex h-10 min-w-[112px] items-center justify-center gap-1.5 rounded-lg border border-white/20 bg-white/10 px-3 text-sm font-bold text-white">Detail <span aria-hidden="true">›</span></button>
                             </div>
                         </div>
                     </div>

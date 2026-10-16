@@ -1,7 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { useCallback, useEffect, useRef } from 'react';
 import { useAnime } from '../hooks/useAnime';
-import { slugify } from '../utils/slugify';
 import { getAnimeDetailsRouteId, getAnimeWatchRouteId } from '../utils/animeNavigation';
 import type { Anime } from '../types/anime';
 import { animeService } from '../services/animeService';
@@ -15,8 +14,8 @@ export default function HomePage() {
     const isCatalogFilterView = false;
     const filteredTopAnime = Array.isArray(anime.topAnime) ? anime.topAnime : [];
     const allTimeTitle = 'All-Time Popular';
-    const routeResolutionCache = useRef(new Map<string, Promise<{ routeId: string | number; anime: Anime } | null>>());
-    const resolvedRouteCache = useRef(new Map<string, { routeId: string | number; anime: Anime }>());
+    const routeResolutionCache = useRef(new Map<string, Promise<{ routeId: string; anime: Anime } | null>>());
+    const resolvedRouteCache = useRef(new Map<string, { routeId: string; anime: Anime }>());
 
     useEffect(() => {
         anime.fetchHomeData();
@@ -39,7 +38,7 @@ export default function HomePage() {
         ].join(':');
     }, []);
 
-    const getImmediateRouteTarget = useCallback((item: Anime): { routeId: string | number; anime: Anime } | null => {
+    const getImmediateRouteTarget = useCallback((item: Anime): { routeId: string; anime: Anime } | null => {
         const directRouteId = getAnimeDetailsRouteId(item);
         if (directRouteId) {
             return { routeId: directRouteId, anime: item };
@@ -49,7 +48,7 @@ export default function HomePage() {
         return routeKey ? resolvedRouteCache.current.get(routeKey) || null : null;
     }, [getRouteResolutionKey]);
 
-    const resolveRouteTarget = useCallback(async (item: Anime): Promise<{ routeId: string | number; anime: Anime } | null> => {
+    const resolveRouteTarget = useCallback(async (item: Anime): Promise<{ routeId: string; anime: Anime } | null> => {
         const immediate = getImmediateRouteTarget(item);
         if (immediate) return immediate;
 
@@ -112,8 +111,10 @@ export default function HomePage() {
                 const bestMatch = ranked.find((entry: { candidate: Anime; score: number }) => entry.score > 0)?.candidate || search.data?.[0];
                 if (!bestMatch) return null;
 
+                const routeId = getAnimeDetailsRouteId(bestMatch);
+                if (!routeId) return null;
                 const resolved = {
-                    routeId: bestMatch.id || bestMatch.mal_id,
+                    routeId,
                     anime: { ...item, ...bestMatch }
                 };
                 resolvedRouteCache.current.set(routeKey, resolved);
@@ -137,7 +138,6 @@ export default function HomePage() {
             : await resolveRouteTarget(item);
         if (!resolved) return;
 
-        const title = slugify(resolved.anime.title || resolved.anime.title_english || item.title || 'anime');
         const id = resolved.routeId;
 
         let targetEp: number | string | undefined = episodeNumber;

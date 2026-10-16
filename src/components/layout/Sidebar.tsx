@@ -7,7 +7,7 @@ import { useWatchList } from '../../hooks/useWatchList';
 import { useReadList } from '../../hooks/useReadList';
 import { useLNReadList } from '../../hooks/useLNReadList';
 import { useContinueLNReading } from '../../hooks/useContinueLNReading';
-import { getDirectScraperRouteId } from '../../utils/animeNavigation';
+import { getAnimeDetailsRouteId, getDirectScraperRouteId } from '../../utils/animeNavigation';
 import { slugify } from '../../utils/slugify';
 import type { ReadListItem, WatchListItem } from '../../utils/storage';
 import type { LNReadListItem } from '../../types/ln';
@@ -26,10 +26,11 @@ const toPositiveNumber = (value: unknown) => {
     return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
 };
 
-const getAnimeRouteId = (item: WatchListItem) => (
-    getDirectScraperRouteId(item.scraperId) ||
-    String(item.anilistId || item.malId || item.id || '').trim()
-);
+const getAnimeRouteId = (item: WatchListItem) => getAnimeDetailsRouteId({
+    id: item.anilistId || item.id,
+    mal_id: item.malId,
+    scraperId: item.scraperId,
+});
 
 const buildAnimeRouteState = (item: WatchListItem) => {
     const anilistId = toPositiveNumber(item.anilistId || item.id);
@@ -176,7 +177,7 @@ export default function Sidebar() {
 
     return (
         <>
-        <aside className="fixed left-0 top-0 hidden h-screen w-[70px] bg-[#0a0a0a]/90 backdrop-blur-xl border-r border-white/5 md:flex flex-col items-center py-6 z-[100]">
+        <aside className="yorumi-desktop-sidebar fixed left-0 top-0 hidden h-screen w-[70px] bg-[#0a0a0a]/90 backdrop-blur-xl border-r border-white/5 md:flex flex-col items-center py-6 z-[100]">
             <div className="flex flex-col items-center gap-3 w-full">
                 {/* Logo */}
                 <div 
@@ -272,7 +273,7 @@ export default function Sidebar() {
 
         {!isImmersiveRoute && (
             <nav
-                className="fixed inset-x-0 bottom-0 z-[2147483600] flex flex-col border-t border-white/10 bg-[#111216]/95 backdrop-blur-xl shadow-[0_-8px_30px_rgba(0,0,0,0.5)] md:hidden"
+                className="yorumi-mobile-navbar fixed inset-x-0 bottom-0 z-[2147483600] flex flex-col border-t border-white/10 bg-[#111216]/95 backdrop-blur-xl shadow-[0_-8px_30px_rgba(0,0,0,0.5)] md:hidden"
                 style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
                 aria-label="Primary navigation"
             >

@@ -137,17 +137,20 @@ export function useLNDownloads() {
             });
             notifyListeners();
 
-            // Download in parallel batches
-            await Promise.allSettled(
-                unDownloadedChapters.map((ch) =>
-                    startDownload({
+            // Novel sources rate-limit aggressively; a small queue keeps
+            // bulk downloads reliable while still allowing some concurrency.
+            const concurrency = 2;
+            for (let i = 0; i < unDownloadedChapters.length; i += concurrency) {
+                const batch = unDownloadedChapters.slice(i, i + concurrency);
+                await Promise.allSettled(
+                    batch.map((ch) => startDownload({
                         novelId: novel.id,
                         novelTitle: novel.title,
                         novelImage: novel.image || '',
                         chapter: ch,
-                    })
-                )
-            );
+                    }))
+                );
+            }
         },
         [isChapterDownloaded, getDownloadProgress, startDownload]
     );

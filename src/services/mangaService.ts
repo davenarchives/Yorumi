@@ -1,5 +1,6 @@
 // API Service for Manga operations - Using AniList
 import type { Manga, MangaChapter } from '../types/manga';
+import { buildYorumiId } from '../utils/contentIdentity';
 import axios from 'axios';
 import { API_BASE, USES_LOCAL_SOURCES } from '../config/api';
 import { getDisplayImageUrl } from '../utils/image';
@@ -20,6 +21,12 @@ const chapterListInFlight = new Map<string, Promise<any>>();
 const chapterPagesInFlight = new Map<string, Promise<any>>();
 const inFlightRequests = new Map<string, Promise<any>>();
 const localSourceResolutionCache = new Map<string, Promise<HydratedManga>>();
+type MangaHomeSections = {
+    top: Manga[];
+    popular: Manga[];
+    manhwa: Manga[];
+};
+let mangaHomeSectionsPromise: Promise<MangaHomeSections> | null = null;
 let activeLocalMangaResolutions = 0;
 const pendingLocalMangaResolutions: Array<() => void> = [];
 // Home-card enrichment is intentionally serialized so it cannot flood
@@ -187,6 +194,9 @@ interface AniListManga {
 const mapAnilistToManga = (item: AniListManga) => ({
     mal_id: item.id, // Use AniList ID as primary for routing to match backend expectation
     id: item.id,
+    yorumiId: buildYorumiId('manga', 'anilist', item.id),
+    externalIds: { anilist: item.id },
+    mappingStatus: 'unresolved' as const,
     title: item.title?.english || item.title?.romaji || item.title?.native || 'Unknown',
     title_english: item.title?.english,
     title_romaji: item.title?.romaji,
@@ -248,6 +258,10 @@ const mapScraperToManga = (scraperData: ScraperManga) => {
     mal_id: scraperData.id,
     id: scraperData.id,
     scraper_id: scraperData.id,
+    yorumiId: buildYorumiId('manga', 'mangakatana', scraperData.id),
+    externalIds: { mangakatana: scraperData.id },
+    mappingStatus: 'verified' as const,
+    readingProvider: 'mangakatana',
     title: scraperData.title || 'Unknown',
     title_english: scraperData.title || 'Unknown',
     title_romaji: pickScraperRomajiTitle(scraperData),
@@ -292,6 +306,17 @@ interface ScraperManga {
 type HydratedManga = Manga & {
     resolvedChapters?: MangaChapter[];
 };
+
+const qualifyMangaChapters = (mangaId: string, chapters: MangaChapter[]): MangaChapter[] => chapters.map((chapter) => ({
+    ...chapter,
+    provider: chapter.provider || 'mangakatana',
+    providerId: chapter.providerId || chapter.id,
+    availability: chapter.availability || 'available',
+    url: chapter.url,
+    number: chapter.number ?? Number.parseFloat(chapter.title.match(/[\d.]+/)?.[0] || ''),
+    language: chapter.language || 'en',
+    id: chapter.id || `${mangaId}:${chapter.url}`,
+}));
 
 const getMangaTitleCandidates = (manga: Partial<Manga>) => ([
     manga.title,
@@ -361,10 +386,13 @@ const enrichLocalManga = async (manga: Manga): Promise<HydratedManga> => {
                 localSourceResolutionCache.delete(key);
                 return manga as HydratedManga;
             }
-            const chapters = details.chapters || [];
+            const chapters = qualifyMangaChapters(details.id, details.chapters || []);
             const enriched: HydratedManga = {
                 ...manga,
                 scraper_id: details.id,
+                externalIds: { ...manga.externalIds, mangakatana: details.id },
+                mappingStatus: 'verified',
+                readingProvider: 'mangakatana',
                 chapters: chapters.length || manga.chapters,
                 resolvedChapters: chapters,
             };
@@ -381,6 +409,42 @@ const enrichLocalManga = async (manga: Manga): Promise<HydratedManga> => {
 };
 
 export const mangaService = {
+    async getHomeSections(): Promise<MangaHomeSections> {
+        if (mangaHomeSectionsPromise) return mangaHomeSectionsPromise;
+
+        mangaHomeSectionsPromise = (async () => {
+            if (USES_LOCAL_SOURCES) {
+                const [top, popular, manhwa] = await Promise.all([
+                    getLocalAniListMangaPage({ page: 1, sort: ['SCORE_DESC'] }),
+                    getLocalAniListMangaPage({ page: 1, sort: ['POPULARITY_DESC'] }),
+                    getLocalAniListMangaPage({ page: 1, sort: ['POPULARITY_DESC'], countryOfOrigin: 'KR' }),
+                ]);
+                return {
+                    top: mapAniListPage(top).data,
+                    popular: mapAniListPage(popular).data,
+                    manhwa: mapAniListPage(manhwa).data,
+                };
+            }
+
+            const response = await fetch(`${API_BASE}/anilist/manga/home-sections?page=1`);
+            if (!response.ok) throw new Error(`Manga home sections failed (${response.status})`);
+            const payload = await response.json();
+            const sections = {
+                top: (payload.top?.media || []).map(mapAnilistToManga),
+                popular: (payload.popular?.media || []).map(mapAnilistToManga),
+                manhwa: (payload.manhwa?.media || []).map(mapAnilistToManga),
+            };
+            setCached('manga-top:1', { data: sections.top, pagination: {} });
+            setCached('manga-popular:1', { data: sections.popular, pagination: {} });
+            setCached('manga-popular-manhwa:1', { data: sections.manhwa, pagination: {} });
+            return sections;
+        })().catch((error) => {
+            mangaHomeSectionsPromise = null;
+            throw error;
+        });
+
+        return mangaHomeSectionsPromise;
+    },
     async enrichVisibleManga(items: Manga[], onItem?: (item: HydratedManga, index: number) => void) {
         if (!USES_LOCAL_SOURCES) return items;
         return Promise.all(items.map(async (item, index) => {
@@ -390,7 +454,7 @@ export const mangaService = {
         }));
     },
     peekUnifiedMangaDetails(id: string | number) {
-        return getCached(`manga-unified:v2:${String(id)}`, DETAIL_CACHE_TTL) as Manga | null;
+        return getCached(`manga-unified:v3:${String(id)}`, DETAIL_CACHE_TTL) as Manga | null;
     },
 
     peekTopManga(page: number = 1) {
@@ -670,11 +734,12 @@ export const mangaService = {
         }
 
         const request = (USES_LOCAL_SOURCES
-            ? mangaKatanaSource.getChapters(mangaId).then((chapters) => ({ chapters }))
+            ? mangaKatanaSource.getChapters(mangaId).then((chapters) => ({ chapters: qualifyMangaChapters(mangaId, chapters) }))
             : apiClient.get(`/manga/chapters/${encodeURIComponent(mangaId)}`).then(({ data }) => data)
         )
             .then((data) => {
                 if (data?.chapters && Array.isArray(data.chapters)) {
+                    data.chapters = qualifyMangaChapters(mangaId, data.chapters);
                     chapterListCache.set(mangaId, { data, timestamp: Date.now() });
                 }
                 return data;
@@ -1016,7 +1081,7 @@ export const mangaService = {
 
     // Unified details endpoint (supports AniList numeric IDs and scraper IDs)
     async getUnifiedMangaDetails(id: string | number) {
-        const cacheKey = `manga-unified:v2:${String(id)}`;
+        const cacheKey = `manga-unified:v3:${String(id)}`;
         const cached = getCached(cacheKey, DETAIL_CACHE_TTL);
         if (cached) return cached;
         if (inFlightRequests.has(cacheKey)) {
@@ -1033,12 +1098,16 @@ export const mangaService = {
 
             const sourceDetails = await resolveLocalMangaKatanaDetails(mapped);
             if (sourceDetails) {
+                const sourceChapters = qualifyMangaChapters(sourceDetails.id, sourceDetails.chapters || []);
                 mapped.scraper_id = sourceDetails.id;
-                mapped.resolvedChapters = sourceDetails.chapters;
-                mapped.chapters = sourceDetails.chapters.length || mapped.chapters;
+                mapped.externalIds = { ...mapped.externalIds, mangakatana: sourceDetails.id };
+                mapped.mappingStatus = 'verified';
+                mapped.readingProvider = 'mangakatana';
+                mapped.resolvedChapters = sourceChapters;
+                mapped.chapters = sourceChapters.length || mapped.chapters;
                 mapped.title_english = mapped.title_english || sourceDetails.title;
                 mapped.synonyms = [...new Set([...(mapped.synonyms || []), ...(sourceDetails.altNames || [])])];
-                const chapterPayload = { chapters: sourceDetails.chapters };
+                const chapterPayload = { chapters: sourceChapters };
                 [
                     String(id),
                     String(mapped.id || ''),

@@ -4,7 +4,7 @@ import { Search, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useTitleLanguage } from '../../context/TitleLanguageContext';
 import { useNavbarSearch } from '../../features/search/hooks/useNavbarSearch';
-import type { SearchPreviewItem } from '../../features/search/api';
+import { getAnimeSearchSeed, type SearchPreviewItem } from '../../features/search/api';
 import { isAnimeAiring, getAiringLabel } from '../../utils/animeAiring';
 
 interface SearchModalProps {
@@ -31,6 +31,8 @@ export default function SearchModal({ isOpen, onClose, type }: SearchModalProps)
         try {
             const saved = localStorage.getItem(storageKey);
             if (saved) {
+                // The storage namespace changes when the modal switches media type.
+                // eslint-disable-next-line react-hooks/set-state-in-effect
                 setRecentSearches(JSON.parse(saved));
             }
         } catch (e) {
@@ -77,7 +79,9 @@ export default function SearchModal({ isOpen, onClose, type }: SearchModalProps)
         setRecentSearches([]);
         try {
             localStorage.removeItem(storageKey);
-        } catch (e) {}
+        } catch {
+            // Recent-search persistence is best effort.
+        }
     };
 
     const removeRecentSearch = (e: React.MouseEvent, termToRemove: string) => {
@@ -90,7 +94,9 @@ export default function SearchModal({ isOpen, onClose, type }: SearchModalProps)
             } else {
                 localStorage.removeItem(storageKey);
             }
-        } catch (e) {}
+        } catch {
+            // Recent-search persistence is best effort.
+        }
     };
 
     const handleResultClick = (item: SearchPreviewItem) => {
@@ -105,32 +111,7 @@ export default function SearchModal({ isOpen, onClose, type }: SearchModalProps)
             return;
         }
 
-        const raw = item.manga || {};
-        const isMovie = String(item.type || raw.media_type || '').toUpperCase() === 'MOVIE' || raw.media_type === 'movie';
-        const anime = {
-            ...(raw || {}),
-            id: typeof raw.id === 'number' && !item.url.includes('/tmdb-') ? raw.id : 0,
-            mal_id: typeof raw.mal_id === 'number' ? raw.mal_id : 0,
-            tmdbId: item.url.includes('/tmdb-') ? item.id : raw.tmdbId,
-            title: item.title,
-            title_english: item.title,
-            title_romaji: raw.original_name || raw.original_title || item.subtitle || item.title,
-            images: raw.images || {
-                jpg: {
-                    image_url: item.image,
-                    large_image_url: item.image,
-                },
-            },
-            score: item.score || 0,
-            status: raw.status || 'FINISHED',
-            type: isMovie ? 'MOVIE' : (item.type || raw.type || 'TV'),
-            episodes: isMovie ? 1 : (raw.episodes ?? null),
-            year: typeof item.date === 'number' ? item.date : raw.year,
-            aired: raw.aired || {
-                from: raw.release_date || raw.first_air_date,
-                string: item.date ? String(item.date) : undefined,
-            },
-        };
+        const anime = getAnimeSearchSeed(item);
         navigate(item.url, { state: { anime } });
     };
 
@@ -148,9 +129,6 @@ export default function SearchModal({ isOpen, onClose, type }: SearchModalProps)
             }
         }
     };
-
-    const accentColor = type === 'ln' ? 'text-amber-400' : type === 'manga' ? 'text-yorumi-manga' : 'text-yorumi-accent';
-    const accentBg = type === 'ln' ? 'bg-amber-400' : type === 'manga' ? 'bg-yorumi-manga' : 'bg-yorumi-accent';
 
     const filteredResults = searchResults.filter(item => {
         if (type === 'manga' || type === 'ln') return true;
@@ -219,8 +197,9 @@ export default function SearchModal({ isOpen, onClose, type }: SearchModalProps)
                                 /* Live Search Results */
                                 <div className="p-2 space-y-1">
                                     {isSearching ? (
-                                        <div className="flex items-center justify-center py-12 text-gray-400">
-                                            <div className={`w-6 h-6 border-2 border-transparent border-t-${type === 'manga' ? 'yorumi-manga' : 'yorumi-accent'} rounded-full animate-spin`} />
+                                        <div className="flex items-center justify-center gap-3 py-12 text-sm text-gray-400">
+                                            <div className={`w-6 h-6 border-2 border-transparent rounded-full animate-spin ${type === 'manga' ? 'border-t-yorumi-manga' : type === 'ln' ? 'border-t-amber-400' : 'border-t-yorumi-accent'}`} />
+                                            <span>Searching…</span>
                                         </div>
                                     ) : filteredResults.length > 0 ? (
                                         filteredResults.map((item) => {
@@ -267,8 +246,8 @@ export default function SearchModal({ isOpen, onClose, type }: SearchModalProps)
                                                     <div className="flex-1 min-w-0">
                                                         <h3 className="text-white font-bold text-base truncate group-hover:text-white/90">{item.title}</h3>
                                                         <div className="flex items-center gap-1.5 text-[13px] font-medium text-gray-400 mt-0.5">
-                                                            {isAnimeAiring(item.status || (item.raw as any)?.status) ? (
-                                                                <span className="text-[#4d88e5] font-bold">{getAiringLabel(item as any)}</span>
+                                                            {isAnimeAiring(item.status || (item.raw as { status?: string } | undefined)?.status) ? (
+                                                                <span className="text-[#4d88e5] font-bold">{getAiringLabel(item)}</span>
                                                             ) : (
                                                                 displayYear && <span>{displayYear}</span>
                                                             )}

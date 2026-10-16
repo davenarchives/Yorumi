@@ -1,7 +1,7 @@
 {
   "name": "yorumi",
   "private": true,
-  "version": "4.2.0",
+  "version": "4.3.0",
   "description": "Yorumi - Anime & Manga Streamer",
   "author": "davenarchives",
   "main": "dist-electron/main.cjs",
@@ -29,11 +29,13 @@
     "start": "concurrently \"npm run dev --prefix backend\" \"electron .\"",
     "lint": "eslint .",
     "preview": "vite preview",
+    "test:mappings": "npm exec --prefix backend -- tsx --test tests/anime-mapping.test.ts tests/content-identity.test.ts",
     "knip": "knip"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.2",
     "@capacitor/app": "^8.1.1",
+    "@capacitor/browser": "^8.0.5",
     "@capacitor/core": "^8.5.2",
     "@capacitor/screen-orientation": "^8.0.1",
     "@emotion/react": "^11.14.0",

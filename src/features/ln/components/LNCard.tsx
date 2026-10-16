@@ -9,15 +9,15 @@ import { Star } from 'lucide-react';
 interface LNCardProps {
     ln: LightNovel;
     rank?: number;
+    showRanking?: boolean;
     onClick: (ln: LightNovel) => void;
     disableTilt?: boolean;
 }
 
-export default function LNCard({ ln, rank, onClick, disableTilt = false }: LNCardProps) {
+export default function LNCard({ ln, rank, showRanking = false, onClick, disableTilt = false }: LNCardProps) {
     const { language } = useTitleLanguage();
     const cardRef = useRef<HTMLDivElement>(null);
     const [rotation, setRotation] = useState({ x: 0, y: 0 });
-    const [glare, setGlare] = useState({ x: 50, y: 50, opacity: 0 });
     const [isHovered, setIsHovered] = useState(false);
     const [popupSide, setPopupSide] = useState<'left' | 'right'>('right');
 
@@ -40,7 +40,6 @@ export default function LNCard({ ln, rank, onClick, disableTilt = false }: LNCar
 
     useEffect(() => {
         if (!isHovered) return;
-        updatePopupSide();
         window.addEventListener('resize', updatePopupSide);
         return () => {
             window.removeEventListener('resize', updatePopupSide);
@@ -60,11 +59,6 @@ export default function LNCard({ ln, rank, onClick, disableTilt = false }: LNCar
         const rotateY = ((x - centerX) / centerX) * 12;
 
         setRotation({ x: rotateX, y: rotateY });
-        setGlare({
-            x: (x / rect.width) * 100,
-            y: (y / rect.height) * 100,
-            opacity: 1,
-        });
     };
 
     const handleMouseLeave = () => {
@@ -73,7 +67,6 @@ export default function LNCard({ ln, rank, onClick, disableTilt = false }: LNCar
             return;
         }
         setRotation({ x: 0, y: 0 });
-        setGlare((prev) => ({ ...prev, opacity: 0 }));
         setIsHovered(false);
     };
 
@@ -108,14 +101,14 @@ export default function LNCard({ ln, rank, onClick, disableTilt = false }: LNCar
                 <img src={cover} alt={displayTitle} className="w-full h-full object-cover" loading="lazy" />
 
                 {/* Rank Badge (Top Left) */}
-                {rank ? (
+                {showRanking && rank ? (
                     <div className="absolute top-2 left-2 z-10 px-2 py-0.5 bg-amber-400 text-black font-black text-xs rounded-md">
                         #{rank}
                     </div>
                 ) : null}
 
                 {/* Top Right: Star Rating */}
-                {ln.score ? (
+                {showRanking && ln.score ? (
                     <div className="absolute top-2 right-2 z-10">
                         <span className="bg-black/70 backdrop-blur-md text-amber-400 px-2 py-0.5 rounded-md text-xs font-extrabold flex items-center gap-1">
                             <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
@@ -133,7 +126,7 @@ export default function LNCard({ ln, rank, onClick, disableTilt = false }: LNCar
                             ? 'md:bg-red-600 md:text-white md:shadow-sm'
                             : 'md:bg-white/20 md:backdrop-blur-sm md:text-white'
                     }`}>
-                        {ln.countryOfOrigin === 'KR' ? 'KR (WN)' : ln.countryOfOrigin === 'CN' ? 'CN (WN)' : (ln.type || 'NOVEL')}
+                        {ln.countryOfOrigin === 'JP' ? 'LIGHT NOVEL' : 'WEB NOVEL'}
                     </span>
                     <span className="flex items-center gap-1 rounded bg-black/55 px-1.5 py-0.5 text-[9px] font-bold uppercase text-gray-200 md:bg-black/60 md:px-2 md:text-[10px] md:text-gray-300 md:backdrop-blur-sm">
                         <span className={`w-1.5 h-1.5 rounded-full ${ln.status === 'FINISHED' || ln.status === 'Completed' ? 'bg-blue-400' : 'bg-green-400'}`} />

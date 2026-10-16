@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { mangaService } from '../../../services/mangaService';
 import type { Manga } from '../../../types/manga';
 import MangaCard from './MangaCard';
+import { getMangaDetailsRouteId } from '../../../utils/mangaNavigation';
 
 interface PopularManhwaProps {
     onMangaClick: (mangaId: string, autoRead?: boolean, manga?: Manga) => void;
@@ -24,7 +25,7 @@ const PopularManhwa: React.FC<PopularManhwaProps> = ({ onMangaClick }) => {
         let cancelled = false;
         const fetchManhwa = async () => {
             try {
-                const { data } = await mangaService.getPopularManhwa(1);
+                const data = (await mangaService.getHomeSections()).manhwa;
                 if (data) {
                     const visible = data.slice(0, 10);
                     setManhwaList(visible);
@@ -109,7 +110,7 @@ const PopularManhwa: React.FC<PopularManhwaProps> = ({ onMangaClick }) => {
                                 >
                                     <MangaCard
                                         manga={manga as unknown as Manga}
-                                        onClick={(mangaObj) => onMangaClick((mangaObj.scraper_id || mangaObj.id || mangaObj.mal_id).toString(), false, mangaObj)}
+                                        onClick={(mangaObj) => onMangaClick(getMangaDetailsRouteId(mangaObj), false, mangaObj)}
                                         disableTilt
                                     />
                                 </div>

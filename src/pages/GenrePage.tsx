@@ -4,43 +4,9 @@ import { ArrowLeft } from 'lucide-react';
 import AnimeCard from '../features/anime/components/AnimeCard';
 import Pagination from '../components/ui/Pagination';
 import AnimeCardSkeleton from '../features/anime/components/AnimeCardSkeleton';
-import { slugify } from '../utils/slugify';
+import { buildAnimeDetailsPath } from '../utils/animeNavigation';
 import type { Anime } from '../types/anime';
-import { API_BASE } from '../config/api';
-import { parseStudios } from '../services/animeService';
-
-// Helper to map AniList response to our Anime interface format
-const mapAnilistToAnime = (item: any): Anime => ({
-    mal_id: item.idMal || item.id,
-    id: item.id,
-    title: item.title?.english || item.title?.romaji || 'Unknown',
-    title_japanese: item.title?.native,
-    title_english: item.title?.english,
-    title_romaji: item.title?.romaji,
-    images: {
-        jpg: {
-            image_url: item.coverImage?.large || '',
-            large_image_url: item.coverImage?.extraLarge || item.coverImage?.large || ''
-        }
-    },
-    synopsis: item.description?.replace(/<[^>]*>/g, '') || '',
-    score: item.averageScore ? item.averageScore / 10 : 0,
-    episodes: item.episodes,
-    nextAiringEpisode: item.nextAiringEpisode ? {
-        episode: item.nextAiringEpisode.episode,
-        timeUntilAiring: item.nextAiringEpisode.timeUntilAiring ?? (item.nextAiringEpisode.airingAt ? item.nextAiringEpisode.airingAt - Math.floor(Date.now() / 1000) : 0)
-    } : undefined,
-    latestEpisode: item.nextAiringEpisode?.episode ? item.nextAiringEpisode.episode - 1 : undefined,
-    status: item.status,
-    type: item.format,
-    genres: item.genres || [],
-    year: item.seasonYear || item.startDate?.year,
-    anilist_banner_image: item.bannerImage,
-    anilist_cover_image: item.coverImage?.extraLarge || item.coverImage?.large,
-    duration: item.duration ? `${item.duration} min` : undefined,
-    studios: parseStudios(item.studios),
-    trailer: item.trailer,
-});
+import { animeService } from '../services/animeService';
 
 export default function GenrePage() {
     const { name } = useParams<{ name: string }>();
@@ -56,13 +22,9 @@ export default function GenrePage() {
         const fetchAnimeByGenre = async () => {
             setLoading(true);
             try {
-                const res = await fetch(`${API_BASE}/anilist/genre/${encodeURIComponent(genreName)}?page=${currentPage}&limit=24`);
-                if (!res.ok) throw new Error('Failed to fetch');
-                const data = await res.json();
-
-                const mapped = data.media?.map(mapAnilistToAnime) || [];
-                setAnimeList(mapped);
-                setLastPage(data.pageInfo?.lastPage || 1);
+                const result = await animeService.getAnimeByGenre(genreName, currentPage, 24);
+                setAnimeList(result.data || []);
+                setLastPage(result.pagination?.last_visible_page || 1);
             } catch (error) {
                 console.error('Failed to fetch genre anime:', error);
             } finally {
@@ -76,12 +38,13 @@ export default function GenrePage() {
     }, [genreName, currentPage]);
 
     const handleAnimeClick = (item: Anime) => {
-        navigate(`/anime/details/${item.mal_id}`, { state: { anime: item } });
+        const path = buildAnimeDetailsPath(item);
+        if (path) navigate(path, { state: { anime: item } });
     };
 
     const handleWatchClick = (item: Anime) => {
-        const title = slugify(item.title || item.title_english || 'anime');
-        navigate(`/anime/details/${item.mal_id}?ep=1`, { state: { anime: item } });
+        const path = buildAnimeDetailsPath(item, { episode: 1 });
+        if (path) navigate(path, { state: { anime: item } });
     };
 
     return (

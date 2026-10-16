@@ -1,10 +1,12 @@
 import axios from 'axios';
-import type { LightNovel, LNChapter, LNChapterContent } from '../types/ln';
+import type { LightNovel, LNChapter, LNChapterContent, NovelEditionKind } from '../types/ln';
 import { API_BASE, USES_LOCAL_SOURCES } from '../config/api';
 import { novelBinSource } from '../platform/sources/novelbin';
 import { getDisplayImageUrl } from '../utils/image';
 import { fetchWithOfflineFallback } from './offlineCache';
 import { POPULAR_KOREAN_NOVELS, POPULAR_CHINESE_NOVELS } from './lnData';
+import { buildYorumiId } from '../utils/contentIdentity';
+import { detectNovelEdition, isConfirmedNovelMatch } from '../utils/novelIdentity';
 
 const ANILIST_URL = 'https://graphql.anilist.co';
 
@@ -12,28 +14,6 @@ const apiClient = axios.create({
     baseURL: API_BASE,
     timeout: 15000,
 });
-
-const normalizeNovelTitle = (value: string) => String(value || '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, ' ')
-    .replace(/\b(light novel|novel|web novel|volume|vol)\b/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-
-const isConfirmedNovelMatch = (expectedTitles: string[], candidateTitle: string) => {
-    const candidate = normalizeNovelTitle(candidateTitle);
-    if (!candidate) return false;
-    return expectedTitles.some((title) => {
-        const expected = normalizeNovelTitle(title);
-        if (!expected) return false;
-        if (candidate === expected) return true;
-        if (candidate.startsWith(`${expected} `) || expected.startsWith(`${candidate} `)) return true;
-        const expectedTokens = expected.split(' ').filter((token) => token.length > 2);
-        const candidateTokens = new Set(candidate.split(' ').filter((token) => token.length > 2));
-        if (expectedTokens.length < 2) return false;
-        return expectedTokens.filter((token) => candidateTokens.has(token)).length / expectedTokens.length >= 0.8;
-    });
-};
 
 const cacheMap = new Map<string, { data: any; timestamp: number }>();
 const CACHE_TTL = 15 * 60 * 1000; // 15 minutes
@@ -75,6 +55,11 @@ const mapAniListToLN = (media: any): LightNovel => {
 
     return {
         id: media.id,
+        yorumiId: buildYorumiId('lightNovel', 'anilist', media.id),
+        externalIds: { anilist: media.id, mal: media.idMal },
+        mappingStatus: 'unresolved',
+        editionKind: 'light-novel',
+        editionId: `anilist:${media.id}:light-novel`,
         mal_id: media.idMal || media.id,
         title,
         title_english: media.title?.english,
@@ -109,6 +94,12 @@ const mapScraperToLN = (item: any, defaultCountry: 'KR' | 'CN' | 'JP' | string =
 
     return {
         id: item.id,
+        yorumiId: buildYorumiId('lightNovel', item.source || 'novelbin', item.id),
+        externalIds: { [item.source || 'novelbin']: item.id },
+        mappingStatus: 'verified',
+        readingProvider: item.source || 'novelbin',
+        editionKind: detectNovelEdition(`${item.title || ''} ${item.type || ''}`),
+        editionId: `${item.source || 'novelbin'}:${item.id}`,
         mal_id: item.id,
         title: item.title || 'Unknown Novel',
         title_english: item.title || 'Unknown Novel',
@@ -258,14 +249,14 @@ export const lnService = {
 
     // 5. Popular Korean Web Novels (Solo Leveling, Omniscient Reader, TBATE, etc.)
     async getPopularKoreanNovels(): Promise<LightNovel[]> {
-        return fetchWithOfflineFallback('ln_popular_korean', async () => {
+        return fetchWithOfflineFallback('ln_v3_popular_korean', async () => {
             return POPULAR_KOREAN_NOVELS;
         });
     },
 
     // 6. Popular Chinese Web Novels (Lord of the Mysteries, Reverend Insanity, Martial Peak, etc.)
     async getPopularChineseNovels(): Promise<LightNovel[]> {
-        return fetchWithOfflineFallback('ln_popular_chinese', async () => {
+        return fetchWithOfflineFallback('ln_v3_popular_chinese', async () => {
             return POPULAR_CHINESE_NOVELS;
         });
     },
@@ -273,7 +264,7 @@ export const lnService = {
     // 7. Single LN Details from AniList or Scraper
     async getDetails(id: string | number): Promise<LightNovel | null> {
         const idStr = String(id);
-        return fetchWithOfflineFallback(`ln_details_${idStr}`, async () => {
+        return fetchWithOfflineFallback(`ln_v3_details_${idStr}`, async () => {
             // Check if this is a direct scraper ID (contains ':')
             if (idStr.includes(':')) {
                 // First check if it matches curated Korean / Chinese novels
@@ -308,7 +299,7 @@ export const lnService = {
                     status: scraperDetails?.status || foundCurated?.status || 'Ongoing',
                     type: 'NOVEL',
                     countryOfOrigin: country,
-                    source: (scraperDetails as any)?.source || foundCurated?.source || 'novelbin',
+                    source: scraperDetails?.source || foundCurated?.source || 'novelbin',
                     scraper_id: idStr,
                     synopsis: scraperDetails?.description || foundCurated?.synopsis || '',
                     author: scraperDetails?.author && scraperDetails.author !== 'Unknown' ? scraperDetails.author : foundCurated?.author || 'Unknown Author',
@@ -376,14 +367,14 @@ export const lnService = {
     },
 
     // 8. Backend Integration: Resolve AniList title to backend scraper novel ID
-    async resolveScraperId(titles: string[]): Promise<string | null> {
-        const key = `ln_resolve_${titles.join('_')}`;
+    async resolveScraperId(titles: string[], expectedEdition: NovelEditionKind = 'light-novel'): Promise<string | null> {
+        const key = `ln_v3_resolve_${titles.join('_')}`;
         return fetchWithOfflineFallback(key, async () => {
             if (USES_LOCAL_SOURCES) {
                 const expectedTitles = [...new Set(titles.map((value) => value.trim()).filter(Boolean))];
                 for (const title of expectedTitles) {
                     const results = await novelBinSource.search(title);
-                    const match = results.find((candidate) => isConfirmedNovelMatch(expectedTitles, candidate.title));
+                    const match = results.find((candidate) => isConfirmedNovelMatch(expectedTitles, candidate.title, expectedEdition));
                     if (match?.id) return match.id;
                 }
                 return null;
@@ -408,10 +399,20 @@ export const lnService = {
         genres?: string[];
         source?: string;
     } | null> {
-        return fetchWithOfflineFallback(`ln_scraper_details_${scraperId}`, async () => {
+        return fetchWithOfflineFallback(`ln_v3_scraper_details_${scraperId}`, async () => {
             if (USES_LOCAL_SOURCES) {
                 try {
-                    return await novelBinSource.getDetails(scraperId);
+                    const details = await novelBinSource.getDetails(scraperId);
+                    return {
+                        ...details,
+                        chapters: details.chapters.map((chapter) => ({
+                            ...chapter,
+                            provider: 'novelbin',
+                            providerId: chapter.id,
+                            editionId: details.id,
+                            availability: 'available' as const,
+                        })),
+                    };
                 } catch {
                     return null;
                 }
@@ -421,7 +422,13 @@ export const lnService = {
                 const { data } = await apiClient.get(`/ln/details/${encodeURIComponent(scraperId)}${query}`);
                 if (data?.success && data?.data) {
                     return {
-                        chapters: data.data.chapters || [],
+                        chapters: (data.data.chapters || []).map((chapter: LNChapter) => ({
+                            ...chapter,
+                            provider: chapter.provider || data.data.source || 'novelbin',
+                            providerId: chapter.providerId || chapter.id,
+                            editionId: chapter.editionId || scraperId,
+                            availability: chapter.availability || 'available',
+                        })),
                         description: data.data.description,
                         author: data.data.author,
                         title: data.data.title,
@@ -440,11 +447,17 @@ export const lnService = {
 
     // 10. Backend Integration: Read Chapter Content
     async getChapterContent(chapterId: string): Promise<LNChapterContent | null> {
-        return fetchWithOfflineFallback(`ln_content_${chapterId}`, async () => {
+        return fetchWithOfflineFallback(`ln_v3_content_${chapterId}`, async () => {
             if (USES_LOCAL_SOURCES) {
                 try {
                     const chapter = await novelBinSource.getContent(chapterId);
-                    return chapter.content?.trim() ? chapter : null;
+                    return chapter.content?.trim() ? {
+                        ...chapter,
+                        provider: 'novelbin',
+                        providerId: chapter.id,
+                        editionId: chapter.novelId,
+                        availability: 'readable',
+                    } : null;
                 } catch (error) {
                     console.error('[LN] Native chapter fetch failed:', error);
                     return null;
@@ -453,7 +466,13 @@ export const lnService = {
             try {
                 const { data } = await apiClient.get(`/ln/read/${encodeURIComponent(chapterId)}`);
                 if (data?.success && data?.data) {
-                    return data.data;
+                    return {
+                        ...data.data,
+                        provider: data.data.provider || data.data.source || 'novelbin',
+                        providerId: data.data.providerId || data.data.id || chapterId,
+                        editionId: data.data.editionId || data.data.novelId,
+                        availability: 'readable',
+                    };
                 }
                 return null;
             } catch {
@@ -466,7 +485,7 @@ export const lnService = {
     async searchNovels(query: string): Promise<LightNovel[]> {
         const trimmed = query.trim();
         if (!trimmed) return [];
-        return fetchWithOfflineFallback(`ln_search_unified_${trimmed}`, async () => {
+        return fetchWithOfflineFallback(`ln_v3_search_unified_${trimmed}`, async () => {
             const gqlQuery = `
                 query($search: String) {
                     Page(page: 1, perPage: 16) {

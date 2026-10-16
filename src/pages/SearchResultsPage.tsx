@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { ArrowLeft, X } from 'lucide-react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useTitleLanguage } from '../context/TitleLanguageContext';
-import { searchApi, type SearchPreviewItem } from '../features/search/api';
+import { getAnimeSearchSeed, searchApi, type SearchPreviewItem } from '../features/search/api';
 import AnimeCard from '../features/anime/components/AnimeCard';
 import MangaCard from '../features/manga/components/MangaCard';
 import LNCard from '../features/ln/components/LNCard';
@@ -44,6 +44,7 @@ export default function SearchResultsPage() {
     };
 
     const cardData = (item: SearchPreviewItem) => {
+        if (group === 'anime') return getAnimeSearchSeed(item);
         const raw = item.raw || item.ln || item.manga || {};
         return {
             ...raw,

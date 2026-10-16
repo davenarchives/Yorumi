@@ -1,14 +1,16 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type SyntheticEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type SyntheticEvent } from 'react';
+import { createPortal } from 'react-dom';
 import Hls from 'hls.js';
-import { Maximize, X, Globe, CheckCircle2, Circle } from 'lucide-react';
+import { Maximize, X, SunMedium } from 'lucide-react';
 import type { StreamLink, SubtitleTrack } from '../../../types/stream';
-import { API_BASE, API_ORIGIN } from '../../../config/api';
+import { API_ORIGIN } from '../../../config/api';
 import CustomVideoControls from './CustomVideoControls';
 import type { StreamServerKey } from '../../../hooks/useStreams';
 import { shouldSkipIntro, shouldSkipOutro, type SkipTimestamp } from '../../../services/skipTimestamps';
 import sleepingGif from '../../../assets/sleeping.gif';
 import discordRPCService from '../../../services/discordRPCService';
 import { getRuntimePlatform } from '../../../platform/runtime';
+import { selectEnglishSubtitleTracks } from '../../../utils/subtitles';
 
 const IFRAME_LOAD_TIMEOUT_MS = 18_000;
 const NATIVE_LOAD_TIMEOUT_MS = 25_000;
@@ -17,6 +19,34 @@ const PLAYBACK_START_WATCHDOG_MS = 30_000;
 const HAVE_FUTURE_DATA = 3;
 const isElectron = typeof window !== 'undefined' && (window.location.protocol === 'file:' || Boolean((window as any).electron || (window as any).electronAPI));
 const isNativeMobile = getRuntimePlatform() === 'android' || getRuntimePlatform() === 'ios';
+const AMBIENT_LIGHT_STORAGE_KEY = 'yorumi_ambient_light_v2';
+const AMBIENT_SPREAD_STEP = 0.03;
+const AMBIENT_PLAYER_RADIUS_PX = 16;
+const AMBIENT_SPREAD_FADE_START = 0.15;
+const AMBIENT_SPREAD_FADE_CURVE = 35;
+
+type AmbientLightSettings = {
+    blur: number;
+    spread: number;
+};
+
+const DEFAULT_AMBIENT_LIGHT: AmbientLightSettings = {
+    blur: 0,
+    spread: 0,
+};
+
+const loadAmbientLightSettings = (): AmbientLightSettings => {
+    if (typeof window === 'undefined') return DEFAULT_AMBIENT_LIGHT;
+    try {
+        const saved = JSON.parse(window.localStorage.getItem(AMBIENT_LIGHT_STORAGE_KEY) || '{}');
+        return {
+            blur: Number.isFinite(saved.blur) ? Math.min(100, Math.max(0, saved.blur)) : DEFAULT_AMBIENT_LIGHT.blur,
+            spread: Number.isFinite(saved.spread) ? Math.min(400, Math.max(0, saved.spread)) : DEFAULT_AMBIENT_LIGHT.spread,
+        };
+    } catch {
+        return DEFAULT_AMBIENT_LIGHT;
+    }
+};
 
 const LATIN_LANGUAGE_WORDS: Record<string, string[]> = {
     en: ['the', 'you', 'and', 'that', 'this', 'what', 'are', 'have', 'not', 'with', 'your', 'for', 'but', 'was', 'will'],
@@ -84,54 +114,85 @@ class CustomHlsLoader extends (Hls.DefaultConfig.loader as any) {
         if (typeof context?.url === 'string' && (context.url.startsWith('blob:') || context.url.includes('/api/scraper/local-file'))) {
             const targetUrl = context.url.startsWith('/api/') ? `${API_ORIGIN}${context.url}` : context.url;
             const startTime = performance.now();
-            fetch(targetUrl)
+            const headers = new Headers();
+            const hasValidByteRange = Number.isFinite(context.rangeStart) && Number.isFinite(context.rangeEnd) && (context.rangeEnd > (context.rangeStart ?? 0));
+            if (!targetUrl.startsWith('blob:') && hasValidByteRange) {
+                headers.set('Range', `bytes=${context.rangeStart}-${context.rangeEnd - 1}`);
+            }
+            fetch(targetUrl, { headers })
                 .then(async (res) => {
                     if (!res.ok) {
                         throw new Error(`Failed to fetch media: ${res.status}`);
                     }
+                    const now = performance.now();
+                    const createStats = (len: number) => ({
+                        loading: { start: startTime, first: now, end: now },
+                        parsing: { start: now, end: now },
+                        buffering: { start: now, first: now, end: now },
+                        loaded: len,
+                        total: len,
+                        chunkCount: 1,
+                        bwEstimate: (len * 8000) / Math.max(1, (now - startTime)),
+                        retry: 0,
+                        aborted: false,
+                    });
+
                     if (context.responseType === 'arraybuffer') {
-                        const data = await res.arrayBuffer();
-                        const now = performance.now();
+                        let data: ArrayBuffer;
+                        if (targetUrl.startsWith('blob:')) {
+                            const blob = await res.blob();
+                            const slice = hasValidByteRange ? blob.slice(context.rangeStart, context.rangeEnd) : blob;
+                            data = await slice.arrayBuffer();
+                        } else {
+                            data = await res.arrayBuffer();
+                            if (res.status !== 206 && hasValidByteRange) {
+                                data = data.slice(context.rangeStart, context.rangeEnd);
+                            }
+                        }
+                        const stats = createStats(data.byteLength);
                         callbacks.onSuccess(
                             {
                                 url: context.url,
                                 data,
+                                code: res.status,
                             },
-                            {
-                                trequest: startTime,
-                                tfirst: now,
-                                tload: now,
-                                loaded: data.byteLength,
-                                total: data.byteLength,
-                            },
+                            stats,
                             context,
                             null
                         );
                     } else {
                         const data = await res.text();
-                        const now = performance.now();
+                        const stats = createStats(data.length);
                         callbacks.onSuccess(
                             {
                                 url: context.url,
                                 data,
+                                code: res.status,
                             },
-                            {
-                                trequest: startTime,
-                                tfirst: now,
-                                tload: now,
-                                loaded: data.length,
-                                total: data.length,
-                            },
+                            stats,
                             context,
                             null
                         );
                     }
                 })
                 .catch((err) => {
+                    const now = performance.now();
+                    const stats = {
+                        loading: { start: startTime, first: now, end: now },
+                        parsing: { start: now, end: now },
+                        buffering: { start: now, first: now, end: now },
+                        loaded: 0,
+                        total: 0,
+                        chunkCount: 0,
+                        bwEstimate: 0,
+                        retry: 0,
+                        aborted: false,
+                    };
                     callbacks.onError(
-                        { code: 404, text: err?.message || 'Blob fetch failed' },
+                        { code: 404, text: err?.message || 'Media fetch failed' },
                         context,
-                        null
+                        null,
+                        stats
                     );
                 });
             return;
@@ -241,6 +302,7 @@ export default function VideoPlayer(props: VideoPlayerProps) {
     const onProgressRef = useRef(onProgress);
     const startAtRef = useRef(startAtSeconds);
     const videoRef = useRef<HTMLVideoElement | null>(null);
+    const ambientCanvasRef = useRef<HTMLCanvasElement | null>(null);
     const webviewRef = useRef<ThemedWebViewElement | null>(null);
     const hlsRef = useRef<Hls | null>(null);
     const iframeLoadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -251,7 +313,8 @@ export default function VideoPlayer(props: VideoPlayerProps) {
     const autoNextTriggerKeyRef = useRef('');
     const rejectedMediaUrlRef = useRef('');
     const lastTimeRef = useRef<{ session?: string; time: number }>({ time: 0 });
-    const [showServerMenu, setShowServerMenu] = useState(false);
+    const [showAmbientMenu, setShowAmbientMenu] = useState(false);
+    const [ambientLight, setAmbientLight] = useState<AmbientLightSettings>(loadAmbientLightSettings);
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [hlsLevels, setHlsLevels] = useState<number[]>([]);
 
@@ -307,15 +370,17 @@ export default function VideoPlayer(props: VideoPlayerProps) {
         document.addEventListener('fullscreenchange', handleFullscreenChange);
         return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
     }, []);
-    const getServerDisplayName = (key: string) => {
-        const option = serverOptions?.find((s) => s.key === key);
-        if (option?.label) return option.label;
-        if (key === 'frieren' || key === 'hianime' || key === 'auto') return 'Frieren';
-        if (key === 'stark' || key === 'start' || key === 'anikoto') return 'Stark';
-        if (key === 'fern' || key === 'animegg') return 'Fern';
-        if (key === 'himmel' || key === 'reanime') return 'Himmel';
-        return key.replace(/[-_]+/g, ' ').replace(/\b\w/g, (match) => match.toUpperCase());
-    };
+    useEffect(() => {
+        window.localStorage.setItem(AMBIENT_LIGHT_STORAGE_KEY, JSON.stringify(ambientLight));
+    }, [ambientLight]);
+
+    useEffect(() => {
+        const active = (ambientLight.blur > 0 || ambientLight.spread > 0)
+            && displayMode !== 'mini'
+            && !props.mobilePageLayout;
+        document.body.classList.toggle('yorumi-ambient-light-active', active);
+        return () => document.body.classList.remove('yorumi-ambient-light-active');
+    }, [ambientLight.blur, ambientLight.spread, displayMode, props.mobilePageLayout]);
 
     const resolvedStreamUrl = useMemo(() => {
         if (!streamUrl) return streamUrl;
@@ -328,6 +393,179 @@ export default function VideoPlayer(props: VideoPlayerProps) {
         return url;
     }, [streamUrl]);
 
+    useEffect(() => {
+        const video = videoRef.current;
+        const canvas = ambientCanvasRef.current;
+        if (!video || !canvas || (ambientLight.blur <= 0 && ambientLight.spread <= 0) || displayMode === 'mini' || props.mobilePageLayout) return;
+
+        const context = canvas.getContext('2d', { alpha: true, desynchronized: true });
+        if (!context) return;
+        const frameBuffer = document.createElement('canvas');
+        frameBuffer.width = 480;
+        frameBuffer.height = 270;
+        const frameBufferContext = frameBuffer.getContext('2d', { alpha: false, desynchronized: true });
+        if (!frameBufferContext) return;
+        let animationFrame = 0;
+        let videoFrame = 0;
+        let stopped = false;
+        const paint = (_timestamp = 0) => {
+            if (stopped) return;
+            if (video.readyState >= 2) {
+                try {
+                    const elementRect = video.getBoundingClientRect();
+                    const mediaAspect = video.videoWidth / Math.max(1, video.videoHeight);
+                    const elementAspect = elementRect.width / Math.max(1, elementRect.height);
+                    const visibleWidth = elementAspect > mediaAspect
+                        ? elementRect.height * mediaAspect
+                        : elementRect.width;
+                    const visibleHeight = elementAspect > mediaAspect
+                        ? elementRect.height
+                        : elementRect.width / mediaAspect;
+                    const visibleLeft = elementRect.left + (elementRect.width - visibleWidth) / 2;
+                    const visibleTop = elementRect.top + (elementRect.height - visibleHeight) / 2;
+                    const projectionScale = 1 + ambientLight.spread / 100;
+                    const projectorWidth = Math.max(1, visibleWidth * projectionScale);
+                    const projectorHeight = Math.max(1, visibleHeight * projectionScale);
+                    const projectorLeft = visibleLeft + window.scrollX - (projectorWidth - visibleWidth) / 2;
+                    const projectorTop = visibleTop + window.scrollY - (projectorHeight - visibleHeight) / 2;
+                    const internalHeight = Math.max(1, Math.round(canvas.width * projectorHeight / projectorWidth));
+                    if (canvas.height !== internalHeight) canvas.height = internalHeight;
+                    const pixelScale = canvas.width / projectorWidth;
+                    const centerX = canvas.width / 2;
+                    const centerY = canvas.height / 2;
+                    const playerWidth = visibleWidth * pixelScale;
+                    const playerHeight = visibleHeight * pixelScale;
+
+                    // Anchor the projector in document space. It now scrolls with the
+                    // player even while paused, instead of chasing it from a fixed
+                    // viewport layer only when a new video frame is delivered.
+                    canvas.style.left = `${projectorLeft}px`;
+                    canvas.style.top = `${projectorTop}px`;
+                    canvas.style.width = `${projectorWidth}px`;
+                    canvas.style.height = `${projectorHeight}px`;
+                    canvas.style.transform = 'none';
+                    canvas.style.filter = ambientLight.blur > 0
+                        ? `blur(${visibleHeight * 0.0025 * ambientLight.blur}px)`
+                        : 'none';
+                    context.clearRect(0, 0, canvas.width, canvas.height);
+                    const bufferHeight = Math.max(1, Math.round(frameBuffer.width / mediaAspect));
+                    if (frameBuffer.height !== bufferHeight) frameBuffer.height = bufferHeight;
+                    frameBufferContext.drawImage(video, 0, 0, frameBuffer.width, frameBuffer.height);
+
+                    // Build the extension from sharp, concentric copies of the same frame.
+                    // Drawing largest-to-smallest leaves only each copy's outer band visible;
+                    // the actual player then covers the 1x center. All copies share one origin,
+                    // so image features continue out of the player as uninterrupted rays.
+                    const outerWidth = playerWidth * projectionScale;
+                    const outerHeight = playerHeight * projectionScale;
+                    const outerLeft = centerX - outerWidth / 2;
+                    const outerTop = centerY - outerHeight / 2;
+                    const projectionLevels = Math.max(1, Math.ceil((projectionScale - 1) / AMBIENT_SPREAD_STEP));
+                    for (let level = projectionLevels; level >= 0; level--) {
+                        const scale = level === projectionLevels
+                            ? projectionScale
+                            : 1 + level * AMBIENT_SPREAD_STEP;
+                        const width = playerWidth * scale;
+                        const height = playerHeight * scale;
+                        const left = centerX - width / 2;
+                        const top = centerY - height / 2;
+                        const radius = Math.min(
+                            width / 2,
+                            height / 2,
+                            AMBIENT_PLAYER_RADIUS_PX * pixelScale * scale
+                        );
+                        context.save();
+                        context.beginPath();
+                        context.roundRect(left, top, width, height, radius);
+                        context.clip();
+                        context.drawImage(
+                            frameBuffer,
+                            left,
+                            top,
+                            width,
+                            height
+                        );
+                        context.restore();
+                    }
+
+                    if (projectionScale > 1) {
+                        const edgeX = Math.max(1, (outerWidth - playerWidth) / 2);
+                        const edgeY = Math.max(1, (outerHeight - playerHeight) / 2);
+                        const fadeEndX = outerLeft + edgeX * (1 - AMBIENT_SPREAD_FADE_START);
+                        const fadeEndY = outerTop + edgeY * (1 - AMBIENT_SPREAD_FADE_START);
+                        const easing = 16 / (AMBIENT_SPREAD_FADE_CURVE * 0.64);
+                        const addFadeStops = (gradient: CanvasGradient, outerStart: number, fadeEnd: number, outerEnd: number) => {
+                            const span = Math.max(1, outerEnd - outerStart);
+                            const fadeRatio = Math.min(0.5, Math.max(0, (fadeEnd - outerStart) / span));
+                            for (let index = 0; index <= 32; index++) {
+                                const progress = index / 32;
+                                const opacity = 1 - Math.pow(1 - progress, easing);
+                                gradient.addColorStop(fadeRatio * progress, `rgba(255,255,255,${opacity})`);
+                            }
+                            gradient.addColorStop(1 - fadeRatio, '#fff');
+                            for (let index = 32; index >= 0; index--) {
+                                const progress = index / 32;
+                                const opacity = 1 - Math.pow(1 - progress, easing);
+                                gradient.addColorStop(1 - fadeRatio * progress, `rgba(255,255,255,${opacity})`);
+                            }
+                        };
+
+                        context.save();
+                        context.globalCompositeOperation = 'destination-in';
+                        const horizontalFade = context.createLinearGradient(outerLeft, 0, outerLeft + outerWidth, 0);
+                        addFadeStops(horizontalFade, outerLeft, fadeEndX, outerLeft + outerWidth);
+                        context.fillStyle = horizontalFade;
+                        context.fillRect(0, 0, canvas.width, canvas.height);
+
+                        const verticalFade = context.createLinearGradient(0, outerTop, 0, outerTop + outerHeight);
+                        addFadeStops(verticalFade, outerTop, fadeEndY, outerTop + outerHeight);
+                        context.fillStyle = verticalFade;
+                        context.fillRect(0, 0, canvas.width, canvas.height);
+                        context.restore();
+                    }
+                } catch {
+                    // Cross-origin providers may prevent frame sampling; playback must continue unaffected.
+                }
+            }
+        };
+
+        paint();
+        const repaint = () => paint();
+        window.addEventListener('resize', repaint, { passive: true });
+        video.addEventListener('loadeddata', repaint);
+        video.addEventListener('seeked', repaint);
+        video.addEventListener('pause', repaint);
+        const resizeObserver = new ResizeObserver(repaint);
+        resizeObserver.observe(video);
+
+        if ('requestVideoFrameCallback' in video) {
+            const paintVideoFrame: VideoFrameRequestCallback = (timestamp) => {
+                paint(timestamp);
+                if (!stopped) videoFrame = video.requestVideoFrameCallback(paintVideoFrame);
+            };
+            videoFrame = video.requestVideoFrameCallback(paintVideoFrame);
+        } else {
+            const paintAnimationFrame = (timestamp: number) => {
+                paint(timestamp);
+                if (!stopped) animationFrame = window.requestAnimationFrame(paintAnimationFrame);
+            };
+            animationFrame = window.requestAnimationFrame(paintAnimationFrame);
+        }
+
+        return () => {
+            stopped = true;
+            window.removeEventListener('resize', repaint);
+            video.removeEventListener('loadeddata', repaint);
+            video.removeEventListener('seeked', repaint);
+            video.removeEventListener('pause', repaint);
+            resizeObserver.disconnect();
+            if (videoFrame) video.cancelVideoFrameCallback(videoFrame);
+            if (animationFrame) window.cancelAnimationFrame(animationFrame);
+        };
+    }, [ambientLight.blur, ambientLight.spread, displayMode, props.mobilePageLayout, resolvedStreamUrl]);
+
+    const ambientLightActive = ambientLight.blur > 0 || ambientLight.spread > 0;
+
     const resolveSubtitleUrl = useCallback((url: string) => {
         if (!url) return url;
         if (url.startsWith('/api/')) return `${API_ORIGIN}${url}`;
@@ -335,12 +573,16 @@ export default function VideoPlayer(props: VideoPlayerProps) {
     }, []);
 
     const [detectedSubtitleLanguages, setDetectedSubtitleLanguages] = useState<Record<string, string>>({});
-    const subtitleTrackSignature = useMemo(() => (Array.isArray(props.subtitles) ? props.subtitles : [])
+    const englishSubtitleCandidates = useMemo(
+        () => selectEnglishSubtitleTracks(props.subtitles),
+        [props.subtitles]
+    );
+    const subtitleTrackSignature = useMemo(() => englishSubtitleCandidates
         .map((track) => `${track.url}|${track.lang}`)
-        .join('::'), [props.subtitles]);
+        .join('::'), [englishSubtitleCandidates]);
 
     useEffect(() => {
-        const tracks = Array.isArray(props.subtitles) ? props.subtitles : [];
+        const tracks = englishSubtitleCandidates;
         const controller = new AbortController();
         let active = true;
 
@@ -365,10 +607,10 @@ export default function VideoPlayer(props: VideoPlayerProps) {
             active = false;
             controller.abort();
         };
-    }, [subtitleTrackSignature, resolveSubtitleUrl]);
+    }, [englishSubtitleCandidates, subtitleTrackSignature, resolveSubtitleUrl]);
 
     const subtitleTracks = useMemo(() => {
-        const tracks = Array.isArray(props.subtitles) ? props.subtitles : [];
+        const tracks = englishSubtitleCandidates;
         const subtitleLanguageRank = (language: string) => {
             const normalized = language.trim().toLowerCase().replace(/_/g, '-');
             const isEnglish = /(^|\b)(en|eng|english)(-|\b)/.test(normalized);
@@ -389,10 +631,12 @@ export default function VideoPlayer(props: VideoPlayerProps) {
         });
 
         return Array.from(uniqueTracks.values())
+            .filter((track) => /^(?:en|eng|english)(?:[-_]|$)/i.test(String(track.lang || '')))
             .sort((left, right) => (
                 subtitleLanguageRank(String(left.lang || '')) - subtitleLanguageRank(String(right.lang || ''))
-            ));
-    }, [detectedSubtitleLanguages, props.subtitles]);
+            ))
+            .slice(0, 1);
+    }, [detectedSubtitleLanguages, englishSubtitleCandidates]);
 
     const isOfflineStream = useMemo(() => {
         return Boolean(
@@ -879,14 +1123,10 @@ export default function VideoPlayer(props: VideoPlayerProps) {
         hlsRef.current?.destroy();
         hlsRef.current = null;
 
-        // Android WebView may report native HLS support even though proxied HLS
-        // never loads metadata or media frames. Always use hls.js on native
-        // mobile so playlists and segments flow through the local proxy.
-        if (!isNativeMobile && !resolvedStreamUrl.startsWith('blob:') && video.canPlayType('application/vnd.apple.mpegurl')) {
-            video.src = resolvedStreamUrl;
-            return;
-        }
-
+        // Chromium/Electron and some Android WebViews can claim native HLS
+        // support but then fail to parse an m3u8 as direct media. Prefer hls.js
+        // whenever MediaSource is available; Safari remains on native HLS via
+        // the unsupported fallback below.
         if (!Hls.isSupported()) {
             video.src = resolvedStreamUrl;
             return;
@@ -896,6 +1136,7 @@ export default function VideoPlayer(props: VideoPlayerProps) {
         const hls = new Hls({
             enableWorker: !isNativeMobile,
             lowLatencyMode: false,
+            loader: CustomHlsLoader as any,
             fLoader: CustomHlsLoader as any,
             pLoader: CustomHlsLoader as any,
             startLevel: 0,
@@ -1094,17 +1335,29 @@ export default function VideoPlayer(props: VideoPlayerProps) {
     }, [autoSkipEnabled, clearAutoSkipPoll, resolvedStreamUrl, runAutoSkipCheck, shouldUseNativeVideo, skipTimestamps.length, videoRef]);
 
     return (
-        <div className={`watch-player-shell w-full max-w-full h-full max-h-full relative bg-[#0b0c0f] group transition-all duration-300 overflow-hidden rounded-none shadow-none outline-none ${displayMode === 'mini' ? 'rounded-xl shadow-2xl shadow-black/70' : (props.mobilePageLayout ? '' : 'md:rounded-2xl md:shadow-2xl md:shadow-black/80')}`}>
+        <div className={`watch-player-shell w-full max-w-full h-full max-h-full relative bg-black group transition-all duration-300 overflow-hidden rounded-none shadow-none outline-none ${displayMode === 'mini' ? 'rounded-xl shadow-2xl shadow-black/70' : (props.mobilePageLayout ? '' : 'md:rounded-2xl')}`}>
+
+            {displayMode !== 'mini' && !props.mobilePageLayout && ambientLightActive && resolvedStreamUrl && shouldUseNativeVideo && createPortal(
+                <div className="yorumi-ambient-projectors pointer-events-none absolute left-0 top-0 z-[1] h-0 w-0 overflow-visible" aria-hidden="true">
+                    <canvas
+                        ref={ambientCanvasRef}
+                        width={480}
+                        height={270}
+                        className="pointer-events-none absolute origin-center will-change-transform"
+                    />
+                </div>,
+                document.body
+            )}
 
             {resolvedStreamUrl ? (
-                <div className={`relative w-full max-w-full h-full bg-black flex items-center justify-center z-10 overflow-hidden rounded-none ${props.mobilePageLayout ? '' : 'md:rounded-2xl'}`}>
-                    <div className={`w-full h-full max-w-full max-h-full flex items-center justify-center bg-black overflow-hidden rounded-none ${props.mobilePageLayout ? '' : 'md:rounded-2xl'}`}>
+                <div className={`yorumi-player-surface relative z-10 flex h-full w-full max-w-full items-center justify-center overflow-hidden bg-black rounded-none ${props.mobilePageLayout ? '' : 'md:rounded-2xl'}`}>
+                    <div className={`yorumi-player-surface flex h-full w-full max-h-full max-w-full items-center justify-center overflow-hidden bg-black rounded-none ${props.mobilePageLayout ? '' : 'md:rounded-2xl'}`}>
                         {shouldUseNativeVideo ? (
                             <>
                                 <video
                                     ref={videoRef}
                                     src={isHls || /\.m3u8/i.test(resolvedStreamUrl) ? undefined : resolvedStreamUrl}
-                                    className={`block w-full max-w-none bg-black cursor-pointer object-contain ${props.mobilePageLayout ? 'h-[calc(100%_-_104px)] self-start' : 'h-full min-h-full'}`}
+                                    className={`yorumi-player-video block w-full max-w-none bg-black cursor-pointer object-contain ${props.mobilePageLayout ? 'h-[calc(100%_-_104px)] self-start' : 'h-full min-h-full'}`}
                                     onClick={() => {
                                         if (!videoRef.current || !resolvedStreamUrl) return;
                                         if (videoRef.current.paused) videoRef.current.play().catch(() => {});
@@ -1121,7 +1374,8 @@ export default function VideoPlayer(props: VideoPlayerProps) {
                                         const actualDuration = event.currentTarget.duration;
                                         const expectedDuration = Number(props.expectedDurationSeconds || 0);
                                         if (
-                                            expectedDuration >= 15 * 60
+                                            !isOfflineStream
+                                            && expectedDuration >= 15 * 60
                                             && Number.isFinite(actualDuration)
                                             && actualDuration > 0
                                             && (actualDuration < expectedDuration * 0.65 || actualDuration > expectedDuration * 1.6)
@@ -1314,57 +1568,38 @@ export default function VideoPlayer(props: VideoPlayerProps) {
             {/* Header Controls — ALWAYS visible regardless of loading/stream state */}
             {displayMode !== 'mini' && !isFullscreen && (
                 <div 
-                    className={`watch-player-top-controls absolute top-0 left-0 right-0 p-4 sm:p-6 transition-opacity duration-300 z-[2147483647] flex items-center justify-between pointer-events-none ${showServerMenu || !resolvedStreamUrl || !shouldUseNativeVideo || isLoading || isServerSwitching ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                    className={`watch-player-top-controls absolute top-0 left-0 right-0 p-4 sm:p-6 transition-opacity duration-300 z-[2147483647] flex items-center justify-between pointer-events-none ${showAmbientMenu || !resolvedStreamUrl || !shouldUseNativeVideo || isLoading || isServerSwitching ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
                 >
-                    {/* Left: Server Menu or Offline Badge */}
+                    {/* Left: Ambient light controls. Server selection remains in the main player settings. */}
                     <div className={`pointer-events-auto relative ${props.mobilePageLayout ? 'hidden' : ''}`}>
-                        {isOfflineStream ? (
-                            <div className="flex items-center gap-2 rounded-full watch-control-glass px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-green-400 shadow-[0_8px_28px_rgba(0,0,0,0.28)]">
-                                <CheckCircle2 className="h-3.5 w-3.5 text-green-400" />
-                                <span>Downloaded (Offline)</span>
-                            </div>
-                        ) : (
-                            <button
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    setShowServerMenu(!showServerMenu);
-                                }}
-                                className="flex items-center gap-2 rounded-full watch-control-glass px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-white shadow-[0_8px_28px_rgba(0,0,0,0.28)] transition-all hover:bg-white/20 active:scale-95"
-                            >
-                                {isServerSwitching || (isLoading && !resolvedStreamUrl) ? (
-                                    <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/20 border-t-white" />
-                                ) : (
-                                    <Globe className="h-3.5 w-3.5 text-white/90" />
-                                )}
-                                <span>{getServerDisplayName(selectedServer)}</span>
-                            </button>
-                        )}
+                        <button
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                setShowAmbientMenu((visible) => !visible);
+                            }}
+                            className="flex h-8 w-8 items-center justify-center rounded-full watch-control-glass text-white shadow-lg transition-all hover:bg-white/20 active:scale-95"
+                            title="Ambient light settings"
+                            aria-label="Ambient light settings"
+                            aria-expanded={showAmbientMenu}
+                        >
+                            <SunMedium className="h-4 w-4" />
+                        </button>
                         
-                        {!isOfflineStream && showServerMenu && (
+                        {showAmbientMenu && (
                             <>
-                                <div className="fixed inset-0 z-40" onClick={() => setShowServerMenu(false)} />
-                                <div className="absolute left-0 mt-2 w-36 rounded-xl bg-[#1A1A1A]/95 p-1.5 shadow-2xl backdrop-blur-xl flex flex-col gap-0.5 z-50">
-                                    {serverOptions.map((server) => {
-                                        const isSelected = selectedServer === server.key;
-                                        const name = getServerDisplayName(server.key);
-                                        return (
-                                            <button
-                                                key={server.key}
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    onServerChange(server.key);
-                                                    onSetAutoQuality();
-                                                    setShowServerMenu(false);
-                                                }}
-                                                className={`flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left transition-colors ${isSelected ? 'bg-white/15 text-white' : 'text-white/80 hover:bg-white/10'}`}
-                                            >
-                                                <div className="flex items-center gap-2">
-                                                    <span className={`text-xs ${isSelected ? 'font-semibold' : 'font-medium'}`}>{name}</span>
-                                                </div>
-                                                {isSelected ? <CheckCircle2 className="h-3.5 w-3.5 text-white" /> : <Circle className="h-3.5 w-3.5 text-white/35" />}
-                                            </button>
-                                        );
-                                    })}
+                                <div className="fixed inset-0 z-40" onClick={() => setShowAmbientMenu(false)} />
+                                <div className="yorumi-player-popover absolute left-0 z-50 mt-2 w-52 overflow-hidden rounded-xl bg-[#1A1A1A]/95 p-1 text-white shadow-2xl backdrop-blur-xl" onClick={(event) => event.stopPropagation()}>
+                                    <div className="border-b border-white/10 px-2.5 py-2 text-xs font-semibold">Ambient light</div>
+                                    <div className="space-y-2.5 px-2.5 py-2.5">
+                                        <label className="block">
+                                            <span className="mb-1.5 flex justify-between text-xs font-medium"><span>Blur</span><span className="text-white/65">{ambientLight.blur}%</span></span>
+                                            <input type="range" min="0" max="100" step="0.1" value={ambientLight.blur} onChange={(event) => setAmbientLight((current) => ({ ...current, blur: Number(event.target.value) }))} className="yorumi-ambient-slider block w-full cursor-pointer" style={{ '--ambient-progress': `${ambientLight.blur}%` } as CSSProperties} />
+                                        </label>
+                                        <label className="block">
+                                            <span className="mb-1.5 flex justify-between text-xs font-medium"><span>Spread</span><span className="text-white/65">{ambientLight.spread}%</span></span>
+                                            <input type="range" min="0" max="400" step="0.1" value={ambientLight.spread} onChange={(event) => setAmbientLight((current) => ({ ...current, spread: Number(event.target.value) }))} className="yorumi-ambient-slider block w-full cursor-pointer" style={{ '--ambient-progress': `${ambientLight.spread / 4}%` } as CSSProperties} />
+                                        </label>
+                                    </div>
                                 </div>
                             </>
                         )}

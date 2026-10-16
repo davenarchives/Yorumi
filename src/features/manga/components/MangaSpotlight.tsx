@@ -9,6 +9,7 @@ import { getDisplayTitle } from '../../../utils/titleLanguage';
 import { AnimatePresence, m } from 'framer-motion';
 import CCIcon from '../../../components/ui/CCIcon';
 import SpotlightSkeleton from '../../anime/components/SpotlightSkeleton';
+import { getMangaDetailsRouteId } from '../../../utils/mangaNavigation';
 
 interface MangaSpotlightProps {
     onMangaClick: (mangaId: string, autoRead?: boolean, manga?: Manga) => void;
@@ -214,7 +215,7 @@ const MangaSpotlight: React.FC<MangaSpotlightProps> = ({ onMangaClick }) => {
                             title: activeManga.title || details.title,
                             images: details.images || activeManga.images,
                         } : activeManga;
-                        const navigationId = String(displayManga.scraper_id || displayManga.id || displayManga.mal_id);
+                        const navigationId = getMangaDetailsRouteId(displayManga);
                         const displayTitle = getDisplayTitle(displayManga as unknown as Record<string, unknown>, language);
                         const displayCover = displayManga.images?.jpg?.large_image_url || displayManga.images?.jpg?.image_url || '';
                         return (
@@ -354,7 +355,7 @@ const MangaSpotlight: React.FC<MangaSpotlightProps> = ({ onMangaClick }) => {
                 const activeManga = mangas[selectedIndex];
                 const details = detailsById[String(activeManga.id || activeManga.mal_id || activeManga.scraper_id || '')];
                 const displayManga = details ? { ...activeManga, ...details, title: activeManga.title || details.title, images: details.images || activeManga.images, chapters: details.chapters || activeManga.chapters, authors: details.authors?.length ? details.authors : activeManga.authors, author: details.author || activeManga.author, genres: details.genres?.length ? details.genres : activeManga.genres } : activeManga;
-                const navigationId = String(displayManga.scraper_id || displayManga.id || displayManga.mal_id);
+                const navigationId = getMangaDetailsRouteId(displayManga);
                 const displayTitle = getDisplayTitle(displayManga as unknown as Record<string, unknown>, language);
                 const chapterCount = displayManga.chapters || displayManga.volumes;
                 const author = displayManga.authors?.[0]?.name || displayManga.author;

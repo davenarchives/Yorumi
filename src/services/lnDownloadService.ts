@@ -1,6 +1,8 @@
 // IndexedDB storage and downloader for offline Light Novel chapters
 import type { LNChapter, LNChapterContent } from '../types/ln';
 import { lnService } from './lnService';
+import { cacheImage, getCachedImage, prefetchImages } from './offlineImageCache';
+import { deleteNativeDownload, isAndroidDownloadStorageAvailable, writeTextToNativeStorage } from '../platform/nativeDownloadStorage';
 
 export interface DownloadedLNChapter {
     id: string; // Format: `${novelId}_ch_${chapterId}`
@@ -15,6 +17,7 @@ export interface DownloadedLNChapter {
     nextChapterId?: string;
     downloadedAt: number;
     wordCount?: number;
+    filePath?: string;
 }
 
 export interface ActiveLNDownloadProgress {
@@ -69,13 +72,27 @@ export const lnDownloadService = {
     async getDownloads(): Promise<DownloadedLNChapter[]> {
         try {
             const db = await getDB();
-            return new Promise((resolve, reject) => {
+            const items = await new Promise<DownloadedLNChapter[]>((resolve, reject) => {
                 const tx = db.transaction(STORE_NAME, 'readonly');
                 const store = tx.objectStore(STORE_NAME);
                 const req = store.getAll();
                 req.onsuccess = () => resolve((req.result as DownloadedLNChapter[]) || []);
                 req.onerror = () => reject(req.error);
             });
+
+            if (typeof navigator !== 'undefined' && navigator.onLine) {
+                prefetchImages(items.map((i) => i.novelImage)).catch(() => undefined);
+            }
+
+            return Promise.all(
+                items.map(async (item) => {
+                    const cachedImage = await getCachedImage(item.novelImage).catch(() => null);
+                    return {
+                        ...item,
+                        novelImage: cachedImage || item.novelImage,
+                    };
+                })
+            );
         } catch {
             return [];
         }
@@ -85,13 +102,22 @@ export const lnDownloadService = {
         try {
             const db = await getDB();
             const key = this.getChapterKey(novelId, chapterId);
-            return new Promise((resolve, reject) => {
+            let chapter = await new Promise<DownloadedLNChapter | undefined>((resolve, reject) => {
                 const tx = db.transaction(STORE_NAME, 'readonly');
                 const store = tx.objectStore(STORE_NAME);
                 const req = store.get(key);
                 req.onsuccess = () => resolve(req.result as DownloadedLNChapter | undefined);
                 req.onerror = () => reject(req.error);
             });
+
+            // Fallback: search by chapterId across all downloads if direct key didn't match
+            if (!chapter) {
+                const all = await this.getDownloads();
+                const strChId = String(chapterId).trim();
+                chapter = all.find((c) => String(c.chapterId).trim() === strChId || c.id.endsWith(`_ch_${strChId}`));
+            }
+
+            return chapter;
         } catch {
             return undefined;
         }
@@ -111,6 +137,10 @@ export const lnDownloadService = {
         },
         onProgress?: (progress: ActiveLNDownloadProgress) => void
     ): Promise<DownloadedLNChapter> {
+        if (params.novelImage) {
+            cacheImage(params.novelImage).catch(() => undefined);
+        }
+
         const key = this.getChapterKey(params.novelId, params.chapter.id);
 
         onProgress?.({
@@ -140,6 +170,13 @@ export const lnDownloadService = {
         const wordCount = textOnly ? textOnly.split(' ').length : 0;
 
         // 2. Save to IndexedDB
+        const nativeFile = isAndroidDownloadStorageAvailable()
+            ? await writeTextToNativeStorage(
+                `LightNovels/${params.novelId}/${params.chapter.id}.html`,
+                data.content
+            )
+            : null;
+
         const chapterRecord: DownloadedLNChapter = {
             id: key,
             novelId: String(params.novelId),
@@ -153,6 +190,7 @@ export const lnDownloadService = {
             nextChapterId: data.nextChapterId || undefined,
             downloadedAt: Date.now(),
             wordCount,
+            filePath: nativeFile?.filePath,
         };
 
         const db = await getDB();
@@ -216,13 +254,17 @@ export const lnDownloadService = {
             const key = this.getChapterKey(novelId, chapterId);
             const chapter = await this.getChapter(novelId, chapterId);
 
+            if (chapter?.filePath) await deleteNativeDownload(chapter.filePath);
+
             if (chapter && typeof window !== 'undefined' && window.electronAPI?.deleteLNDisk) {
                 try {
                     await window.electronAPI.deleteLNDisk({
                         novelTitle: chapter.novelTitle,
                         chapterTitle: chapter.chapterTitle,
                     });
-                } catch {}
+                } catch {
+                    // Ignore disk cleanup error
+                }
             }
 
             await new Promise<void>((resolve, reject) => {

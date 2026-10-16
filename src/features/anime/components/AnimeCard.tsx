@@ -79,7 +79,7 @@ const AnimeCard: React.FC<AnimeCardProps> = ({
         if (hydrateInFlight.current || hydrateAttempted.current || !needsTooltipHydration(tooltipAnime)) return;
 
         const query = tooltipAnime.title_english || tooltipAnime.title_romaji || tooltipAnime.title || tooltipAnime.title_japanese;
-        const directId = getAniListDetailsId(tooltipAnime);
+        const directId = getPreferredDetailsId(tooltipAnime);
         if (!directId && !query) return;
 
         hydrateInFlight.current = true;
@@ -96,8 +96,9 @@ const AnimeCard: React.FC<AnimeCardProps> = ({
             if (!details && query) {
                 const search = await animeService.searchAnime(String(query), 1, 6).catch(() => ({ data: [] as Anime[] }));
                 const bestMatch = pickBestHydrationMatch(tooltipAnime, search.data || []);
-                if (bestMatch?.id) {
-                    const fast = await animeService.getAnimeDetailsFast(bestMatch.id, bestMatch.type || tooltipAnime.type).catch(() => null);
+                const bestDetailsId = bestMatch ? getPreferredDetailsId(bestMatch) : null;
+                if (bestMatch && bestDetailsId) {
+                    const fast = await animeService.getAnimeDetailsFast(bestDetailsId, bestMatch.type || tooltipAnime.type).catch(() => null);
                     details = fast?.data || bestMatch;
                 } else {
                     details = bestMatch || null;
@@ -382,9 +383,11 @@ function needsTooltipHydration(item: Anime) {
     return !hasGenreChips(item) || !hasStudioCredit(item) || !hasEpisodeTotal(item) || needsAiringDetails;
 }
 
-function getAniListDetailsId(item: Anime) {
-    const id = Number(item.id || 0);
-    return Number.isFinite(id) && id > 0 ? id : null;
+function getPreferredDetailsId(item: Anime) {
+    const tmdbId = Number(item.tmdbId || 0);
+    if (Number.isFinite(tmdbId) && tmdbId > 0) return `tmdb-${tmdbId}`;
+    const anilistId = Number(item.id || 0);
+    return Number.isFinite(anilistId) && anilistId > 0 ? `al-${anilistId}` : null;
 }
 
 function normalizeTitle(value: unknown) {
@@ -409,7 +412,7 @@ function pickBestHydrationMatch(target: Anime, candidates: Anime[]) {
     const targetType = normalizeTitle(target.type);
 
     return candidates
-        .filter((candidate) => Boolean(candidate.id || candidate.mal_id))
+        .filter((candidate) => Boolean(candidate.tmdbId || candidate.id || candidate.mal_id))
         .map((candidate) => {
             const candidateTitles = [
                 candidate.title,

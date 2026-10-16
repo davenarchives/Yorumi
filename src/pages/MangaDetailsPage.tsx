@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { Check, Plus, Play, Download, Loader2, CircleCheckBig, FolderOpen, ArrowLeft, Search, ChevronDown, ArrowUpDown, ArrowDown, ArrowUp, Grid2X2, List, User, Clock3 } from 'lucide-react';
+import { Check, Plus, Play, Download, FolderOpen, ArrowLeft, Search, ChevronDown, ArrowUpDown, ArrowDown, ArrowUp, Grid2X2, List, User, Clock3 } from 'lucide-react';
 import { useManga } from '../hooks/useManga';
 import { useReadList } from '../hooks/useReadList';
 import { useContinueReading } from '../hooks/useContinueReading';
@@ -14,6 +14,7 @@ import { useTitleLanguage } from '../context/TitleLanguageContext';
 import { getDisplayTitle } from '../utils/titleLanguage';
 import type { ReadListItem } from '../utils/storage';
 import ChapterViewToggle, { useChapterViewMode, type ChapterViewMode } from '../components/ui/ChapterViewToggle';
+import DownloadStateIcon from '../components/ui/DownloadStateIcon';
 
 const normalizeMangaRouteId = (value: unknown) =>
     String(value || '')
@@ -147,13 +148,24 @@ const ChapterList = ({
                                         {subtitleStr}
                                     </span>
                                 )}
-                                <div className="absolute top-1.5 right-1.5" onClick={(e) => e.stopPropagation()}>
-                                    {isDownloading ? (
-                                        <Loader2 className="w-3 h-3 animate-spin text-yorumi-manga" />
-                                    ) : isDownloaded ? (
-                                        <CircleCheckBig className="w-3 h-3 text-emerald-400" />
-                                    ) : null}
-                                </div>
+                                <span
+                                    role="button"
+                                    tabIndex={0}
+                                    className="absolute top-1 right-1 text-zinc-400"
+                                    aria-label={isDownloaded ? 'Delete downloaded chapter' : 'Download chapter'}
+                                    aria-disabled={isDownloading}
+                                    onClick={(event) => {
+                                        event.stopPropagation();
+                                        if (isDownloading) return;
+                                        if (isDownloaded) deleteDownload(mangaId, ch.id);
+                                        else startDownload({ mangaId, mangaTitle, mangaImage, chapter: ch });
+                                    }}
+                                    onKeyDown={(event) => {
+                                        if (event.key === 'Enter' || event.key === ' ') event.currentTarget.click();
+                                    }}
+                                >
+                                    <DownloadStateIcon state={isDownloading ? 'downloading' : isDownloaded ? 'downloaded' : 'available'} progress={progress?.progress || 0} className="h-5 w-5" />
+                                </span>
                             </button>
                         );
                     })}
@@ -219,12 +231,12 @@ const ChapterList = ({
                                             }
                                         }}
                                         disabled={isDownloading}
-                                        className={`p-2 rounded-full border transition-all cursor-pointer ${
+                                        className={`grid h-10 w-10 place-items-center rounded-full transition-colors cursor-pointer ${
                                             isDownloaded
-                                                ? 'border-emerald-500/30 text-emerald-400 bg-emerald-500/10 hover:bg-red-500/20 hover:text-red-400 hover:border-red-500/30'
+                                                ? 'text-zinc-400 hover:bg-red-500/20 hover:text-red-400'
                                                 : isDownloading
-                                                ? 'border-yorumi-manga/30 text-yorumi-manga bg-yorumi-manga/10'
-                                                : 'border-white/10 text-zinc-400 hover:text-white hover:bg-white/10 hover:border-white/20'
+                                                ? 'text-zinc-400'
+                                                : 'text-zinc-400 hover:text-white hover:bg-white/10'
                                         }`}
                                         title={
                                             isDownloaded
@@ -234,16 +246,11 @@ const ChapterList = ({
                                                 : 'Download chapter'
                                         }
                                     >
-                                        {isDownloading ? (
-                                            <div className="flex items-center gap-1 text-[11px] font-bold text-yorumi-manga">
-                                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                                <span>{progress?.progress || 0}%</span>
-                                            </div>
-                                        ) : isDownloaded ? (
-                                            <CircleCheckBig className="w-4 h-4 text-emerald-400" />
-                                        ) : (
-                                            <Download className="w-4 h-4" />
-                                        )}
+                                        <DownloadStateIcon
+                                            state={isDownloading ? 'downloading' : isDownloaded ? 'downloaded' : 'available'}
+                                            progress={progress?.progress || 0}
+                                            className="h-[26px] w-[26px]"
+                                        />
                                     </button>
                                 </div>
                             </div>
@@ -438,7 +445,7 @@ export default function MangaDetailsPage() {
     // If we have no banner, use the large cover logic or a blur
     const bannerImage = displayManga.images.jpg.large_image_url;
     const displayTitle = getDisplayTitle(displayManga as unknown as Record<string, unknown>, language);
-    const hasReadableChapters = mangaChapters.length > 0;
+    const hasReadableChapters = effectiveChapters.length > 0;
     const metadataChapterCount = Number(displayManga.chapters || 0);
     const hasResolvedChapterSource = Boolean(String(displayManga.scraper_id || '').trim()) || hasReadableChapters;
     const displayAuthor = displayManga.author || displayManga.authors?.map((author) => author.name).filter(Boolean).join(', ');
@@ -452,7 +459,7 @@ export default function MangaDetailsPage() {
             image: displayManga.images.jpg.large_image_url,
             score: displayManga.score,
             type: displayManga.type,
-            totalCount: displayManga.chapters || mangaChapters.length,
+            totalCount: displayManga.chapters || effectiveChapters.length,
             genres: displayManga.genres?.map((g) => g.name),
             mediaStatus: displayManga.status,
             synopsis: displayManga.synopsis,
@@ -506,6 +513,7 @@ export default function MangaDetailsPage() {
                         src={bannerImage}
                         alt={displayTitle}
                         className="w-full h-full object-cover blur-sm opacity-55 scale-105"
+                        onError={(e) => { e.currentTarget.style.display = 'none'; }}
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0a] via-[#0a0a0a]/40 to-black/10" />
                     <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-[#0a0a0a] to-transparent" />

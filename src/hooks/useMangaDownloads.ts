@@ -141,17 +141,20 @@ export function useMangaDownloads() {
             });
             notifyListeners();
 
-            // Download in parallel batches
-            await Promise.allSettled(
-                unDownloadedChapters.map((ch) =>
-                    startDownload({
+            // Keep scraper/image traffic bounded so large series do not
+            // overwhelm the source or the native loopback proxy.
+            const concurrency = 2;
+            for (let i = 0; i < unDownloadedChapters.length; i += concurrency) {
+                const batch = unDownloadedChapters.slice(i, i + concurrency);
+                await Promise.allSettled(
+                    batch.map((ch) => startDownload({
                         mangaId: manga.id,
                         mangaTitle: manga.title,
                         mangaImage: manga.image || '',
                         chapter: ch,
-                    })
-                )
-            );
+                    }))
+                );
+            }
         },
         [isChapterDownloaded, getDownloadProgress, startDownload]
     );

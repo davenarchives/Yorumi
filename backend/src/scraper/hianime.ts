@@ -28,19 +28,38 @@ function deobfuscateBlob(blob: string): string {
     }
 }
 
+export function extractExplicitSeasonNumber(title: string): number {
+    const value = String(title || '').trim();
+    const match = value.match(/\bseason\s*(\d+)\b/i)
+        || value.match(/\b(\d+)(?:st|nd|rd|th)\s*season\b/i)
+        || value.match(/\b(?:series|part|cour)\s*(\d+)\b/i)
+        || value.match(/第\s*(\d+)\s*(?:期|シリーズ)/u)
+        || value.match(/\s([2-9])\s*$/);
+    const parsed = Number(match?.[1] || 0);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
 function cleanTitle(str: string): string {
+    const explicitSeason = extractExplicitSeasonNumber(str);
     return String(str || '')
         .toLowerCase()
         .replace(/&amp;/gi, '&')
         .replace(/&#0*39;|&apos;|&#x27;/gi, "'")
         .replace(/&quot;/gi, '"')
-        .replace(/\b(season|part|cour|nd|rd|th|st)\s*\d+\b/gi, ' ')
+        .replace(/\bseason\s*\d+\b/gi, ' ')
+        .replace(/\b\d+(?:st|nd|rd|th)\s*season\b/gi, ' ')
+        .replace(/\b(?:series|part|cour)\s*\d+\b/gi, ' ')
+        .replace(explicitSeason > 1 ? /\s+\d+\s*$/ : /$^/, ' ')
         .replace(/[^a-z0-9\s]/gi, ' ')
         .replace(/\s+/g, ' ')
         .trim();
 }
 
-function isSafeTitleMatch(query: string, candidateTitle: string): boolean {
+export function isSafeTitleMatch(query: string, candidateTitle: string): boolean {
+    const expectedSeason = extractExplicitSeasonNumber(query) || 1;
+    const actualSeason = extractExplicitSeasonNumber(candidateTitle) || 1;
+    if (expectedSeason !== actualSeason) return false;
+
     const expected = cleanTitle(query);
     const actual = cleanTitle(candidateTitle);
     if (!expected || !actual) return false;
@@ -73,7 +92,7 @@ function normalizeSubtitleLanguage(value: unknown): string {
     const aliases: Record<string, string> = {
         english: 'en', arabic: 'ar', spanish: 'es', french: 'fr', german: 'de',
         indonesian: 'id', japanese: 'ja', korean: 'ko', portuguese: 'pt',
-        russian: 'ru', thai: 'th', vietnamese: 'vi', chinese: 'zh',
+        russian: 'ru', thai: 'th', vietnamese: 'vi', chinese: 'zh', eng: 'en',
     };
     return aliases[raw] || raw;
 }
@@ -130,7 +149,8 @@ export class HiAnimeScraper implements VideoSource {
         const normalized = cleanTitle(query);
         if (!normalized) return null;
 
-        const cacheKey = `hianime:slug:v2:${normalized}`;
+        const seasonNumber = extractExplicitSeasonNumber(query) || 1;
+        const cacheKey = `hianime:slug:v3:${normalized}:season-${seasonNumber}`;
         const memCached = animeSlugMemoryCache.get(cacheKey);
         if (memCached) return { ...memCached, title: query };
 
@@ -332,7 +352,7 @@ export class HiAnimeScraper implements VideoSource {
             const masterM3u8 = json.src;
             if (!masterM3u8) return null;
 
-            const subtitles: SubtitleTrack[] = Array.isArray(json.subtitles)
+            const resolvedSubtitles: SubtitleTrack[] = Array.isArray(json.subtitles)
                 ? (await Promise.all(json.subtitles.map(async (sub: any) => {
                     if (!sub?.src) return null;
                     return {
@@ -341,6 +361,9 @@ export class HiAnimeScraper implements VideoSource {
                     };
                 }))).filter((subtitle): subtitle is SubtitleTrack => Boolean(subtitle))
                 : [];
+            const subtitles = resolvedSubtitles
+                .filter((subtitle) => /^(?:en|eng|english)(?:[-_]|$)/i.test(subtitle.lang))
+                .slice(0, 1);
 
             // Fetch master playlist variants
             let variants: Array<{ quality: string; url: string }> | undefined;

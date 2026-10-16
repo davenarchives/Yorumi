@@ -422,7 +422,7 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string, 
                 loadStream(targetEp);
             }
         }
-    }, [episodes, fallbackEpisode, epNumParam, currentStream, streamLoading, serverSwitchLoading, scraperSession, selectedServer]);
+    }, [episodes, fallbackEpisode, epNumParam, currentStream, streamLoading, serverSwitchLoading, scraperSession, selectedServer, offlineEpisode, selectedAnime]);
 
     // Episode-change bookkeeping.
     useEffect(() => {

@@ -12,39 +12,61 @@ const sleep = (milliseconds: number) => new Promise((resolve) => setTimeout(reso
 let novelBinRequestQueue: Promise<void> = Promise.resolve();
 let lastNovelBinRequestAt = 0;
 
-const scheduleNativeRequest = async <T>(url: string, request: () => Promise<T>): Promise<T> => {
-    if (!new URL(url).hostname.endsWith('novel-bin.com')) return request();
+const isNovelBinUrl = (url: string) => new URL(url).hostname.endsWith('novel-bin.com');
 
+const waitForNovelBinRequestSlot = async () => {
     const previous = novelBinRequestQueue;
     let release!: () => void;
     novelBinRequestQueue = new Promise<void>((resolve) => { release = resolve; });
     await previous;
     try {
-        const delay = Math.max(0, 650 - (Date.now() - lastNovelBinRequestAt));
+        const delay = Math.max(0, 1_500 - (Date.now() - lastNovelBinRequestAt));
         if (delay) await sleep(delay);
         lastNovelBinRequestAt = Date.now();
-        return await request();
     } finally {
         release();
     }
 };
 
+const nativeGetWithRetry = async (
+    url: string,
+    headers: Record<string, string>,
+    responseType: 'text' | 'json',
+) => {
+    const isNovelBin = isNovelBinUrl(url);
+    const maxAttempts = isNovelBin ? 2 : 1;
+    let response: Awaited<ReturnType<typeof CapacitorHttp.get>> | undefined;
+    let lastError: unknown;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+        if (isNovelBin) await waitForNovelBinRequestSlot();
+        try {
+            response = await CapacitorHttp.get({
+                url,
+                headers: { ...DEFAULT_HEADERS, ...headers },
+                connectTimeout: isNovelBin ? 8_000 : 15_000,
+                readTimeout: isNovelBin ? 12_000 : 20_000,
+                responseType,
+            });
+        } catch (error) {
+            lastError = error;
+            if (attempt === maxAttempts - 1) throw error;
+            continue;
+        }
+
+        if (response.status !== 429 || attempt === maxAttempts - 1) break;
+        await sleep(1_500);
+    }
+
+    if (!response && lastError) throw lastError;
+    if (!response) throw new Error(`Native HTTP returned no response for ${url}`);
+    return response;
+};
+
 export const getText = async (url: string, headers: Record<string, string> = {}) => {
     if (isNativeMobile()) {
         try {
-            let response;
-            for (let attempt = 0; attempt < 3; attempt += 1) {
-                response = await scheduleNativeRequest(url, () => CapacitorHttp.get({
-                    url,
-                    headers: { ...DEFAULT_HEADERS, ...headers },
-                    connectTimeout: 15_000,
-                    readTimeout: 20_000,
-                    responseType: 'text',
-                }));
-
-                if (response.status !== 429) break;
-                await sleep(1_500 * (attempt + 1));
-            }
+            const response = await nativeGetWithRetry(url, headers, 'text');
 
             if (response && response.status >= 200 && response.status < 300) {
                 if (typeof response.data === 'string') return response.data;
@@ -76,13 +98,7 @@ export const getText = async (url: string, headers: Record<string, string> = {})
 
 export const getJson = async <T>(url: string, headers: Record<string, string> = {}): Promise<T> => {
     if (isNativeMobile()) {
-        const response = await CapacitorHttp.get({
-            url,
-            headers: { ...DEFAULT_HEADERS, ...headers, Accept: 'application/json' },
-            connectTimeout: 15_000,
-            readTimeout: 20_000,
-            responseType: 'json',
-        });
+        const response = await nativeGetWithRetry(url, { ...headers, Accept: 'application/json' }, 'json');
 
         if (response.status < 200 || response.status >= 300) {
             throw new Error(`Native HTTP ${response.status} for ${url}`);

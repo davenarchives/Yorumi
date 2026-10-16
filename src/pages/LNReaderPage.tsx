@@ -6,7 +6,6 @@ import type { LNChapterContent, LNReaderSettings, LightNovel, LNChapter } from '
 import { useContinueLNReading } from '../hooks/useContinueLNReading';
 import { useTitleLanguage } from '../context/TitleLanguageContext';
 import { getDisplayTitle } from '../utils/titleLanguage';
-import { slugify } from '../utils/slugify';
 import sleepingGif from '../assets/sleeping.gif';
 import discordRPCService from '../services/discordRPCService';
 import { enterImmersiveMode, exitImmersiveMode } from '../platform/immersiveMode';
@@ -98,15 +97,16 @@ export default function LNReaderPage() {
         }
     }, [isHeaderVisible]);
 
-    const handleClose = () => {
-        const historyIdx = Number((window.history.state as { idx?: number } | null)?.idx ?? 0);
-        if (historyIdx > 0) {
-            navigate(-1);
-        } else if (novelId) {
-            navigate(`/ln/details/${novelId}`, { replace: true, state: { ln: passedLN } });
-        } else {
-            navigate('/ln', { replace: true });
+    const handleOpenDetails = () => {
+        const detailsId = String(passedLN?.id || novelId || '').trim();
+        if (detailsId) {
+            navigate(`/ln/details/${encodeURIComponent(detailsId)}`, {
+                replace: true,
+                state: { ln: passedLN },
+            });
+            return;
         }
+        navigate('/ln', { replace: true });
     };
 
     useEffect(() => {
@@ -421,7 +421,7 @@ export default function LNReaderPage() {
                         {/* Left side: Cover + Title */}
                         <div className="flex items-center gap-2.5 flex-1 min-w-0">
                         <button
-                            onClick={handleClose}
+                            onClick={handleOpenDetails}
                             className="p-2 -ml-2 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white transition-colors flex items-center justify-center shrink-0"
                             title="Back"
                             aria-label="Back"
@@ -429,22 +429,30 @@ export default function LNReaderPage() {
                             <ArrowLeft className="w-5 h-5" />
                         </button>
 
-                        {coverImage && (
-                            <img
-                                src={coverImage}
-                                alt="cover"
-                                className="w-10 h-14 object-cover rounded shadow-sm hidden sm:block"
-                            />
-                        )}
+                        <button
+                            type="button"
+                            onClick={handleOpenDetails}
+                            className="flex min-w-0 items-center gap-2.5 rounded-lg text-left transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/70"
+                            title={`Open ${displayNovelTitle} details`}
+                            aria-label={`Open ${displayNovelTitle} details`}
+                        >
+                            {coverImage && (
+                                <img
+                                    src={coverImage}
+                                    alt=""
+                                    className="hidden h-12 w-9 shrink-0 rounded object-cover shadow-sm sm:block"
+                                />
+                            )}
 
-                        <div className="flex flex-col min-w-0">
-                            <h1 className="text-sm font-semibold text-gray-400 truncate hidden sm:block">
-                                {displayNovelTitle}
-                            </h1>
-                            <span className="text-base md:text-lg font-bold text-white truncate leading-tight">
-                                {headerChapterTitle}
+                            <span className="flex min-w-0 flex-col justify-center">
+                                <span className="truncate text-sm font-bold leading-tight text-white">
+                                    {displayNovelTitle}
+                                </span>
+                                <span className="truncate text-xs leading-normal text-gray-400">
+                                    {headerChapterTitle}
+                                </span>
                             </span>
-                        </div>
+                        </button>
                     </div>
 
                     {/* Center side: Font Controls */}

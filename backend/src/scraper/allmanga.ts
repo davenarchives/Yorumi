@@ -85,8 +85,8 @@ async function fetchDynamicKeys() {
     };
 }
 
-const SEARCH_GQL = `query($search:SearchInput $limit:Int $page:Int $translationType:VaildTranslationTypeEnumType $countryOrigin:VaildCountryOriginEnumType){shows(search:$search limit:$limit page:$page translationType:$translationType countryOrigin:$countryOrigin){edges{_id name englishName type status season availableEpisodes episodeCount lastEpisodeInfo __typename}}}`;
-const LATEST_UPDATES_GQL = `query($search:SearchInput $limit:Int $page:Int $translationType:VaildTranslationTypeEnumType $countryOrigin:VaildCountryOriginEnumType){shows(search:$search limit:$limit page:$page translationType:$translationType countryOrigin:$countryOrigin){edges{_id name englishName thumbnail banner type status score averageScore season availableEpisodes lastEpisodeDate lastEpisodeInfo lastEpisodeTimestamp episodeCount genres slugTime} pageInfo{total totalPages page hasNextPage}}}`;
+const SEARCH_GQL = `query($search:SearchInput $limit:Int $page:Int $translationType:VaildTranslationTypeEnumType $countryOrigin:VaildCountryOriginEnumType){shows(search:$search limit:$limit page:$page translationType:$translationType countryOrigin:$countryOrigin){edges{_id aniListId name englishName type status season availableEpisodes episodeCount lastEpisodeInfo __typename}}}`;
+const LATEST_UPDATES_GQL = `query($search:SearchInput $limit:Int $page:Int $translationType:VaildTranslationTypeEnumType $countryOrigin:VaildCountryOriginEnumType){shows(search:$search limit:$limit page:$page translationType:$translationType countryOrigin:$countryOrigin){edges{_id aniListId name englishName thumbnail banner type status score averageScore season availableEpisodes lastEpisodeDate lastEpisodeInfo lastEpisodeTimestamp episodeCount genres slugTime} pageInfo{total totalPages page hasNextPage}}}`;
 const EPISODE_INFOS_GQL = `query($showId:String! $episodeNumStart:Float! $episodeNumEnd:Float!){episodeInfos(showId:$showId episodeNumStart:$episodeNumStart episodeNumEnd:$episodeNumEnd){_id notes description thumbnails uploadDates episodeIdNum vidInforssub vidInforsdub}}`;
 const EPISODE_GQL = `query($showId:String! $translationType:VaildTranslationTypeEnumType! $episodeString:String!){episode(showId:$showId translationType:$translationType episodeString:$episodeString){episodeString sourceUrls}}`;
 
@@ -105,6 +105,7 @@ type TranslationType = 'sub' | 'dub';
 type AllMangaSource = { sourceUrl?: string; sourceName?: string; priority?: number };
 type AllMangaShow = {
     _id?: string;
+    aniListId?: string | number | null;
     name?: string;
     englishName?: string | null;
     thumbnail?: string | null;
@@ -548,6 +549,7 @@ export class AllMangaScraper {
         const poster = this.absoluteAssetUrl(show.thumbnail);
         const score = Number(show.score || show.averageScore ? (show.score || Number(show.averageScore) / 10) : 0);
         const year = Number(show.season?.year || 0) || undefined;
+        const anilistId = Number(show.aniListId || 0) || undefined;
 
         return {
             id: AllMangaScraper.toSession(showId),
@@ -569,6 +571,7 @@ export class AllMangaScraper {
             score: Number.isFinite(score) && score > 0 ? String(score) : undefined,
             source: 'allmanga',
             allMangaId: showId,
+            anilistId,
             genres: Array.isArray(show.genres) ? show.genres : [],
             season: show.season,
             latestTimestamp: Number(show.lastEpisodeTimestamp?.sub || show.lastEpisodeTimestamp?.dub || 0) || undefined,
@@ -656,7 +659,7 @@ export class AllMangaScraper {
     }
 
     private async getShowById(showId: string): Promise<AllMangaShow | null> {
-        const payload = await this.gql<{ data?: { show?: AllMangaShow } }>({ _id: showId }, `query($_id:String!){show(_id:$_id){_id name englishName thumbnail banner type status score averageScore season availableEpisodes lastEpisodeInfo episodeCount genres}}`);
+        const payload = await this.gql<{ data?: { show?: AllMangaShow } }>({ _id: showId }, `query($_id:String!){show(_id:$_id){_id aniListId name englishName thumbnail banner type status score averageScore season availableEpisodes lastEpisodeInfo episodeCount genres}}`);
         return payload?.data?.show || null;
     }
 

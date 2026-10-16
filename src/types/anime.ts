@@ -1,6 +1,11 @@
 export interface Anime {
     mal_id: number;
     id?: number; // AniList ID
+    anilistId?: number;
+    tmdbId?: number;
+    mappingId?: number;
+    source?: 'anilist' | 'mal' | 'tmdb' | 'scraper';
+    canonicalKey?: string;
     scraperId?: string; // Scraper session ID for hybrid lookup
     title: string;
     title_japanese?: string;
@@ -73,9 +78,11 @@ export interface Anime {
             relationType: string;
             node: {
                 id: number;
+                idMal?: number;
                 type?: string;
                 title: { romaji: string; english?: string; native?: string };
-                coverImage: { large: string };
+                coverImage: { large: string; extraLarge?: string };
+                bannerImage?: string;
                 format: string;
                 episodes?: number | null;
                 status?: string;
@@ -85,6 +92,7 @@ export interface Anime {
             };
         }[];
     };
+    seasonChain?: Anime[];
     countryOfOrigin?: string;
 }
 
@@ -94,5 +102,9 @@ export interface Episode {
     duration?: string;
     title?: string;
     snapshot?: string;
+    thumbnail?: string;
+    overview?: string;
+    airDate?: string | null;
+    playbackEpisodeNumber?: number;
     _tmdbAbsolute?: number;
 }

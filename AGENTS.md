@@ -14,6 +14,13 @@ This file defines how coding agents should work in this repo so execution stays 
 - Build outputs: `dist/`, `backend/dist/` (do not hand-edit)
 - **yorumi-cli**: A standalone CLI tool (`yorumi-cli/`) completely unrelated to the main Yorumi app. It must work out-of-the-box for non-developer users to watch anime without needing the Yorumi backend running locally.
 
+## Repository Knowledge
+- Start repository exploration at `obsidian/00 - Repository Index.md`, then read only the maps relevant to the task.
+- Treat source code as authoritative when a note and implementation disagree; correct the stale note in the same change.
+- Update the relevant Obsidian map when changing architecture, data flow, routes, caches, build/release steps, or product invariants.
+- Record durable, non-obvious architecture decisions under `obsidian/decisions/` using the provided template.
+- Never store secrets, populated environment values, signing data, user data, or temporary provider credentials in the knowledge vault.
+
 ## Default Workflow
 1. Understand scope and impacted layer (`src`, `backend/src`).
 2. Inspect existing patterns in nearby files before editing.
@@ -30,7 +37,7 @@ This file defines how coding agents should work in this repo so execution stays 
 - When touching scraper logic, preserve fallback behavior and error handling.
 - If there is a new patch or bugfix deployed that affects data fetching, always clear the stale cache or ensure the cache is purged during testing.
 - Keep frontend and backend changes logically separated in commits/summary.
-- After we have changes, always document them and put them on the changelogs.
+- After changes, update `CHANGELOG.md` and any affected knowledge map under `obsidian/`.
 
 ## Guardrails (Do Not)
 - Do not edit generated/build artifacts in `dist*` or `backend/dist`.

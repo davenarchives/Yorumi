@@ -1098,7 +1098,7 @@ export default function CustomVideoControls({
                                 {/* Settings Popover */}
                                 {showSettings && (
                                     <div
-                                        className="pointer-events-auto absolute bottom-full right-0 z-[200] mb-3 w-44 rounded-xl bg-[#1A1A1A]/95 p-1 shadow-2xl backdrop-blur-xl"
+                                        className="yorumi-player-popover pointer-events-auto absolute bottom-full right-0 z-[200] mb-3 w-44 rounded-xl bg-[#1A1A1A]/95 p-1 shadow-2xl backdrop-blur-xl"
                                         data-player-interactive="true"
                                         onClick={(event) => event.stopPropagation()}
                                         onPointerDown={(event) => event.stopPropagation()}
@@ -1267,7 +1267,7 @@ export default function CustomVideoControls({
                                     <>
                                         {showSubtitleMenu && subtitleTracks.length > 1 && (
                                             <div
-                                                className="pointer-events-auto absolute bottom-full right-8 z-50 mb-3 max-h-64 w-44 overflow-y-auto rounded-xl bg-[#1A1A1A]/95 p-1 shadow-2xl backdrop-blur-xl sm:right-10"
+                                                className="yorumi-player-popover pointer-events-auto absolute bottom-full right-8 z-50 mb-3 max-h-64 w-44 overflow-y-auto rounded-xl bg-[#1A1A1A]/95 p-1 shadow-2xl backdrop-blur-xl sm:right-10"
                                                 onClick={(event) => event.stopPropagation()}
                                                 onPointerDown={(event) => event.stopPropagation()}
                                             >

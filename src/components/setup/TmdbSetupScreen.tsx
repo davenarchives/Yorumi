@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
+import { Browser } from '@capacitor/browser';
 import { Play, ExternalLink, KeyRound } from 'lucide-react';
+import { isNativeMobile } from '../../platform/runtime';
 import { tmdbService } from '../../services/tmdbService';
 
 type SetupError = {
@@ -37,7 +39,11 @@ const getErrorMessage = (reason: string, status?: number): SetupError => {
     }
 };
 
-const openExternal = (url: string) => {
+const openExternal = async (url: string) => {
+    if (isNativeMobile()) {
+        await Browser.open({ url });
+        return;
+    }
     window.open(url, '_blank', 'noopener,noreferrer');
 };
 
@@ -98,7 +104,7 @@ export default function TmdbSetupScreen({ onReady }: { onReady: () => void }) {
                     <div className="grid gap-2.5 sm:grid-cols-2 sm:gap-3">
                         <button
                             type="button"
-                            onClick={() => openExternal('https://www.themoviedb.org/settings/api')}
+                            onClick={() => void openExternal('https://www.themoviedb.org/settings/api')}
                             className="flex min-h-11 w-full items-center justify-between gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-left text-sm font-bold text-white transition-colors active:bg-white/10 sm:justify-center sm:rounded-full sm:hover:border-yorumi-accent/60 sm:hover:text-yorumi-accent"
                         >
                             TMDB API Settings
@@ -106,7 +112,7 @@ export default function TmdbSetupScreen({ onReady }: { onReady: () => void }) {
                         </button>
                         <button
                             type="button"
-                            onClick={() => openExternal('https://yorumi.vercel.app/#docs-tmdb')}
+                            onClick={() => void openExternal('https://yorumi.vercel.app/#docs-tmdb')}
                             className="flex min-h-11 w-full items-center justify-between gap-2 rounded-xl border border-yorumi-accent/25 bg-yorumi-accent/10 px-4 py-2.5 text-left text-sm font-bold text-yorumi-accent transition-colors active:bg-yorumi-accent/20 sm:justify-center sm:rounded-full sm:hover:border-yorumi-accent/60"
                         >
                             Step-by-step guide

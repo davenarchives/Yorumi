@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, ChevronRight, Search, X } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTitleLanguage } from '../context/TitleLanguageContext';
-import { searchApi, type SearchPreviewItem } from '../features/search/api';
+import { getAnimeSearchSeed, searchApi, type SearchPreviewItem } from '../features/search/api';
 import { useDebounce } from '../hooks/useDebounce';
 import AnimeCard from '../features/anime/components/AnimeCard';
 import MangaCard from '../features/manga/components/MangaCard';
@@ -75,6 +75,7 @@ export default function SearchPage() {
     const hasQuery = debouncedQuery.trim().length >= 2;
 
     const getCardData = (group: SearchGroup, item: SearchPreviewItem) => {
+        if (group === 'anime') return getAnimeSearchSeed(item);
         const raw = item.raw || item.ln || item.manga || {};
         const common = {
             ...raw,
@@ -87,7 +88,6 @@ export default function SearchPage() {
             score: raw.score || item.score || 0,
             images: raw.images || { jpg: { image_url: item.image, large_image_url: item.image } },
         };
-        if (group === 'anime') return common as Anime;
         if (group === 'manga') return common as Manga;
         return common as LightNovel;
     };

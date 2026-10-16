@@ -3,6 +3,7 @@ import { load } from 'cheerio';
 import crypto from 'node:crypto';
 import vm from 'node:vm';
 import type { VideoSource, StreamResponse } from '../api/anime/video-sources.js';
+import { extractExplicitSeasonNumber } from './hianime';
 
 const BASE = 'https://anikototv.to';
 const SPOOF_REF = 'https://hianimes.re/';
@@ -315,7 +316,7 @@ export class AnikotoScraper implements VideoSource {
             if (candidates.length === 0) return null;
 
             const normSearch = normalizeTitle(searchTitle);
-            const asksSeason2 = /\b(season 2|s2|2nd season|season2)\b/i.test(searchTitle);
+            const requestedSeason = extractExplicitSeasonNumber(searchTitle) || 1;
             const asksMovie = /\b(movie|film)\b/i.test(searchTitle);
 
             let bestCandidate: typeof candidates[number] | null = null;
@@ -325,16 +326,18 @@ export class AnikotoScraper implements VideoSource {
                 let score = 0;
                 const enNorm = normalizeTitle(c.titleEn);
                 const jpNorm = normalizeTitle(c.titleJp);
+                const candidateSeason = extractExplicitSeasonNumber(c.titleEn)
+                    || extractExplicitSeasonNumber(c.titleJp)
+                    || 1;
+                if (candidateSeason !== requestedSeason) continue;
 
                 if (enNorm === normSearch || jpNorm === normSearch) score += 1000;
                 else if (enNorm.startsWith(normSearch) || jpNorm.startsWith(normSearch)) score += 500;
                 else if (enNorm.includes(normSearch) || jpNorm.includes(normSearch)) score += 200;
 
-                const isS2 = /\b(season 2|s2|2nd season|season2)\b/i.test(c.titleEn);
                 const isMovie = /\b(movie|film)\b/i.test(c.titleEn);
                 const isMini = /\b(mini|special|recap|chibi)\b/i.test(c.titleEn);
 
-                if (isS2 && !asksSeason2) score -= 300;
                 if (isMovie && !asksMovie) score -= 300;
                 if (isMini) score -= 400;
 

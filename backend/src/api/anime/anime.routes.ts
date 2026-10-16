@@ -1,8 +1,8 @@
 import { Router } from 'express';
 import { animeQuery, streambertAnimeService } from './anime.service';
 import { anilistService } from '../anilist/anilist.service';
-import { getOrFetchHomeFastPayload } from '../anilist/anilist.routes';
 import { animeVideoSources } from './video-sources';
+import { animeMappingService } from './anime-mapping.service';
 
 const router = Router();
 
@@ -34,25 +34,40 @@ router.get('/metadata', async (req, res) => {
     try {
         const tmdbId = Number(req.query.tmdbId);
         const anilistId = Number(req.query.anilistId || req.query.id);
+        const malId = Number(req.query.malId);
         const format = req.query.format ? String(req.query.format).toUpperCase() : undefined;
 
         let metadata: any = null;
 
         if (Number.isFinite(tmdbId) && tmdbId > 0) {
             metadata = await streambertAnimeService.getMetadata(Math.floor(tmdbId), format).catch(() => null);
+        } else if (Number.isFinite(malId) && malId > 0) {
+            metadata = await anilistService.getAnimeByMalId(Math.floor(malId)).catch(() => null);
         } else if (Number.isFinite(anilistId) && anilistId > 0) {
+            // AniList IDs identify season-sized anime entries. Returning TMDB's
+            // show-level payload here replaces that identity and can turn a
+            // 25-episode sequel entry into a combined 50-episode series.
             metadata = await anilistService.getAnimeById(Math.floor(anilistId)).catch(() => null);
-            if (!metadata) {
-                // Fallback to TMDB only if not found on AniList
-                metadata = await streambertAnimeService.getMetadata(Math.floor(anilistId), format).catch(() => null);
+
+            // Keep TMDB as supplementary metadata without allowing it to
+            // overwrite canonical title, episode, relation, or status fields.
+            if (metadata) {
+                const tmdbMetadata = await streambertAnimeService
+                    .getMetadataFromAniListId(Math.floor(anilistId), format)
+                    .catch(() => null);
+                const resolvedTmdbId = Number(tmdbMetadata?.tmdbId || 0);
+                if (resolvedTmdbId > 0) {
+                    metadata = {
+                        ...metadata,
+                        tmdbId: resolvedTmdbId,
+                        bannerImage: metadata.bannerImage || tmdbMetadata.bannerImage,
+                    };
+                }
             }
         }
 
         if (!metadata && req.query.title) {
-            const titleSearch = await anilistService.searchAnime(String(req.query.title), 1, 1).catch(() => null);
-            if (titleSearch?.media?.[0]?.id) {
-                metadata = await anilistService.getAnimeById(titleSearch.media[0].id).catch(() => null);
-            }
+            metadata = await streambertAnimeService.findMetadataByTitle(String(req.query.title), format).catch(() => null);
         }
 
         if (!metadata) {
@@ -75,13 +90,7 @@ router.get('/search', async (req, res) => {
             return;
         }
 
-        let result = await streambertAnimeService.search(filters);
-        if ((!result || !Array.isArray(result.media) || result.media.length === 0) && filters.query) {
-            const anilistResult = await anilistService.searchAnime(filters.query, filters.page, filters.perPage).catch(() => null);
-            if (anilistResult && Array.isArray(anilistResult.media) && anilistResult.media.length > 0) {
-                result = anilistResult;
-            }
-        }
+        const result = await streambertAnimeService.search(filters);
         res.set('Cache-Control', 'public, max-age=120, s-maxage=300, stale-while-revalidate=600');
         res.json(result);
     } catch (error: any) {
@@ -159,111 +168,13 @@ router.get('/stream', async (req, res) => {
     }
 });
 
-let mediaPoolCache: { data: any[]; timestamp: number } | null = null;
-const MEDIA_POOL_CACHE_TTL = 10 * 60 * 1000;
-
-const getGlobalAnilistMediaPool = async (): Promise<any[]> => {
-    if (mediaPoolCache && Date.now() - mediaPoolCache.timestamp < MEDIA_POOL_CACHE_TTL) {
-        return mediaPoolCache.data;
-    }
-    const [t, s, m, a] = await Promise.all([
-        anilistService.getTrendingAnime(1, 50).catch(() => ({ media: [] })),
-        anilistService.getPopularThisSeason(1, 50).catch(() => ({ media: [] })),
-        anilistService.getPopularThisMonth(1, 50).catch(() => ({ media: [] })),
-        anilistService.getPopularAnime(1, 50).catch(() => ({ media: [] })),
-    ]);
-    const pool = [
-        ...(t?.media || []),
-        ...(s?.media || []),
-        ...(m?.media || []),
-        ...(a?.media || []),
-    ];
-    if (pool.length > 0) {
-        mediaPoolCache = { data: pool, timestamp: Date.now() };
-    }
-    return pool;
-};
-
-const normalizeTitleForMatch = (title: unknown): string =>
-    String(title || '')
-        .toLowerCase()
-        .replace(/\b(season|part|cour|nd|rd|th|st)\s*\d+\b/g, ' ')
-        .replace(/[^a-z0-9]+/g, ' ')
-        .trim();
-
-const stripSpaces = (str: string): string => str.replace(/\s+/g, '');
-
-const enrichTmdbWithAnilistStudios = (tmdbMedia: any[], anilistMediaPool: any[]): any[] => {
-    if (!Array.isArray(tmdbMedia)) return [];
-    if (!Array.isArray(anilistMediaPool) || anilistMediaPool.length === 0) return tmdbMedia;
-
-    return tmdbMedia.map((tmdbItem) => {
-        if (!tmdbItem) return tmdbItem;
-
-        const tmdbTitles = [
-            tmdbItem?.title?.english,
-            tmdbItem?.title?.romaji,
-            tmdbItem?.title?.native,
-            typeof tmdbItem?.title === 'string' ? tmdbItem.title : undefined,
-        ]
-            .map(normalizeTitleForMatch)
-            .filter(Boolean);
-
-        const tmdbStripped = tmdbTitles.map(stripSpaces).filter(Boolean);
-
-        if (tmdbTitles.length === 0) return tmdbItem;
-
-        const matched = anilistMediaPool.find((aniItem) => {
-            const aniTitles = [
-                aniItem?.title?.english,
-                aniItem?.title?.romaji,
-                aniItem?.title?.native,
-                typeof aniItem?.title === 'string' ? aniItem.title : undefined,
-                ...(Array.isArray(aniItem?.synonyms) ? aniItem.synonyms : []),
-            ]
-                .map(normalizeTitleForMatch)
-                .filter(Boolean);
-
-            const aniStripped = aniTitles.map(stripSpaces).filter(Boolean);
-
-            return tmdbTitles.some((t) => aniTitles.includes(t)) ||
-                   tmdbStripped.some((t) => aniStripped.includes(t)) ||
-                   tmdbTitles.some((t) => aniTitles.some((a) => t && a && t.length >= 4 && a.length >= 4 && (t.includes(a) || a.includes(t))));
-        });
-
-        if (matched) {
-            return {
-                ...tmdbItem,
-                studios: matched.studios || tmdbItem.studios,
-                episodes: matched.episodes || tmdbItem.episodes || (matched.nextAiringEpisode?.episode ? matched.nextAiringEpisode.episode - 1 : null),
-                latestEpisode: matched.nextAiringEpisode?.episode ? matched.nextAiringEpisode.episode - 1 : tmdbItem.latestEpisode,
-                nextAiringEpisode: matched.nextAiringEpisode || tmdbItem.nextAiringEpisode,
-                status: tmdbItem.status || matched.status,
-                bannerImage: tmdbItem.bannerImage || matched.bannerImage,
-            };
-        }
-
-        return tmdbItem;
-    });
-};
-
 router.get('/trending', async (req, res) => {
     try {
         const page = animeQuery.toPositiveInt(req.query.page, 1, 500);
         const perPage = animeQuery.toPositiveInt(req.query.perPage || req.query.limit, 10, 50);
-        let result = await streambertAnimeService.trending(page, perPage);
-        if (!result || !Array.isArray(result.media) || result.media.length === 0) {
-            result = await anilistService.getTrendingAnime(page, perPage);
-            res.set('Cache-Control', 'public, max-age=120, s-maxage=300, stale-while-revalidate=600');
-            res.json(result);
-            return;
-        }
-        const pool = await getGlobalAnilistMediaPool();
+        const result = await streambertAnimeService.trending(page, perPage);
         res.set('Cache-Control', 'public, max-age=120, s-maxage=300, stale-while-revalidate=600');
-        res.json({
-            ...result,
-            media: enrichTmdbWithAnilistStudios(result.media || [], pool),
-        });
+        res.json(result);
     } catch (error) {
         res.status(500).json({ error: 'Failed to fetch trending anime' });
     }
@@ -273,19 +184,9 @@ router.get('/popular', async (req, res) => {
     try {
         const page = animeQuery.toPositiveInt(req.query.page, 1, 500);
         const perPage = animeQuery.toPositiveInt(req.query.perPage || req.query.limit, 10, 50);
-        let result = await streambertAnimeService.popular(page, perPage);
-        if (!result || !Array.isArray(result.media) || result.media.length === 0) {
-            result = await anilistService.getPopularAnime(page, perPage);
-            res.set('Cache-Control', 'public, max-age=120, s-maxage=300, stale-while-revalidate=600');
-            res.json(result);
-            return;
-        }
-        const pool = await getGlobalAnilistMediaPool();
+        const result = await streambertAnimeService.popular(page, perPage);
         res.set('Cache-Control', 'public, max-age=120, s-maxage=300, stale-while-revalidate=600');
-        res.json({
-            ...result,
-            media: enrichTmdbWithAnilistStudios(result.media || [], pool),
-        });
+        res.json(result);
     } catch (error) {
         res.status(500).json({ error: 'Failed to fetch popular anime' });
     }
@@ -300,21 +201,50 @@ router.get('/seasonal', async (req, res) => {
         const year = animeQuery.toPositiveInt(req.query.year || req.query.seasonYear, now.getFullYear(), 3000);
         const page = animeQuery.toPositiveInt(req.query.page, 1, 500);
         const perPage = animeQuery.toPositiveInt(req.query.perPage || req.query.limit, 10, 50);
-        let result = await streambertAnimeService.seasonal(season, year, page, perPage);
-        if (!result || !Array.isArray(result.media) || result.media.length === 0) {
-            result = await anilistService.getPopularThisSeason(page, perPage);
-            res.set('Cache-Control', 'public, max-age=120, s-maxage=300, stale-while-revalidate=600');
-            res.json(result);
-            return;
-        }
-        const pool = await getGlobalAnilistMediaPool();
+        const result = await streambertAnimeService.seasonal(season, year, page, perPage);
         res.set('Cache-Control', 'public, max-age=120, s-maxage=300, stale-while-revalidate=600');
-        res.json({
-            ...result,
-            media: enrichTmdbWithAnilistStudios(result.media || [], pool),
-        });
+        res.json(result);
     } catch (error) {
         res.status(500).json({ error: 'Failed to fetch seasonal anime' });
+    }
+});
+
+router.get('/mappings', async (req, res) => {
+    try {
+        const anilistId = Number(req.query.anilistId);
+        const tmdbId = Number(req.query.tmdbId);
+        const mediaType = String(req.query.mediaType || 'tv').toLowerCase();
+
+        let mappings;
+        if (Number.isInteger(anilistId) && anilistId > 0) {
+            const mapping = await animeMappingService.getByAniListId(anilistId);
+            mappings = mapping ? [mapping] : [];
+        } else if (Number.isInteger(tmdbId) && tmdbId > 0) {
+            mappings = mediaType === 'movie'
+                ? await animeMappingService.getByTmdbMovieId(tmdbId)
+                : await animeMappingService.getByTmdbShowId(tmdbId);
+        } else {
+            res.status(400).json({ error: 'anilistId or tmdbId is required' });
+            return;
+        }
+
+        res.set('Cache-Control', 'public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800');
+        res.json({ mappings });
+    } catch (error: any) {
+        console.error('[anime-mapping] Resolution failed', error);
+        res.status(503).json({ error: error?.message || 'Anime mapping dataset unavailable', mappings: [] });
+    }
+});
+
+router.get('/genre/:genre', async (req, res) => {
+    try {
+        const page = animeQuery.toPositiveInt(req.query.page, 1, 500);
+        const perPage = animeQuery.toPositiveInt(req.query.perPage || req.query.limit, 24, 50);
+        const result = await streambertAnimeService.genre(req.params.genre, page, perPage);
+        res.set('Cache-Control', 'public, max-age=300, s-maxage=1800, stale-while-revalidate=3600');
+        res.json(result);
+    } catch (error: any) {
+        res.status(500).json({ error: error?.message || 'Failed to fetch anime genre' });
     }
 });
 
@@ -340,39 +270,21 @@ router.get('/home-fast', async (_req, res) => {
             streambertAnimeService.popular(1, 24).catch(() => ({ media: [] })),
         ]);
 
-        // If TMDB returned empty (e.g. no TMDB key configured or rate limited), serve the resilient AniList home-fast bundle
-        if ((!trending?.media || trending.media.length === 0) && (!popular?.media || popular.media.length === 0)) {
-            const anilistPayload = await getOrFetchHomeFastPayload();
-            if (anilistPayload) {
-                animeHomeFastMemoryCache = { data: anilistPayload, timestamp: Date.now() };
-                res.set('Cache-Control', 'public, max-age=60, s-maxage=120, stale-while-revalidate=300');
-                res.json(anilistPayload);
-                return;
-            }
-        }
-
-        const allAnilistMedia = await getGlobalAnilistMediaPool();
-        const enrichedTrending = enrichTmdbWithAnilistStudios(trending.media, allAnilistMedia);
-        const enrichedSeasonal = enrichTmdbWithAnilistStudios(seasonal.media, allAnilistMedia);
-        const enrichedPopular = enrichTmdbWithAnilistStudios(popular.media, allAnilistMedia);
-
-        const dayItems = enrichedTrending.slice(0, 10);
-        const weekItems = enrichedSeasonal.slice(0, 10);
-        const monthItems = enrichedPopular.slice(0, 10);
-        const allTimeItems = enrichedPopular.slice(0, 10);
-
+        const trendingMedia = trending.media || [];
+        const seasonalMedia = seasonal.media || [];
+        const popularMedia = popular.media || [];
         const payload = {
-            spotlight: enrichedTrending.slice(0, 8),
+            spotlight: trendingMedia.slice(0, 8),
             latestEpisodes: [],
-            trending: { ...trending, media: enrichedTrending },
-            seasonal: { ...seasonal, media: enrichedSeasonal },
-            monthly: { ...popular, media: enrichedPopular },
-            topAnime: { ...popular, media: enrichedPopular },
+            trending: { ...trending, media: trendingMedia },
+            seasonal: { ...seasonal, media: seasonalMedia },
+            monthly: { ...popular, media: popularMedia },
+            topAnime: { ...popular, media: popularMedia },
             topTen: {
-                day: dayItems,
-                week: weekItems,
-                month: monthItems,
-                allTime: allTimeItems,
+                day: trendingMedia.slice(0, 10),
+                week: seasonalMedia.slice(0, 10),
+                month: popularMedia.slice(0, 10),
+                allTime: popularMedia.slice(0, 10),
             },
             generatedAt: Date.now(),
         };

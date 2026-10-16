@@ -1,5 +1,13 @@
+export type AnimeIdentitySource = 'anilist' | 'mal' | 'tmdb' | 'scraper';
+
+export type AnimeRouteRef = {
+    source: AnimeIdentitySource;
+    id: number | string;
+};
+
 type AnimeRouteTarget = {
     id?: unknown;
+    anilistId?: unknown;
     mal_id?: unknown;
     tmdbId?: unknown;
     tmdb_id?: unknown;
@@ -29,50 +37,87 @@ export const isSupportedScraperSessionId = (value: unknown): boolean => {
     return isAnimePaheSessionId(normalized) || isGenericScraperSessionId(normalized) || isProviderScraperSessionId(normalized) || isHiAnimeSessionId(normalized);
 };
 
-export const getDirectScraperRouteId = (value: unknown): string => {
+const normalizeScraperSession = (value: unknown): string => {
     const raw = String(value || '')
         .trim()
+        .replace(/^s:/i, '')
+        .replace(/^scraper-/i, '')
         .replace(/^https?:\/\/[^/]+/i, '')
         .replace(/^\/+/, '')
         .replace(/^watch\//i, '');
-
-    if (!raw) return '';
-
-    const normalized = raw.startsWith('s:') ? raw : `s:${raw}`;
-    const session = normalized.slice(2).trim().split(/[?#]/)[0];
-    return isSupportedScraperSessionId(session) ? `s:${session}` : '';
+    const session = raw.split(/[?#]/)[0].trim();
+    return isSupportedScraperSessionId(session) ? session : '';
 };
 
-export const getAnimeDetailsRouteId = (item: AnimeRouteTarget): string | number | '' => {
+export const getDirectScraperRouteId = (value: unknown): string => {
+    const session = normalizeScraperSession(value);
+    return session ? `s:${session}` : '';
+};
+
+export const parseAnimeRouteId = (value: unknown): AnimeRouteRef | null => {
+    const routeId = decodeURIComponent(String(value || '').trim());
+    if (!routeId) return null;
+
+    const prefixedNumber = routeId.match(/^(al|anilist|mal|tmdb)-(\d+)$/i);
+    if (prefixedNumber) {
+        const source = prefixedNumber[1].toLowerCase();
+        return {
+            source: source === 'al' || source === 'anilist' ? 'anilist' : source as 'mal' | 'tmdb',
+            id: Number(prefixedNumber[2]),
+        };
+    }
+
+    const scraperId = normalizeScraperSession(routeId);
+    if (/^(s:|scraper-)/i.test(routeId) && scraperId) {
+        return { source: 'scraper', id: scraperId };
+    }
+
+    const legacyId = toPositiveNumber(routeId);
+    if (legacyId) return { source: 'anilist', id: legacyId };
+    if (scraperId) return { source: 'scraper', id: scraperId };
+    return null;
+};
+
+export const buildAnimeRouteId = (ref: AnimeRouteRef): string => {
+    if (ref.source === 'anilist') return `al-${toPositiveNumber(ref.id)}`;
+    if (ref.source === 'mal') return `mal-${toPositiveNumber(ref.id)}`;
+    if (ref.source === 'tmdb') return `tmdb-${toPositiveNumber(ref.id)}`;
+    return getDirectScraperRouteId(ref.id);
+};
+
+export const getAnimeDetailsRouteId = (item: AnimeRouteTarget): string => {
+    const explicitAnilistId = toPositiveNumber(item.anilistId);
+    const anilistId = toPositiveNumber(item.id);
+    const malId = toPositiveNumber(item.mal_id);
     const tmdbId = toPositiveNumber(item.tmdbId ?? item.tmdb_id);
     const source = String(item.source || '').toLowerCase();
-    
-    if (source === 'tmdb' && tmdbId > 0) {
-        return `tmdb-${tmdbId}`;
-    }
 
-    const anilistId = toPositiveNumber(item.id);
-    if (anilistId > 0) {
-        if (tmdbId > 0 && anilistId === tmdbId) {
-            return `tmdb-${tmdbId}`;
-        }
-        return anilistId;
-    }
-
-    const malId = toPositiveNumber(item.mal_id);
-    if (malId > 0) return malId;
-
-    if (tmdbId > 0) return `tmdb-${tmdbId}`;
-
+    if (source === 'tmdb' && tmdbId) return buildAnimeRouteId({ source: 'tmdb', id: tmdbId });
+    if (source === 'mal' && malId && !explicitAnilistId && !anilistId) return buildAnimeRouteId({ source: 'mal', id: malId });
+    if (explicitAnilistId) return buildAnimeRouteId({ source: 'anilist', id: explicitAnilistId });
+    if (anilistId) return buildAnimeRouteId({ source: 'anilist', id: anilistId });
+    if (tmdbId) return buildAnimeRouteId({ source: 'tmdb', id: tmdbId });
+    if (malId) return buildAnimeRouteId({ source: 'mal', id: malId });
     return getDirectScraperRouteId(item.scraperId);
 };
 
-export const getAnimeWatchRouteId = (item: AnimeRouteTarget): string | number | '' => {
-    const scraperRouteId = getDirectScraperRouteId(item.scraperId);
-    if (scraperRouteId) return scraperRouteId;
+export const getAnimeWatchRouteId = getAnimeDetailsRouteId;
 
-    const malId = toPositiveNumber(item.mal_id);
-    if (malId > 0) return malId;
+export const getCanonicalAnimeKey = (item: AnimeRouteTarget): string => {
+    const routeId = getAnimeDetailsRouteId(item);
+    const ref = parseAnimeRouteId(routeId);
+    return ref ? `${ref.source}:${ref.id}` : '';
+};
 
-    return toPositiveNumber(item.id);
+export const buildAnimeDetailsPath = (
+    item: AnimeRouteTarget,
+    options: { episode?: number | string; time?: number } = {}
+): string => {
+    const routeId = getAnimeDetailsRouteId(item);
+    if (!routeId) return '';
+    const params = new URLSearchParams();
+    if (options.episode !== undefined) params.set('ep', String(options.episode));
+    if (options.time && options.time > 0) params.set('t', String(Math.floor(options.time)));
+    const query = params.toString();
+    return `/anime/details/${encodeURIComponent(routeId)}${query ? `?${query}` : ''}`;
 };

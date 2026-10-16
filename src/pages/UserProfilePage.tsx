@@ -5,6 +5,7 @@ import { userSearchService, type PublicUserProfile } from '../services/userServi
 import { useAuth } from '../context/AuthContext';
 import useEmblaCarousel from 'embla-carousel-react';
 import { DEFAULT_BANNER_URL, resolveStaticAssetUrl } from '../config/cloudinaryAssets';
+import { getAnimeDetailsRouteId } from '../utils/animeNavigation';
 
 type TabType = 'profile' | 'anime-overview' | 'manga-overview';
 
@@ -12,10 +13,11 @@ const isAnimeSessionId = (value: string) =>
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 
 const getStoredAnimeRouteId = (item: any) => {
-    const scraperId = String(item.scraperId || '').trim();
-    if (isAnimeSessionId(scraperId)) return `s:${scraperId}`;
-
-    return String(item.anilistId || item.id || '').trim();
+    return getAnimeDetailsRouteId({
+        id: item.anilistId || item.id,
+        mal_id: item.malId,
+        scraperId: item.scraperId,
+    });
 };
 
 const buildStoredAnimeState = (item: any) => {
@@ -543,6 +545,7 @@ const countCompletedMangaGroups = (
 }, 0);
 
 const UserProfileTab = ({ profile }: { profile: PublicUserProfile }) => {
+    const navigate = useNavigate();
     // Porting the exact Map-based logic from ProfilePage.tsx for mathematical parity.
     const animeGroups = new Map<string, Set<string>>();
     const animeGroupProgress = new Map<string, Set<number>>();
@@ -739,7 +742,7 @@ const UserProfileTab = ({ profile }: { profile: PublicUserProfile }) => {
                     <FavoriteBoard
                         items={profile.favoriteAnime}
                         label="Favorite Animes"
-                        onClickItem={(id) => window.location.pathname !== `/anime/details/${id}` && (window.location.href = `/anime/details/${id}`)}
+                        onClickItem={(id) => navigate(`/anime/details/${getAnimeDetailsRouteId({ id })}`)}
                         accentClass="hover:border-yorumi-accent/70"
                     />
                 )}

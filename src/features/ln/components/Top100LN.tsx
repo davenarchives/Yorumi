@@ -61,13 +61,15 @@ export default function Top100LN({ onLNClick }: Top100LNProps) {
 
             {/* Grid Layout */}
             <div className="grid grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-                {lns.map((ln) => (
+                {lns.map((ln, index) => (
                     <div
                         key={ln.id}
                         className="relative group cursor-pointer"
                     >
                         <LNCard
                             ln={ln}
+                            rank={index + 1}
+                            showRanking
                             onClick={(selectedLN) => onLNClick(String(selectedLN.id), false, selectedLN)}
                             disableTilt
                         />

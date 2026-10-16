@@ -18,6 +18,7 @@ export interface AnimeMetadataPayload {
     tvdbId?: number;
     episodes: Map<number, EpisodeMeta>;
     absoluteEpisodes: Map<number, EpisodeMeta>;
+    specialEpisodes?: Map<number, EpisodeMeta>;
 }
 
 interface SerializedMetadataPayload {
@@ -28,10 +29,23 @@ interface SerializedMetadataPayload {
     tvdbId?: number;
     episodes: Array<[number, EpisodeMeta]>;
     absoluteEpisodes: Array<[number, EpisodeMeta]>;
+    specialEpisodes?: Array<[number, EpisodeMeta]>;
 }
 
-const CACHE_PREFIX = 'yorumi_anizip_ep_meta_v1';
+const CACHE_PREFIX = 'yorumi_anizip_ep_meta_v3';
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+// Purge any stale caches from previous versions
+try {
+    for (let i = sessionStorage.length - 1; i >= 0; i--) {
+        const k = sessionStorage.key(i);
+        if (k && k.startsWith('yorumi_anizip_ep_meta_') && !k.startsWith(CACHE_PREFIX)) {
+            sessionStorage.removeItem(k);
+        }
+    }
+} catch {
+    // Ignore storage errors in restricted contexts
+}
 
 const memoryCache = new Map<string, AnimeMetadataPayload>();
 const inFlightRequests = new Map<string, Promise<AnimeMetadataPayload | null>>();
@@ -59,6 +73,7 @@ const readSessionCache = (key: string): AnimeMetadataPayload | null => {
             tvdbId: parsed.tvdbId,
             episodes: new Map(parsed.episodes || []),
             absoluteEpisodes: new Map(parsed.absoluteEpisodes || []),
+            specialEpisodes: new Map(parsed.specialEpisodes || []),
         };
 
         memoryCache.set(key, payload);
@@ -78,6 +93,7 @@ const writeSessionCache = (key: string, payload: AnimeMetadataPayload) => {
             tvdbId: payload.tvdbId,
             episodes: Array.from(payload.episodes.entries()),
             absoluteEpisodes: Array.from(payload.absoluteEpisodes.entries()),
+            specialEpisodes: payload.specialEpisodes ? Array.from(payload.specialEpisodes.entries()) : [],
         };
         sessionStorage.setItem(`${CACHE_PREFIX}:${key}`, JSON.stringify(serialized));
     } catch {
@@ -85,18 +101,19 @@ const writeSessionCache = (key: string, payload: AnimeMetadataPayload) => {
     }
 };
 
-const resolveBestEpisodeTitle = (rawTitle: any, fallbackNum: number): string => {
+const resolveBestEpisodeTitle = (rawTitle: unknown, fallbackNum: number): string => {
     if (typeof rawTitle === 'string' && rawTitle.trim()) {
         const clean = rawTitle.split('<note-split>')[0].trim();
         return clean || `Episode ${fallbackNum}`;
     }
 
     if (rawTitle && typeof rawTitle === 'object') {
-        const en = typeof rawTitle.en === 'string' ? rawTitle.en.trim() : '';
-        const romaji = typeof rawTitle['x-jat'] === 'string' ? rawTitle['x-jat'].trim() : (typeof rawTitle.romaji === 'string' ? rawTitle.romaji.trim() : '');
-        const ja = typeof rawTitle.ja === 'string' ? rawTitle.ja.trim() : '';
-        const de = typeof rawTitle.de === 'string' ? rawTitle.de.trim() : '';
-        const fr = typeof rawTitle.fr === 'string' ? rawTitle.fr.trim() : '';
+        const titleObj = rawTitle as Record<string, unknown>;
+        const en = typeof titleObj.en === 'string' ? titleObj.en.trim() : '';
+        const romaji = typeof titleObj['x-jat'] === 'string' ? titleObj['x-jat'].trim() : (typeof titleObj.romaji === 'string' ? titleObj.romaji.trim() : '');
+        const ja = typeof titleObj.ja === 'string' ? titleObj.ja.trim() : '';
+        const de = typeof titleObj.de === 'string' ? titleObj.de.trim() : '';
+        const fr = typeof titleObj.fr === 'string' ? titleObj.fr.trim() : '';
         
         const candidate = en || romaji || ja || de || fr;
         if (candidate) {
@@ -149,11 +166,22 @@ export const episodeMetadataService = {
 
                 const episodes = new Map<number, EpisodeMeta>();
                 const absoluteEpisodes = new Map<number, EpisodeMeta>();
+                const specialEpisodes = new Map<number, EpisodeMeta>();
 
-                Object.entries(rawEpisodes).forEach(([key, ep]: [string, any]) => {
-                    if (!ep || typeof ep !== 'object') return;
+                Object.entries(rawEpisodes).forEach(([key, rawVal]) => {
+                    if (!rawVal || typeof rawVal !== 'object') return;
+                    const ep = rawVal as Record<string, unknown>;
 
-                    const epNum = Number(ep.episodeNumber || ep.episode || key);
+                    const isSpecial =
+                        key.toUpperCase().startsWith('S') ||
+                        String(ep.episode || '').toUpperCase().startsWith('S') ||
+                        Number(ep.seasonNumber) === 0;
+
+                    const parsedKey = Number(key);
+                    const epNum = Number.isFinite(parsedKey) && parsedKey > 0
+                        ? parsedKey
+                        : Number(ep.episodeNumber || ep.episode);
+
                     if (!Number.isFinite(epNum) || epNum <= 0) return;
 
                     const title = resolveBestEpisodeTitle(ep.title, epNum);
@@ -177,11 +205,22 @@ export const episodeMetadataService = {
                         runtime,
                     };
 
-                    episodes.set(epNum, meta);
-                    if (absEpNum && absEpNum > 0) {
-                        absoluteEpisodes.set(absEpNum, meta);
+                    if (isSpecial) {
+                        specialEpisodes.set(epNum, meta);
+                    } else {
+                        episodes.set(epNum, meta);
+                        if (absEpNum && absEpNum > 0) {
+                            absoluteEpisodes.set(absEpNum, meta);
+                        }
                     }
                 });
+
+                // Fallback to special episodes only if no canon TV episodes were mapped at all (e.g. standalone OVA)
+                if (episodes.size === 0 && specialEpisodes.size > 0) {
+                    specialEpisodes.forEach((meta, epNum) => {
+                        episodes.set(epNum, meta);
+                    });
+                }
 
                 const rawTmdbId = Number(data?.mappings?.themoviedb_id || data?.mappings?.tmdb_id || 0);
                 const rawTvdbId = Number(data?.mappings?.thetvdb_id || 0);
@@ -193,6 +232,7 @@ export const episodeMetadataService = {
                     tvdbId: Number.isFinite(rawTvdbId) && rawTvdbId > 0 ? rawTvdbId : undefined,
                     episodes,
                     absoluteEpisodes,
+                    specialEpisodes,
                 };
 
                 memoryCache.set(key, payload);

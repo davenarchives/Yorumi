@@ -19,6 +19,16 @@ export const getPlaybackEpisodeNumber = (episode: Partial<WatchableEpisode> | nu
     );
 };
 
+export const getDownloadEpisodeNumbers = (episode: Partial<WatchableEpisode> | null | undefined) => {
+    const playbackNumber = getPlaybackEpisodeNumber(episode);
+    const tmdbSeason = toPositiveNumber(episode?.tmdbSeason);
+    const candidates = tmdbSeason
+        ? [playbackNumber, toPositiveNumber(episode?._tmdbAbsolute)]
+        : [playbackNumber, toPositiveNumber(episode?.episodeNumber)];
+
+    return [...new Set(candidates.filter((number) => number > 0))];
+};
+
 export const getEpisodeWatchKey = (episode: Partial<WatchableEpisode> | null | undefined) => {
     const tmdbSeason = toPositiveNumber(episode?.tmdbSeason);
     const tmdbEpisode = toPositiveNumber(episode?.tmdbEpisode) || toPositiveNumber(episode?.episodeNumber);

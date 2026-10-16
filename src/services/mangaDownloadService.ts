@@ -2,13 +2,20 @@
 import type { MangaPage, MangaChapter } from '../types/manga';
 import { mangaService } from './mangaService';
 import { API_BASE, API_ORIGIN } from '../config/api';
+import { createLocalMediaProxyUrl } from '../platform/localMediaProxy';
+import { isNativeMobile } from '../platform/runtime';
+import { cacheImage, getCachedImage, prefetchImages } from './offlineImageCache';
+import { deleteNativeDownload, downloadToNativeStorage, isAndroidDownloadStorageAvailable } from '../platform/nativeDownloadStorage';
 
 export interface DownloadedMangaPage {
     pageNumber: number;
     imageUrl: string;
     blob?: Blob;
     dataUrl?: string;
+    filePath?: string;
 }
+
+const nativeFileUrl = (filePath: string) => `http://127.0.0.1:18765/file?path=${encodeURIComponent(filePath)}`;
 
 export interface DownloadedMangaChapter {
     id: string; // Format: `${mangaId}_ch_${chapterId}`
@@ -69,9 +76,13 @@ function getDB(): Promise<IDBDatabase> {
     return dbPromise;
 }
 
-function getProxiedImageUrl(rawUrl: string): string {
+async function getProxiedImageUrl(rawUrl: string): Promise<string> {
     if (!rawUrl) return '';
     if (rawUrl.startsWith('data:') || rawUrl.startsWith('blob:')) return rawUrl;
+    if (isNativeMobile()) {
+        if (/^https?:\/\/(?:127\.0\.0\.1|localhost):18765\//i.test(rawUrl)) return rawUrl;
+        return createLocalMediaProxyUrl(rawUrl, 'https://mangakatana.com/');
+    }
     if (rawUrl.startsWith('/')) {
         return `${API_ORIGIN}${rawUrl}`;
     }
@@ -91,13 +102,37 @@ export const mangaDownloadService = {
     async getDownloads(): Promise<DownloadedMangaChapter[]> {
         try {
             const db = await getDB();
-            return new Promise((resolve, reject) => {
+            const items = await new Promise<DownloadedMangaChapter[]>((resolve, reject) => {
                 const tx = db.transaction(STORE_NAME, 'readonly');
                 const store = tx.objectStore(STORE_NAME);
                 const req = store.getAll();
                 req.onsuccess = () => resolve((req.result as DownloadedMangaChapter[]) || []);
                 req.onerror = () => reject(req.error);
             });
+
+            if (typeof navigator !== 'undefined' && navigator.onLine) {
+                prefetchImages(items.map((i) => i.mangaImage)).catch(() => undefined);
+            }
+
+            return Promise.all(
+                items.map(async (item) => {
+                    const cachedImage = await getCachedImage(item.mangaImage).catch(() => null);
+                    const pages = (item.pages || []).map((p) => {
+                        if (p.filePath) {
+                            return { ...p, imageUrl: nativeFileUrl(p.filePath) };
+                        }
+                        if (p.blob) {
+                            return { ...p, imageUrl: URL.createObjectURL(p.blob) };
+                        }
+                        return p;
+                    });
+                    return {
+                        ...item,
+                        mangaImage: cachedImage || item.mangaImage,
+                        pages,
+                    };
+                })
+            );
         } catch {
             return [];
         }
@@ -107,13 +142,37 @@ export const mangaDownloadService = {
         try {
             const db = await getDB();
             const key = this.getChapterKey(mangaId, chapterId);
-            return new Promise((resolve, reject) => {
+            let chapter = await new Promise<DownloadedMangaChapter | undefined>((resolve, reject) => {
                 const tx = db.transaction(STORE_NAME, 'readonly');
                 const store = tx.objectStore(STORE_NAME);
                 const req = store.get(key);
                 req.onsuccess = () => resolve(req.result as DownloadedMangaChapter | undefined);
                 req.onerror = () => reject(req.error);
             });
+
+            // Fallback: search by chapterId across all downloads if direct key didn't match
+            if (!chapter) {
+                const all = await this.getDownloads();
+                const strChId = String(chapterId).trim();
+                chapter = all.find((c) => String(c.chapterId).trim() === strChId || c.id.endsWith(`_ch_${strChId}`));
+            }
+
+            if (chapter && chapter.pages && chapter.pages.length > 0) {
+                chapter.pages = chapter.pages.map((p) => {
+                    if (p.filePath) {
+                        return { ...p, imageUrl: nativeFileUrl(p.filePath) };
+                    }
+                    if (p.blob) {
+                        return {
+                            ...p,
+                            imageUrl: URL.createObjectURL(p.blob),
+                        };
+                    }
+                    return p;
+                });
+            }
+
+            return chapter;
         } catch {
             return undefined;
         }
@@ -133,6 +192,10 @@ export const mangaDownloadService = {
         },
         onProgress?: (progress: ActiveMangaDownloadProgress) => void
     ): Promise<DownloadedMangaChapter> {
+        if (params.mangaImage) {
+            cacheImage(params.mangaImage).catch(() => undefined);
+        }
+
         const key = this.getChapterKey(params.mangaId, params.chapter.id);
         const chapterNumMatch = params.chapter.title.match(/Chapter\s+(\d+[.]?\d*)/i);
         const chapterNum = chapterNumMatch ? chapterNumMatch[1] : undefined;
@@ -166,21 +229,36 @@ export const mangaDownloadService = {
                 batch.map(async (page: MangaPage, bIdx: number) => {
                     const pageIndex = i + bIdx;
                     try {
-                        const proxiedUrl = getProxiedImageUrl(page.imageUrl);
+                        const proxiedUrl = await getProxiedImageUrl(page.imageUrl);
+                        if (isAndroidDownloadStorageAvailable()) {
+                            const extensionMatch = page.imageUrl.match(/\.(png|webp|jpe?g)(?:[?#]|$)/i);
+                            const extension = extensionMatch?.[1]?.toLowerCase().replace('jpeg', 'jpg') || 'jpg';
+                            const result = await downloadToNativeStorage({
+                                operationId: `manga:${key}:${page.pageNumber}`,
+                                url: proxiedUrl,
+                                relativePath: `Manga/${params.mangaId}/${params.chapter.id}/${String(page.pageNumber).padStart(3, '0')}.${extension}`,
+                            });
+                            totalBytes += result.fileSize;
+                            downloadedPages[pageIndex] = {
+                                pageNumber: page.pageNumber,
+                                imageUrl: result.fileUrl,
+                                filePath: result.filePath,
+                            };
+                            return;
+                        }
                         const res = await fetch(proxiedUrl);
                         if (!res.ok) throw new Error(`Failed to fetch page ${page.pageNumber}`);
                         const blob = await res.blob();
                         totalBytes += blob.size;
 
-                        // Create local object URL for offline display
                         const blobUrl = URL.createObjectURL(blob);
                         downloadedPages[pageIndex] = {
                             pageNumber: page.pageNumber,
                             imageUrl: blobUrl,
                             blob: blob,
                         };
-                    } catch {
-                        // Fallback to original image URL if fetch fails
+                    } catch (error) {
+                        if (isAndroidDownloadStorageAvailable()) throw error;
                         downloadedPages[pageIndex] = {
                             pageNumber: page.pageNumber,
                             imageUrl: page.imageUrl,
@@ -234,10 +312,12 @@ export const mangaDownloadService = {
                         let blob = p.blob;
                         if (!blob && p.imageUrl) {
                             try {
-                                const proxied = getProxiedImageUrl(p.imageUrl);
+                                const proxied = await getProxiedImageUrl(p.imageUrl);
                                 const res = await fetch(proxied);
                                 if (res.ok) blob = await res.blob();
-                            } catch {}
+                            } catch {
+                                // Ignore
+                            }
                         }
                         if (!blob) return null;
                         try {
@@ -293,10 +373,12 @@ export const mangaDownloadService = {
                         let blob = p.blob;
                         if (!blob && p.imageUrl) {
                             try {
-                                const proxied = getProxiedImageUrl(p.imageUrl);
+                                const proxied = await getProxiedImageUrl(p.imageUrl);
                                 const res = await fetch(proxied);
                                 if (res.ok) blob = await res.blob();
-                            } catch {}
+                            } catch {
+                                // Skip
+                            }
                         }
                         if (!blob) return null;
                         try {
@@ -331,13 +413,19 @@ export const mangaDownloadService = {
             const key = this.getChapterKey(mangaId, chapterId);
             const chapter = await this.getChapter(mangaId, chapterId);
 
+            if (chapter?.pages) {
+                await Promise.all(chapter.pages.map((page) => deleteNativeDownload(page.filePath)));
+            }
+
             if (chapter && typeof window !== 'undefined' && window.electronAPI?.deleteMangaDisk) {
                 try {
                     await window.electronAPI.deleteMangaDisk({
                         mangaTitle: chapter.mangaTitle,
                         chapterTitle: chapter.chapterTitle,
                     });
-                } catch {}
+                } catch {
+                    // IndexedDB cleanup proceeds
+                }
             }
 
             await new Promise<void>((resolve, reject) => {

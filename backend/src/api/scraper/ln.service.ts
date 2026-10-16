@@ -33,6 +33,29 @@ function isFanfictionOrSpinoff(title: string): boolean {
     );
 }
 
+function isConfirmedTitleMatch(candidateTitle: string, targetTitles: string[]): boolean {
+    const candidate = normalizeTitle(candidateTitle)
+        .replace(/\b(light novel|web novel|novel|ln|wn)\b/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    if (!candidate || isFanfictionOrSpinoff(candidateTitle)) return false;
+
+    return targetTitles.some((title) => {
+        const target = normalizeTitle(title)
+            .replace(/\b(light novel|web novel|novel|ln|wn)\b/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+        if (!target) return false;
+        if (candidate === target) return true;
+
+        const candidateTokens = new Set(candidate.split(' ').filter((token) => token.length > 1));
+        const targetTokens = new Set(target.split(' ').filter((token) => token.length > 1));
+        if (candidateTokens.size < 2 || targetTokens.size < 2) return false;
+        const shared = [...targetTokens].filter((token) => candidateTokens.has(token)).length;
+        return shared / targetTokens.size >= 0.8 && shared / candidateTokens.size >= 0.8;
+    });
+}
+
 function scoreMatch(candidateTitle: string, targetTitles: string[], source: string, candidateId: string): number {
     const normCandidate = normalizeTitle(candidateTitle);
     if (!normCandidate) return 0;
@@ -80,8 +103,8 @@ function scoreMatch(candidateTitle: string, targetTitles: string[], source: stri
 
 class LNService {
     async searchNovels(query: string) {
-        const cacheKey = `ln:search:${hashKey(query)}`;
-        const cached = await cacheGet<any[]>(cacheKey).catch(() => null);
+        const cacheKey = `ln:v3:search:${hashKey(query)}`;
+        const cached = await cacheGet<novelScraper.NovelSearchResult[]>(cacheKey).catch(() => null);
         if (cached) return cached;
 
         let results = await novelScraper.searchAllNovelSources(query);
@@ -103,7 +126,7 @@ class LNService {
         const cleanTitles = titles.map((t) => String(t || '').trim()).filter(Boolean);
         if (cleanTitles.length === 0) return null;
 
-        const cacheKey = `ln:resolve:${hashKey(cleanTitles.join('|'))}`;
+        const cacheKey = `ln:v3:resolve:${hashKey(cleanTitles.join('|'))}`;
         const cached = await cacheGet<string>(cacheKey).catch(() => null);
         if (cached) return cached;
 
@@ -122,6 +145,7 @@ class LNService {
         for (const query of searchQueries) {
             const results = await novelScraper.searchAllNovelSources(query);
             for (const r of results) {
+                if (!isConfirmedTitleMatch(r.title, cleanTitles)) continue;
                 const score = scoreMatch(r.title, cleanTitles, r.source, r.id);
                 if (score > maxScore) {
                     maxScore = score;
@@ -143,9 +167,9 @@ class LNService {
     }
 
     async getNovelDetails(scraperId: string, refresh = false) {
-        const cacheKey = `ln:details:${scraperId}`;
+        const cacheKey = `ln:v3:details:${scraperId}`;
         if (!refresh) {
-            const cached = await cacheGet<any>(cacheKey).catch(() => null);
+            const cached = await cacheGet<novelScraper.NovelDetails>(cacheKey).catch(() => null);
             if (cached) {
                 // Invalidate stale caches from old bug where Arc 1-1 and Arc 5-1 were sorted together
                 const chs = cached.chapters || [];
@@ -179,8 +203,8 @@ class LNService {
     }
 
     async getChapterContent(chapterId: string) {
-        const cacheKey = `ln:chapter:${hashKey(chapterId)}`;
-        const cached = await cacheGet<any>(cacheKey).catch(() => null);
+        const cacheKey = `ln:v3:chapter:${hashKey(chapterId)}`;
+        const cached = await cacheGet<novelScraper.NovelChapterContent>(cacheKey).catch(() => null);
         if (cached) return cached;
 
         let content: novelScraper.NovelChapterContent | null = null;

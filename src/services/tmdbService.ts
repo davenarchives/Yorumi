@@ -5,7 +5,7 @@ const TMDB_BASE = 'https://api.themoviedb.org/3';
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p';
 const TOKEN_KEY = 'yorumi_tmdb_read_access_token';
 const SETUP_COMPLETE_KEY = 'yorumi_tmdb_setup_complete';
-const CACHE_PREFIX = 'yorumi_tmdb_cache_v3';
+const CACHE_PREFIX = 'yorumi_tmdb_cache_v7';
 const CACHE_TTL = 24 * 60 * 60 * 1000;
 
 type CachedValue<T> = {
@@ -13,7 +13,7 @@ type CachedValue<T> = {
     value: T;
 };
 
-type TmdbSearchResult = {
+export type TmdbSearchResult = {
     id: number;
     name?: string;
     original_name?: string;
@@ -27,6 +27,8 @@ type TmdbSearchResult = {
     genre_ids?: number[];
     media_type?: string;
     poster_path?: string;
+    backdrop_path?: string;
+    overview?: string;
     vote_average?: number;
 };
 
@@ -44,6 +46,28 @@ export type TmdbTvDetails = {
     original_name?: string;
     first_air_date?: string;
     seasons?: TmdbSeason[];
+    overview?: string;
+    poster_path?: string | null;
+    backdrop_path?: string | null;
+    vote_average?: number;
+    status?: string;
+    number_of_episodes?: number;
+    genres?: Array<{ id: number; name: string }>;
+    production_companies?: Array<{ id: number; name: string }>;
+};
+
+type TmdbMovieDetails = {
+    id: number;
+    title?: string;
+    original_title?: string;
+    release_date?: string;
+    overview?: string;
+    poster_path?: string | null;
+    backdrop_path?: string | null;
+    vote_average?: number;
+    status?: string;
+    genres?: Array<{ id: number; name: string }>;
+    production_companies?: Array<{ id: number; name: string }>;
 };
 
 type TmdbConfig = {
@@ -89,7 +113,17 @@ type ValidateResult =
     | { ok: true }
     | { ok: false; reason: 'invalid_token' | 'forbidden' | 'timeout' | 'unreachable' | 'tmdb_error'; status?: number };
 
+export type TmdbAnimeDiscoveryOptions = {
+    page?: number;
+    mediaType?: 'tv' | 'movie';
+    sortBy?: string;
+    genreId?: number;
+    firstAirDateGte?: string;
+    firstAirDateLte?: string;
+};
+
 const memoryCache = new Map<string, CachedValue<unknown>>();
+const inFlightRequests = new Map<string, Promise<unknown>>();
 
 const buildTmdbImageUrl = (path?: string | null, size = 'w300') => {
     const cleanPath = String(path || '').trim();
@@ -189,23 +223,37 @@ const tmdbFetch = async <T>(path: string, token = readToken()): Promise<T> => {
     const cached = readCachedValue<T>(cacheKey);
     if (cached) return cached;
 
-    const { signal, cleanup } = buildSignal(8000);
+    const existingRequest = inFlightRequests.get(cacheKey) as Promise<T> | undefined;
+    if (existingRequest) return existingRequest;
+
+    const request = (async () => {
+        const { signal, cleanup } = buildSignal(8000);
+        try {
+            const res = await fetch(`${TMDB_BASE}${path}`, {
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    Accept: 'application/json',
+                },
+                signal,
+            });
+
+            if (!res.ok) throw new Error(`TMDB ${res.status}`);
+
+            const value = await res.json() as T;
+            writeCachedValue(cacheKey, value);
+            return value;
+        } finally {
+            cleanup();
+        }
+    })();
+
+    inFlightRequests.set(cacheKey, request);
     try {
-        const res = await fetch(`${TMDB_BASE}${path}`, {
-            headers: {
-                Authorization: `Bearer ${token}`,
-                Accept: 'application/json',
-            },
-            signal,
-        });
-
-        if (!res.ok) throw new Error(`TMDB ${res.status}`);
-
-        const value = await res.json() as T;
-        writeCachedValue(cacheKey, value);
-        return value;
+        return await request;
     } finally {
-        cleanup();
+        if (inFlightRequests.get(cacheKey) === request) {
+            inFlightRequests.delete(cacheKey);
+        }
     }
 };
 
@@ -349,6 +397,62 @@ export const tmdbService = {
         return resolveTvDetails(anime);
     },
 
+    async getAnimeByTmdbId(tmdbId: number, format?: string): Promise<Anime | null> {
+        const id = Number(tmdbId);
+        if (!Number.isFinite(id) || id <= 0) return null;
+        const movieFirst = String(format || '').toUpperCase() === 'MOVIE';
+        const tv = movieFirst
+            ? null
+            : await tmdbFetch<TmdbTvDetails>(`/tv/${id}?language=en-US`).catch(() => null);
+        const movie = tv
+            ? null
+            : await tmdbFetch<TmdbMovieDetails>(`/movie/${id}?language=en-US`).catch(() => null);
+        const fallbackTv = !tv && !movie && movieFirst
+            ? await tmdbFetch<TmdbTvDetails>(`/tv/${id}?language=en-US`).catch(() => null)
+            : null;
+        const payload = tv || movie || fallbackTv;
+        if (!payload) return null;
+
+        const isMovie = Boolean(movie);
+        const tvPayload = payload as TmdbTvDetails;
+        const moviePayload = payload as TmdbMovieDetails;
+        const date = isMovie ? moviePayload.release_date : tvPayload.first_air_date;
+        const title = isMovie
+            ? moviePayload.title || moviePayload.original_title
+            : tvPayload.name || tvPayload.original_name;
+        const originalTitle = isMovie ? moviePayload.original_title : tvPayload.original_name;
+        const status = String(payload.status || '').toUpperCase().replace(/\s+/g, '_') || 'UNKNOWN';
+
+        return {
+            id: 0,
+            mal_id: 0,
+            tmdbId: id,
+            source: 'tmdb',
+            title: title || 'Unknown',
+            title_english: title || 'Unknown',
+            title_romaji: originalTitle || title || 'Unknown',
+            title_japanese: originalTitle,
+            images: {
+                jpg: {
+                    image_url: buildTmdbImageUrl(payload.poster_path, 'w500'),
+                    large_image_url: buildTmdbImageUrl(payload.poster_path, 'w780'),
+                },
+            },
+            anilist_cover_image: buildTmdbImageUrl(payload.poster_path, 'w780'),
+            anilist_banner_image: buildTmdbImageUrl(payload.backdrop_path, 'original'),
+            synopsis: payload.overview || '',
+            score: payload.vote_average ? Math.round(payload.vote_average * 10) / 10 : 0,
+            status,
+            type: isMovie ? 'MOVIE' : 'TV',
+            episodes: isMovie ? 1 : tvPayload.number_of_episodes || null,
+            year: date ? Number(date.slice(0, 4)) || undefined : undefined,
+            aired: { from: date || undefined, string: date ? date.slice(0, 4) : undefined },
+            genres: (payload.genres || []).map((genre) => ({ mal_id: genre.id, name: genre.name })),
+            studios: (payload.production_companies || []).map((company) => ({ mal_id: company.id, name: company.name })),
+            countryOfOrigin: 'JP',
+        };
+    },
+
     async getLogoForAnime(anime: Anime): Promise<string | null> {
         if (!readToken()) return null;
         const details = await resolveTvDetails(anime);
@@ -387,10 +491,54 @@ export const tmdbService = {
         return seasonData?.episodes || [];
     },
 
-    async searchMulti(query: string): Promise<TmdbSearchResult[]> {
-        const params = new URLSearchParams({ query, include_adult: 'false', language: 'en-US' });
+    async searchMulti(query: string, page = 1): Promise<TmdbSearchResult[]> {
+        const params = new URLSearchParams({
+            query,
+            page: String(Math.max(1, Math.floor(page))),
+            include_adult: 'false',
+            language: 'en-US',
+        });
         const result = await tmdbFetch<{ results?: TmdbSearchResult[] }>(`/search/multi?${params.toString()}`).catch(() => null);
         return (result?.results || []).filter((r) => r.media_type !== 'person');
+    },
+
+    async discoverAnime(options: TmdbAnimeDiscoveryOptions = {}): Promise<TmdbSearchResult[]> {
+        const mediaType = options.mediaType || 'tv';
+        const params = new URLSearchParams({
+            page: String(Math.max(1, Math.floor(options.page || 1))),
+            include_adult: 'false',
+            language: 'en-US',
+            sort_by: options.sortBy || 'popularity.desc',
+            with_original_language: 'ja',
+            with_genres: options.genreId && options.genreId !== 16 ? `16,${options.genreId}` : '16',
+        });
+        if (options.firstAirDateGte) {
+            params.set(mediaType === 'movie' ? 'primary_release_date.gte' : 'first_air_date.gte', options.firstAirDateGte);
+        }
+        if (options.firstAirDateLte) {
+            params.set(mediaType === 'movie' ? 'primary_release_date.lte' : 'first_air_date.lte', options.firstAirDateLte);
+        }
+        const result = await tmdbFetch<{ results?: TmdbSearchResult[] }>(
+            `/discover/${mediaType}?${params.toString()}`
+        ).catch(() => null);
+        return (result?.results || []).map((item) => ({ ...item, media_type: mediaType }));
+    },
+
+    async getTrendingAnime(page = 1): Promise<TmdbSearchResult[]> {
+        const params = new URLSearchParams({
+            page: String(Math.max(1, Math.floor(page))),
+            language: 'en-US',
+        });
+        const [tv, movies] = await Promise.all([
+            tmdbFetch<{ results?: TmdbSearchResult[] }>(`/trending/tv/week?${params.toString()}`).catch(() => null),
+            tmdbFetch<{ results?: TmdbSearchResult[] }>(`/trending/movie/week?${params.toString()}`).catch(() => null),
+        ]);
+        return [
+            ...(tv?.results || []).map((item) => ({ ...item, media_type: 'tv' })),
+            ...(movies?.results || []).map((item) => ({ ...item, media_type: 'movie' })),
+        ]
+            .filter(this.isAnimeContent)
+            .sort((a, b) => Number(b.popularity || 0) - Number(a.popularity || 0));
     },
 
     async resolveAbsoluteEpisode(tmdbId: string | number, absoluteEpisode: number): Promise<{ season_number: number; episode_number: number } | null> {

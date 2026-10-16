@@ -5,15 +5,16 @@ import AnimeCard from '../features/anime/components/AnimeCard';
 import { useWatchList } from '../hooks/useWatchList';
 import { slugify } from '../utils/slugify';
 import type { WatchListItem } from '../utils/storage';
+import { getAnimeDetailsRouteId } from '../utils/animeNavigation';
 const isAnimeSessionId = (value: string) =>
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 
 const getStoredAnimeRouteId = (item: any) => {
-    const scraperId = String(item.scraperId || '').trim();
-    if (isAnimeSessionId(scraperId)) return `s:${scraperId}`;
-
-    const anilistId = String(item.anilistId || item.id || '').trim();
-    return anilistId;
+    return getAnimeDetailsRouteId({
+        id: item.anilistId || item.id,
+        mal_id: item.malId,
+        scraperId: item.scraperId,
+    });
 };
 
 const buildStoredAnimeState = (item: any) => {

@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { webcrypto as crypto } from 'node:crypto';
 import type { VideoSource, StreamResponse } from '../api/anime/video-sources.js';
+import { extractExplicitSeasonNumber } from './hianime';
 import { logger } from '../core/logger.js';
 
 const BASE = 'https://reanime.to';
@@ -21,6 +22,9 @@ function normalizeTitle(value: string): string {
 }
 
 function isSafeTitleMatch(query: string, candidate: string): boolean {
+    const requestedSeason = extractExplicitSeasonNumber(query) || 1;
+    const candidateSeason = extractExplicitSeasonNumber(candidate) || 1;
+    if (requestedSeason !== candidateSeason) return false;
     const expected = normalizeTitle(query);
     const actual = normalizeTitle(candidate);
     if (!expected || !actual) return false;

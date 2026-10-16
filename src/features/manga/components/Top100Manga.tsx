@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { mangaService } from '../../../services/mangaService';
 import type { Manga } from '../../../types/manga';
 import MangaCard from './MangaCard';
+import { getMangaDetailsRouteId } from '../../../utils/mangaNavigation';
 
 interface Top100MangaProps {
     onMangaClick: (mangaId: string, autoRead?: boolean, manga?: Manga) => void;
@@ -17,7 +18,7 @@ const Top100Manga: React.FC<Top100MangaProps> = ({ onMangaClick }) => {
         let cancelled = false;
         const fetchManga = async () => {
             try {
-                const { data } = await mangaService.getTopManga(1);
+                const data = (await mangaService.getHomeSections()).top;
                 if (data) {
                     const visible = data.slice(0, 12);
                     setMangaList(visible);
@@ -69,14 +70,14 @@ const Top100Manga: React.FC<Top100MangaProps> = ({ onMangaClick }) => {
 
             {/* Grid Layout */}
             <div className="grid grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-                {mangaList.slice(0, 12).map((manga, index) => (
+                {mangaList.slice(0, 12).map((manga) => (
                     <div
                         key={manga.id || manga.mal_id}
                         className="relative group cursor-pointer"
                     >
                         <MangaCard
                             manga={manga as unknown as Manga}
-                            onClick={(mangaObj) => onMangaClick((mangaObj.scraper_id || mangaObj.id || mangaObj.mal_id).toString(), false, mangaObj)}
+                            onClick={(mangaObj) => onMangaClick(getMangaDetailsRouteId(mangaObj), false, mangaObj)}
                             disableTilt
                         />
                     </div>

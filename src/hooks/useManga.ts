@@ -567,6 +567,11 @@ export function useManga() {
             // Only update if this is still the latest requested chapter
             if (latestChapterId.current === requestId) {
                 setChapterPages(pages);
+                const availability = pages.length > 0 ? 'readable' as const : 'unavailable' as const;
+                setCurrentMangaChapter({ ...chapter, availability });
+                setMangaChapters((current) => current.map((candidate) =>
+                    candidate.id === chapter.id ? { ...candidate, availability } : candidate
+                ));
                 // Warm browser image cache for instant page painting.
                 prefetchPageImages(pages);
             }
@@ -574,6 +579,7 @@ export function useManga() {
             if (latestChapterId.current === requestId) {
                 console.error('Failed to load chapter pages', err);
                 setChapterPages([]);
+                setCurrentMangaChapter({ ...chapter, availability: 'unavailable' });
             }
             // Clear any failed cache entry
             chapterPagesCache.current.delete(chapter.url);
