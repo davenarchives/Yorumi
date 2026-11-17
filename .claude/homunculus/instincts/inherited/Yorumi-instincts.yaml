@@ -1,0 +1,458 @@
+# Instincts generated from https://github.com/davenarchives/Yorumi
+# Generated: 2026-06-24T11:12:18.047Z
+# Version: 2.0
+# NOTE: This file supplements (does not replace) any existing curated instincts.
+# High-confidence manually curated instincts should be preserved alongside these.
+
+---
+id: Yorumi-commit-conventional
+trigger: "when writing a commit message"
+confidence: 0.85
+domain: git
+source: repo-analysis
+source_repo: https://github.com/davenarchives/Yorumi
+---
+
+# Yorumi Commit Conventional
+
+## Action
+
+Use conventional commit format with prefixes: chore, feat, build, fix
+
+## Evidence
+
+- 100 commits analyzed
+- Detected conventional commit pattern
+- Examples: feat(sidebar): integrate saved watch/read lists with hover tooltips and adjust layout, style(characters): update header layout to match Episodes section design
+
+---
+id: Yorumi-commit-length
+trigger: "when writing a commit message"
+confidence: 0.6
+domain: git
+source: repo-analysis
+source_repo: https://github.com/davenarchives/Yorumi
+---
+
+# Yorumi Commit Length
+
+## Action
+
+Keep commit messages concise (~38 characters)
+
+## Evidence
+
+- Average commit message length: 38 chars
+- Based on 100 commits
+
+---
+id: Yorumi-naming-files
+trigger: "when creating a new file"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/davenarchives/Yorumi
+---
+
+# Yorumi Naming Files
+
+## Action
+
+Use PascalCase naming convention
+
+## Evidence
+
+- Analyzed file naming patterns in repository
+- Dominant pattern: PascalCase
+
+---
+id: Yorumi-import-relative
+trigger: "when importing modules"
+confidence: 0.75
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/davenarchives/Yorumi
+---
+
+# Yorumi Import Relative
+
+## Action
+
+Use relative imports for project files
+
+## Evidence
+
+- Import analysis shows relative import pattern
+- Example: import { x } from '../lib/x'
+
+---
+id: Yorumi-export-style
+trigger: "when exporting from a module"
+confidence: 0.7
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/davenarchives/Yorumi
+---
+
+# Yorumi Export Style
+
+## Action
+
+Prefer mixed exports
+
+## Evidence
+
+- Export pattern analysis
+- Dominant style: mixed
+
+---
+id: Yorumi-arch-feature-based
+trigger: "when adding a new feature"
+confidence: 0.85
+domain: architecture
+source: repo-analysis
+source_repo: https://github.com/davenarchives/Yorumi
+---
+
+# Yorumi Arch Feature Based
+
+## Action
+
+Create a new folder in src/features/ with all related code colocated
+
+## Evidence
+
+- Feature-based module organization detected
+- Structure: src/features/[feature-name]/
+
+---
+id: Yorumi-test-separate
+trigger: "when writing tests"
+confidence: 0.8
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/davenarchives/Yorumi
+---
+
+# Yorumi Test Separate
+
+## Action
+
+Place tests in the tests/ or __tests__/ directory, mirroring src structure
+
+## Evidence
+
+- Separate test directory pattern detected
+- Tests live in dedicated test folders
+
+---
+id: Yorumi-workflow-feature-development
+trigger: "when implementing a new feature"
+confidence: 0.65
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/davenarchives/Yorumi
+---
+
+# Yorumi Workflow Feature Development
+
+## Action
+
+Follow the feature-development workflow:
+1. Add feature implementation
+2. Add tests for feature
+3. Update documentation
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~3x per month
+- Files: src/components/layout/*, src/utils/*, src/context/*
+
+---
+id: Yorumi-workflow-feature-development-in-anime-or-manga-section
+trigger: "when doing feature development in anime or manga section"
+confidence: 0.6
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/davenarchives/Yorumi
+---
+
+# Yorumi Workflow Feature Development In Anime Or Manga Section
+
+## Action
+
+Follow the feature-development-in-anime-or-manga-section workflow:
+1. Update or add logic in a context or utility (e.g., storage.ts, AnimeContext.tsx)
+2. Update or add UI components (e.g., DetailsVideoPlayer.tsx, DetailsEpisodeGrid.tsx, DetailsCharacters.tsx, Sidebar.tsx)
+3. Update the main page or container to use new logic (e.g., AnimeDetailsPage.tsx)
+4. Adjust styling or layout for visual consistency
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~2x per month
+- Files: src/utils/storage.ts, src/context/AnimeContext.tsx, src/features/anime/components/details/DetailsVideoPlayer.tsx
+
+---
+id: Yorumi-workflow-routine-chore-update-across-multiple-components
+trigger: "when doing routine chore update across multiple components"
+confidence: 0.7
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/davenarchives/Yorumi
+---
+
+# Yorumi Workflow Routine Chore Update Across Multiple Components
+
+## Action
+
+Follow the routine-chore-update-across-multiple-components workflow:
+1. Identify a set of related files (e.g., all components in a feature, or all context files)
+2. Apply the update or fix to each file (could be style, import, minor logic, or dependency update)
+3. Commit all changes together with a 'chore' message
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~4x per month
+- Files: src/features/anime/components/*.tsx, src/features/manga/components/**/*.tsx, src/features/player/components/*.tsx
+
+---
+id: yorumi-instinct-file-naming
+trigger: "When creating a new file in the codebase"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: davenarchives/Yorumi
+---
+
+# Yorumi Instinct File Naming
+
+## Action
+
+Name the file using PascalCase (e.g., MyComponent.tsx)
+
+## Evidence
+
+- Pattern in src/features/anime/components/details/DetailsCharacters.tsx
+- Naming conventions in analysis
+
+---
+id: yorumi-instinct-function-naming
+trigger: "When defining a new function"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: davenarchives/Yorumi
+---
+
+# Yorumi Instinct Function Naming
+
+## Action
+
+Use camelCase for function names (e.g., toggleEpisodeComplete)
+
+## Evidence
+
+- Seen in feat(context): implement toggleEpisodeComplete
+- Pattern in src/utils/storage.ts
+
+---
+id: yorumi-instinct-class-naming
+trigger: "When defining a new class"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: davenarchives/Yorumi
+---
+
+# Yorumi Instinct Class Naming
+
+## Action
+
+Use PascalCase for class names
+
+## Evidence
+
+- Naming conventions in analysis
+- Pattern in src/context/AnimeContext.tsx
+
+---
+id: yorumi-instinct-constant-naming
+trigger: "When declaring a constant"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: davenarchives/Yorumi
+---
+
+# Yorumi Instinct Constant Naming
+
+## Action
+
+Use SCREAMING_SNAKE_CASE for constant names
+
+## Evidence
+
+- Naming conventions in analysis
+
+---
+id: yorumi-instinct-import-style
+trigger: "When importing modules within the codebase"
+confidence: 0.85
+domain: code-style
+source: repo-analysis
+source_repo: davenarchives/Yorumi
+---
+
+# Yorumi Instinct Import Style
+
+## Action
+
+Use relative import paths
+
+## Evidence
+
+- ImportStyle: relative in analysis
+- Pattern in src/components/layout/Sidebar.tsx
+
+---
+id: yorumi-instinct-export-style
+trigger: "When exporting modules or functions"
+confidence: 0.7
+domain: code-style
+source: repo-analysis
+source_repo: davenarchives/Yorumi
+---
+
+# Yorumi Instinct Export Style
+
+## Action
+
+Use a mixed export style (named and default exports as appropriate)
+
+## Evidence
+
+- ExportStyle: mixed in analysis
+- Pattern in src/utils/storage.ts
+
+---
+id: yorumi-instinct-testing-location
+trigger: "When adding new tests"
+confidence: 0.8
+domain: testing
+source: repo-analysis
+source_repo: davenarchives/Yorumi
+---
+
+# Yorumi Instinct Testing Location
+
+## Action
+
+Place test files in a separate test directory, not alongside source files
+
+## Evidence
+
+- TestLocation: separate in architecture analysis
+
+---
+id: yorumi-instinct-testing-feature
+trigger: "When developing a new feature"
+confidence: 0.8
+domain: testing
+source: repo-analysis
+source_repo: davenarchives/Yorumi
+---
+
+# Yorumi Instinct Testing Feature
+
+## Action
+
+Add or update tests for the feature after implementation and before documentation updates
+
+## Evidence
+
+- Commit sequence in feature-development workflow
+- Pattern in workflow analysis
+
+---
+id: yorumi-instinct-commit-format
+trigger: "When making a git commit"
+confidence: 0.95
+domain: git
+source: repo-analysis
+source_repo: davenarchives/Yorumi
+---
+
+# Yorumi Instinct Commit Format
+
+## Action
+
+Use Conventional Commits format with a type prefix (e.g., feat, fix, chore, build) and a short scope in parentheses if relevant
+
+## Evidence
+
+- Seen in commits: feat(sidebar): integrate saved watch/read lists...
+- fix(types): add missing _tmdbAbsolute property...
+- chore: update .env.example
+
+---
+id: yorumi-instinct-commit-length
+trigger: "When writing a commit message"
+confidence: 0.7
+domain: git
+source: repo-analysis
+source_repo: davenarchives/Yorumi
+---
+
+# Yorumi Instinct Commit Length
+
+## Action
+
+Keep the commit message concise, averaging around 38 characters
+
+## Evidence
+
+- AverageLength: 38 in commit analysis
+
+---
+id: yorumi-instinct-feature-anime-manga
+trigger: "When developing or refining a feature related to anime or manga details, progress, or UI"
+confidence: 0.9
+domain: workflow
+source: repo-analysis
+source_repo: davenarchives/Yorumi
+---
+
+# Yorumi Instinct Feature Anime Manga
+
+## Action
+
+Follow the workflow: update/add logic in context/utility, update/add UI components, update main page/container, adjust styling/layout
+
+## Evidence
+
+- Workflow: feature-development-in-anime-or-manga-section
+- Files: src/utils/storage.ts, src/context/AnimeContext.tsx, src/features/anime/components/details/DetailsVideoPlayer.tsx, etc.
+
+---
+id: yorumi-instinct-chore-multi-update
+trigger: "When applying a small change, refactor, or update across many components or contexts"
+confidence: 0.95
+domain: workflow
+source: repo-analysis
+source_repo: davenarchives/Yorumi
+---
+
+# Yorumi Instinct Chore Multi Update
+
+## Action
+
+Identify related files, apply the update to each, and commit all changes together with a 'chore' message
+
+## Evidence
+
+- Workflow: routine-chore-update-across-multiple-components
+- Seen in commit: chore: update .env.example
+
