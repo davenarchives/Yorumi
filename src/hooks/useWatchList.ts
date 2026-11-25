@@ -23,7 +23,9 @@ export function useWatchList() {
     }, []);
 
     const isInWatchList = useCallback((id: string) => {
-        return watchList.some(item => item.id === id);
+        const normalizedId = String(id || '').trim();
+        if (!normalizedId) return false;
+        return watchList.some(item => item.id === normalizedId);
     }, [watchList]);
 
     return {
