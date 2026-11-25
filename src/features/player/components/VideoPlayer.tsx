@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type SyntheticEvent } from 'react';
-import { createPortal } from 'react-dom';
+import { useCallback, useEffect, useMemo, useRef, useState, type SyntheticEvent } from 'react';
 import Hls from 'hls.js';
-import { Maximize, X, SunMedium } from 'lucide-react';
+import { Maximize, X } from 'lucide-react';
 import type { StreamLink, SubtitleTrack } from '../../../types/stream';
+import type { Episode } from '../../../types/anime';
 import { API_ORIGIN } from '../../../config/api';
 import CustomVideoControls from './CustomVideoControls';
 import type { StreamServerKey } from '../../../hooks/useStreams';
@@ -10,44 +10,14 @@ import { shouldSkipIntro, shouldSkipOutro, type SkipTimestamp } from '../../../s
 import sleepingGif from '../../../assets/sleeping.gif';
 import discordRPCService from '../../../services/discordRPCService';
 import { getRuntimePlatform } from '../../../platform/runtime';
-import { selectEnglishSubtitleTracks } from '../../../utils/subtitles';
+import { fetchSubtitleText, normalizeSubtitleTracks, resolveSubtitleFetchUrl } from '../../../utils/subtitles';
 
 const IFRAME_LOAD_TIMEOUT_MS = 18_000;
 const NATIVE_LOAD_TIMEOUT_MS = 25_000;
 const MEDIA_STALL_TIMEOUT_MS = 25_000;
 const PLAYBACK_START_WATCHDOG_MS = 30_000;
 const HAVE_FUTURE_DATA = 3;
-const isElectron = typeof window !== 'undefined' && (window.location.protocol === 'file:' || Boolean((window as any).electron || (window as any).electronAPI));
 const isNativeMobile = getRuntimePlatform() === 'android' || getRuntimePlatform() === 'ios';
-const AMBIENT_LIGHT_STORAGE_KEY = 'yorumi_ambient_light_v2';
-const AMBIENT_SPREAD_STEP = 0.03;
-const AMBIENT_PLAYER_RADIUS_PX = 16;
-const AMBIENT_SPREAD_FADE_START = 0.15;
-const AMBIENT_SPREAD_FADE_CURVE = 35;
-
-type AmbientLightSettings = {
-    blur: number;
-    spread: number;
-};
-
-const DEFAULT_AMBIENT_LIGHT: AmbientLightSettings = {
-    blur: 0,
-    spread: 0,
-};
-
-const loadAmbientLightSettings = (): AmbientLightSettings => {
-    if (typeof window === 'undefined') return DEFAULT_AMBIENT_LIGHT;
-    try {
-        const saved = JSON.parse(window.localStorage.getItem(AMBIENT_LIGHT_STORAGE_KEY) || '{}');
-        return {
-            blur: Number.isFinite(saved.blur) ? Math.min(100, Math.max(0, saved.blur)) : DEFAULT_AMBIENT_LIGHT.blur,
-            spread: Number.isFinite(saved.spread) ? Math.min(400, Math.max(0, saved.spread)) : DEFAULT_AMBIENT_LIGHT.spread,
-        };
-    } catch {
-        return DEFAULT_AMBIENT_LIGHT;
-    }
-};
-
 const LATIN_LANGUAGE_WORDS: Record<string, string[]> = {
     en: ['the', 'you', 'and', 'that', 'this', 'what', 'are', 'have', 'not', 'with', 'your', 'for', 'but', 'was', 'will'],
     es: ['que', 'los', 'las', 'una', 'por', 'para', 'con', 'como', 'pero', 'está', 'esto', 'del', 'más', 'tienes', 'porque'],
@@ -111,6 +81,9 @@ class CustomHlsLoader extends (Hls.DefaultConfig.loader as any) {
     }
 
     load(context: any, config: any, callbacks: any) {
+        if (typeof context?.url === 'string' && context.url.startsWith('yorumi-media://')) {
+            context.url = context.url.replace(/^yorumi-media:\/\//i, 'http://yorumi-media.localhost/');
+        }
         if (typeof context?.url === 'string' && (
             context.url.startsWith('blob:')
             || context.url.includes('/api/scraper/local-file')
@@ -205,11 +178,6 @@ class CustomHlsLoader extends (Hls.DefaultConfig.loader as any) {
     }
 }
 
-type ThemedWebViewElement = HTMLWebViewElement & {
-    insertCSS: (css: string) => Promise<string>;
-    executeJavaScript: <T = unknown>(code: string) => Promise<T>;
-};
-
 export interface VideoPlayerProps {
     streamUrl?: string;
     episodeSession?: string;
@@ -257,6 +225,11 @@ export interface VideoPlayerProps {
     episodeTitle?: string;
     expectedDurationSeconds?: number | null;
     mobilePageLayout?: boolean;
+    onClose?: () => void;
+    onShowEpisodes?: () => void;
+    seasonNumber?: number;
+    episodes?: Episode[];
+    onEpisodeSelect?: (episode: Episode) => void;
 }
 
 export default function VideoPlayer(props: VideoPlayerProps) {
@@ -306,8 +279,6 @@ export default function VideoPlayer(props: VideoPlayerProps) {
     const onProgressRef = useRef(onProgress);
     const startAtRef = useRef(startAtSeconds);
     const videoRef = useRef<HTMLVideoElement | null>(null);
-    const ambientCanvasRef = useRef<HTMLCanvasElement | null>(null);
-    const webviewRef = useRef<ThemedWebViewElement | null>(null);
     const hlsRef = useRef<Hls | null>(null);
     const iframeLoadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const iframeReadyNotifiedRef = useRef(false);
@@ -317,8 +288,6 @@ export default function VideoPlayer(props: VideoPlayerProps) {
     const autoNextTriggerKeyRef = useRef('');
     const rejectedMediaUrlRef = useRef('');
     const lastTimeRef = useRef<{ session?: string; time: number }>({ time: 0 });
-    const [showAmbientMenu, setShowAmbientMenu] = useState(false);
-    const [ambientLight, setAmbientLight] = useState<AmbientLightSettings>(loadAmbientLightSettings);
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [hlsLevels, setHlsLevels] = useState<number[]>([]);
 
@@ -374,21 +343,12 @@ export default function VideoPlayer(props: VideoPlayerProps) {
         document.addEventListener('fullscreenchange', handleFullscreenChange);
         return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
     }, []);
-    useEffect(() => {
-        window.localStorage.setItem(AMBIENT_LIGHT_STORAGE_KEY, JSON.stringify(ambientLight));
-    }, [ambientLight]);
-
-    useEffect(() => {
-        const active = (ambientLight.blur > 0 || ambientLight.spread > 0)
-            && displayMode !== 'mini'
-            && !props.mobilePageLayout;
-        document.body.classList.toggle('yorumi-ambient-light-active', active);
-        return () => document.body.classList.remove('yorumi-ambient-light-active');
-    }, [ambientLight.blur, ambientLight.spread, displayMode, props.mobilePageLayout]);
-
     const resolvedStreamUrl = useMemo(() => {
         if (!streamUrl) return streamUrl;
         let url = streamUrl;
+        if (typeof url === 'string' && url.startsWith('yorumi-media://')) {
+            url = url.replace(/^yorumi-media:\/\//i, 'http://yorumi-media.localhost/');
+        }
         if (!streamUrl.includes('/api/scraper/embed') && /^https?:\/\/([^/]+\.)?kwik\./i.test(streamUrl)) {
             url = `${API_ORIGIN}/api/scraper/embed?url=${encodeURIComponent(streamUrl)}`;
         } else if (url.startsWith('/api/')) {
@@ -397,206 +357,40 @@ export default function VideoPlayer(props: VideoPlayerProps) {
         return url;
     }, [streamUrl]);
 
-    useEffect(() => {
-        const video = videoRef.current;
-        const canvas = ambientCanvasRef.current;
-        if (!video || !canvas || (ambientLight.blur <= 0 && ambientLight.spread <= 0) || displayMode === 'mini' || props.mobilePageLayout) return;
-
-        const context = canvas.getContext('2d', { alpha: true, desynchronized: true });
-        if (!context) return;
-        const frameBuffer = document.createElement('canvas');
-        frameBuffer.width = 480;
-        frameBuffer.height = 270;
-        const frameBufferContext = frameBuffer.getContext('2d', { alpha: false, desynchronized: true });
-        if (!frameBufferContext) return;
-        let animationFrame = 0;
-        let videoFrame = 0;
-        let stopped = false;
-        const paint = (_timestamp = 0) => {
-            if (stopped) return;
-            if (video.readyState >= 2) {
-                try {
-                    const elementRect = video.getBoundingClientRect();
-                    const mediaAspect = video.videoWidth / Math.max(1, video.videoHeight);
-                    const elementAspect = elementRect.width / Math.max(1, elementRect.height);
-                    const visibleWidth = elementAspect > mediaAspect
-                        ? elementRect.height * mediaAspect
-                        : elementRect.width;
-                    const visibleHeight = elementAspect > mediaAspect
-                        ? elementRect.height
-                        : elementRect.width / mediaAspect;
-                    const visibleLeft = elementRect.left + (elementRect.width - visibleWidth) / 2;
-                    const visibleTop = elementRect.top + (elementRect.height - visibleHeight) / 2;
-                    const projectionScale = 1 + ambientLight.spread / 100;
-                    const projectorWidth = Math.max(1, visibleWidth * projectionScale);
-                    const projectorHeight = Math.max(1, visibleHeight * projectionScale);
-                    const projectorLeft = visibleLeft + window.scrollX - (projectorWidth - visibleWidth) / 2;
-                    const projectorTop = visibleTop + window.scrollY - (projectorHeight - visibleHeight) / 2;
-                    const internalHeight = Math.max(1, Math.round(canvas.width * projectorHeight / projectorWidth));
-                    if (canvas.height !== internalHeight) canvas.height = internalHeight;
-                    const pixelScale = canvas.width / projectorWidth;
-                    const centerX = canvas.width / 2;
-                    const centerY = canvas.height / 2;
-                    const playerWidth = visibleWidth * pixelScale;
-                    const playerHeight = visibleHeight * pixelScale;
-
-                    // Anchor the projector in document space. It now scrolls with the
-                    // player even while paused, instead of chasing it from a fixed
-                    // viewport layer only when a new video frame is delivered.
-                    canvas.style.left = `${projectorLeft}px`;
-                    canvas.style.top = `${projectorTop}px`;
-                    canvas.style.width = `${projectorWidth}px`;
-                    canvas.style.height = `${projectorHeight}px`;
-                    canvas.style.transform = 'none';
-                    canvas.style.filter = ambientLight.blur > 0
-                        ? `blur(${visibleHeight * 0.0025 * ambientLight.blur}px)`
-                        : 'none';
-                    context.clearRect(0, 0, canvas.width, canvas.height);
-                    const bufferHeight = Math.max(1, Math.round(frameBuffer.width / mediaAspect));
-                    if (frameBuffer.height !== bufferHeight) frameBuffer.height = bufferHeight;
-                    frameBufferContext.drawImage(video, 0, 0, frameBuffer.width, frameBuffer.height);
-
-                    // Build the extension from sharp, concentric copies of the same frame.
-                    // Drawing largest-to-smallest leaves only each copy's outer band visible;
-                    // the actual player then covers the 1x center. All copies share one origin,
-                    // so image features continue out of the player as uninterrupted rays.
-                    const outerWidth = playerWidth * projectionScale;
-                    const outerHeight = playerHeight * projectionScale;
-                    const outerLeft = centerX - outerWidth / 2;
-                    const outerTop = centerY - outerHeight / 2;
-                    const projectionLevels = Math.max(1, Math.ceil((projectionScale - 1) / AMBIENT_SPREAD_STEP));
-                    for (let level = projectionLevels; level >= 0; level--) {
-                        const scale = level === projectionLevels
-                            ? projectionScale
-                            : 1 + level * AMBIENT_SPREAD_STEP;
-                        const width = playerWidth * scale;
-                        const height = playerHeight * scale;
-                        const left = centerX - width / 2;
-                        const top = centerY - height / 2;
-                        const radius = Math.min(
-                            width / 2,
-                            height / 2,
-                            AMBIENT_PLAYER_RADIUS_PX * pixelScale * scale
-                        );
-                        context.save();
-                        context.beginPath();
-                        context.roundRect(left, top, width, height, radius);
-                        context.clip();
-                        context.drawImage(
-                            frameBuffer,
-                            left,
-                            top,
-                            width,
-                            height
-                        );
-                        context.restore();
-                    }
-
-                    if (projectionScale > 1) {
-                        const edgeX = Math.max(1, (outerWidth - playerWidth) / 2);
-                        const edgeY = Math.max(1, (outerHeight - playerHeight) / 2);
-                        const fadeEndX = outerLeft + edgeX * (1 - AMBIENT_SPREAD_FADE_START);
-                        const fadeEndY = outerTop + edgeY * (1 - AMBIENT_SPREAD_FADE_START);
-                        const easing = 16 / (AMBIENT_SPREAD_FADE_CURVE * 0.64);
-                        const addFadeStops = (gradient: CanvasGradient, outerStart: number, fadeEnd: number, outerEnd: number) => {
-                            const span = Math.max(1, outerEnd - outerStart);
-                            const fadeRatio = Math.min(0.5, Math.max(0, (fadeEnd - outerStart) / span));
-                            for (let index = 0; index <= 32; index++) {
-                                const progress = index / 32;
-                                const opacity = 1 - Math.pow(1 - progress, easing);
-                                gradient.addColorStop(fadeRatio * progress, `rgba(255,255,255,${opacity})`);
-                            }
-                            gradient.addColorStop(1 - fadeRatio, '#fff');
-                            for (let index = 32; index >= 0; index--) {
-                                const progress = index / 32;
-                                const opacity = 1 - Math.pow(1 - progress, easing);
-                                gradient.addColorStop(1 - fadeRatio * progress, `rgba(255,255,255,${opacity})`);
-                            }
-                        };
-
-                        context.save();
-                        context.globalCompositeOperation = 'destination-in';
-                        const horizontalFade = context.createLinearGradient(outerLeft, 0, outerLeft + outerWidth, 0);
-                        addFadeStops(horizontalFade, outerLeft, fadeEndX, outerLeft + outerWidth);
-                        context.fillStyle = horizontalFade;
-                        context.fillRect(0, 0, canvas.width, canvas.height);
-
-                        const verticalFade = context.createLinearGradient(0, outerTop, 0, outerTop + outerHeight);
-                        addFadeStops(verticalFade, outerTop, fadeEndY, outerTop + outerHeight);
-                        context.fillStyle = verticalFade;
-                        context.fillRect(0, 0, canvas.width, canvas.height);
-                        context.restore();
-                    }
-                } catch {
-                    // Cross-origin providers may prevent frame sampling; playback must continue unaffected.
-                }
-            }
-        };
-
-        paint();
-        const repaint = () => paint();
-        window.addEventListener('resize', repaint, { passive: true });
-        video.addEventListener('loadeddata', repaint);
-        video.addEventListener('seeked', repaint);
-        video.addEventListener('pause', repaint);
-        const resizeObserver = new ResizeObserver(repaint);
-        resizeObserver.observe(video);
-
-        if ('requestVideoFrameCallback' in video) {
-            const paintVideoFrame: VideoFrameRequestCallback = (timestamp) => {
-                paint(timestamp);
-                if (!stopped) videoFrame = video.requestVideoFrameCallback(paintVideoFrame);
-            };
-            videoFrame = video.requestVideoFrameCallback(paintVideoFrame);
-        } else {
-            const paintAnimationFrame = (timestamp: number) => {
-                paint(timestamp);
-                if (!stopped) animationFrame = window.requestAnimationFrame(paintAnimationFrame);
-            };
-            animationFrame = window.requestAnimationFrame(paintAnimationFrame);
-        }
-
-        return () => {
-            stopped = true;
-            window.removeEventListener('resize', repaint);
-            video.removeEventListener('loadeddata', repaint);
-            video.removeEventListener('seeked', repaint);
-            video.removeEventListener('pause', repaint);
-            resizeObserver.disconnect();
-            if (videoFrame) video.cancelVideoFrameCallback(videoFrame);
-            if (animationFrame) window.cancelAnimationFrame(animationFrame);
-        };
-    }, [ambientLight.blur, ambientLight.spread, displayMode, props.mobilePageLayout, resolvedStreamUrl]);
-
-    const ambientLightActive = ambientLight.blur > 0 || ambientLight.spread > 0;
-
     const resolveSubtitleUrl = useCallback((url: string) => {
-        if (!url) return url;
-        if (url.startsWith('/api/')) return `${API_ORIGIN}${url}`;
-        return url;
+        return resolveSubtitleFetchUrl(url);
     }, []);
 
     const [detectedSubtitleLanguages, setDetectedSubtitleLanguages] = useState<Record<string, string>>({});
-    const englishSubtitleCandidates = useMemo(
-        () => selectEnglishSubtitleTracks(props.subtitles),
+    const normalizedSubtitleCandidates = useMemo(
+        () => normalizeSubtitleTracks(props.subtitles),
         [props.subtitles]
     );
-    const subtitleTrackSignature = useMemo(() => englishSubtitleCandidates
+    const subtitleTrackSignature = useMemo(() => normalizedSubtitleCandidates
         .map((track) => `${track.url}|${track.lang}`)
-        .join('::'), [englishSubtitleCandidates]);
+        .join('::'), [normalizedSubtitleCandidates]);
 
     useEffect(() => {
-        const tracks = englishSubtitleCandidates;
+        // Only auto-detect language for tracks with missing/generic labels so we never
+        // overwrite an explicit label (e.g. English track containing Japanese OP/ED lyrics).
+        const unknownTracks = normalizedSubtitleCandidates.filter((track) => {
+            const label = String(track.lang || '').trim().toLowerCase();
+            return !label || label === 'unknown' || label === 'und' || label === 'default' || label === 'auto';
+        });
+        if (unknownTracks.length === 0) {
+            setDetectedSubtitleLanguages({});
+            return;
+        }
         const controller = new AbortController();
         let active = true;
 
-        Promise.all(tracks.map(async (track) => {
+        Promise.all(unknownTracks.map(async (track) => {
             const url = String(track?.url || '').trim();
             if (!url) return null;
             try {
-                const response = await fetch(resolveSubtitleUrl(url), { signal: controller.signal });
-                if (!response.ok) return null;
-                const language = detectSubtitleLanguage((await response.text()).slice(0, 262144), url);
+                const text = await fetchSubtitleText(resolveSubtitleUrl(url), controller.signal);
+                if (!text) return null;
+                const language = detectSubtitleLanguage(text.slice(0, 262144), url);
                 return language ? [url, language] as const : null;
             } catch {
                 return null;
@@ -611,36 +405,20 @@ export default function VideoPlayer(props: VideoPlayerProps) {
             active = false;
             controller.abort();
         };
-    }, [englishSubtitleCandidates, subtitleTrackSignature, resolveSubtitleUrl]);
+    }, [normalizedSubtitleCandidates, subtitleTrackSignature, resolveSubtitleUrl]);
 
     const subtitleTracks = useMemo(() => {
-        const tracks = englishSubtitleCandidates;
-        const subtitleLanguageRank = (language: string) => {
-            const normalized = language.trim().toLowerCase().replace(/_/g, '-');
-            const isEnglish = /(^|\b)(en|eng|english)(-|\b)/.test(normalized);
-            if (!isEnglish) return 2;
-
-            // Prefer full English dialogue over signs/songs-only tracks.
-            return /sign|song|forced/.test(normalized) ? 1 : 0;
-        };
-
-        const uniqueTracks = new Map<string, SubtitleTrack>();
-        tracks.forEach((track) => {
+        const enriched = normalizedSubtitleCandidates.map((track) => {
             const url = String(track?.url || '').trim();
-            if (url && !uniqueTracks.has(url)) {
-                uniqueTracks.set(url, detectedSubtitleLanguages[url]
-                    ? { ...track, lang: detectedSubtitleLanguages[url] }
-                    : track);
-            }
+            const detected = detectedSubtitleLanguages[url];
+            return {
+                ...track,
+                url: resolveSubtitleUrl(url),
+                lang: detected || track.lang,
+            };
         });
-
-        return Array.from(uniqueTracks.values())
-            .filter((track) => /^(?:en|eng|english)(?:[-_]|$)/i.test(String(track.lang || '')))
-            .sort((left, right) => (
-                subtitleLanguageRank(String(left.lang || '')) - subtitleLanguageRank(String(right.lang || ''))
-            ))
-            .slice(0, 1);
-    }, [detectedSubtitleLanguages, englishSubtitleCandidates]);
+        return normalizeSubtitleTracks(enriched);
+    }, [detectedSubtitleLanguages, normalizedSubtitleCandidates, resolveSubtitleUrl]);
 
     const isOfflineStream = useMemo(() => {
         return Boolean(
@@ -764,212 +542,6 @@ export default function VideoPlayer(props: VideoPlayerProps) {
             clearNativeLoadTimeout();
         };
     }, [clearNativeLoadTimeout, resolvedStreamUrl, shouldUseNativeVideo]);
-
-    useEffect(() => {
-        const webview = webviewRef.current;
-        if (!webview || shouldUseNativeVideo) return;
-
-        const handleLoad = () => {
-            clearIframeLoadTimeout();
-            notifyIframeReady();
-
-            try {
-                // Advanced CSS overrides for modern Tailwind players
-                webview.insertCSS(`
-                        :root {
-                            --primary: #3DB4F2 !important;
-                        --primary-color: #3DB4F2 !important;
-                        --theme-color: #3DB4F2 !important;
-                        --accent: #3DB4F2 !important;
-                        --accent-color: #3DB4F2 !important;
-                        --red: #3DB4F2 !important;
-                        --destructive: #3DB4F2 !important;
-                        --plyr-color-main: #3DB4F2 !important;
-                    }
-                    /* Override Tailwind arbitrary color classes preserving opacity */
-                    [class*="bg-\\[\\#e50914\\]"], [class*="bg-\\[\\#E50914\\]"], [class*="bg-\\[\\#ef4444\\]"], [class*="bg-\\[\\#dc2626\\]"], [class*="bg-\\[\\#b91c1c\\]"], [class*="bg-\\[\\#ff0000\\]"], [class*="bg-red-"] {
-                        background-color: rgb(61 180 242 / var(--tw-bg-opacity, 1)) !important;
-                    }
-                    [class*="text-\\[\\#e50914\\]"], [class*="text-\\[\\#E50914\\]"], [class*="text-\\[\\#ef4444\\]"], [class*="text-\\[\\#dc2626\\]"], [class*="text-\\[\\#b91c1c\\]"], [class*="text-\\[\\#ff0000\\]"], [class*="text-red-"] {
-                        color: rgb(61 180 242 / var(--tw-text-opacity, 1)) !important;
-                    }
-                    [class*="border-\\[\\#e50914\\]"], [class*="border-\\[\\#E50914\\]"], [class*="border-\\[\\#ef4444\\]"], [class*="border-\\[\\#dc2626\\]"], [class*="border-\\[\\#b91c1c\\]"], [class*="border-\\[\\#ff0000\\]"], [class*="border-red-"] {
-                        border-color: rgb(61 180 242 / var(--tw-border-opacity, 1)) !important;
-                    }
-                    [class*="ring-\\[\\#e50914\\]"], [class*="ring-\\[\\#E50914\\]"], [class*="ring-\\[\\#ef4444\\]"], [class*="ring-\\[\\#dc2626\\]"], [class*="ring-red-"] {
-                        --tw-ring-color: rgb(61 180 242 / var(--tw-ring-opacity, 1)) !important;
-                    }
-                    /* Also handle SVG strokes and fills */
-                    [class*="stroke-\\[\\#e50914\\]"], [class*="stroke-\\[\\#ef4444\\]"], [class*="stroke-red-"] { stroke: #3DB4F2 !important; }
-                    [class*="fill-\\[\\#e50914\\]"], [class*="fill-\\[\\#ef4444\\]"], [class*="fill-red-"] { fill: #3DB4F2 !important; }
-                    /* Pseudo-element tab active indicators (::before / ::after underlines) */
-                    [class*="red-"]::before, [class*="red-"]::after,
-                    [class*="rose-"]::before, [class*="rose-"]::after,
-                    [class*="primary"]::before, [class*="primary"]::after {
-                        background-color: #3DB4F2 !important;
-                        border-color: #3DB4F2 !important;
-                        color: #3DB4F2 !important;
-                    }
-                    /* Catch active/selected tab bottom border lines */
-                    [class*="border-b"][class*="red-"],
-                    [class*="border-b"][class*="rose-"],
-                    [class*="border-b"][class*="primary"] {
-                        border-bottom-color: #3DB4F2 !important;
-                    }
-                `);
-
-                // Deep JS mutation observer to forcefully recolor any dynamic or inline styles that are Netflix Red
-                webview.executeJavaScript(`
-                    (function() {
-                        const style = document.createElement('style');
-                        style.textContent = \`
-                            :root {
-                                --primary: #3DB4F2 !important;
-                                --primary-color: #3DB4F2 !important;
-                                --theme-color: #3DB4F2 !important;
-                                --accent: #3DB4F2 !important;
-                                --accent-color: #3DB4F2 !important;
-                                --red: #3DB4F2 !important;
-                                --destructive: #3DB4F2 !important;
-                                --plyr-color-main: #3DB4F2 !important;
-                            }
-                            .text-\\\\[\\\\#e50914\\\\], .text-\\\\[\\\\#E50914\\\\], .text-\\\\[\\\\#ff0000\\\\], .text-primary {
-                                color: rgb(61 180 242 / var(--tw-text-opacity, 1)) !important;
-                            }
-                            .bg-\\\\[\\\\#e50914\\\\], .bg-\\\\[\\\\#E50914\\\\], .bg-\\\\[\\\\#ff0000\\\\], .bg-primary, .plyr__progress__buffer, .vjs-play-progress {
-                                background-color: rgb(61 180 242 / var(--tw-bg-opacity, 1)) !important;
-                            }
-                            .border-\\\\[\\\\#e50914\\\\], .border-\\\\[\\\\#E50914\\\\], .border-\\\\[\\\\#ff0000\\\\], .border-primary {
-                                border-color: rgb(61 180 242 / var(--tw-border-opacity, 1)) !important;
-                            }
-                            [class*="text-red-"], [class*="text-rose-"] {
-                                color: rgb(61 180 242 / var(--tw-text-opacity, 1)) !important;
-                            }
-                            [class*="bg-red-"], [class*="bg-rose-"] {
-                                background-color: rgb(61 180 242 / var(--tw-bg-opacity, 1)) !important;
-                            }
-                            [class*="border-red-"], [class*="border-rose-"] {
-                                border-color: rgb(61 180 242 / var(--tw-border-opacity, 1)) !important;
-                            }
-                            [class*="ring-red-"], [class*="ring-rose-"] {
-                                --tw-ring-color: rgb(61 180 242 / var(--tw-ring-opacity, 1)) !important;
-                            }
-                            /* Hardcoded CSS rule overrides */
-                            [style*="color: rgb(229, 9, 20)"], [style*="color: rgb(239, 68, 68)"], [style*="color: rgb(220, 38, 38)"], [style*="color: #e50914"], [style*="color: #E50914"], [style*="color: #ef4444"], [style*="color: #dc2626"], [style*="color: #ff0000"] {
-                                color: #3DB4F2 !important;
-                            }
-                            [style*="background-color: rgb(229, 9, 20)"], [style*="background-color: rgb(239, 68, 68)"], [style*="background-color: rgb(220, 38, 38)"], [style*="background-color: #e50914"], [style*="background-color: #E50914"], [style*="background-color: #ef4444"], [style*="background-color: #dc2626"], [style*="background-color: #ff0000"] {
-                                background-color: #3DB4F2 !important;
-                            }
-                            [style*="border-color: rgb(229, 9, 20)"], [style*="border-color: rgb(239, 68, 68)"], [style*="border-color: rgb(220, 38, 38)"], [style*="border-color: #e50914"], [style*="border-color: #E50914"], [style*="border-color: #ef4444"], [style*="border-color: #dc2626"], [style*="border-color: #ff0000"] {
-                                border-color: #3DB4F2 !important;
-                            }
-                        \`;
-                        document.head.appendChild(style);
-                        
-                        const isRed = (str) => {
-                            if (!str) return false;
-                            const redRegex = /229,\\s*9,\\s*20|229\\s+9\\s+20|239,\\s*68,\\s*68|239\\s+68\\s+68|220,\\s*38,\\s*38|220\\s+38\\s+38|185,\\s*28,\\s*28|185\\s+28\\s+28|244,\\s*63,\\s*94|244\\s+63\\s+94|225,\\s*29,\\s*72|225\\s+29\\s+72|#e50914|#ef4444|#dc2626|#b91c1c|#f43f5e|#e11d48/gi;
-                            return !!str.match(redRegex);
-                        };
-                        const toBlue = (str) => {
-                            if (!str) return str;
-                            return str.replace(/229,\\s*9,\\s*20|239,\\s*68,\\s*68|220,\\s*38,\\s*38|185,\\s*28,\\s*28|244,\\s*63,\\s*94|225,\\s*29,\\s*72/g, '61, 180, 242')
-                                      .replace(/229\\s+9\\s+20|239\\s+68\\s+68|220\\s+38\\s+38|185\\s+28\\s+28|244\\s+63\\s+94|225\\s+29\\s+72/g, '61 180 242')
-                                      .replace(/#e50914|#ef4444|#dc2626|#b91c1c|#f43f5e|#e11d48/gi, '#3DB4F2');
-                        };
-
-                        // Bulletproof Computed Style Overrides
-                        let isWalkingComputed = false;
-                        const walkComputed = () => {
-                            if (isWalkingComputed) return;
-                            isWalkingComputed = true;
-                            
-                            const nodes = document.querySelectorAll('*');
-                            for (let i = 0; i < nodes.length; i++) {
-                                const node = nodes[i];
-                                const comp = window.getComputedStyle(node);
-                                
-                                const checkAndFix = (prop, cssProp) => {
-                                    const val = comp[prop];
-                                    if (val && val !== 'rgba(0, 0, 0, 0)' && val !== 'transparent' && val.includes('rgb')) {
-                                        const match = val.match(/rgba?\\((\\d+),\\s*(\\d+),\\s*(\\d+)(?:,\\s*([\\d.]+))?\\)/);
-                                        if (match) {
-                                            const r = parseInt(match[1]); const g = parseInt(match[2]); const b = parseInt(match[3]);
-                                            // Red detection: High red value, significantly higher than Green and Blue.
-                                            // r > g * 2 prevents orange. r > b * 1.5 includes rose.
-                                            if (r > 130 && r > g * 2 && r > b * 1.5) {
-                                                node.style.setProperty(cssProp, match[4] ? \`rgba(61, 180, 242, \${match[4]})\` : 'rgb(61, 180, 242)', 'important');
-                                            }
-                                        }
-                                    }
-                                };
-                                checkAndFix('backgroundColor', 'background-color');
-                                checkAndFix('color', 'color');
-                                checkAndFix('borderColor', 'border-color');
-                                checkAndFix('outlineColor', 'outline-color');
-                                checkAndFix('fill', 'fill');
-                                checkAndFix('stroke', 'stroke');
-                            }
-                            isWalkingComputed = false;
-                        };
-
-                        const performPass = () => {
-                            // 1. Forcefully rewrite dynamically added style tags to prevent flashing
-                            document.querySelectorAll('style').forEach(style => {
-                                if (style.textContent && isRed(style.textContent)) {
-                                    style.textContent = toBlue(style.textContent);
-                                }
-                            });
-                            // 2. Walk computed styles for bulletproof override
-                            walkComputed();
-                        };
-                        performPass();
-                        
-                        // Use mutation observer for high performance instead of setInterval if possible
-                        const observer = new MutationObserver((mutations) => {
-                            let shouldWalk = false;
-                            for (const m of mutations) {
-                                if (m.addedNodes.length > 0 || m.attributeName === 'style' || m.attributeName === 'class' || m.target.nodeName.toLowerCase() === 'style') {
-                                    shouldWalk = true;
-                                    break;
-                                }
-                            }
-                            if (shouldWalk) performPass();
-                        });
-                        observer.observe(document.head, { childList: true, subtree: true, characterData: true });
-                        observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] });
-                        
-                        // Failsafe
-                        setInterval(performPass, 1000);
-                    })();
-                `);
-            } catch (e) {
-                console.error("Failed to inject theme CSS into webview", e);
-            }
-        };
-
-        const handleEnterFullscreen = () => {
-            const shell = webview.closest('.watch-player-shell');
-            if (shell) shell.requestFullscreen().catch(console.error);
-        };
-
-        const handleLeaveFullscreen = () => {
-            if (document.fullscreenElement) {
-                document.exitFullscreen().catch(console.error);
-            }
-        };
-
-        webview.addEventListener('dom-ready', handleLoad);
-        webview.addEventListener('enter-html-full-screen', handleEnterFullscreen);
-        webview.addEventListener('leave-html-full-screen', handleLeaveFullscreen);
-
-        return () => {
-            webview.removeEventListener('dom-ready', handleLoad);
-            webview.removeEventListener('enter-html-full-screen', handleEnterFullscreen);
-            webview.removeEventListener('leave-html-full-screen', handleLeaveFullscreen);
-        };
-    }, [clearIframeLoadTimeout, notifyIframeReady, resolvedStreamUrl, shouldUseNativeVideo]);
 
     useEffect(() => {
         clearMediaStallTimeout();
@@ -1229,6 +801,7 @@ export default function VideoPlayer(props: VideoPlayerProps) {
         });
         hls.on(Hls.Events.ERROR, (_, data) => {
             if (data.fatal) {
+                console.warn('[HLS] Fatal error', { type: data.type, details: data.details, url: (data as { url?: string }).url, response: (data as { response?: unknown }).response });
                 if (hlsRecoveryAttempts < 2 && data.type === Hls.ErrorTypes.NETWORK_ERROR) {
                     hlsRecoveryAttempts += 1;
                     hls.startLoad();
@@ -1341,27 +914,16 @@ export default function VideoPlayer(props: VideoPlayerProps) {
     return (
         <div className={`watch-player-shell w-full max-w-full h-full max-h-full relative bg-black group transition-all duration-300 overflow-hidden rounded-none shadow-none outline-none ${displayMode === 'mini' ? 'rounded-xl shadow-2xl shadow-black/70' : (props.mobilePageLayout ? '' : 'md:rounded-2xl')}`}>
 
-            {displayMode !== 'mini' && !props.mobilePageLayout && ambientLightActive && resolvedStreamUrl && shouldUseNativeVideo && createPortal(
-                <div className="yorumi-ambient-projectors pointer-events-none absolute left-0 top-0 z-[1] h-0 w-0 overflow-visible" aria-hidden="true">
-                    <canvas
-                        ref={ambientCanvasRef}
-                        width={480}
-                        height={270}
-                        className="pointer-events-none absolute origin-center will-change-transform"
-                    />
-                </div>,
-                document.body
-            )}
-
-            {resolvedStreamUrl ? (
+            {(resolvedStreamUrl || (props.mobilePageLayout && (isLoading || isServerSwitching) && !streamExhausted)) ? (
                 <div className={`yorumi-player-surface relative z-10 flex h-full w-full max-w-full items-center justify-center overflow-hidden bg-black rounded-none ${props.mobilePageLayout ? '' : 'md:rounded-2xl'}`}>
                     <div className={`yorumi-player-surface flex h-full w-full max-h-full max-w-full items-center justify-center overflow-hidden bg-black rounded-none ${props.mobilePageLayout ? '' : 'md:rounded-2xl'}`}>
-                        {shouldUseNativeVideo ? (
+                        {(shouldUseNativeVideo || !resolvedStreamUrl) ? (
                             <>
                                 <video
                                     ref={videoRef}
-                                    src={isHls || /\.m3u8/i.test(resolvedStreamUrl) ? undefined : resolvedStreamUrl}
-                                    className={`yorumi-player-video block w-full max-w-none bg-black cursor-pointer object-contain ${props.mobilePageLayout ? 'h-[calc(100%_-_104px)] self-start' : 'h-full min-h-full'}`}
+                                    src={!resolvedStreamUrl || isHls || /\.m3u8/i.test(resolvedStreamUrl) ? undefined : resolvedStreamUrl}
+                                    className={`yorumi-player-video block w-full max-w-none bg-black cursor-pointer object-contain ${'h-full min-h-full'}`}
+                                    style={{ clipPath: 'inset(0 0 3px 0)' }}
                                     onClick={() => {
                                         if (!videoRef.current || !resolvedStreamUrl) return;
                                         if (videoRef.current.paused) videoRef.current.play().catch(() => {});
@@ -1378,7 +940,8 @@ export default function VideoPlayer(props: VideoPlayerProps) {
                                         const actualDuration = event.currentTarget.duration;
                                         const expectedDuration = Number(props.expectedDurationSeconds || 0);
                                         if (
-                                            !isOfflineStream
+                                            resolvedStreamUrl
+                                            && !isOfflineStream
                                             && expectedDuration >= 15 * 60
                                             && Number.isFinite(actualDuration)
                                             && actualDuration > 0
@@ -1409,21 +972,7 @@ export default function VideoPlayer(props: VideoPlayerProps) {
                                         runAutoSkipCheck(video);
                                     }}
                                     onEnded={handleNativeEnded}
-                                >
-                                    {(selectedAudio === 'dub' ? [] : subtitleTracks).map((track, index) => {
-                                        const lang = String(track.lang || '').trim() || 'und';
-                                        return (
-                                            <track
-                                                key={`${track.url}:${index}`}
-                                                kind="subtitles"
-                                                src={resolveSubtitleUrl(track.url)}
-                                                srcLang={lang}
-                                                label={lang.toUpperCase()}
-                                                default={index === 0}
-                                            />
-                                        );
-                                    })}
-                                </video>
+                                />
                                 <CustomVideoControls
                                     streamKey={`${episodeSession ?? ''}::${resolvedStreamUrl ?? ''}`}
                                     videoRef={videoRef}
@@ -1463,23 +1012,15 @@ export default function VideoPlayer(props: VideoPlayerProps) {
                                     hasSubtitles={selectedAudio !== 'dub' && subtitleTracks.length > 0}
                                     subtitleTracks={selectedAudio === 'dub' ? [] : subtitleTracks}
                                     pageLayout={props.mobilePageLayout}
+                                    onClose={props.onClose}
+                                    onShowEpisodes={props.onShowEpisodes}
+                                    seasonNumber={props.seasonNumber}
+                                    episodes={props.episodes}
+                                    onEpisodeSelect={props.onEpisodeSelect}
                                 />
                             </>
                         ) : (
                             <>
-                                {isElectron ? (
-                                    <webview
-                                        ref={webviewRef as any}
-                                        src={resolvedStreamUrl}
-                                        partition="persist:player"
-                                        className="w-full h-full border-0 bg-black"
-                                        allowpopups
-                                        allowFullScreen
-                                        httpreferrer={streams?.[selectedStreamIndex]?.referer || (resolvedStreamUrl?.includes('allmanga') ? 'https://allmanga.to/' : '')}
-                                        useragent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-                                        webpreferences="webSecurity=no"
-                                    />
-                                ) : (
                                     <iframe
                                         src={resolvedStreamUrl}
                                         className="w-full h-full border-0 bg-black"
@@ -1491,7 +1032,6 @@ export default function VideoPlayer(props: VideoPlayerProps) {
                                             notifyIframeReady();
                                         }}
                                     />
-                                )}
                                 {displayMode === 'mini' && (
                                     <div className="absolute inset-x-0 top-0 z-20 flex items-start justify-between p-2 bg-gradient-to-b from-black/55 to-transparent opacity-0 transition-opacity duration-200 group-hover:opacity-100">
                                         <button
@@ -1522,7 +1062,7 @@ export default function VideoPlayer(props: VideoPlayerProps) {
 
                     {/* Non-destructive loading overlay: keep video mounted underneath so buffering/playback is not aborted */}
                     {(isLoading || isServerSwitching) && !streamExhausted && (
-                        <div className="absolute inset-0 bg-black/75 backdrop-blur-[2px] z-30 flex items-center justify-center pointer-events-none transition-opacity duration-200">
+                        <div className="absolute inset-0 bg-black/75 z-30 flex items-center justify-center pointer-events-none transition-opacity duration-200">
                             <style>{`
                                 @keyframes animeSubtleFloat {
                                     0%, 100% { transform: translateY(0); }
@@ -1569,47 +1109,6 @@ export default function VideoPlayer(props: VideoPlayerProps) {
                 </div>
             )}
 
-            {/* Header Controls — ALWAYS visible regardless of loading/stream state */}
-            {displayMode !== 'mini' && !isFullscreen && (
-                <div 
-                    className={`watch-player-top-controls absolute top-0 left-0 right-0 p-4 sm:p-6 transition-opacity duration-300 z-[2147483647] flex items-center justify-between pointer-events-none ${showAmbientMenu || !resolvedStreamUrl || !shouldUseNativeVideo || isLoading || isServerSwitching ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
-                >
-                    {/* Left: Ambient light controls. Server selection remains in the main player settings. */}
-                    <div className={`pointer-events-auto relative ${props.mobilePageLayout ? 'hidden' : ''}`}>
-                        <button
-                            onClick={(event) => {
-                                event.stopPropagation();
-                                setShowAmbientMenu((visible) => !visible);
-                            }}
-                            className="flex h-8 w-8 items-center justify-center rounded-full watch-control-glass text-white shadow-lg transition-all hover:bg-white/20 active:scale-95"
-                            title="Ambient light settings"
-                            aria-label="Ambient light settings"
-                            aria-expanded={showAmbientMenu}
-                        >
-                            <SunMedium className="h-4 w-4" />
-                        </button>
-                        
-                        {showAmbientMenu && (
-                            <>
-                                <div className="fixed inset-0 z-40" onClick={() => setShowAmbientMenu(false)} />
-                                <div className="yorumi-player-popover absolute left-0 z-50 mt-2 w-52 overflow-hidden rounded-xl bg-[#1A1A1A]/95 p-1 text-white shadow-2xl backdrop-blur-xl" onClick={(event) => event.stopPropagation()}>
-                                    <div className="border-b border-white/10 px-2.5 py-2 text-xs font-semibold">Ambient light</div>
-                                    <div className="space-y-2.5 px-2.5 py-2.5">
-                                        <label className="block">
-                                            <span className="mb-1.5 flex justify-between text-xs font-medium"><span>Blur</span><span className="text-white/65">{ambientLight.blur}%</span></span>
-                                            <input type="range" min="0" max="100" step="0.1" value={ambientLight.blur} onChange={(event) => setAmbientLight((current) => ({ ...current, blur: Number(event.target.value) }))} className="yorumi-ambient-slider block w-full cursor-pointer" style={{ '--ambient-progress': `${ambientLight.blur}%` } as CSSProperties} />
-                                        </label>
-                                        <label className="block">
-                                            <span className="mb-1.5 flex justify-between text-xs font-medium"><span>Spread</span><span className="text-white/65">{ambientLight.spread}%</span></span>
-                                            <input type="range" min="0" max="400" step="0.1" value={ambientLight.spread} onChange={(event) => setAmbientLight((current) => ({ ...current, spread: Number(event.target.value) }))} className="yorumi-ambient-slider block w-full cursor-pointer" style={{ '--ambient-progress': `${ambientLight.spread / 4}%` } as CSSProperties} />
-                                        </label>
-                                    </div>
-                                </div>
-                            </>
-                        )}
-                    </div>
-                </div>
-            )}
         </div>
     );
 }
