@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 // Feature Components
@@ -11,6 +12,7 @@ import { getMangaDetailsRouteId } from '../utils/mangaNavigation';
 
 export default function MangaPage() {
     const navigate = useNavigate();
+    const [backdrop, setBackdrop] = useState('');
 
 
     const handleSpotlightClick = (mangaId: string, autoRead?: boolean, mangaData?: Manga) => {
@@ -22,11 +24,15 @@ export default function MangaPage() {
 
     // Default Mode - Shows carousels
     return (
-        <div className="min-h-screen pb-20">
+        <div className="media-home-perf relative min-h-screen overflow-hidden bg-[#070707] pb-4 md:pb-20">
+            {backdrop && <div className="pointer-events-none absolute inset-0 overflow-hidden hidden md:block" aria-hidden="true">
+                <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: `url(${backdrop})`, filter: 'blur(100px) saturate(2.4) brightness(1.05)', transform: 'scale(1.2)', opacity: 0.35 }} />
+                <div className="absolute inset-0 bg-[#070707]/65" />
+            </div>}
             {/* Spotlight Hero Section */}
-            <MangaSpotlight onMangaClick={handleSpotlightClick} />
+            <MangaSpotlight onBackdropChange={setBackdrop} onMangaClick={handleSpotlightClick} />
 
-            <div className="numbered-media-sections w-full max-w-7xl mx-auto px-4 md:px-14 z-10 relative mt-8">
+            <div className="reading-home-sections relative z-10 mx-auto mt-3 md:-mt-6 w-full max-w-[1440px] px-4 sm:px-10 md:px-14 lg:px-16">
 
                 {/* Latest Updates Carousel */}
                 <LatestMangaUpdates
