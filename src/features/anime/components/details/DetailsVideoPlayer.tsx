@@ -1,34 +1,125 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useLocation, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { usePersistentPlayer } from '../../../player/context/PersistentPlayerContext';
 import { usePlayer } from '../../../player/hooks/usePlayer';
-import type { Episode } from '../../../../types/anime';
-import { isNativeMobile } from '../../../../platform/runtime';
+import type { Anime, Episode } from '../../../../types/anime';
+import { isMobileShell } from '../../../../platform/runtime';
 import { ArrowLeft, ListVideo, X } from 'lucide-react';
+import { animeService } from '../../../../services/animeService';
 
 interface DetailsVideoPlayerProps {
     animeId: string;
     animeTitle?: string;
+    anime?: Anime;
     onClose: () => void;
     isWatched?: boolean;
     onMarkWatched?: () => void;
     isResolvingEpisode?: boolean;
+    seasonNumber?: number;
     fallbackEpisode?: Episode | null;
-    prevEpisode?: any;
-    nextEpisode?: any;
     episodes?: Episode[];
     onEpisodeSelect?: (episode: Episode) => void;
 }
 
-export default function DetailsVideoPlayer({ animeId, animeTitle, onClose, isWatched, onMarkWatched, isResolvingEpisode = false, fallbackEpisode = null, prevEpisode = null, nextEpisode = null, episodes = [], onEpisodeSelect }: DetailsVideoPlayerProps) {
+export default function DetailsVideoPlayer({ animeId, animeTitle, anime, onClose, isWatched, onMarkWatched, isResolvingEpisode = false, seasonNumber, fallbackEpisode = null, episodes = [], onEpisodeSelect }: DetailsVideoPlayerProps) {
     const location = useLocation();
-    const [, setSearchParams] = useSearchParams();
+    const navigate = useNavigate();
     const { registerPlayer, setInlinePlayerElement } = usePersistentPlayer();
     const [showEpisodes, setShowEpisodes] = useState(false);
+    const [similarAnime, setSimilarAnime] = useState<Array<{ id: number | string; title: string; cover: string }>>([]);
+    const [loadingSimilar, setLoadingSimilar] = useState(false);
 
     useEffect(() => {
-        if (!isNativeMobile()) return;
+        let isCancelled = false;
+        if (!anime) return;
+
+        // 1. Build set of forbidden IDs (current anime + all franchise relations like sequels/prequels/spin-offs)
+        const forbiddenIds = new Set<string>();
+        if (anime.id) forbiddenIds.add(String(anime.id));
+        if (anime.mal_id) forbiddenIds.add(String(anime.mal_id));
+        (anime.relations?.edges || []).forEach((edge) => {
+            if (edge.node?.id) forbiddenIds.add(String(edge.node.id));
+            if (edge.node?.idMal) forbiddenIds.add(String(edge.node.idMal));
+        });
+
+        // 2. Build forbidden title keywords to prevent any sequels/spin-offs from slipping through
+        // E.g. "Sousou no Frieren", "One Piece", "Naruto", "Attack on Titan"
+        const rawTitle = (anime.title_english || anime.title || anime.title_romaji || '').toLowerCase();
+        const cleanBaseTitle = rawTitle
+            .replace(/^(the|a)\s+/i, '')
+            .replace(/[:\-–—].*$/, '')
+            .replace(/\s+(season\s+\d+|part\s+\d+|\d+(?:st|nd|rd|th)\s+season).*$/i, '')
+            .trim();
+        const forbiddenWords = cleanBaseTitle.length >= 3
+            ? cleanBaseTitle.split(/\s+/).filter(w => w.length >= 3)
+            : [];
+
+        const isSequelOrRelation = (candId: string | number, candTitle: string) => {
+            if (forbiddenIds.has(String(candId))) return true;
+            const lowTitle = candTitle.toLowerCase();
+            if (forbiddenWords.length > 0 && forbiddenWords.some(w => lowTitle.includes(w))) {
+                return true;
+            }
+            return false;
+        };
+
+        const run = async () => {
+            setLoadingSimilar(true);
+            const results: Array<{ id: number | string; title: string; cover: string }> = [];
+            const seenIds = new Set<string>();
+
+            // Priority 1: AniList media recommendations (curated similar genre recommendations)
+            const recNodes = anime.recommendations?.nodes || anime.recommendations?.edges?.map(e => e.node) || [];
+            for (const rec of recNodes) {
+                const item = rec?.mediaRecommendation;
+                if (!item || !item.id) continue;
+                const itemIdStr = String(item.id);
+                if (seenIds.has(itemIdStr)) continue;
+                const title = item.title?.english || item.title?.romaji || item.title?.native || 'Unknown';
+                if (isSequelOrRelation(item.id, title)) continue;
+                if (['MANGA', 'NOVEL', 'ONE_SHOT'].includes(String(item.format || '').toUpperCase())) continue;
+                const cover = item.coverImage?.extraLarge || item.coverImage?.large || '';
+                seenIds.add(itemIdStr);
+                results.push({ id: item.id, title, cover });
+            }
+
+            // Priority 2: Fetch by matching primary genre if recommendations are sparse (< 10)
+            if (results.length < 10) {
+                const genres = (anime.genres || []).map((g: any) => typeof g === 'string' ? g : g.name).filter(Boolean);
+                const primaryGenre = genres[0] || 'Action';
+                try {
+                    const genreRes = await animeService.getAnimeByGenre(primaryGenre, 1, 24);
+                    if (!isCancelled && genreRes?.data) {
+                        for (const item of genreRes.data) {
+                            if (!item || !item.id) continue;
+                            const itemIdStr = String(item.id);
+                            if (seenIds.has(itemIdStr)) continue;
+                            const title = item.title_english || item.title || item.title_romaji || 'Unknown';
+                            if (isSequelOrRelation(item.id, title)) continue;
+                            const cover = item.images?.jpg?.large_image_url || item.images?.jpg?.image_url || (item as any).anilist_cover_image || '';
+                            seenIds.add(itemIdStr);
+                            results.push({ id: item.id, title, cover });
+                            if (results.length >= 18) break;
+                        }
+                    }
+                } catch {
+                    // Ignore genre fetch error
+                }
+            }
+
+            if (!isCancelled) {
+                setSimilarAnime(results);
+                setLoadingSimilar(false);
+            }
+        };
+
+        void run();
+        return () => { isCancelled = true; };
+    }, [anime]);
+
+    useEffect(() => {
+        if (!isMobileShell()) return;
         const previousBodyOverflow = document.body.style.overflow;
         const previousHtmlOverflow = document.documentElement.style.overflow;
         const previousOverscroll = document.body.style.overscrollBehavior;
@@ -41,23 +132,6 @@ export default function DetailsVideoPlayer({ animeId, animeTitle, onClose, isWat
             document.body.style.overscrollBehavior = previousOverscroll;
         };
     }, []);
-    const getEpisodeNavigationState = () => ({
-        ...(location.state && typeof location.state === 'object' ? location.state as Record<string, unknown> : {}),
-        preventScrollTop: true,
-    });
-
-    const goToPrevEp = () => {
-        if (!prevEpisode) return;
-        const num = prevEpisode._tmdbAbsolute || prevEpisode.playbackEpisodeNumber || prevEpisode.episodeNumber;
-        if (num) setSearchParams({ ep: String(num) }, { state: getEpisodeNavigationState() });
-    };
-
-    const goToNextEp = () => {
-        if (!nextEpisode) return;
-        const num = nextEpisode._tmdbAbsolute || nextEpisode.playbackEpisodeNumber || nextEpisode.episodeNumber;
-        if (num) setSearchParams({ ep: String(num) }, { state: getEpisodeNavigationState() });
-    };
-
     const {
         currentEpisode,
         currentStream,
@@ -96,7 +170,7 @@ export default function DetailsVideoPlayer({ animeId, animeTitle, onClose, isWat
         handlePlaybackProgress,
         handleStreamError,
         toggleExpand,
-    } = usePlayer(animeId, animeTitle, fallbackEpisode);
+    } = usePlayer(animeId, animeTitle, fallbackEpisode, anime);
 
     const playerProps = useMemo(() => ({
         streamUrl: currentStream?.url,
@@ -104,7 +178,7 @@ export default function DetailsVideoPlayer({ animeId, animeTitle, onClose, isWat
         isHls: currentStream?.isHls,
         isEmbed: currentStream?.isEmbed,
         subtitles: currentStream?.subtitles,
-        isLoading: streamLoading || (isResolvingEpisode && !currentEpisode),
+        isLoading: streamLoading || (!currentStream && !streamExhausted),
         isServerSwitching: serverSwitchLoading,
         streamExhausted,
         skipTimestampsLoading,
@@ -142,7 +216,12 @@ export default function DetailsVideoPlayer({ animeId, animeTitle, onClose, isWat
         episodeNumber: Number(epNum || currentEpisode?.episodeNumber || 1),
         episodeTitle: cleanCurrentTitle || currentEpisode?.title,
         expectedDurationSeconds: episodeDurationSeconds,
-        mobilePageLayout: isNativeMobile(),
+        mobilePageLayout: isMobileShell(),
+        onClose,
+        onShowEpisodes: () => setShowEpisodes(true),
+        seasonNumber: seasonNumber || fallbackEpisode?.tmdbSeason || currentEpisode?.tmdbSeason || 1,
+        episodes,
+        onEpisodeSelect,
     }), [
         animeId,
         animeTitle,
@@ -156,6 +235,7 @@ export default function DetailsVideoPlayer({ animeId, animeTitle, onClose, isWat
         currentStream,
         epNum,
         episodeDurationSeconds,
+        episodes,
         fallbackEpisode,
         handleNextEp,
         handlePlaybackProgress,
@@ -166,6 +246,7 @@ export default function DetailsVideoPlayer({ animeId, animeTitle, onClose, isWat
         isAutoQuality,
         isExpanded,
         isResolvingEpisode,
+        onClose,
         resumeAtSeconds,
         selectedAudio,
         selectedServer,
@@ -182,6 +263,7 @@ export default function DetailsVideoPlayer({ animeId, animeTitle, onClose, isWat
         streamExhausted,
         streamLoading,
         serverSwitchLoading,
+        seasonNumber,
         streams,
         toggleExpand,
     ]);
@@ -213,23 +295,66 @@ export default function DetailsVideoPlayer({ animeId, animeTitle, onClose, isWat
 
     if (error) {
         return (
-            <div className="w-full h-48 bg-white/5 rounded-2xl flex items-center justify-center">
+            <div className="relative flex h-48 w-full items-center justify-center rounded-2xl bg-white/5">
+                <button type="button" onClick={onClose} className="absolute left-3 top-3 grid h-10 w-10 place-items-center rounded-full bg-black/60 text-white" aria-label="Close player">
+                    <ArrowLeft className="h-5 w-5" />
+                </button>
                 <span className="text-red-400">{error}</span>
             </div>
         );
     }
 
-    if (isNativeMobile()) {
+    const cleanEpTitle = cleanCurrentTitle || fallbackEpisode?.title || currentEpisode?.title;
+    const displaySeason = seasonNumber || fallbackEpisode?.tmdbSeason || currentEpisode?.tmdbSeason || 1;
+    const displayEpisode = fallbackEpisode?.episodeNumber || currentEpisode?.episodeNumber || epNum;
+
+    if (isMobileShell()) {
         return createPortal((
             <div id="details-video-player" className="fixed inset-0 z-[2147483000] flex flex-col overflow-hidden overscroll-none bg-black text-white" style={{ paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
-                <div className="mobile-player-header flex h-14 shrink-0 items-center gap-2 overflow-hidden px-2 transition-opacity duration-300">
-                    <button type="button" onClick={onClose} className="grid h-10 w-10 place-items-center" aria-label="Close player"><ArrowLeft className="h-5 w-5" /></button>
-                    <div className="min-w-0 flex-1 truncate text-sm font-semibold">{animeTitle}</div>
-                    <button type="button" onClick={() => setShowEpisodes(true)} className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-white active:bg-white/10" aria-label="Choose episode"><ListVideo className="h-6 w-6 stroke-[2.25]" /></button>
-                </div>
-
-                <div className="relative min-h-0 flex-1 bg-black">
-                    <div ref={setInlinePlayerElement} className="absolute inset-0 bg-black" />
+                <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+                    <div className="relative aspect-video w-full bg-black">
+                        <div ref={setInlinePlayerElement} className="absolute inset-0 bg-black" />
+                    </div>
+                    {/* Metadata directly below video matching reference */}
+                    <div className="bg-black px-4 pt-3 pb-2">
+                        <h1 className="text-xl sm:text-2xl font-black leading-tight text-white line-clamp-2 overflow-hidden text-ellipsis">
+                            {animeTitle || 'Anime'}
+                        </h1>
+                        <p className="mt-1 text-sm sm:text-base font-semibold text-white/70 line-clamp-1">
+                            S{displaySeason} E{displayEpisode}{cleanEpTitle && !/^episode\s+\d+(?:\.\d+)?$/i.test(cleanEpTitle.trim()) && <> {"\u00b7"} {cleanEpTitle}</>}
+                        </p>
+                    </div>
+                    {/* More Like This section with 2-row max aligned cards */}
+                    <section className="px-4 py-5">
+                        <h2 className="mb-3 text-lg font-bold text-white">More Like This</h2>
+                        <div className="flex items-start gap-3 overflow-x-auto pb-4 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                            {similarAnime.map((item) => (
+                                <button
+                                    key={item.id}
+                                    type="button"
+                                    onClick={() => navigate(`/anime/details/al-${item.id}`)}
+                                    className="flex w-[42vw] max-w-[170px] shrink-0 flex-col items-stretch self-start text-left group"
+                                >
+                                    <div className="relative aspect-[2/3] w-full overflow-hidden rounded-[16px] bg-zinc-900 shadow-md">
+                                        <img
+                                            src={item.cover}
+                                            alt={item.title}
+                                            className="h-full w-full object-cover transition-transform duration-300 group-active:scale-95"
+                                            loading="lazy"
+                                        />
+                                    </div>
+                                    <div className="mt-2 h-[2.5rem] min-h-[2.5rem] overflow-hidden">
+                                        <span className="line-clamp-2 text-xs sm:text-sm font-bold leading-snug text-white/90 overflow-hidden text-ellipsis">
+                                            {item.title}
+                                        </span>
+                                    </div>
+                                </button>
+                            ))}
+                        </div>
+                        {!loadingSimilar && similarAnime.length === 0 && (
+                            <p className="text-sm text-white/60">No recommendations available.</p>
+                        )}
+                    </section>
                 </div>
 
                 {showEpisodes && createPortal((
@@ -306,45 +431,6 @@ export default function DetailsVideoPlayer({ animeId, animeTitle, onClose, isWat
 
             {/* Video Container Layout */}
             <div className="relative w-full flex items-center justify-center mt-4 py-4 md:py-8 overflow-visible">
-                {prevEpisode && (
-                    <div 
-                        className="absolute -left-4 md:-left-12 lg:-left-20 xl:-left-24 z-10 w-[85%] aspect-video cursor-pointer overflow-hidden group/prev rounded-3xl opacity-60 hover:opacity-100 transition-all duration-300"
-                        onClick={goToPrevEp}
-                        title={`Previous: ${prevEpisode.title}`}
-                    >
-                        <div 
-                            className="absolute inset-0 bg-cover bg-center transition-all duration-300"
-                            style={{ backgroundImage: `url(${prevEpisode.thumbnail || prevEpisode.snapshot})` }}
-                        />
-                        <div className="absolute inset-0 bg-black/60 group-hover/prev:bg-black/20 transition-all duration-300" />
-                        <div className="absolute inset-0 flex items-center justify-start pl-2 md:pl-4 lg:pl-6">
-                            <svg className="w-8 h-8 md:w-10 md:h-10 lg:w-12 lg:h-12 text-white opacity-0 group-hover/prev:opacity-100 transition-all transform -translate-x-4 group-hover/prev:translate-x-0 duration-300 drop-shadow-2xl" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M15 19l-7-7 7-7" />
-                            </svg>
-                        </div>
-                    </div>
-                )}
-
-                {/* Next Episode Background (Right) */}
-                {nextEpisode && (
-                    <div 
-                        className="absolute -right-4 md:-right-12 lg:-right-20 xl:-right-24 z-10 w-[85%] aspect-video cursor-pointer overflow-hidden group/next rounded-3xl opacity-60 hover:opacity-100 transition-all duration-300"
-                        onClick={goToNextEp}
-                        title={`Next: ${nextEpisode.title}`}
-                    >
-                        <div 
-                            className="absolute inset-0 bg-cover bg-center transition-all duration-300"
-                            style={{ backgroundImage: `url(${nextEpisode.thumbnail || nextEpisode.snapshot})` }}
-                        />
-                        <div className="absolute inset-0 bg-black/60 group-hover/next:bg-black/20 transition-all duration-300" />
-                        <div className="absolute inset-0 flex items-center justify-end pr-2 md:pr-4 lg:pr-6">
-                            <svg className="w-8 h-8 md:w-10 md:h-10 lg:w-12 lg:h-12 text-white opacity-0 group-hover/next:opacity-100 transition-all transform translate-x-4 group-hover/next:translate-x-0 duration-300 drop-shadow-2xl" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M9 5l7 7-7 7" />
-                            </svg>
-                        </div>
-                    </div>
-                )}
-
                 {/* Main Video */}
                 <div className="yorumi-details-player-frame relative z-20 w-full aspect-video rounded-2xl overflow-hidden bg-black transition-all duration-300">
                     <div ref={setInlinePlayerElement} className="yorumi-player-mount w-full h-full bg-black" />
