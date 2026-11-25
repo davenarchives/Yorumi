@@ -2,6 +2,10 @@ package com.yorumi.app;
 
 import android.os.Environment;
 import android.net.Uri;
+import android.media.MediaCodec;
+import android.media.MediaExtractor;
+import android.media.MediaFormat;
+import android.media.MediaMuxer;
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -14,10 +18,13 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -26,6 +33,10 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import javax.crypto.Cipher;
+import javax.crypto.CipherInputStream;
+import javax.crypto.spec.IvParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
@@ -39,6 +50,7 @@ public class NativeDownloadStoragePlugin extends Plugin {
     private static final long HLS_STORAGE_BUFFER_BYTES = 64L * 1024L * 1024L;
     private static final int SEGMENT_RETRIES = 3;
     private final Map<String, Boolean> pausedOperations = new ConcurrentHashMap<>();
+    private final Map<String, byte[]> hlsKeyCache = new ConcurrentHashMap<>();
     private final OkHttpClient client = new OkHttpClient.Builder()
         .connectTimeout(20, TimeUnit.SECONDS)
         .readTimeout(45, TimeUnit.SECONDS)
@@ -62,19 +74,30 @@ public class NativeDownloadStoragePlugin extends Plugin {
         pausedOperations.put(operationId, false);
         new Thread(() -> {
             File temp = null;
+            File transportTemp = null;
             try {
                 File target = resolveTarget(relativePath);
                 temp = new File(target.getAbsolutePath() + ".tmp");
+                transportTemp = hls ? new File(target.getAbsolutePath() + ".hls.tmp.ts") : temp;
                 File parent = target.getParentFile();
                 if (parent == null || (!parent.exists() && !parent.mkdirs())) {
                     throw new IOException("Unable to create download directory");
                 }
                 if (temp.exists() && !temp.delete()) throw new IOException("Unable to reset partial download");
+                if (transportTemp.exists() && !transportTemp.equals(temp) && !transportTemp.delete()) {
+                    throw new IOException("Unable to reset partial HLS download");
+                }
 
                 DownloadStats stats = hls
-                    ? downloadHls(operationId, url, referer, temp, maxHeight)
+                    ? downloadHls(operationId, url, referer, transportTemp, maxHeight)
                     : downloadFile(operationId, url, referer, temp);
-                if (stats.bytes <= 0 || !temp.exists()) throw new IOException("Downloaded file is empty");
+                if (stats.bytes <= 0 || !transportTemp.exists()) throw new IOException("Downloaded file is empty");
+                if (hls) {
+                    emitProgress(operationId, 99, stats.bytes, stats.bytes);
+                    transmuxToMp4(transportTemp, temp);
+                    if (!transportTemp.delete()) transportTemp.deleteOnExit();
+                }
+                if (!temp.exists() || temp.length() <= 0) throw new IOException("Final video file is empty");
                 if (target.exists() && !target.delete()) throw new IOException("Unable to replace existing download");
                 if (!temp.renameTo(target)) {
                     Files.move(temp.toPath(), target.toPath());
@@ -85,18 +108,11 @@ public class NativeDownloadStoragePlugin extends Plugin {
                 result.put("fileUrl", LocalMediaProxyPlugin.getFileUrl(target));
                 result.put("fileSize", target.length());
                 result.put("duration", stats.duration);
-                JSArray hlsSegments = new JSArray();
-                for (SegmentRange segment : stats.segments) {
-                    JSObject item = new JSObject();
-                    item.put("offset", segment.offset);
-                    item.put("size", segment.size);
-                    item.put("duration", segment.duration);
-                    hlsSegments.put(item);
-                }
-                result.put("hlsSegments", hlsSegments);
+                result.put("hlsSegments", new JSArray());
                 call.resolve(result);
             } catch (Exception error) {
                 if (temp != null && temp.exists()) temp.delete();
+                if (transportTemp != null && transportTemp.exists()) transportTemp.delete();
                 call.reject(error.getMessage() != null ? error.getMessage() : "Native download failed", error);
             } finally {
                 pausedOperations.remove(operationId);
@@ -228,6 +244,56 @@ public class NativeDownloadStoragePlugin extends Plugin {
         return new DownloadStats(written, playlist.duration, segmentRanges);
     }
 
+    private void transmuxToMp4(File source, File target) throws IOException {
+        MediaExtractor extractor = new MediaExtractor();
+        MediaMuxer muxer = null;
+        try {
+            extractor.setDataSource(source.getAbsolutePath());
+            muxer = new MediaMuxer(target.getAbsolutePath(), MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);
+            Map<Integer, Integer> trackMap = new HashMap<>();
+            int maxInputSize = 1024 * 1024;
+            for (int index = 0; index < extractor.getTrackCount(); index++) {
+                MediaFormat format = extractor.getTrackFormat(index);
+                String mime = format.getString(MediaFormat.KEY_MIME);
+                if (mime == null || (!mime.startsWith("video/") && !mime.startsWith("audio/"))) continue;
+                extractor.selectTrack(index);
+                trackMap.put(index, muxer.addTrack(format));
+                if (format.containsKey(MediaFormat.KEY_MAX_INPUT_SIZE)) {
+                    maxInputSize = Math.max(maxInputSize, format.getInteger(MediaFormat.KEY_MAX_INPUT_SIZE));
+                }
+            }
+            if (trackMap.isEmpty()) throw new IOException("Downloaded stream contains no playable audio or video tracks");
+
+            muxer.start();
+            ByteBuffer buffer = ByteBuffer.allocateDirect(maxInputSize);
+            MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
+            long firstSampleTimeUs = -1;
+            while (true) {
+                buffer.clear();
+                int size = extractor.readSampleData(buffer, 0);
+                if (size < 0) break;
+                int sourceTrack = extractor.getSampleTrackIndex();
+                Integer destinationTrack = trackMap.get(sourceTrack);
+                if (destinationTrack != null) {
+                    long sampleTimeUs = extractor.getSampleTime();
+                    if (firstSampleTimeUs < 0) firstSampleTimeUs = sampleTimeUs;
+                    info.set(0, size, Math.max(0, sampleTimeUs - firstSampleTimeUs), extractor.getSampleFlags());
+                    muxer.writeSampleData(destinationTrack, buffer, info);
+                }
+                extractor.advance();
+            }
+        } catch (RuntimeException error) {
+            throw new IOException("Unable to finalize HLS stream as MP4", error);
+        } finally {
+            extractor.release();
+            if (muxer != null) {
+                try { muxer.stop(); } catch (Exception ignored) {}
+                muxer.release();
+            }
+        }
+        if (!target.exists() || target.length() <= 0) throw new IOException("Unable to finalize HLS stream as MP4");
+    }
+
     private Future<Integer> submitHlsSegmentDownload(
         ExecutorService executor,
         String operationId,
@@ -279,7 +345,7 @@ public class NativeDownloadStoragePlugin extends Plugin {
 
     private void downloadHlsSegment(
         String operationId,
-        String segmentUrl,
+        SegmentSource segmentSource,
         String referer,
         int segmentIndex,
         int segmentCount,
@@ -289,12 +355,19 @@ public class NativeDownloadStoragePlugin extends Plugin {
         Exception lastError = null;
         for (int attempt = 1; attempt <= SEGMENT_RETRIES; attempt++) {
             waitIfPaused(operationId);
-            RequestTarget source = resolveRequestTarget(segmentUrl, referer);
+            RequestTarget source = resolveRequestTarget(segmentSource.url, referer);
             try (Response response = client.newCall(request(source.url, source.referer).build()).execute()) {
                 if (!response.isSuccessful() || response.body() == null) {
                     throw new IOException("HTTP " + response.code());
                 }
-                try (BufferedInputStream input = new BufferedInputStream(response.body().byteStream());
+                InputStream responseStream = response.body().byteStream();
+                if (segmentSource.keyUrl != null) {
+                    byte[] key = loadHlsKey(segmentSource.keyUrl, referer);
+                    Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
+                    cipher.init(Cipher.DECRYPT_MODE, new SecretKeySpec(key, "AES"), new IvParameterSpec(segmentSource.iv));
+                    responseStream = new CipherInputStream(responseStream, cipher);
+                }
+                try (BufferedInputStream input = new BufferedInputStream(responseStream);
                      BufferedOutputStream segment = new BufferedOutputStream(new FileOutputStream(segmentFile))) {
                     byte[] buffer = new byte[BUFFER_SIZE];
                     long segmentBytes = 0;
@@ -319,6 +392,21 @@ public class NativeDownloadStoragePlugin extends Plugin {
                 + (lastError != null && lastError.getMessage() != null ? ": " + lastError.getMessage() : ""),
             lastError
         );
+    }
+
+    private byte[] loadHlsKey(String keyUrl, String referer) throws IOException {
+        byte[] cached = hlsKeyCache.get(keyUrl);
+        if (cached != null) return cached;
+        RequestTarget source = resolveRequestTarget(keyUrl, referer);
+        try (Response response = client.newCall(request(source.url, source.referer).build()).execute()) {
+            if (!response.isSuccessful() || response.body() == null) {
+                throw new IOException("Failed HLS encryption key (HTTP " + response.code() + ")");
+            }
+            byte[] key = response.body().bytes();
+            if (key.length != 16) throw new IOException("Unsupported HLS encryption key length");
+            hlsKeyCache.put(keyUrl, key);
+            return key;
+        }
     }
 
     private Playlist resolveMediaPlaylist(String url, String referer, int depth, int maxHeight, long selectedBandwidth) throws Exception {
@@ -365,21 +453,44 @@ public class NativeDownloadStoragePlugin extends Plugin {
             return resolveMediaPlaylist(bestVariant, source.referer, depth + 1, maxHeight, bestBandwidth);
         }
 
-        List<String> segments = new ArrayList<>();
+        List<SegmentSource> segments = new ArrayList<>();
         List<Double> segmentDurations = new ArrayList<>();
         double duration = 0;
         double pendingDuration = 0;
+        long segmentSequence = 0;
+        String keyUrl = null;
+        byte[] explicitIv = null;
         for (String raw : lines) {
             String line = raw.trim();
-            if (line.startsWith("#EXTINF:")) {
+            if (line.startsWith("#EXT-X-MEDIA-SEQUENCE:")) {
+                try {
+                    segmentSequence = Long.parseLong(line.substring("#EXT-X-MEDIA-SEQUENCE:".length()).trim());
+                } catch (Exception ignored) {}
+            } else if (line.startsWith("#EXT-X-KEY:")) {
+                String method = attributeValue(line, "METHOD");
+                if ("NONE".equalsIgnoreCase(method)) {
+                    keyUrl = null;
+                    explicitIv = null;
+                } else if ("AES-128".equalsIgnoreCase(method)) {
+                    String uri = attributeValue(line, "URI");
+                    if (uri == null || uri.isEmpty()) throw new IOException("HLS encryption key URL is missing");
+                    keyUrl = absoluteUrl(source.url, uri);
+                    String iv = attributeValue(line, "IV");
+                    explicitIv = iv == null || iv.isEmpty() ? null : parseHlsIv(iv);
+                } else {
+                    throw new IOException("Unsupported HLS encryption method: " + method);
+                }
+            } else if (line.startsWith("#EXTINF:")) {
                 try { pendingDuration = Double.parseDouble(line.substring(8).split(",")[0]); } catch (Exception ignored) {
                     pendingDuration = 0;
                 }
             } else if (!line.isEmpty() && !line.startsWith("#")) {
-                segments.add(absoluteUrl(source.url, line));
+                byte[] iv = keyUrl == null ? null : (explicitIv != null ? explicitIv.clone() : sequenceIv(segmentSequence));
+                segments.add(new SegmentSource(absoluteUrl(source.url, line), keyUrl, iv));
                 segmentDurations.add(pendingDuration);
                 duration += pendingDuration;
                 pendingDuration = 0;
+                segmentSequence++;
             }
         }
         if (segments.isEmpty()) throw new IOException("No HLS video segments found");
@@ -387,6 +498,38 @@ public class NativeDownloadStoragePlugin extends Plugin {
             ? (long) Math.ceil((selectedBandwidth * duration) / 8d)
             : 0;
         return new Playlist(segments, segmentDurations, duration, source.referer, estimatedBytes);
+    }
+
+    private static String attributeValue(String line, String name) {
+        java.util.regex.Matcher matcher = java.util.regex.Pattern
+            .compile("(?:^|,)" + java.util.regex.Pattern.quote(name) + "=(?:\\\"([^\\\"]*)\\\"|([^,]*))", java.util.regex.Pattern.CASE_INSENSITIVE)
+            .matcher(line.substring(line.indexOf(':') + 1));
+        if (!matcher.find()) return null;
+        return matcher.group(1) != null ? matcher.group(1).trim() : matcher.group(2).trim();
+    }
+
+    private static byte[] parseHlsIv(String value) throws IOException {
+        String hex = value.trim().replaceFirst("(?i)^0x", "");
+        if (hex.length() > 32) throw new IOException("Invalid HLS encryption IV");
+        hex = String.format("%32s", hex).replace(' ', '0');
+        byte[] iv = new byte[16];
+        try {
+            for (int index = 0; index < iv.length; index++) {
+                iv[index] = (byte) Integer.parseInt(hex.substring(index * 2, index * 2 + 2), 16);
+            }
+            return iv;
+        } catch (NumberFormatException error) {
+            throw new IOException("Invalid HLS encryption IV", error);
+        }
+    }
+
+    private static byte[] sequenceIv(long sequence) {
+        byte[] iv = new byte[16];
+        for (int index = 15; index >= 8; index--) {
+            iv[index] = (byte) (sequence & 0xff);
+            sequence >>>= 8;
+        }
+        return iv;
     }
 
     private DownloadStats copy(String operationId, BufferedInputStream input, BufferedOutputStream output, long total, int start, int span) throws Exception {
@@ -502,11 +645,17 @@ public class NativeDownloadStoragePlugin extends Plugin {
         }
     }
     private static final class Playlist {
-        final List<String> segments; final List<Double> segmentDurations; final double duration; final String referer;
+        final List<SegmentSource> segments; final List<Double> segmentDurations; final double duration; final String referer;
         final long estimatedBytes;
-        Playlist(List<String> segments, List<Double> segmentDurations, double duration, String referer, long estimatedBytes) {
+        Playlist(List<SegmentSource> segments, List<Double> segmentDurations, double duration, String referer, long estimatedBytes) {
             this.segments = segments; this.segmentDurations = segmentDurations; this.duration = duration;
             this.referer = referer; this.estimatedBytes = estimatedBytes;
+        }
+    }
+    private static final class SegmentSource {
+        final String url; final String keyUrl; final byte[] iv;
+        SegmentSource(String url, String keyUrl, byte[] iv) {
+            this.url = url; this.keyUrl = keyUrl; this.iv = iv;
         }
     }
     private static final class SegmentRange {
