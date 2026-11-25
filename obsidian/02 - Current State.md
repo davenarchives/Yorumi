@@ -10,10 +10,11 @@ last_verified: 2026-10-16
 
 - Version is `4.3.0` in the root and website packages.
 - React 19 + TypeScript + Vite provide the shared UI.
-- Electron packages the UI with a bundled local Express backend.
+- Tauri packages the desktop UI with native Rust integrations.
 - Capacitor packages the UI for Android and uses native/local source adapters instead of requiring the backend.
 - Browser deployments use the remote `/api` backend.
 - Firebase integration is currently a local-user shim; `isFirebaseEnabled` is false.
+- **Architectural Revision:** Root Cargo workspace (`Cargo.toml`) with shared pure-Rust core `crates/yorumi-core` (SQLite WAL + SWR `kv_cache`, Anime/Manga/LN scrapers & AniList/TMDB clients, `LocalMediaProxy`, broadcast `DownloadManager`) powering `src-tauri/` behind the React 19 UI.
 
 ## Content Direction
 
