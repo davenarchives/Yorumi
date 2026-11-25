@@ -6,18 +6,24 @@ import { searchApi, type SearchPreviewItem } from '../api';
 interface UseNavbarSearchOptions {
     activeTab: 'anime' | 'manga' | 'ln';
     language: TitleLanguage;
+    enabled?: boolean;
 }
 
 const SEARCH_CACHE_TTL_MS = 3 * 60 * 1000;
 
-export function useNavbarSearch({ activeTab, language }: UseNavbarSearchOptions) {
+export function useNavbarSearch({ activeTab, language, enabled = true }: UseNavbarSearchOptions) {
     const [searchQuery, setSearchQuery] = useState('');
     const [searchResults, setSearchResults] = useState<SearchPreviewItem[]>([]);
     const [isSearching, setIsSearching] = useState(false);
     const searchRequestIdRef = useRef(0);
     const searchCacheRef = useRef(new Map<string, { data: SearchPreviewItem[]; timestamp: number }>());
-    const debouncedSearchQuery = useDebounce(searchQuery, 280);
+    const debouncedSearchQuery = useDebounce(searchQuery, 180);
+
     useEffect(() => {
+        if (!enabled) {
+            setIsSearching(false);
+            return;
+        }
         const performSearch = async () => {
             const term = debouncedSearchQuery.trim();
             if (term.length < 2) {
@@ -71,7 +77,7 @@ export function useNavbarSearch({ activeTab, language }: UseNavbarSearchOptions)
         };
 
         performSearch();
-    }, [activeTab, debouncedSearchQuery, language]);
+    }, [activeTab, debouncedSearchQuery, enabled, language]);
 
     return {
         searchQuery,
