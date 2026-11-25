@@ -63,6 +63,9 @@ const launchBrowser = async (): Promise<Browser> => {
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
+            '--disable-blink-features=AutomationControlled',
+            '--disable-web-security',
+            '--disable-features=IsolateOrigins,site-per-process',
         ],
     }) as Promise<Browser>;
 };
