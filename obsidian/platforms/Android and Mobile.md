@@ -12,6 +12,17 @@ source_paths:
 
 # Android and Mobile
 
+The Tauri migration has an initialized Android project in `src-tauri/gen/android`.
+
+### Live Development & Instant HMR (No Rebuilding Debug APK)
+- Run `npm run dev:tauri:android` to launch the app on a connected device/emulator in development mode.
+- Any UI or React code change in `src/` triggers instant Vite Hot Module Replacement (HMR) directly inside the running Android WebView over WebSocket without rebuilding or reinstalling the APK.
+- `scripts/setup-android-reverse.cjs` runs automatically on startup to configure `adb reverse` port forwarding for ports `5173` (Vite dev server), `5174` (HMR WebSocket), and `3001` (Backend API), eliminating Windows Firewall hurdles.
+- For USB or offline ADB development without relying on local Wi-Fi, run `npm run dev:tauri:android:reverse` (`tauri android dev --host localhost`).
+- Use `npm run build:tauri:android:debug` only when compiling a standalone debug APK with bundled offline assets.
+
+Tauri Android uses dark system bars and the mobile shell without the desktop title bar. Its external font loads without blocking the first render. Tauri mobile resolves its database and anime download directories through the app data directory rather than a desktop home directory. Its Rust HTTP client uses Rustls so Android cross-compilation does not depend on a separate OpenSSL installation.
+
 ## Runtime Model
 
 Android packages the shared React frontend with Capacitor. Supported content operations run through local TypeScript adapters and native HTTP, so end users do not need the Yorumi backend running.
@@ -32,7 +43,7 @@ The generic registry currently contains MangaKatana and NovelBin; anime-specific
 - `nativeHttp.ts` uses Capacitor HTTP for requests blocked in a WebView.
 - `localMediaProxy.ts` bridges to `LocalMediaProxyPlugin` for protected and offline media.
 - `nativeDownloadStorage.ts` bridges to `NativeDownloadStoragePlugin`, which streams Anime and Manga files into app-owned storage and writes Light Novel chapter files without routing large payloads through WebView IndexedDB.
-- Native Anime HLS downloads return exact per-segment byte ranges and durations to IndexedDB. Offline playback reconstructs a local VOD playlist from those boundaries and reads each range through `LocalMediaProxyPlugin`.
+- Native Anime HLS downloads resolve the chosen rendition, decrypt AES-128 segments when required, and transmux the completed transport stream into one MP4. Offline playback reads that MP4 through `LocalMediaProxyPlugin` with byte-range support.
 - HLS segments download through a bounded parallel prefetch window, are appended to the final temporary file in playlist order, and are removed from staging immediately after assembly. A rendition-based free-space preflight avoids beginning episodes that cannot fit locally.
 - `ImmersiveModePlugin` controls fullscreen system UI behavior.
 - `MainActivity` registers custom plugins.
@@ -53,3 +64,5 @@ For live Vite testing, run `npm run dev:mobile` and set `CAPACITOR_SERVER_URL` t
 - Test local adapters independently from the backend.
 - Java 21 is required by the Android build.
 - Android is the current mobile release target; iOS is not part of v4.2.0.
+
+- Android system Back uses React Router history on both Tauri and Capacitor; direct entries fall back to the relevant section, and anime playback closes first. Detail-page back buttons also return to the preceding route when available.
