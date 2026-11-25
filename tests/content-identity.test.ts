@@ -128,3 +128,14 @@ test('unknown-edition candidates may match by title but remain edition-addressab
     assert.equal(isConfirmedNovelMatch(['Ascendance of a Bookworm'], 'Ascendance of a Bookworm'), true);
     assert.equal(detectNovelEdition('Ascendance of a Bookworm'), 'unknown');
 });
+
+
+test('continue watching restores the provider-qualified anime identity', async () => {
+    const { buildContinueAnime } = await import('../src/utils/continueWatchingAnime');
+    const history = { animeId: '123', episodeId: '1', episodeNumber: 1, timestamp: 1, lastWatched: 1, animeTitle: 'Example', animeImage: 'banner', animePoster: 'poster' };
+    const resolved = buildContinueAnime({ ...history, anilistId: 456, malId: 123 });
+    assert.equal(getAnimeDetailsRouteId(resolved), 'al-456');
+    assert.equal(resolved.images.jpg.image_url, 'poster');
+    assert.equal(getAnimeDetailsRouteId(buildContinueAnime(history)), 'mal-123');
+    assert.equal(getAnimeDetailsRouteId(buildContinueAnime({ ...history, animeId: 'tmdb-99' })), 'tmdb-99');
+});
