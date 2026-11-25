@@ -12,6 +12,7 @@ const normalizeTitle = (title: string) =>
     String(title || '')
         .toLowerCase()
         .replace(/['\u2019]s\b/g, '')
+        .replace(/['\u2019\u2018`]/g, '')
         .replace(/\s*\(.*?\)\s*/g, ' ')
         .replace(/[^\p{L}\p{N}\s]/gu, ' ')
         .replace(/\s+/g, ' ')
@@ -47,12 +48,15 @@ function isConfirmedTitleMatch(candidateTitle: string, targetTitles: string[]): 
             .trim();
         if (!target) return false;
         if (candidate === target) return true;
+        if (target.length >= 6 && (candidate.startsWith(`${target} `) || target.startsWith(`${candidate} `))) {
+            return true;
+        }
 
-        const candidateTokens = new Set(candidate.split(' ').filter((token) => token.length > 1));
-        const targetTokens = new Set(target.split(' ').filter((token) => token.length > 1));
+        const candidateTokens = new Set(candidate.split(' ').filter((token) => token.length >= 2));
+        const targetTokens = new Set(target.split(' ').filter((token) => token.length >= 2));
         if (candidateTokens.size < 2 || targetTokens.size < 2) return false;
         const shared = [...targetTokens].filter((token) => candidateTokens.has(token)).length;
-        return shared / targetTokens.size >= 0.8 && shared / candidateTokens.size >= 0.8;
+        return shared / targetTokens.size >= 0.78 && shared / candidateTokens.size >= 0.78;
     });
 }
 
@@ -103,7 +107,7 @@ function scoreMatch(candidateTitle: string, targetTitles: string[], source: stri
 
 class LNService {
     async searchNovels(query: string) {
-        const cacheKey = `ln:v3:search:${hashKey(query)}`;
+        const cacheKey = `ln:v4:search:${hashKey(query)}`;
         const cached = await cacheGet<novelScraper.NovelSearchResult[]>(cacheKey).catch(() => null);
         if (cached) return cached;
 
@@ -123,26 +127,41 @@ class LNService {
     }
 
     async resolveNovel(titles: string[]) {
-        const cleanTitles = titles.map((t) => String(t || '').trim()).filter(Boolean);
+        const cleanTitles = [...new Set(titles.map((t) => String(t || '').trim()).filter((t) => /[A-Za-z0-9]/.test(t)))];
         if (cleanTitles.length === 0) return null;
 
-        const cacheKey = `ln:v3:resolve:${hashKey(cleanTitles.join('|'))}`;
+        const cacheKey = `ln:v4:resolve:${hashKey(cleanTitles.join('|'))}`;
         const cached = await cacheGet<string>(cacheKey).catch(() => null);
         if (cached) return cached;
 
+        // 1. Fast slug probe directly against NovelBin's AJAX chapter-list endpoint (~250ms, no /search 429)
+        const probedId = await novelScraper.probeNovelBinByTitles(cleanTitles);
+        if (probedId) {
+            cacheSet(cacheKey, probedId, DETAILS_CACHE_TTL / 1000).catch(() => {});
+            return probedId;
+        }
+
         const searchQueries: string[] = [];
-        for (const t of cleanTitles) {
-            searchQueries.push(t);
-            const cleaned = cleanTitleForSearch(t);
-            if (cleaned && !searchQueries.includes(cleaned)) {
-                searchQueries.push(cleaned);
+        const addQuery = (q: string) => {
+            const trimmed = q.trim();
+            if (trimmed.length >= 2 && !searchQueries.some((existing) => existing.toLowerCase() === trimmed.toLowerCase())) {
+                searchQueries.push(trimmed);
             }
+        };
+        for (const t of cleanTitles) {
+            addQuery(t);
+            const cleaned = cleanTitleForSearch(t);
+            if (cleaned) addQuery(cleaned);
+            const noSo = cleaned.replace(/^so\s+/i, '');
+            if (noSo !== cleaned) addQuery(noSo);
+            const colonBase = cleanTitleForSearch(t.split(/[:–—―]/)[0] || '');
+            if (colonBase.length >= 4) addQuery(colonBase);
         }
 
         let bestResult: novelScraper.NovelSearchResult | null = null;
         let maxScore = -100;
 
-        for (const query of searchQueries) {
+        for (const query of searchQueries.slice(0, 4)) {
             const results = await novelScraper.searchAllNovelSources(query);
             for (const r of results) {
                 if (!isConfirmedTitleMatch(r.title, cleanTitles)) continue;
@@ -167,10 +186,10 @@ class LNService {
     }
 
     async getNovelDetails(scraperId: string, refresh = false) {
-        const cacheKey = `ln:v3:details:${scraperId}`;
+        const cacheKey = `ln:v4:details:${scraperId}`;
         if (!refresh) {
             const cached = await cacheGet<novelScraper.NovelDetails>(cacheKey).catch(() => null);
-            if (cached) {
+            if (cached && Array.isArray(cached.chapters) && cached.chapters.length > 0) {
                 // Invalidate stale caches from old bug where Arc 1-1 and Arc 5-1 were sorted together
                 const chs = cached.chapters || [];
                 const isStaleJumbled = chs.length > 5 &&
@@ -196,7 +215,7 @@ class LNService {
             details = await novelScraper.getNovelBinDetails(scraperId);
         }
 
-        if (details) {
+        if (details && Array.isArray(details.chapters) && details.chapters.length > 0) {
             cacheSet(cacheKey, details, DETAILS_CACHE_TTL / 1000).catch(() => {});
         }
         return details;
