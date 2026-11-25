@@ -2,296 +2,266 @@
   <img src="./public/yorumi-icon.png" alt="Yorumi" width="100" />
 
   # Y O R U M I &nbsp; ヨルミ
-  
-  **A N I M E &nbsp; & &nbsp; M A N G A &nbsp; S T R E A M I N G**
-  
-  ---
 
-  <br>
+  **A N I M E &nbsp; · &nbsp; M A N G A &nbsp; · &nbsp; L I G H T &nbsp; N O V E L S**
 
-  <a href="https://github.com/davenarchives/Yorumi/releases"><img src="https://img.shields.io/github/downloads/davenarchives/Yorumi/total?style=for-the-badge&logo=data:image/png;base64,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&label=DOWNLOADS" alt="Downloads" /></a>
-  <img src="https://img.shields.io/badge/REACT-20232A?style=for-the-badge&logo=react&logoColor=61DAFB" alt="React" />
+  *Your all-in-one cross-platform companion for Windows, macOS, Linux, and Android.*
+
+  <br />
+
+  <a href="https://yorumi.vercel.app"><img src="https://img.shields.io/badge/WEBSITE-yorumi.vercel.app-0596FF?style=for-the-badge&logo=vercel&logoColor=white" alt="Website" /></a>
+  <a href="https://github.com/davenarchives/Yorumi/releases"><img src="https://img.shields.io/github/v/release/davenarchives/Yorumi?style=for-the-badge&color=22C55E" alt="Latest Release" /></a>
+  <a href="https://github.com/davenarchives/Yorumi/releases"><img src="https://img.shields.io/github/downloads/davenarchives/Yorumi/total?style=for-the-badge&color=0EA5E9" alt="Total Downloads" /></a>
+  <a href="https://discord.gg/3xzCQvfanb"><img src="https://img.shields.io/badge/DISCORD-Join%20Community-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord" /></a>
+
+  <br />
+
+  <img src="https://img.shields.io/badge/REACT%2019-20232A?style=for-the-badge&logo=react&logoColor=61DAFB" alt="React 19" />
   <img src="https://img.shields.io/badge/TYPESCRIPT-3178C6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript" />
+  <img src="https://img.shields.io/badge/TAURI%20V2-24C8DB?style=for-the-badge&logo=tauri&logoColor=white" alt="Tauri v2" />
+  <img src="https://img.shields.io/badge/ANDROID%20APK-3DDC84?style=for-the-badge&logo=android&logoColor=black" alt="Android" />
   <img src="https://img.shields.io/badge/EXPRESS.JS-000000?style=for-the-badge&logo=express&logoColor=white" alt="Express" />
-  <img src="https://img.shields.io/badge/REDIS-DC382D?style=for-the-badge&logo=redis&logoColor=white" alt="Redis" />
-  <img src="https://img.shields.io/badge/FIREBASE-FFCA28?style=for-the-badge&logo=firebase&logoColor=white" alt="Firebase" />
-  <img src="https://img.shields.io/badge/FANART.TV-3B5998?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cGF0aCBkPSJNOCA0TDEwIDhMOCAxMkw2IDhaIiBmaWxsPSJ3aGl0ZSIvPjwvc3ZnPg==&logoColor=white" alt="Fanart.tv" />
+  <img src="https://img.shields.io/badge/NEON%20POSTGRES-00E599?style=for-the-badge&logo=postgresql&logoColor=black" alt="Neon Postgres" />
 </div>
 
-<br>
-
-> A modern, feature-rich web platform for streaming anime and reading manga with a premium UI/UX experience.
-
-<br>
+<br />
 
 > [!CAUTION]
-> ## ⚠️ EDUCATIONAL PURPOSE ONLY - HEAVY DISCLAIMER
-> 
-> **PLEASE READ CAREFULLY BEFORE USING OR CONTRIBUTING:**
+> ## ⚠️ Educational Purpose Only — Disclaimer
 >
-> 1.  **No Content Ownership**: This project does **NOT** host, store, or distribute any copyrighted files (videos, images, or audio). All content is scraped in real-time from third-party publicly available sources (e.g., AnimePahe, MangaKatana, AniList).
-> 2.  **Educational Use**: This source code is strictly for **educational and research purposes**. It demonstrates modern web development techniques, scraping algorithms, and application architecture.
-> 3.  **Legal Liability**: The developers and contributors of this repository assume **NO LIABILITY** for any misuse of this software. Users are solely responsible for ensuring their usage complies with local laws and the Terms of Service of the source websites.
-> 4.  **No Commercial Use**: This project is **NOT** for sale and should not be used for any commercial activities.
+> **Please read carefully before using or contributing:**
+>
+> 1. **No Content Ownership**: Yorumi does **NOT** host, store, or distribute any copyrighted media files (videos, images, or text). All content is fetched in real time from publicly available third-party sources.
+> 2. **Educational Use**: This repository is strictly for **educational and research purposes** demonstrating cross-platform desktop/mobile app architecture, streaming players, and reader interfaces.
+> 3. **Legal Liability**: The developers and contributors assume **no liability** for any misuse of this software. Users are solely responsible for complying with local laws and third-party Terms of Service.
+> 4. **No Commercial Use**: This project is free, open-source, and not for sale.
 
-<br>
+<br />
 
-![Yorumi Banner](./screenshots/animepage.png)
+![Yorumi Desktop Spotlight](./website/public/previews/desktop/anime-spotlight.jpg)
 
 ## ✨ Features
 
-- **🎬 Unified Streaming Experience**: Seamlessly watch anime with HLS support and auto-quality selection.
-- **📚 Integrated Manga Reader**: High-performance manga reader with vertical/horizontal modes and infinite scrolling.
-- **⚡ Advanced Scraper Engine**: 
-    - Real-time data fetching from multiple sources.
-    - **Fuzzy Matching**: Intelligent title matching using `fuzzball` to bridge metadata differences between AniList and content sources.
-    - **Cloudflare Bypass**: Integrated Puppeteer strategies to handle protected sources.
-- **🚀 Performance First**: 
-    - **Redis Caching**: Server-side caching for API responses, search results, and stream links.
-    - **Lazy Loading**: Progressive image loading and component code-splitting.
-- **🎨 Premium UI/UX**: 
-    - Glassmorphic design system using **Tailwind CSS**.
-    - Smooth animations with **Framer Motion** (implied via UI quality).
-    - Responsive layout for desktop and mobile web.
-- **☁️ Cloud Sync**: **Firebase** integration for syncing user progress, bookmarks, and settings across devices.
+- **🎬 HD Anime Streaming**: Watch seasonal simulcasts and classics with HLS playback, sub/dub switching, quality selection, auto-tracking, intro/outro controls, and 2× speed long-press gestures.
+- **🔥 Explore Trailer Feed**: TikTok-style vertical anime trailer discovery with personalized recommendations, full-screen tap play/pause, double-tap to like, and long-press for 2× speed.
+- **📚 Manga & Manhwa Reader**: Browse trending & Top 100 manga/manhwa with full chapter search, vertical strip or paged reading modes, zoom controls, and fast preloading.
+- **📖 Light & Web Novel Reader**: Read Japanese light novels alongside Korean and Chinese web novels with customizable typography, font sizing, spacing, and dark themes.
+- **📥 Offline Downloads**: Download anime episodes, manga chapters, and light novel chapters directly to your computer or Android phone to enjoy without Wi-Fi.
+- **☁️ Discord Cloud Sync**: Sign in with Discord to sync your continue-watching progress, episode/chapter history, custom library categories, favorites, and watch time seamlessly between PC and Android (powered by Neon Postgres).
+- **📊 Personal Library & Stats**: Track your activity heatmap, daily streaks, accurate watch hours, top genres, and custom lists — plus public profiles and Global Chat.
+- **💻 True Cross-Platform**:
+  - **Desktop**: Native **Tauri v2** app for Windows (`.exe`), macOS (`.dmg`), and Linux (`.AppImage`).
+  - **Mobile**: Native **Capacitor** Android app (`.apk`) with immersive landscape playback and native HTTP/download support.
+  - **Terminal**: Standalone **[Yorumi CLI](./yorumi-cli)** (`yorumi-cli`) for watching anime directly from your terminal with zero backend setup.
 
 ## 📸 Screenshots
 
-### Desktop View
+### Desktop (Windows / macOS / Linux)
 <table>
   <tr>
     <td width="50%">
-      <img src="./screenshots/animepage.png" alt="Anime Page" width="100%" />
-      <p align="center"><b>Anime Discovery</b></p>
+      <img src="./website/public/previews/desktop/anime-browse.jpg" alt="Browse Anime" width="100%" />
+      <p align="center"><b>Browse Anime</b></p>
     </td>
     <td width="50%">
-      <img src="./screenshots/animedetails.png" alt="Anime Details" width="100%" />
-      <p align="center"><b>Anime Details</b></p>
+      <img src="./website/public/previews/desktop/anime-episodes.jpg" alt="Episodes & Downloads" width="100%" />
+      <p align="center"><b>Episodes & Offline Downloads</b></p>
     </td>
   </tr>
   <tr>
     <td>
-      <img src="./screenshots/mangapage.png" alt="Manga Page" width="100%" />
+      <img src="./website/public/previews/desktop/anime-player.jpg" alt="HD Video Player" width="100%" />
+      <p align="center"><b>HD Video Player</b></p>
+    </td>
+    <td>
+      <img src="./website/public/previews/desktop/manga-spotlight.jpg" alt="Manga Discovery" width="100%" />
       <p align="center"><b>Manga Discovery</b></p>
     </td>
+  </tr>
+  <tr>
     <td>
-      <img src="./screenshots/mangadetails.png" alt="Manga Details" width="100%" />
-      <p align="center"><b>Manga Details</b></p>
+      <img src="./website/public/previews/desktop/manga-reader.jpg" alt="Manga Reader" width="100%" />
+      <p align="center"><b>Manga Reader</b></p>
+    </td>
+    <td>
+      <img src="./website/public/previews/desktop/ln-spotlight.jpg" alt="Light Novels" width="100%" />
+      <p align="center"><b>Light & Web Novels</b></p>
     </td>
   </tr>
   <tr>
     <td>
-      <img src="./screenshots/animeplayer.png" alt="Anime Player" width="100%" />
-      <p align="center"><b>Video Player</b></p>
+      <img src="./website/public/previews/desktop/ln-reader.jpg" alt="Light Novel Reader" width="100%" />
+      <p align="center"><b>Light Novel Reader</b></p>
     </td>
     <td>
-      <img src="./screenshots/mangareader.png" alt="Manga Reader" width="100%" />
-      <p align="center"><b>Manga Reader</b></p>
-    </td>
-  </tr>
-   <tr>
-    <td colspan="2">
-      <img src="./screenshots/profilepage.png" alt="User Profile" width="100%" />
-      <p align="center"><b>User Profile</b></p>
+      <img src="./website/public/previews/desktop/library.jpg" alt="Library & Activity Stats" width="100%" />
+      <p align="center"><b>Library, Activity Heatmap & Watch Stats</b></p>
     </td>
   </tr>
 </table>
 
-### Mobile Responsiveness
+### Mobile (Android)
 <table>
   <tr>
-    <td width="33%"><img src="./screenshots/mobileresponsiveness.png" alt="Mobile Home" width="100%" /></td>
-    <td width="33%"><img src="./screenshots/mobileresponsiveness2.png" alt="Mobile Details" width="100%" /></td>
-    <td width="33%"><img src="./screenshots/mobileresponsiveness3.png" alt="Mobile Player" width="100%" /></td>
+    <td width="25%">
+      <img src="./website/public/shots/anime-home.jpg" alt="Mobile Anime Home" width="100%" />
+      <p align="center"><b>Anime Home</b></p>
+    </td>
+    <td width="25%">
+      <img src="./website/public/shots/explore.jpg" alt="Mobile Explore Feed" width="100%" />
+      <p align="center"><b>Explore Feed</b></p>
+    </td>
+    <td width="25%">
+      <img src="./website/public/shots/manga-reader.jpg" alt="Mobile Manga Reader" width="100%" />
+      <p align="center"><b>Manga Reader</b></p>
+    </td>
+    <td width="25%">
+      <img src="./website/public/shots/library.jpg" alt="Mobile Library" width="100%" />
+      <p align="center"><b>Library & Stats</b></p>
+    </td>
   </tr>
 </table>
 
 ## 🏗️ Architecture
 
-Yorumi uses a client-server web architecture.
-
 ```mermaid
 graph TD
-    User[End User] --> Client[Web Client]
-    
-    subgraph Frontend [Frontend Layer]
-        Client
-        React[React 19]
-        State[Context API + Hooks]
-    end
-    
-    subgraph Backend [Backend Layer]
-        API[Express API]
-        Scraper[Scraper Engine]
-        Cache[Redis / Upstash]
-    end
-    
-    subgraph External [External Services]
-        AniList[AniList API]
-        Fanart[Fanart.tv API]
-        Sources[AnimePahe / MangaKatana]
-        Firebase[Firebase Auth & DB]
+    subgraph Clients [Client Targets]
+        Desktop[Tauri v2 Desktop<br/>Windows / macOS / Linux]
+        Android[Capacitor Android APK]
+        Web[Web App]
     end
 
-    Client -- HTTP/REST --> API
-    Client -- Auth --> Firebase
-    
-    API -- GraphQL --> AniList
-    API -- REST --> Fanart
-    API -- Caching --> Cache
-    API -- Scraping --> Scraper
-    
-    Scraper -- Puppeteer/Cheerio --> Sources
+    subgraph Frontend [Shared React 19 + TypeScript UI]
+        UI[Pages, Features & Hooks]
+        Sync[CloudSyncService]
+        Local[(LocalStorage & Offline Media)]
+    end
+
+    subgraph Backend [Backend API & Scrapers]
+        API[Express + TypeScript API]
+        Scraper[Anime / Manga / LN Scrapers]
+        Cache[Upstash Redis Cache]
+        DB[(Neon Postgres)]
+    end
+
+    subgraph External [Metadata & Auth]
+        AniList[AniList GraphQL]
+        TMDB[TMDB Artwork & Logos]
+        Discord[Discord OAuth & Chat Bridge]
+    end
+
+    Desktop --> UI
+    Android --> UI
+    Web --> UI
+
+    UI --> Local
+    UI --> Sync
+    UI -- REST --> API
+    Sync -- Bearer Token --> API
+
+    API --> Scraper
+    API --> Cache
+    API --> DB
+    API --> AniList
+    API --> TMDB
+    API --> Discord
 ```
 
-### 🛠️ Tech Stack
+## 🛠️ Tech Stack
 
-#### **Frontend (Web)**
-- **Core**: React 19, TypeScript
-- **Build Tool**: Vite (Rolldown)
-- **Styling**: Tailwind CSS, PostCSS
-- **State Management**: React Hooks & Context
-- **Routing**: React Router v7
-- **Video**: HLS.js
-- **Icons**: Lucide React
-
-#### **Backend (API & Scraper)**
-- **Runtime**: Node.js
-- **Framework**: Express.js
-- **Database / Cache**: Redis (@upstash/redis) for high-performance caching.
-- **Scraping**: 
-    - **Puppeteer Core**: Headless browser automation for dynamic sites.
-    - **Cheerio**: Lightweight HTML parsing for static content.
-    - **Fuzzball**: Fuzzy logic string matching for reliable search results.
-- **API Clients**: 
-    - GraphQL Request (for AniList)
-    - Axios (for Fanart.tv and HTTP requests)
-- **External APIs**:
-    - **Fanart.tv**: Anime title logo artwork
-    - **AniList**: Anime/manga metadata
-    - **Fribb/anime-lists**: AniList to TVDB ID mapping
-
-#### **DevOps & Tools**
-- **Linting**: ESLint, Prettier
-- **Package Manager**: npm
-- **Bundler**: Vite (Rolldown)
+- **Frontend**: React 19, TypeScript, Vite (Rolldown), Tailwind CSS, Framer Motion, React Router v7, HLS.js, Embla Carousel, Lucide React
+- **Desktop**: Tauri v2 (Rust), native window chrome & Discord Rich Presence
+- **Mobile**: Capacitor 8 (Android), native HTTP/proxy bridge, immersive orientation & status/nav bar controls
+- **Backend**: Node.js, Express 5, TypeScript, Neon Postgres (`@neondatabase/serverless`), Upstash Redis, Cheerio, Puppeteer Core, Fuzzball
+- **Metadata & Media**: AniList GraphQL API, TMDB API (backdrops, episode stills, official logos), Discord OAuth
 
 ## 🚀 Getting Started
 
 ### Prerequisites
-- **Node.js** (v18 or higher recommended)
-- **npm** or **yarn**
-- **Redis Instance** (Optional but recommended for performance. Local or Upstash)
+- **Node.js 18+** and **npm**
+- **Rust toolchain** (only required for building the Tauri desktop app)
+- **Android Studio / JDK 17+** (only required for building the Android APK)
 
-### Installation
-
-1.  **Clone the Repository**
-    ```bash
-    git clone https://github.com/davenarchives/yorumi.git
-    cd yorumi
-    ```
-
-2.  **Install Root Dependencies**
-    ```bash
-    npm install
-    ```
-
-3.  **Install Backend Dependencies**
-    ```bash
-    cd backend
-    npm install
-    cd ..
-    ```
-
-### Running Locally (Web Mode)
-
-To run the application as a standard web app (Client + Server):
-
-1.  **Start the Backend**
-    ```bash
-    cd backend
-    npm run dev
-    ```
-    *Server runs on `http://localhost:3001`*
-
-2.  **Start the Frontend** (in a new terminal)
-    ```bash
-    npm run dev
-    ```
-    *Client runs on `http://localhost:5173`*
-
-
-
-
-### Running the Anime Download CLI
-
-The backend package also ships a small CLI for downloading anime episodes from the scraper source.
+### 1. Clone & Install
 
 ```bash
-cd backend
+git clone https://github.com/davenarchives/Yorumi.git
+cd Yorumi
+npm install
+npm install --prefix backend
+```
+
+### 2. Run Locally
+
+```bash
+# Web mode (Backend on :3001 + Vite frontend on :5173)
+npm run dev
+
+# Native Desktop app (Tauri v2)
+npm run dev:tauri
+
+# Landing Website & Docs
+npm install --prefix website
+npm run dev --prefix website
+```
+
+### 3. Build for Production
+
+```bash
+# Bundle backend + build frontend
 npm run build
-node dist/cli.js --help
+
+# Build native Desktop installer (.exe / .dmg / .AppImage)
+npm run build:tauri
+
+# Build Android APK (Debug / Release)
+npm run android:build:debug
+npm run android:build:release
+
+# Build Landing Website
+npm run build --prefix website
 ```
 
-Download an episode:
+### 4. Standalone Terminal CLI (`yorumi-cli`)
 
-```bash
-node dist/cli.js download anime "Frieren" --episode 1
-node dist/cli.js download-anime "One Piece" -e 1089 --quality 720 --dub
-```
-
-For local development without building first, use:
-
-```bash
-cd backend
-npm run cli -- download anime "Frieren" -e 1
-```
-
-CLI options:
-
-- `download anime <title>` or `download-anime <title>` searches and downloads an anime episode.
-- `-d, --download <title>` keeps the legacy flag-based form.
-- `-e, --episode <number>` selects the episode number. Defaults to `1`.
-- `-o, --output <dir>` sets the download folder. Defaults to `downloads`.
-- `-q, --quality <height>` prefers a stream height such as `1080` or `720`. Defaults to `best`.
-- `--dub` prefers dubbed audio. `--sub` prefers subbed audio.
-- `-y, --yes` skips prompts and overwrites an existing output file.
+Want to watch anime straight from your terminal without running any backend? Check out [yorumi-cli](./yorumi-cli) or the [CLI docs](https://yorumi-cli.vercel.app/docs.html).
 
 ## 📁 Project Structure
 
-```bash
-yorumi/
-├── backend/                 # Express API & Scraper Server
-│   ├── src/
-│   │   ├── api/             # REST API Controllers (AniList, Manga, etc.)
-│   │   ├── scraper/         # Scraping Logic (AnimePahe, MangaKatana)
-│   │   └── index.ts         # Server Entry Point
-├── src/                     # React Frontend Code
-│   ├── components/          # Reusable UI Components
-│   ├── features/            # Feature-based Modules (Anime, Manga, Player)
-│   ├── hooks/               # Custom React Hooks
-│   ├── pages/               # Page Views
-│   ├── services/            # Frontend API Services
-│   ├── types/               # TypeScript Definitions
-│   └── App.tsx              # Main App Component
-├── public/                  # Static Assets
-└── package.json             # Root Config & Scripts
+```text
+Yorumi/
+├── src/                  # Shared React 19 + TypeScript frontend
+│   ├── components/       # Layout, modals, and shared UI
+│   ├── features/         # Anime, Manga, LN, Explore, Player, Library
+│   ├── hooks/            # State, sync, history, and download hooks
+│   ├── pages/            # Route-level views
+│   ├── platform/         # Tauri & Capacitor native bridges
+│   └── services/         # API clients, cloud sync, TMDB, AniList
+├── backend/              # Express API, scrapers, and Neon sync routes
+├── src-tauri/            # Tauri v2 desktop wrapper (Rust)
+├── android/              # Capacitor Android project
+├── website/              # Landing page & documentation site
+├── yorumi-cli/           # Standalone anime streaming CLI
+└── package.json          # Workspace scripts & dependencies
 ```
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please follow these steps:
+Contributions are welcome!
 
-1.  Fork the repository.
-2.  Create a feature branch: `git checkout -b feature/amazing-feature`.
-3.  Commit your changes: `git commit -m 'feat: Add amazing feature'`.
-4.  Push to the branch: `git push origin feature/amazing-feature`.
-5.  Open a Pull Request.
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feat/amazing-feature`)
+3. Commit your changes (`git commit -m "feat: add amazing feature"`)
+4. Push to the branch (`git push origin feat/amazing-feature`)
+5. Open a Pull Request
 
 ## 📄 License
 
-Distributed under the MIT License. See `LICENSE` for more information.
+Distributed under the MIT License. See [LICENSE](./LICENSE) for more information.
 
 ---
 
-**Made with ❤️ by Daven**
+<div align="center">
+  Made with ❤️ by <a href="https://github.com/davenarchives"><b>davenarchives</b></a> · <a href="https://ko-fi.com/yorumii">Support on Ko-fi</a>
+</div>
