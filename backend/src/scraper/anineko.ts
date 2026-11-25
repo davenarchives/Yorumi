@@ -2,6 +2,7 @@ import axios from 'axios';
 import type { VideoSource, StreamResponse, SubtitleTrack } from '../api/anime/video-sources.js';
 import { streambertAnimeService } from '../api/anime/anime.service.js';
 import { anilistService } from '../api/anilist/anilist.service.js';
+import { extractExplicitSeasonNumber } from './hianime.js';
 
 const BASE = 'https://anineko.to';
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
@@ -92,10 +93,16 @@ export class AniNekoScraper implements VideoSource {
                 if (results.length > 0) {
                     const normalizeStr = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
                     const expectedNorm = normalizeStr(searchTitle);
+                    const requestedSeason = extractExplicitSeasonNumber(searchTitle) || 1;
 
-                    let bestMatch = results[0].slug;
+                    let bestMatch = '';
                     let bestScore = -999;
                     for (const r of results) {
+                        const candidateSeason = extractExplicitSeasonNumber(r.text)
+                            || extractExplicitSeasonNumber(r.slug.replace(/-/g, ' '))
+                            || 1;
+                        if (candidateSeason !== requestedSeason) continue;
+
                         let score = 0;
                         const tNorm = normalizeStr(r.text);
                         const slugNorm = normalizeStr(r.slug);
@@ -107,8 +114,10 @@ export class AniNekoScraper implements VideoSource {
                             bestMatch = r.slug;
                         }
                     }
-                    seriesSlug = bestMatch;
-                    break;
+                    if (bestMatch && bestScore > 0) {
+                        seriesSlug = bestMatch;
+                        break;
+                    }
                 }
             }
 
