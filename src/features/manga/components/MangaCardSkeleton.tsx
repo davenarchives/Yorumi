@@ -1,28 +1,21 @@
-import Skeleton from '../../../components/ui/Skeleton';
+import React from 'react';
 
 export default function MangaCardSkeleton() {
     return (
-        <div className="animate-in fade-in duration-300 relative z-0">
-            {/* Image Container Skeleton */}
-            <div className="relative mb-1.5 aspect-[2/3] overflow-hidden rounded-lg md:mb-3">
-                <Skeleton className="w-full h-full absolute inset-0 rounded-none" />
-                
-                {/* Default Badges Skeletons */}
-                {/* Top Right: Star Rating Skeleton */}
-                <div className="absolute top-2 right-2 z-10">
-                    <Skeleton className="w-[45px] h-[24px] rounded" />
-                </div>
+        <div className="relative animate-pulse select-none">
+            {/* Portrait on mobile (2:3), Landscape on desktop (16:9) */}
+            <div className="relative aspect-[2/3] md:aspect-video w-full overflow-hidden rounded-[16px] bg-white/[0.06] border border-white/5" />
 
-                {/* Bottom Left: the live card renders only its media type here. */}
-                <div className="absolute bottom-2 left-2 flex gap-1.5 z-10">
-                    <Skeleton className="h-5 w-14 rounded md:h-6 md:w-[60px]" />
+            {/* Title & Metadata below matching ReadingCardMetadata */}
+            <div className="mt-2.5 pr-1">
+                <div className="h-4 w-4/5 rounded bg-white/10" />
+                <div className="mt-2 flex items-center gap-2">
+                    <div className="h-3.5 w-10 rounded bg-white/10" />
+                    <div className="h-1.5 w-1.5 rounded-full bg-white/20" />
+                    <div className="h-3.5 w-12 rounded bg-white/10" />
+                    <div className="h-1.5 w-1.5 rounded-full bg-white/20" />
+                    <div className="h-3.5 w-10 rounded bg-white/10" />
                 </div>
-            </div>
-            
-            {/* Title Skeleton Below Card */}
-            <div className="space-y-1 mt-1">
-                <Skeleton className="h-4 w-[90%] rounded" />
-                <Skeleton className="h-4 w-[60%] rounded" />
             </div>
         </div>
     );
