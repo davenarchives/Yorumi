@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { Manga, MangaChapter, MangaPage } from '../types/manga';
 import { mangaService } from '../services/mangaService';
+import { enhanceMangaPosterMeta, isHighResAniListPoster, peekEnhancedMangaMeta } from '../utils/mangaPosterCache';
 import { mangaDownloadService } from '../services/mangaDownloadService';
 import { token_set_ratio, token_sort_ratio } from 'fuzzball';
 import { storage } from '../utils/storage';
 import { useReadList } from './useReadList';
-import { API_BASE } from '../config/api';
+import { API_BASE, USES_LOCAL_SOURCES } from '../config/api';
 
 export type MangaViewMode = 'default' | 'popular_manhwa' | 'all_time_popular' | 'top_100';
 
@@ -175,8 +176,8 @@ export function useManga() {
             } else {
                 // 1. CHECK PERSISTENT MAPPING FIRST
                 try {
-                    const mapRes = await fetch(`${API_BASE}/mapping/${manga.mal_id}`);
-                    if (mapRes.ok) {
+                    const mapRes = USES_LOCAL_SOURCES ? null : await fetch(`${API_BASE}/mapping/${manga.mal_id}`);
+                    if (mapRes && mapRes.ok) {
                         const mapData = await mapRes.json();
                         if (mapData && mapData.id) {
                             console.log(`[useManga] Found persistent mapping: ${manga.mal_id} -> ${mapData.id}`);
@@ -192,7 +193,7 @@ export function useManga() {
             // Fast path: let backend resolve AniList ID to chapter list first.
             if (!mangakatanaId && typeof manga.mal_id === 'number') {
                 try {
-                    const unified = await mangaService.getUnifiedMangaDetails(manga.mal_id);
+                    const unified = await mangaService.getUnifiedMangaDetails(manga.mal_id, manga);
                     const resolvedChapters = getResolvedChapters(unified);
                     if (unified && resolvedChapters.length > 0) {
                         const cacheKey = `anilist:${manga.mal_id}`;
@@ -206,7 +207,7 @@ export function useManga() {
                 }
             }
 
-            if (!mangakatanaId) {
+            if (!mangakatanaId && !USES_LOCAL_SOURCES) {
                 // Search scraper for chapters using title variations + synonyms
                 // STRATEGY: Prioritize English titles since MangaKatana is English
 
@@ -706,6 +707,7 @@ export function useManga() {
 
     const fetchMangaDetails = useCallback(async (id: string | number, initialManga?: Manga | null) => {
         setMangaLoading(true);
+        setMangaChaptersLoading(true);
         setMangaChapters([]);
         setChapterPages([]);
         setCurrentMangaChapter(null);
@@ -727,25 +729,59 @@ export function useManga() {
                     setMangaChaptersLoading(false); // Render UI immediately
                 }
 
-                // Start chapter resolution immediately from route/cached manga so
-                // the details page does not wait for the full unified fetch first.
-                handleMangaClick(seedManga).catch((warmErr) => {
-                    console.warn('Early chapter warmup failed:', warmErr);
-                });
             } else {
                 setSelectedManga(null);
             }
 
             
 
-            const data = await mangaService.getUnifiedMangaDetails(id);
+            const data = await mangaService.getUnifiedMangaDetails(id, seedManga);
             if (!data || !data.mal_id) {
                 console.error('Manga details not found for ID:', id);
                 setSelectedManga(null);
                 return;
             }
 
-            setSelectedManga(data);
+            const seedCover = initialManga?.images?.jpg?.large_image_url || initialManga?.images?.jpg?.image_url;
+            const dataCover = data.images?.jpg?.large_image_url || data.images?.jpg?.image_url;
+            let mergedData: Manga = data;
+
+            if (isHighResAniListPoster(seedCover) && !isHighResAniListPoster(dataCover)) {
+                mergedData = {
+                    ...data,
+                    images: { jpg: { large_image_url: seedCover!, image_url: seedCover! } },
+                    bannerImage: initialManga?.bannerImage || data.bannerImage,
+                    score: data.score && data.score > 0 ? data.score : (initialManga?.score || data.score),
+                    countryOfOrigin: data.countryOfOrigin || initialManga?.countryOfOrigin,
+                };
+            } else if (!isHighResAniListPoster(dataCover)) {
+                const cachedMeta = peekEnhancedMangaMeta(data.title || initialManga?.title);
+                if (cachedMeta?.coverUrl) {
+                    mergedData = {
+                        ...data,
+                        images: { jpg: { large_image_url: cachedMeta.coverUrl, image_url: cachedMeta.coverUrl } },
+                        bannerImage: cachedMeta.bannerUrl || data.bannerImage,
+                        score: data.score && data.score > 0 ? data.score : (cachedMeta.score || data.score),
+                        countryOfOrigin: data.countryOfOrigin || cachedMeta.countryOfOrigin,
+                    };
+                } else {
+                    void enhanceMangaPosterMeta(data.title || initialManga?.title).then((meta) => {
+                        if (!meta?.coverUrl) return;
+                        setSelectedManga((prev) => {
+                            if (!prev || String(prev.id || prev.mal_id) !== String(data.id || data.mal_id)) return prev;
+                            return {
+                                ...prev,
+                                images: { jpg: { large_image_url: meta.coverUrl!, image_url: meta.coverUrl! } },
+                                bannerImage: meta.bannerUrl || prev.bannerImage,
+                                score: prev.score && prev.score > 0 ? prev.score : (meta.score || prev.score),
+                                countryOfOrigin: prev.countryOfOrigin || meta.countryOfOrigin,
+                            };
+                        });
+                    });
+                }
+            }
+
+            setSelectedManga(mergedData);
 
             const hydratedChapters = getResolvedChapters(data);
             if (hydratedChapters.length > 0) {
@@ -785,11 +821,14 @@ export function useManga() {
                 return;
             }
 
-            await handleMangaClick(data);
+            if (!USES_LOCAL_SOURCES) {
+                await handleMangaClick(data);
+            }
         } catch (err) {
             console.error('Failed to fetch manga details', err);
         } finally {
             setMangaLoading(false);
+            setMangaChaptersLoading(false);
         }
     }, [handleMangaClick]); // Depend on handleMangaClick
 
