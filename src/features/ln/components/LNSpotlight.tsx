@@ -1,385 +1,72 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import useEmblaCarousel from 'embla-carousel-react';
-import Autoplay from 'embla-carousel-autoplay';
+import { useEffect, useMemo, useState } from 'react';
 import { lnService } from '../../../services/lnService';
 import type { LightNovel } from '../../../types/ln';
-import AnimeLogoImage from '../../../components/anime/AnimeLogoImage';
 import { useTitleLanguage } from '../../../context/TitleLanguageContext';
 import { getDisplayTitle } from '../../../utils/titleLanguage';
-import { AnimatePresence, m } from 'framer-motion';
-import CCIcon from '../../../components/ui/CCIcon';
 import SpotlightSkeleton from '../../anime/components/SpotlightSkeleton';
+import ReadingSpotlight from '../../reading/components/ReadingSpotlight';
 
 interface LNSpotlightProps {
     onLNClick: (lnId: string, autoRead?: boolean, lnData?: LightNovel) => void;
+    onBackdropChange?: (url: string) => void;
 }
 
-const mergeLightNovelDetails = (seed: LightNovel, details?: LightNovel): LightNovel => {
-    if (!details) return seed;
-    return {
-        ...seed,
-        ...details,
-        id: seed.id || details.id,
-        title: details.title || seed.title,
-        title_english: details.title_english || seed.title_english,
-        title_romaji: details.title_romaji || seed.title_romaji,
-        images: details.images || seed.images,
-        synopsis: details.synopsis || seed.synopsis,
-        author: details.author && details.author !== 'Unknown Author' ? details.author : seed.author,
-        chapters: details.chapters || seed.chapters,
-        volumes: details.volumes || seed.volumes,
-        genres: details.genres?.length ? details.genres : seed.genres,
-    };
-};
-
-// 3D Tilt Component for Spotlight Cover
-const SpotlightCover: React.FC<{ thumbnail: string; title: string }> = ({ thumbnail, title }) => {
-    const cardRef = React.useRef<HTMLDivElement>(null);
-    const [rotation, setRotation] = React.useState({ x: 0, y: 0 });
-    const [glare, setGlare] = React.useState({ x: 50, y: 50, opacity: 0 });
-    const [isHovered, setIsHovered] = React.useState(false);
-
-    const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-        if (!cardRef.current) return;
-        const rect = cardRef.current.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
-        const centerX = rect.width / 2;
-        const centerY = rect.height / 2;
-
-        const rotateX = ((y - centerY) / centerY) * -10;
-        const rotateY = ((x - centerX) / centerX) * 10;
-
-        setRotation({ x: rotateX, y: rotateY });
-        setGlare({
-            x: (x / rect.width) * 100,
-            y: (y / rect.height) * 100,
-            opacity: 1,
-        });
-    };
-
-    const handleMouseLeave = () => {
-        setRotation({ x: 0, y: 0 });
-        setGlare((prev) => ({ ...prev, opacity: 0 }));
-        setIsHovered(false);
-    };
-
-    return (
-        <div
-            ref={cardRef}
-            className={`hidden md:block w-56 lg:w-64 shrink-0 rounded-xl relative perspective-1000 transition-transform duration-500 ease-out ${
-                isHovered ? 'rotate-0' : 'rotate-3'
-            }`}
-            style={{ perspective: '1000px' }}
-            onMouseEnter={(e) => {
-                setIsHovered(true);
-                handleMouseMove(e);
-            }}
-            onMouseLeave={handleMouseLeave}
-            onMouseMove={handleMouseMove}
-        >
-            <div
-                className="w-full h-full rounded-xl overflow-hidden transition-all duration-75 ease-out shadow-2xl"
-                style={{
-                    transform: `rotateX(${rotation.x}deg) rotateY(${rotation.y}deg) scale3d(${isHovered ? 1.02 : 1}, ${isHovered ? 1.02 : 1}, 1)`,
-                    transformStyle: 'preserve-3d',
-                }}
-            >
-                <div
-                    className="absolute inset-0 z-30 pointer-events-none mix-blend-overlay transition-opacity duration-300"
-                    style={{
-                        background: `radial-gradient(circle at ${glare.x}% ${glare.y}%, rgba(255,255,255,0.4) 0%, transparent 80%)`,
-                        opacity: glare.opacity,
-                    }}
-                />
-                <img src={thumbnail} alt={title} className="w-full h-auto object-cover" />
-            </div>
-        </div>
-    );
-};
-
-export default function LNSpotlight({ onLNClick }: LNSpotlightProps) {
+export default function LNSpotlight({ onLNClick, onBackdropChange }: LNSpotlightProps) {
     const { language } = useTitleLanguage();
-    const [lns, setLns] = useState<LightNovel[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [detailsById, setDetailsById] = useState<Record<string, LightNovel>>({});
-
-    const [emblaRef, emblaApi] = useEmblaCarousel({ loop: true, duration: 20 }, [
-        Autoplay({ delay: 5000, stopOnInteraction: false, stopOnMouseEnter: true }),
-    ]);
+    const initialSpotlight = lnService.peekSpotlight();
+    const [lns, setLns] = useState<LightNovel[]>(initialSpotlight);
+    const [loading, setLoading] = useState(initialSpotlight.length === 0);
     const [selectedIndex, setSelectedIndex] = useState(0);
-
-    const onSelect = useCallback(() => {
-        if (!emblaApi) return;
-        setSelectedIndex(emblaApi.selectedScrollSnap());
-    }, [emblaApi]);
-
+    const [detailsById, setDetailsById] = useState<Record<string, LightNovel>>({});
     useEffect(() => {
-        let mounted = true;
-        lnService.getSpotlight()
-            .then((data) => {
-                if (mounted) {
-                    setLns(data || []);
-                    setLoading(false);
-                }
-            })
-            .catch(() => {
-                if (mounted) setLoading(false);
-            });
-
-        return () => {
-            mounted = false;
-        };
+        let active = true;
+        void lnService.getSpotlight().then((data) => {
+            if (active && data && data.length > 0) {
+                setLns(data);
+            }
+        })
+            .catch((error) => console.error('Failed to fetch novel spotlight', error))
+            .finally(() => { if (active) setLoading(false); });
+        return () => { active = false; };
     }, []);
-
+    const activeId = String(lns[selectedIndex]?.id || lns[selectedIndex]?.mal_id || lns[selectedIndex]?.scraper_id || '');
     useEffect(() => {
-        if (!emblaApi) return;
-        onSelect();
-        emblaApi.on('select', onSelect);
-        return () => {
-            emblaApi.off('select', onSelect);
-        };
-    }, [emblaApi, onSelect]);
-
-    useEffect(() => {
-        const activeLN = lns[selectedIndex];
-        const id = activeLN?.id || activeLN?.mal_id || activeLN?.scraper_id;
-        const key = String(id || '');
-        if (!id || detailsById[key]) return;
-
-        let cancelled = false;
-        void lnService.getDetails(id).then((details) => {
-            if (!cancelled && details) setDetailsById((current) => ({ ...current, [key]: details }));
+        if (!activeId || detailsById[activeId]) return;
+        let active = true;
+        void lnService.getDetails(activeId).then((details) => {
+            if (active && details) setDetailsById((current) => ({ ...current, [activeId]: details }));
         }).catch(() => undefined);
-        return () => { cancelled = true; };
-    }, [detailsById, lns, selectedIndex]);
+        return () => { active = false; };
+    }, [activeId, detailsById]);
+    const display = useMemo(() => lns.map((ln) => {
+        const details = detailsById[String(ln.id || ln.mal_id || ln.scraper_id || '')];
+        const seedBanner = ln.bannerImage && ln.bannerImage !== ln.images?.jpg?.large_image_url && ln.bannerImage !== ln.images?.jpg?.image_url ? ln.bannerImage : undefined;
+        const preferredImages = ln.images?.jpg?.large_image_url || ln.images?.jpg?.image_url ? ln.images : details?.images;
+        return details ? { ...ln, ...details, id: ln.id || details.id, title: details.title || ln.title, score: details.score && details.score > 0 ? details.score : ln.score, images: preferredImages || ln.images, bannerImage: (details.bannerImage && details.bannerImage !== details.images?.jpg?.large_image_url && details.bannerImage !== details.images?.jpg?.image_url) ? details.bannerImage : seedBanner, synopsis: details.synopsis || ln.synopsis, author: details.author && details.author !== 'Unknown Author' ? details.author : ln.author, chapters: details.chapters || ln.chapters, volumes: details.volumes || ln.volumes, genres: details.genres?.length ? details.genres : ln.genres } : { ...ln, bannerImage: seedBanner };
+    }), [lns, detailsById]);
 
-    const scrollTo = useCallback((index: number) => {
-        if (emblaApi) emblaApi.scrollTo(index);
-    }, [emblaApi]);
+    const items = useMemo(() => display.map((ln, index) => ({
+        key: String(ln.id || index),
+        title: getDisplayTitle(ln, language),
+        cover: ln.images?.jpg?.large_image_url || ln.images?.jpg?.image_url || '',
+        banner: ln.bannerImage && ln.bannerImage !== ln.images?.jpg?.large_image_url && ln.bannerImage !== ln.images?.jpg?.image_url ? ln.bannerImage : undefined,
+        synopsis: ln.synopsis,
+        rating: ln.score,
+        format: 'Light Novel',
+        details: [
+            ...(ln.author && ln.author !== 'Unknown Author' ? [ln.author] : []),
+            ...(ln.chapters ? [{ label: `${ln.chapters} chapters`, desktopOnly: true }] : []),
+        ],
+    })), [display, language]);
 
-    if (loading) {
-        return <SpotlightSkeleton variant="ln" />;
-    }
+    if (loading && lns.length === 0) return <SpotlightSkeleton variant="ln" />;
 
-    if (lns.length === 0) return null;
-
-    return (
-        <div className="media-spotlight relative w-full h-[58vh] md:h-[60vh] min-h-[440px] md:min-h-[480px] group bg-[#0a0a0a] overflow-hidden mb-8">
-            {/* Embla Viewport */}
-            <div className="absolute inset-0 overflow-hidden" ref={emblaRef}>
-                <div className="flex h-full touch-pan-y">
-                    {lns.map((ln, index) => {
-                        const cover = ln.images.jpg.large_image_url || ln.images.jpg.image_url;
-                        return (
-                            <div key={ln.id || index} className="relative min-w-full h-full flex-[0_0_100%]">
-                                <div className="absolute inset-0 z-0 select-none overflow-hidden">
-                                    <m.div
-                                        initial={{ scale: 1.05, opacity: 0 }}
-                                        animate={{ scale: 1, opacity: 0.6 }}
-                                        transition={{ duration: 0.8 }}
-                                        className="absolute inset-0 bg-no-repeat bg-cover bg-center"
-                                        style={{
-                                            backgroundImage: `url(${cover})`,
-                                        }}
-                                    />
-                                    <div className="absolute inset-0 hidden bg-black/40 md:block" />
-                                    <div className="absolute inset-x-0 bottom-0 h-[60%] bg-gradient-to-t from-[#0a0a0a] via-[#0a0a0a]/80 to-transparent" />
-                                    <div className="absolute inset-0 hidden bg-gradient-to-r from-[#0a0a0a] via-[#0a0a0a]/80 to-transparent pointer-events-none md:block" />
-                                </div>
-                            </div>
-                        );
-                    })}
-                </div>
-            </div>
-
-            {/* Fixed Overlay Content */}
-            <div className="absolute inset-0 z-10 hidden items-center pointer-events-none md:flex">
-                <AnimatePresence>
-                    {lns[selectedIndex] && (() => {
-                        const activeLN = lns[selectedIndex];
-                        const details = detailsById[String(activeLN.id || activeLN.mal_id || activeLN.scraper_id || '')];
-                        const displayLN = mergeLightNovelDetails(activeLN, details);
-                        const displayTitle = getDisplayTitle(displayLN, language);
-                        const cover = displayLN.images.jpg.large_image_url || displayLN.images.jpg.image_url;
-
-                        return (
-                            <m.div
-                                key={selectedIndex}
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                exit={{ opacity: 0 }}
-                                transition={{ duration: 0.4, ease: 'easeInOut' }}
-                                className="absolute inset-0 flex flex-col md:flex-row gap-12 items-center w-full max-w-7xl mx-auto px-5 md:px-14 mt-12"
-                            >
-                                {/* Text Info (Left) */}
-                                <div className="flex-1 pointer-events-auto w-full max-w-2xl flex flex-col justify-end h-[360px] md:h-[380px]">
-                                    <div className="w-full mb-4">
-                                        <div className="flex items-center gap-3 mb-3">
-                                            <div className="hidden h-24 w-16 rounded-md overflow-hidden flex-shrink-0 relative">
-                                                <img src={cover} alt={displayTitle} className="w-full h-full object-cover" />
-                                                <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-                                            </div>
-                                        </div>
-                                        <div className="flex items-start">
-                                            <AnimeLogoImage
-                                                tmdbId={parseInt((activeLN.id || '0').toString())}
-                                                title={displayTitle}
-                                                className="drop-shadow-2xl"
-                                                size="medium"
-                                            />
-                                        </div>
-                                    </div>
-
-                                    {/* Middle Chips */}
-                                    <div className="spotlight-meta w-full flex items-center flex-wrap gap-4 text-white select-none mb-4">
-                                        {/* Author Chip */}
-                                        {displayLN.author && displayLN.author !== 'Unknown Author' && (
-                                            <span className="flex items-center justify-center gap-1.5 bg-white/10 px-3 h-8 rounded-lg text-sm font-bold">
-                                                <svg className="w-4 h-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                                                </svg>
-                                                {displayLN.author}
-                                            </span>
-                                        )}
-
-                                        {/* Score / Chapter Chip */}
-                                        {displayLN.score ? (
-                                            <span className="flex items-center justify-center gap-1.5 bg-amber-500 text-black px-3 h-8 rounded-lg text-sm font-black">
-                                                ★ {displayLN.score.toFixed(1)}
-                                            </span>
-                                        ) : null}
-
-                                        {/* Format Chip (Light Yellow Accent) */}
-                                        <span className="flex items-center justify-center px-3 h-8 rounded-lg bg-amber-400/20 text-amber-300 text-sm font-extrabold border border-amber-400/50 uppercase">
-                                            {displayLN.type || 'NOVEL'}
-                                        </span>
-                                    </div>
-
-                                    {/* Synopsis & Buttons */}
-                                    <div className="w-full mb-6">
-                                        <p className="text-gray-300 text-sm md:text-base line-clamp-3 max-w-xl leading-relaxed">
-                                            {displayLN.synopsis}
-                                        </p>
-                                    </div>
-
-                                    <div className="spotlight-actions w-full flex gap-4">
-                                        <button
-                                            onClick={() => onLNClick(String(displayLN.id), true, displayLN)}
-                                            className="bg-amber-400 text-black px-5 py-2.5 rounded-lg font-black hover:bg-white hover:text-black transition-all duration-300 flex items-center gap-2 shadow-[0_0_15px_rgba(251,191,36,0.4)] hover:shadow-[0_0_25px_rgba(251,191,36,0.6)] text-sm md:text-base"
-                                        >
-                                            <svg className="w-4 h-4 ml-0.5" fill="currentColor" viewBox="0 0 24 24">
-                                                <path d="M8 5v14l11-7z" />
-                                            </svg>
-                                            Read Now
-                                        </button>
-                                        <button
-                                            onClick={() => onLNClick(String(displayLN.id), false, displayLN)}
-                                            className="bg-white/10 border border-white/20 text-white px-5 py-2.5 rounded-lg font-bold hover:bg-white/20 transition-all duration-300 flex items-center gap-2 text-sm md:text-base"
-                                        >
-                                            Detail{' '}
-                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                                            </svg>
-                                        </button>
-                                    </div>
-                                </div>
-
-                                {/* Coverflow Stacked Images (Right) */}
-                                <div className="ml-auto lg:mr-12 xl:mr-20 pointer-events-none relative w-56 lg:w-64 h-[336px] lg:h-[384px] group">
-                                    {/* Previous Card */}
-                                    {lns.length > 1 && (
-                                        <div
-                                            onClick={() => scrollTo((selectedIndex - 1 + lns.length) % lns.length)}
-                                            className="absolute inset-0 hidden md:block pointer-events-auto cursor-pointer z-0"
-                                        >
-                                            <div className="w-full h-full origin-bottom transition-transform duration-500 ease-out [transform:translateX(-40%)_translateY(-20px)_scale(0.9)_rotate(-8deg)] group-hover:[transform:translateX(-45%)_translateY(-20px)_scale(0.92)_rotate(-6deg)]">
-                                                <div className="w-full h-full rounded-xl overflow-hidden brightness-[0.6] transition-all duration-300 shadow-xl">
-                                                    <img
-                                                        src={lns[(selectedIndex - 1 + lns.length) % lns.length].images.jpg.large_image_url}
-                                                        className="w-full h-full object-cover"
-                                                        alt=""
-                                                    />
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {/* Active Card */}
-                                    <div className="absolute inset-0 z-10 pointer-events-auto transition-transform duration-500 ease-out group-hover:-translate-y-4">
-                                        {activeLN.images?.jpg?.large_image_url && (
-                                            <SpotlightCover thumbnail={activeLN.images.jpg.large_image_url} title={displayTitle} />
-                                        )}
-                                    </div>
-
-                                    {/* Next Card */}
-                                    {lns.length > 2 && (
-                                        <div
-                                            onClick={() => scrollTo((selectedIndex + 1) % lns.length)}
-                                            className="absolute inset-0 hidden md:block pointer-events-auto cursor-pointer z-0"
-                                        >
-                                            <div className="w-full h-full origin-bottom transition-transform duration-500 ease-out [transform:translateX(40%)_translateY(-20px)_scale(0.9)_rotate(8deg)] group-hover:[transform:translateX(45%)_translateY(-20px)_scale(0.92)_rotate(6deg)]">
-                                                <div className="w-full h-full rounded-xl overflow-hidden brightness-[0.6] transition-all duration-300 shadow-xl">
-                                                    <img
-                                                        src={lns[(selectedIndex + 1) % lns.length].images.jpg.large_image_url}
-                                                        className="w-full h-full object-cover"
-                                                        alt=""
-                                                    />
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            </m.div>
-                        );
-                    })()}
-                </AnimatePresence>
-            </div>
-
-            {lns[selectedIndex] && (() => {
-                const activeLN = lns[selectedIndex];
-                const details = detailsById[String(activeLN.id || activeLN.mal_id || activeLN.scraper_id || '')];
-                const displayLN = mergeLightNovelDetails(activeLN, details);
-                const displayTitle = getDisplayTitle(displayLN, language);
-                const chapterCount = displayLN.chapters || displayLN.volumes;
-                const rating = displayLN.score && displayLN.score > 0 ? displayLN.score.toFixed(1) : null;
-                return (
-                    <div className="pointer-events-none absolute inset-0 z-20 flex flex-col justify-between px-4 pb-4 md:hidden" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 1.25rem)' }}>
-                        <div className="flex items-start justify-between">
-                            <div className="rounded-full bg-black/55 px-3 py-2 text-sm font-bold text-white">{chapterCount ? `CH ${chapterCount}` : (activeLN.type || 'NOVEL')}</div>
-                            <div className="rounded-full bg-black/55 px-4 py-2 text-sm font-bold text-white">{selectedIndex + 1} <span className="text-white/50">/ {lns.length}</span></div>
-                        </div>
-                        <div className="space-y-3 pb-1">
-                            <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-white">
-                                {chapterCount && <span className="flex items-center gap-1 rounded-full border border-white/15 bg-black/45 px-3 py-1.5"><CCIcon className="h-3.5 w-3.5" /> {chapterCount}</span>}
-                                {rating && <span className="rounded-full border border-white/15 bg-black/45 px-3 py-1.5">☆ {rating}</span>}
-                                {displayLN.author && displayLN.author !== 'Unknown Author' && <span className="rounded-full border border-white/15 bg-black/45 px-3 py-1.5">{displayLN.author}</span>}
-                            </div>
-                            <h2 className="max-w-[95%] text-[27px] font-extrabold leading-[1.16] tracking-tight text-white drop-shadow-lg">{displayTitle}</h2>
-                            <div className="flex flex-wrap gap-2 text-xs font-medium text-white">
-                                {(displayLN.genres || []).slice(0, 3).map((genre) => <span key={genre.name} className="rounded-full border border-white/15 bg-black/45 px-3 py-1.5">{genre.name}</span>)}
-                            </div>
-                            <div className="pointer-events-auto flex gap-2 pt-1">
-                                <button type="button" onClick={() => onLNClick(String(displayLN.id), true, displayLN)} className="flex h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-amber-400 px-3 text-sm font-bold text-black shadow-[0_0_16px_rgba(251,191,36,0.3)]">▶ Read Now</button>
-                                <button type="button" onClick={() => onLNClick(String(displayLN.id), false, displayLN)} className="flex h-10 min-w-[112px] items-center justify-center gap-1.5 rounded-lg border border-white/20 bg-white/10 px-3 text-sm font-bold text-white">Detail <span aria-hidden="true">›</span></button>
-                            </div>
-                        </div>
-                    </div>
-                );
-            })()}
-            {/* Dots Indicator */}
-            <div className="absolute z-20 hidden gap-2 right-4 top-1/2 -translate-y-1/2 flex-col md:flex md:flex-row md:bottom-6 md:left-1/2 md:-translate-x-1/2 md:top-auto md:right-auto md:translate-y-0">
-                {lns.map((_, idx) => (
-                    <button
-                        key={idx}
-                        onClick={() => scrollTo(idx)}
-                        className={`w-2 h-2 rounded-full transition-all duration-300 ${
-                            idx === selectedIndex ? 'bg-amber-400 md:w-6 h-6 md:h-2' : 'bg-white/30 hover:bg-white/50'
-                        }`}
-                        aria-label={`Go to slide ${idx + 1}`}
-                    />
-                ))}
-            </div>
-        </div>
-    );
+    return <ReadingSpotlight
+        theme="ln"
+        items={items}
+        onSelect={setSelectedIndex}
+        onRead={(index) => { const item = display[index]; if (item) onLNClick(String(item.id), true, item); }}
+        onDetails={(index) => { const item = display[index]; if (item) onLNClick(String(item.id), false, item); }}
+        onBackdropChange={onBackdropChange}
+    />;
 }
