@@ -98,12 +98,13 @@ function normalizeSubtitleLanguage(value: unknown): string {
 }
 
 function detectSubtitleLanguage(text: string): string {
-    if (/[\u0E00-\u0E7F]/u.test(text)) return 'th';
-    if (/[\u0600-\u06FF]/u.test(text)) return 'ar';
-    if (/[\uAC00-\uD7AF]/u.test(text)) return 'ko';
-    if (/[\u3040-\u30FF]/u.test(text)) return 'ja';
-    if (/[\u0400-\u04FF]/u.test(text)) return 'ru';
-    if (/[\u4E00-\u9FFF]/u.test(text)) return 'zh';
+    const count = (re: RegExp) => (text.match(re) || []).length;
+    if (count(/[\u0E00-\u0E7F]/gu) >= 8) return 'th';
+    if (count(/[\u0600-\u06FF]/gu) >= 8) return 'ar';
+    if (count(/[\uAC00-\uD7AF]/gu) >= 8) return 'ko';
+    if (count(/[\u3040-\u30FF]/gu) >= 8) return 'ja';
+    if (count(/[\u0400-\u04FF]/gu) >= 8) return 'ru';
+    if (count(/[\u4E00-\u9FFF]/gu) >= 12) return 'zh';
     return 'und';
 }
 
@@ -361,9 +362,17 @@ export class HiAnimeScraper implements VideoSource {
                     };
                 }))).filter((subtitle): subtitle is SubtitleTrack => Boolean(subtitle))
                 : [];
-            const subtitles = resolvedSubtitles
-                .filter((subtitle) => /^(?:en|eng|english)(?:[-_]|$)/i.test(subtitle.lang))
-                .slice(0, 1);
+            const uniqueSubtitles = new Map<string, SubtitleTrack>();
+            for (const subtitle of resolvedSubtitles) {
+                if (subtitle?.url && !uniqueSubtitles.has(subtitle.url)) {
+                    uniqueSubtitles.set(subtitle.url, subtitle);
+                }
+            }
+            const subtitles = Array.from(uniqueSubtitles.values()).sort((left, right) => {
+                const leftEn = /^(?:en|eng|english)(?:[-_\s(]|$)/i.test(left.lang) ? 0 : 1;
+                const rightEn = /^(?:en|eng|english)(?:[-_\s(]|$)/i.test(right.lang) ? 0 : 1;
+                return leftEn - rightEn;
+            });
 
             // Fetch master playlist variants
             let variants: Array<{ quality: string; url: string }> | undefined;
