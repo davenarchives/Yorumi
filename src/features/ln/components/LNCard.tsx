@@ -1,10 +1,12 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import ReadingCardArtwork, { chapterBadge } from '../../reading/components/ReadingCardArtwork';
+import ReadingCardMetadata from '../../reading/components/ReadingCardMetadata';
+import React, { useState, useRef } from 'react';
 import { m } from 'framer-motion';
 import type { LightNovel } from '../../../types/ln';
 import { useTitleLanguage } from '../../../context/TitleLanguageContext';
 import { getDisplayTitle } from '../../../utils/titleLanguage';
 import { cardItemVariants, pressMotion } from '../../../utils/motion';
-import { Star } from 'lucide-react';
+import { useLNReadList } from '../../../hooks/useLNReadList';
 
 interface LNCardProps {
     ln: LightNovel;
@@ -16,35 +18,33 @@ interface LNCardProps {
 
 export default function LNCard({ ln, rank, showRanking = false, onClick, disableTilt = false }: LNCardProps) {
     const { language } = useTitleLanguage();
+    const { isInLNReadList, toggleLNReadList } = useLNReadList();
     const cardRef = useRef<HTMLDivElement>(null);
     const [rotation, setRotation] = useState({ x: 0, y: 0 });
     const [isHovered, setIsHovered] = useState(false);
-    const [popupSide, setPopupSide] = useState<'left' | 'right'>('right');
+
+    if (!ln) return null;
 
     const displayTitle = getDisplayTitle(ln, language);
     const cover = ln.images?.jpg?.large_image_url || ln.images?.jpg?.image_url || '';
+    const banner = ln.bannerImage || cover;
+    const lnIdStr = String(ln.id || ln.mal_id || ln.scraper_id || '');
+    const inList = isInLNReadList(lnIdStr);
 
-    const updatePopupSide = useCallback(() => {
-        if (typeof window === 'undefined' || !cardRef.current) {
-            setPopupSide('right');
-            return;
-        }
-
-        const rect = cardRef.current.getBoundingClientRect();
-        const availableRight = window.innerWidth - 16;
-        const popupWidth = 260;
-        const gap = 16;
-
-        setPopupSide(rect.right + gap + popupWidth > availableRight ? 'left' : 'right');
-    }, []);
-
-    useEffect(() => {
-        if (!isHovered) return;
-        window.addEventListener('resize', updatePopupSide);
-        return () => {
-            window.removeEventListener('resize', updatePopupSide);
-        };
-    }, [isHovered, updatePopupSide]);
+    const handleToggleList = () => {
+        toggleLNReadList({
+            id: ln.id || lnIdStr,
+            title: displayTitle,
+            image: cover,
+            score: ln.score,
+            mediaStatus: ln.status,
+            type: ln.type,
+            synopsis: ln.synopsis,
+            genres: Array.isArray(ln.genres)
+                ? ln.genres.map((genre: any) => (typeof genre === 'string' ? genre : genre?.name)).filter(Boolean)
+                : [],
+        });
+    };
 
     const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
         if (disableTilt || !cardRef.current) return;
@@ -77,117 +77,35 @@ export default function LNCard({ ln, rank, showRanking = false, onClick, disable
             initial="initial"
             animate="animate"
             whileTap={pressMotion}
-            className="select-none cursor-pointer group relative z-0 hover:z-50"
+            className="select-none cursor-pointer group relative z-0"
             style={{ perspective: '1000px' }}
             onClick={() => onClick(ln)}
             onMouseEnter={(e) => {
                 setIsHovered(true);
-                updatePopupSide();
                 handleMouseMove(e);
             }}
             onMouseLeave={handleMouseLeave}
             onMouseMove={handleMouseMove}
         >
-            {/* Image Container with 3D Transform */}
-            <div
-                className="relative aspect-[2/3] rounded-xl overflow-hidden mb-1.5 md:mb-2.5 bg-[#141414] transition-all duration-75 ease-out"
-                style={{
-                    transform: disableTilt
-                        ? 'none'
-                        : `rotateX(${rotation.x}deg) rotateY(${rotation.y}deg) scale3d(${isHovered ? 1.05 : 1}, ${isHovered ? 1.05 : 1}, 1)`,
-                    transformStyle: 'preserve-3d',
-                }}
-            >
-                <img src={cover} alt={displayTitle} className="w-full h-full object-cover" loading="lazy" />
-
-                {/* Rank Badge (Top Left) */}
-                {showRanking && rank ? (
-                    <div className="absolute top-2 left-2 z-10 px-2 py-0.5 bg-amber-400 text-black font-black text-xs rounded-md">
-                        #{rank}
-                    </div>
-                ) : null}
-
-                {/* Top Right: Star Rating */}
-                {showRanking && ln.score ? (
-                    <div className="absolute top-2 right-2 z-10">
-                        <span className="bg-black/70 backdrop-blur-md text-amber-400 px-2 py-0.5 rounded-md text-xs font-extrabold flex items-center gap-1">
-                            <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
-                            {ln.score.toFixed(1)}
-                        </span>
-                    </div>
-                ) : null}
-
-                {/* Bottom Left: Type + Status Badges */}
-                <div className="absolute bottom-2 left-2 flex flex-wrap gap-1.5 z-10 max-w-[90%]">
-                    <span className={`rounded bg-black/55 px-1.5 py-0.5 text-[9px] font-extrabold uppercase text-white md:px-2 md:text-[10px] ${
-                        ln.countryOfOrigin === 'KR'
-                            ? 'md:bg-amber-500 md:text-black md:shadow-sm'
-                            : ln.countryOfOrigin === 'CN'
-                            ? 'md:bg-red-600 md:text-white md:shadow-sm'
-                            : 'md:bg-white/20 md:backdrop-blur-sm md:text-white'
-                    }`}>
-                        {ln.countryOfOrigin === 'JP' ? 'LIGHT NOVEL' : 'WEB NOVEL'}
-                    </span>
-                    <span className="flex items-center gap-1 rounded bg-black/55 px-1.5 py-0.5 text-[9px] font-bold uppercase text-gray-200 md:bg-black/60 md:px-2 md:text-[10px] md:text-gray-300 md:backdrop-blur-sm">
-                        <span className={`w-1.5 h-1.5 rounded-full ${ln.status === 'FINISHED' || ln.status === 'Completed' ? 'bg-blue-400' : 'bg-green-400'}`} />
-                        {ln.status === 'Completed' || ln.status === 'FINISHED' ? 'COMPLETED' : 'ONGOING'}
-                    </span>
-                </div>
+            <div className="relative transition-transform duration-75" style={{ transform: disableTilt ? 'none' : `rotateX(${rotation.x}deg) rotateY(${rotation.y}deg) scale(${isHovered ? 1.05 : 1})` }}>
+                <ReadingCardArtwork
+                    title={displayTitle}
+                    image={banner}
+                    poster={cover}
+                    badge={chapterBadge(ln.chapters, ln.status)}
+                    rank={showRanking ? rank : undefined}
+                    inList={inList}
+                    onToggleList={handleToggleList}
+                />
             </div>
 
-            {/* Hover Tooltip Popover (Identical to Manga Card Popover) */}
-            {isHovered && (
-                <div
-                    className={`pointer-events-none absolute top-2 z-[60] hidden w-[260px] rounded-2xl bg-[#181824] p-4 text-white shadow-xl lg:block ${
-                        popupSide === 'left' ? 'right-[calc(100%+16px)]' : 'left-[calc(100%+16px)]'
-                    }`}
-                >
-                    <div
-                        className="absolute top-7 h-3 w-3 bg-[#181824]"
-                        style={
-                            popupSide === 'left'
-                                ? { right: -8, clipPath: 'polygon(0 0, 100% 50%, 0 100%)' }
-                                : { left: -8, clipPath: 'polygon(100% 0, 0 50%, 100% 100%)' }
-                        }
-                    />
-
-                    <div className="space-y-2.5">
-                        {/* Line 1: Year / Status */}
-                        <p className="text-sm font-extrabold tracking-wide text-gray-200">
-                            {ln.year || (ln.status === 'FINISHED' || ln.status === 'Completed' ? 'Completed' : 'Ongoing')}
-                        </p>
-
-                        {/* Line 2: Author */}
-                        {ln.author && ln.author !== 'Unknown Author' && (
-                            <p className="text-sm font-bold text-amber-400">{ln.author}</p>
-                        )}
-
-                        {/* Line 3: Format • Chapters */}
-                        <p className="text-sm font-semibold text-gray-400 uppercase tracking-wider">
-                            {ln.countryOfOrigin === 'KR' ? 'Korean Web Novel' : ln.countryOfOrigin === 'CN' ? 'Chinese Web Novel' : 'Japanese Light Novel'}{ln.chapters ? ` • ${ln.chapters} ch` : ''}
-                        </p>
-
-                        {/* Line 4: Genres */}
-                        {ln.genres && ln.genres.length > 0 && (
-                            <div className="flex flex-wrap gap-1.5 pt-1">
-                                {ln.genres.slice(0, 3).map((genre) => (
-                                    <span
-                                        key={genre.name}
-                                        className="rounded-full bg-amber-400 px-3 py-1 text-[11px] font-extrabold lowercase tracking-wide text-black"
-                                    >
-                                        {genre.name}
-                                    </span>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                </div>
-            )}
-
-            {/* Title Below Card */}
-            <h3 className="line-clamp-2 text-xs font-semibold leading-tight text-gray-100 transition-colors group-hover:text-amber-400 md:text-sm">
-                {displayTitle}
-            </h3>
+            <ReadingCardMetadata
+                title={displayTitle}
+                score={ln.score}
+                format={ln.type}
+                year={ln.publishedYear}
+                theme="ln"
+            />
         </m.div>
     );
 }
