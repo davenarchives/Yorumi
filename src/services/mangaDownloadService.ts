@@ -1,6 +1,7 @@
 // IndexedDB storage and downloader for offline Manga chapters
 import type { MangaPage, MangaChapter } from '../types/manga';
 import { mangaService } from './mangaService';
+import { supportsReadingExports, exportMangaPage, deleteReadingExport } from '../platform/tauri/readingExports';
 import { API_BASE, API_ORIGIN } from '../config/api';
 import { createLocalMediaProxyUrl } from '../platform/localMediaProxy';
 import { isNativeMobile } from '../platform/runtime';
@@ -304,45 +305,8 @@ export const mangaDownloadService = {
             req.onerror = () => reject(req.error);
         });
 
-        // 4. Save to physical disk in Electron if available
-        if (typeof window !== 'undefined' && window.electronAPI?.saveMangaDisk) {
-            try {
-                const diskPages = await Promise.all(
-                    downloadedPages.map(async (p, idx) => {
-                        let blob = p.blob;
-                        if (!blob && p.imageUrl) {
-                            try {
-                                const proxied = await getProxiedImageUrl(p.imageUrl);
-                                const res = await fetch(proxied);
-                                if (res.ok) blob = await res.blob();
-                            } catch {
-                                // Ignore
-                            }
-                        }
-                        if (!blob) return null;
-                        try {
-                            const buffer = await blob.arrayBuffer();
-                            const type = blob.type || '';
-                            let ext = '.jpg';
-                            if (type.includes('png')) ext = '.png';
-                            else if (type.includes('webp')) ext = '.webp';
-                            return { pageNumber: p.pageNumber || (idx + 1), buffer, ext };
-                        } catch {
-                            return null;
-                        }
-                    })
-                );
-                const validDiskPages = diskPages.filter(Boolean) as { pageNumber: number; buffer: ArrayBuffer; ext?: string }[];
-                if (validDiskPages.length > 0) {
-                    await window.electronAPI.saveMangaDisk({
-                        mangaTitle: params.mangaTitle,
-                        chapterTitle: params.chapter.title,
-                        pages: validDiskPages,
-                    });
-                }
-            } catch (err) {
-                console.error('Failed saving manga chapter to physical disk:', err);
-            }
+        if (supportsReadingExports()) {
+            await this.exportChapter(chapterRecord);
         }
 
         onProgress?.({
@@ -362,48 +326,22 @@ export const mangaDownloadService = {
         return chapterRecord;
     },
 
+    async exportChapter(chapter: DownloadedMangaChapter): Promise<void> {
+        if (!chapter.pages.length) throw new Error('No manga pages to export');
+        const identity = { title: chapter.mangaTitle, id: chapter.mangaId, chapter: chapter.chapterTitle, chapterId: chapter.chapterId };
+        for (const page of chapter.pages) {
+            if (!page.blob) throw new Error(`Page ${page.pageNumber} is unavailable for export`);
+            const extension = page.blob.type.includes('png') ? 'png' : page.blob.type.includes('webp') ? 'webp' : 'jpg';
+            await exportMangaPage(identity, { number: page.pageNumber, extension, bytes: Array.from(new Uint8Array(await page.blob.arrayBuffer())) });
+        }
+        localStorage.setItem(`yorumi_manga_export_${chapter.id}`, '1');
+    },
+
     async syncExistingDownloadsToDisk(): Promise<void> {
-        if (typeof window === 'undefined' || !window.electronAPI?.saveMangaDisk) return;
-        try {
-            const downloads = await this.getDownloads();
-            for (const item of downloads) {
-                if (!item.pages || item.pages.length === 0) continue;
-                const diskPages = await Promise.all(
-                    item.pages.map(async (p, idx) => {
-                        let blob = p.blob;
-                        if (!blob && p.imageUrl) {
-                            try {
-                                const proxied = await getProxiedImageUrl(p.imageUrl);
-                                const res = await fetch(proxied);
-                                if (res.ok) blob = await res.blob();
-                            } catch {
-                                // Skip
-                            }
-                        }
-                        if (!blob) return null;
-                        try {
-                            const buffer = await blob.arrayBuffer();
-                            const type = blob.type || '';
-                            let ext = '.jpg';
-                            if (type.includes('png')) ext = '.png';
-                            else if (type.includes('webp')) ext = '.webp';
-                            return { pageNumber: p.pageNumber || (idx + 1), buffer, ext };
-                        } catch {
-                            return null;
-                        }
-                    })
-                );
-                const validPages = diskPages.filter(Boolean) as { pageNumber: number; buffer: ArrayBuffer; ext?: string }[];
-                if (validPages.length > 0) {
-                    await window.electronAPI.saveMangaDisk({
-                        mangaTitle: item.mangaTitle,
-                        chapterTitle: item.chapterTitle,
-                        pages: validPages,
-                    });
-                }
-            }
-        } catch (err) {
-            console.error('Failed syncing manga downloads to disk:', err);
+        if (!supportsReadingExports()) return;
+        for (const chapter of await this.getDownloads()) {
+            if (localStorage.getItem(`yorumi_manga_export_${chapter.id}`)) continue;
+            try { await this.exportChapter(chapter); } catch (error) { console.warn('Unable to export existing manga chapter:', error); }
         }
     },
 
@@ -413,19 +351,13 @@ export const mangaDownloadService = {
             const key = this.getChapterKey(mangaId, chapterId);
             const chapter = await this.getChapter(mangaId, chapterId);
 
-            if (chapter?.pages) {
-                await Promise.all(chapter.pages.map((page) => deleteNativeDownload(page.filePath)));
+            if (chapter && supportsReadingExports()) {
+                await deleteReadingExport('Manga', { title: chapter.mangaTitle, id: chapter.mangaId, chapter: chapter.chapterTitle, chapterId: chapter.chapterId });
+                localStorage.removeItem(`yorumi_manga_export_${chapter.id}`);
             }
 
-            if (chapter && typeof window !== 'undefined' && window.electronAPI?.deleteMangaDisk) {
-                try {
-                    await window.electronAPI.deleteMangaDisk({
-                        mangaTitle: chapter.mangaTitle,
-                        chapterTitle: chapter.chapterTitle,
-                    });
-                } catch {
-                    // IndexedDB cleanup proceeds
-                }
+            if (chapter?.pages) {
+                await Promise.all(chapter.pages.map((page) => deleteNativeDownload(page.filePath)));
             }
 
             await new Promise<void>((resolve, reject) => {
