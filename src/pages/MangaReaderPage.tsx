@@ -92,10 +92,8 @@ export default function MangaReaderPage() {
 
     // Handle close - go back to details
     const handleClose = () => {
-        if (window.history.length > 2) {
-            navigate(-1);
-        } else if (id) {
-            navigate(`/manga/details/${id}`, { replace: true, state: { manga: selectedManga } });
+        if (id) {
+            navigate(`/manga/details/${encodeURIComponent(id)}`, { replace: true, state: { manga: selectedManga } });
         } else {
             navigate('/manga', { replace: true });
         }
