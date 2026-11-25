@@ -75,3 +75,7 @@ src-tauri/target-android-check/
 /target/
 
 .neon
+
+# Tauri generated mobile scaffolding & compiled native libs
+src-tauri/gen/
+
