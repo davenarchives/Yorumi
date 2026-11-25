@@ -42,5 +42,7 @@ source_paths:
 
 ## Navigation
 
+- Narrow screens use a floating primary navigation bar ordered Explore, Anime, Manga, LN, Library; search remains available in the top-right button.
+
 See [[reference/Routes and Endpoints]] for route families and [[architecture/Content Identity and Mapping]] before changing content URLs or cache keys.
 
