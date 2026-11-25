@@ -17,6 +17,7 @@ export interface LightNovel {
         };
     };
     score?: number;
+    publishedYear?: number;
     rank?: number;
     status?: string;
     type?: string;
@@ -57,6 +58,22 @@ export interface LightNovel {
                 type: string;
                 format: string;
             };
+        }[];
+    };
+    characters?: {
+        edges: {
+            role: string;
+            node: {
+                id: number;
+                name: { full: string };
+                image: { large: string };
+            };
+            voiceActors?: {
+                id: number;
+                name: { full: string };
+                image: { large: string };
+                languageV2?: string;
+            }[];
         }[];
     };
 }
