@@ -1,6 +1,7 @@
 // IndexedDB storage and downloader for offline Light Novel chapters
 import type { LNChapter, LNChapterContent } from '../types/ln';
 import { lnService } from './lnService';
+import { supportsReadingExports, exportNovelChapter, deleteReadingExport } from '../platform/tauri/readingExports';
 import { cacheImage, getCachedImage, prefetchImages } from './offlineImageCache';
 import { deleteNativeDownload, isAndroidDownloadStorageAvailable, writeTextToNativeStorage } from '../platform/nativeDownloadStorage';
 
@@ -202,17 +203,8 @@ export const lnDownloadService = {
             req.onerror = () => reject(req.error);
         });
 
-        // 3. Save to physical disk in Electron if available
-        if (typeof window !== 'undefined' && window.electronAPI?.saveLNDisk) {
-            try {
-                await window.electronAPI.saveLNDisk({
-                    novelTitle: params.novelTitle,
-                    chapterTitle: data.title || params.chapter.title,
-                    content: textOnly,
-                });
-            } catch (err) {
-                console.error('Failed saving LN chapter to physical disk:', err);
-            }
+        if (supportsReadingExports()) {
+            await this.exportChapter(chapterRecord);
         }
 
         onProgress?.({
@@ -230,21 +222,16 @@ export const lnDownloadService = {
         return chapterRecord;
     },
 
+    async exportChapter(chapter: DownloadedLNChapter): Promise<void> {
+        await exportNovelChapter({ title: chapter.novelTitle, id: chapter.novelId, chapter: chapter.chapterTitle, chapterId: chapter.chapterId }, chapter.content);
+        localStorage.setItem(`yorumi_novel_export_${chapter.id}`, '1');
+    },
+
     async syncExistingDownloadsToDisk(): Promise<void> {
-        if (typeof window === 'undefined' || !window.electronAPI?.saveLNDisk) return;
-        try {
-            const downloads = await this.getDownloads();
-            for (const item of downloads) {
-                if (!item.content) continue;
-                const textOnly = item.content.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-                await window.electronAPI.saveLNDisk({
-                    novelTitle: item.novelTitle,
-                    chapterTitle: item.chapterTitle,
-                    content: textOnly,
-                });
-            }
-        } catch (err) {
-            console.error('Failed syncing LN downloads to disk:', err);
+        if (!supportsReadingExports()) return;
+        for (const chapter of await this.getDownloads()) {
+            if (localStorage.getItem(`yorumi_novel_export_${chapter.id}`)) continue;
+            try { await this.exportChapter(chapter); } catch (error) { console.warn('Unable to export existing novel chapter:', error); }
         }
     },
 
@@ -254,18 +241,12 @@ export const lnDownloadService = {
             const key = this.getChapterKey(novelId, chapterId);
             const chapter = await this.getChapter(novelId, chapterId);
 
-            if (chapter?.filePath) await deleteNativeDownload(chapter.filePath);
-
-            if (chapter && typeof window !== 'undefined' && window.electronAPI?.deleteLNDisk) {
-                try {
-                    await window.electronAPI.deleteLNDisk({
-                        novelTitle: chapter.novelTitle,
-                        chapterTitle: chapter.chapterTitle,
-                    });
-                } catch {
-                    // Ignore disk cleanup error
-                }
+            if (chapter && supportsReadingExports()) {
+                await deleteReadingExport('LightNovels', { title: chapter.novelTitle, id: chapter.novelId, chapter: chapter.chapterTitle, chapterId: chapter.chapterId });
+                localStorage.removeItem(`yorumi_novel_export_${chapter.id}`);
             }
+
+            if (chapter?.filePath) await deleteNativeDownload(chapter.filePath);
 
             await new Promise<void>((resolve, reject) => {
                 const tx = db.transaction(STORE_NAME, 'readwrite');
