@@ -3,5 +3,15 @@ import path from 'node:path';
 
 const cwd = process.cwd();
 
-dotenv.config({ path: path.resolve(cwd, '.env') });
-dotenv.config({ path: path.resolve(cwd, 'backend', '.env') });
+const envCandidates = [
+    path.resolve(cwd, 'backend', '.env.local'),
+    path.resolve(cwd, 'backend', '.env'),
+    path.resolve(cwd, '.env.local'),
+    path.resolve(cwd, '.env'),
+    path.resolve(cwd, '..', '.env.local'),
+    path.resolve(cwd, '..', '.env'),
+];
+
+for (const envPath of envCandidates) {
+    dotenv.config({ path: envPath });
+}
