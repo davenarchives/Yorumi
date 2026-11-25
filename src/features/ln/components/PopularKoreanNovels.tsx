@@ -4,14 +4,16 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { lnService } from '../../../services/lnService';
 import type { LightNovel } from '../../../types/ln';
 import LNCard from './LNCard';
+import MangaCardSkeleton from '../../manga/components/MangaCardSkeleton';
 
 interface PopularKoreanNovelsProps {
     onLNClick: (id: string, autoRead?: boolean, lnData?: LightNovel) => void;
 }
 
 export default function PopularKoreanNovels({ onLNClick }: PopularKoreanNovelsProps) {
-    const [novels, setNovels] = useState<LightNovel[]>([]);
-    const [loading, setLoading] = useState(true);
+    const initialNovels = lnService.peekPopularKoreanNovels();
+    const [novels, setNovels] = useState<LightNovel[]>(initialNovels);
+    const [loading, setLoading] = useState(initialNovels.length === 0);
     const [emblaRef, emblaApi] = useEmblaCarousel({
         align: 'start',
         containScroll: 'trimSnaps',
@@ -40,17 +42,15 @@ export default function PopularKoreanNovels({ onLNClick }: PopularKoreanNovelsPr
 
     if (loading) {
         return (
-            <section className="mb-12 animate-pulse">
+            <section className="mb-10 animate-pulse">
                 <div className="flex items-center justify-between mb-4">
                     <div className="h-8 w-56 rounded bg-white/10" />
                     <div className="h-6 w-20 rounded bg-white/10" />
                 </div>
-                <div className="flex gap-4 overflow-hidden">
+                <div className="flex gap-3 sm:gap-4 overflow-hidden">
                     {Array.from({ length: 6 }).map((_, idx) => (
-                        <div key={idx} className="flex-[0_0_140px] md:flex-[0_0_210px] lg:flex-[0_0_230px]">
-                            <div className="aspect-[2/3] rounded-lg bg-white/10 mb-3" />
-                            <div className="h-4 w-4/5 rounded bg-white/10" />
-                            <div className="h-4 w-3/5 rounded bg-white/10 mt-2" />
+                        <div key={idx} className="flex-[0_0_148px] sm:flex-[0_0_175px] md:flex-[0_0_290px] lg:flex-[0_0_300px]">
+                            <MangaCardSkeleton />
                         </div>
                     ))}
                 </div>
@@ -61,25 +61,24 @@ export default function PopularKoreanNovels({ onLNClick }: PopularKoreanNovelsPr
     if (novels.length === 0) return null;
 
     return (
-        <section className="mb-12">
-            <div className="flex items-center gap-4 mb-6">
-                <h2 className="text-xl sm:text-2xl font-black text-white tracking-wide uppercase leading-none whitespace-nowrap">
+        <section className="mb-10">
+            <div className="mb-4 flex items-center justify-between gap-4">
+                <h2 className="text-[20px] sm:text-[22px] font-extrabold text-white tracking-tight">
                     Popular Korean Novels
                 </h2>
-                <div className="flex-1 h-px bg-white/10" />
 
                 <div className="flex items-center gap-4">
                     <div className="flex gap-2">
                         <button
                             onClick={scrollPrev}
-                            className="p-1.5 rounded-full bg-white/5 hover:bg-white/10 transition-colors border border-white/5 cursor-pointer"
+                            className="flex h-8 w-8 items-center justify-center rounded-full bg-white/[0.08] hover:bg-white/[0.18] transition-colors cursor-pointer"
                             aria-label="Previous"
                         >
                             <ChevronLeft className="w-4 h-4 text-gray-300" />
                         </button>
                         <button
                             onClick={scrollNext}
-                            className="p-1.5 rounded-full bg-white/5 hover:bg-white/10 transition-colors border border-white/5 cursor-pointer"
+                            className="flex h-8 w-8 items-center justify-center rounded-full bg-white/[0.08] hover:bg-white/[0.18] transition-colors cursor-pointer"
                             aria-label="Next"
                         >
                             <ChevronRight className="w-4 h-4 text-gray-300" />
@@ -91,11 +90,11 @@ export default function PopularKoreanNovels({ onLNClick }: PopularKoreanNovelsPr
             <div className="relative">
                 <div className="flex gap-4">
                     <div className="flex-1 overflow-hidden" ref={emblaRef}>
-                        <div className="flex gap-4">
+                        <div className="flex gap-3 sm:gap-4">
                             {novels.map((novel, idx) => (
                                 <div
                                     key={novel.id}
-                                    className="flex-[0_0_140px] md:flex-[0_0_210px] lg:flex-[0_0_230px]"
+                                    className="flex-[0_0_148px] sm:flex-[0_0_175px] md:flex-[0_0_290px] lg:flex-[0_0_300px]"
                                 >
                                     <LNCard
                                         ln={novel}
