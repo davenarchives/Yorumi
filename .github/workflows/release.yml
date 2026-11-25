@@ -2,10 +2,8 @@ name: Build Desktop Releases
 
 on:
   push:
-    branches:
-      - main
-    tags:
-      - 'v*'
+    branches: [main]
+    tags: ['v*']
   workflow_dispatch:
 
 permissions:
@@ -13,72 +11,59 @@ permissions:
 
 jobs:
   build:
-    name: Build Desktop App (${{ matrix.os }})
+    name: Build Tauri (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
-
-      - name: Install Root Dependencies
-        run: npm ci
-
-      - name: Install Backend Dependencies
-        run: |
-          cd backend
-          npm ci
-          cd ..
-
-      - name: Build Web & Scraper Assets
-        run: npm run build
-
-      - name: Package Desktop App (Linux)
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install Linux dependencies
         if: matrix.os == 'ubuntu-latest'
-        run: npm run build:electron:linux
-
-      - name: Package Desktop App (macOS Universal)
+        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+      - run: npm ci
+      - name: Install macOS universal targets
         if: matrix.os == 'macos-latest'
-        run: npm run build:electron:mac:universal
-
-      - name: Package Desktop App (Windows Multi-Arch)
-        if: matrix.os == 'windows-latest'
-        run: npm run build:electron:win
-
-      - name: Upload Build Artifacts
-        uses: actions/upload-artifact@v4
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+      - name: Build Tauri app (macOS universal)
+        if: matrix.os == 'macos-latest'
+        run: npm run build:tauri -- --target universal-apple-darwin
+      - name: Build Tauri app
+        if: matrix.os != 'macos-latest'
+        run: npm run build:tauri
+      - name: Normalize desktop download filename
+        run: python scripts/normalize-tauri-artifact.py
+      - uses: actions/upload-artifact@v4
         with:
           name: yorumi-desktop-${{ matrix.os }}
           path: |
-            dist-app/*.exe
-            dist-app/*.dmg
-            dist-app/*.AppImage
-            dist-app/*.zip
-            dist-app/*.tar.gz
-            dist-app/*.pkg
-            dist-app/*.blockmap
-
+            release-assets/desktop/*
+            src-tauri/target/**/release/bundle/**/*.exe
+            src-tauri/target/**/release/bundle/**/*.msi
+            src-tauri/target/**/release/bundle/**/*.dmg
+            src-tauri/target/**/release/bundle/**/*.AppImage
+            src-tauri/target/**/release/bundle/**/*.deb
+            src-tauri/target/**/release/bundle/**/*.rpm
+          if-no-files-found: error
       - name: Publish GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          body_path: RELEASE_NOTES_v4.3.0.md
+          body_path: RELEASE_NOTES_v5.0.0.md
           files: |
-            dist-app/*.exe
-            dist-app/*.dmg
-            dist-app/*.AppImage
-            dist-app/*.zip
-            dist-app/*.tar.gz
-            dist-app/*.pkg
-          generate_release_notes: true
+            release-assets/desktop/*
+            src-tauri/target/**/release/bundle/**/*.exe
+            src-tauri/target/**/release/bundle/**/*.msi
+            src-tauri/target/**/release/bundle/**/*.dmg
+            src-tauri/target/**/release/bundle/**/*.AppImage
+            src-tauri/target/**/release/bundle/**/*.deb
+            src-tauri/target/**/release/bundle/**/*.rpm
+          generate_release_notes: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
