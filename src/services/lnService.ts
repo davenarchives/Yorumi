@@ -3,10 +3,11 @@ import type { LightNovel, LNChapter, LNChapterContent, NovelEditionKind } from '
 import { API_BASE, USES_LOCAL_SOURCES } from '../config/api';
 import { novelBinSource } from '../platform/sources/novelbin';
 import { getDisplayImageUrl } from '../utils/image';
-import { fetchWithOfflineFallback } from './offlineCache';
+import { fetchWithOfflineFallback, getOfflineData } from './offlineCache';
 import { POPULAR_KOREAN_NOVELS, POPULAR_CHINESE_NOVELS } from './lnData';
 import { buildYorumiId } from '../utils/contentIdentity';
-import { detectNovelEdition, isConfirmedNovelMatch } from '../utils/novelIdentity';
+import { detectNovelEdition, isConfirmedNovelMatch, normalizeNovelTitle } from '../utils/novelIdentity';
+import { postJson } from '../platform/nativeHttp';
 
 const ANILIST_URL = 'https://graphql.anilist.co';
 
@@ -25,17 +26,21 @@ const fetchAniList = async (query: string, variables: any = {}) => {
         return cached.data;
     }
 
-    const { data } = await axios.post(
-        ANILIST_URL,
-        { query, variables },
-        { headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, timeout: 10000 }
-    );
-
-    const result = data?.data;
-    if (result) {
-        cacheMap.set(key, { data: result, timestamp: Date.now() });
+    try {
+        const res = await postJson<{ data?: any }>(
+            ANILIST_URL,
+            { query, variables },
+            { 'Content-Type': 'application/json', Accept: 'application/json' }
+        );
+        const result = res?.data;
+        if (result) {
+            cacheMap.set(key, { data: result, timestamp: Date.now() });
+        }
+        return result;
+    } catch (e) {
+        console.warn('[lnService] AniList fetch error:', e);
+        return null;
     }
-    return result;
 };
 
 const mapAniListToLN = (media: any): LightNovel => {
@@ -72,6 +77,7 @@ const mapAniListToLN = (media: any): LightNovel => {
             },
         },
         score: media.averageScore ? media.averageScore / 10 : 0,
+        publishedYear: media.startDate?.year || undefined,
         rank: media.popularity || 0,
         status: media.status,
         type: media.format || 'NOVEL',
@@ -85,6 +91,7 @@ const mapAniListToLN = (media: any): LightNovel => {
         bannerImage: media.bannerImage || media.coverImage?.extraLarge || image,
         relations: media.relations,
         recommendations: media.recommendations,
+        characters: media.characters,
     };
 };
 
@@ -124,9 +131,36 @@ const mapScraperToLN = (item: any, defaultCountry: 'KR' | 'CN' | 'JP' | string =
 };
 
 export const lnService = {
+    peekSpotlight(): LightNovel[] {
+        return getOfflineData<LightNovel[]>('ln_spotlight_v2') || [];
+    },
+    peekLatestUpdates(): LightNovel[] {
+        return getOfflineData<LightNovel[]>('ln_latest_v2') || [];
+    },
+    peekPopular(page: number = 1): LightNovel[] {
+        return getOfflineData<LightNovel[]>(`ln_popular_v2_${page}`) || [];
+    },
+    peekTop100(page: number = 1): LightNovel[] {
+        return getOfflineData<LightNovel[]>(`ln_top100_v2_${page}`) || [];
+    },
+    peekPopularKoreanNovels(): LightNovel[] {
+        return POPULAR_KOREAN_NOVELS;
+    },
+    peekPopularChineseNovels(): LightNovel[] {
+        return POPULAR_CHINESE_NOVELS;
+    },
+    async preloadHome(): Promise<void> {
+        await Promise.allSettled([
+            this.getSpotlight(),
+            this.getLatestUpdates(),
+            this.getPopular(1),
+            this.getTop100(1),
+        ]);
+    },
+
     // 1. Spotlight Light Novels
     async getSpotlight(): Promise<LightNovel[]> {
-        return fetchWithOfflineFallback('ln_spotlight', async () => {
+        return fetchWithOfflineFallback('ln_spotlight_v2', async () => {
             const query = `
                 query {
                     Page(page: 1, perPage: 10) {
@@ -138,6 +172,7 @@ export const lnService = {
                             bannerImage
                             description
                             averageScore
+                            startDate { year }
                             popularity
                             status
                             format
@@ -159,7 +194,7 @@ export const lnService = {
 
     // 2. Latest LN Updates / Trending
     async getLatestUpdates(): Promise<LightNovel[]> {
-        return fetchWithOfflineFallback('ln_latest', async () => {
+        return fetchWithOfflineFallback('ln_latest_v2', async () => {
             const query = `
                 query {
                     Page(page: 1, perPage: 24) {
@@ -170,6 +205,7 @@ export const lnService = {
                             coverImage { extraLarge large }
                             description
                             averageScore
+                            startDate { year }
                             popularity
                             status
                             format
@@ -189,7 +225,7 @@ export const lnService = {
 
     // 3. All Time Popular Japanese Light Novels
     async getPopular(page: number = 1): Promise<LightNovel[]> {
-        return fetchWithOfflineFallback(`ln_popular_${page}`, async () => {
+        return fetchWithOfflineFallback(`ln_popular_v2_${page}`, async () => {
             const query = `
                 query($page: Int) {
                     Page(page: $page, perPage: 24) {
@@ -200,6 +236,7 @@ export const lnService = {
                             coverImage { extraLarge large }
                             description
                             averageScore
+                            startDate { year }
                             popularity
                             status
                             format
@@ -219,7 +256,7 @@ export const lnService = {
 
     // 4. Top 100 Rated Light Novels
     async getTop100(page: number = 1): Promise<LightNovel[]> {
-        return fetchWithOfflineFallback(`ln_top100_${page}`, async () => {
+        return fetchWithOfflineFallback(`ln_top100_v2_${page}`, async () => {
             const query = `
                 query($page: Int) {
                     Page(page: $page, perPage: 24) {
@@ -230,6 +267,7 @@ export const lnService = {
                             coverImage { extraLarge large }
                             description
                             averageScore
+                            startDate { year }
                             popularity
                             status
                             format
@@ -247,66 +285,88 @@ export const lnService = {
         });
     },
 
-    // 5. Popular Korean Web Novels (Solo Leveling, Omniscient Reader, TBATE, etc.)
-    async getPopularKoreanNovels(): Promise<LightNovel[]> {
-        return fetchWithOfflineFallback('ln_v3_popular_korean', async () => {
-            return POPULAR_KOREAN_NOVELS;
+    async getTop100Full(): Promise<LightNovel[]> {
+        return fetchWithOfflineFallback('ln_top100_full_v1', async () => {
+            const pages = await Promise.all([1, 2, 3, 4, 5].map((p) =>
+                this.getTop100(p).catch(() => [] as LightNovel[])
+            ));
+            const seen = new Set<string>();
+            const deduped: LightNovel[] = [];
+            for (const page of pages) {
+                for (const item of page) {
+                    const key = String(item.id || item.mal_id || item.title || '').toLowerCase();
+                    if (!key || seen.has(key)) continue;
+                    seen.add(key);
+                    deduped.push(item);
+                    if (deduped.length >= 100) return deduped;
+                }
+            }
+            return deduped;
         });
     },
 
-    // 6. Popular Chinese Web Novels (Lord of the Mysteries, Reverend Insanity, Martial Peak, etc.)
+    // 5. Popular Korean Web Novels (curated list with verified AniList CDN covers & NovelBin scraper IDs)
+    async getPopularKoreanNovels(): Promise<LightNovel[]> {
+        return POPULAR_KOREAN_NOVELS;
+    },
+
+    // 6. Popular Chinese Web Novels (curated list with verified AniList CDN covers & NovelBin scraper IDs)
     async getPopularChineseNovels(): Promise<LightNovel[]> {
-        return fetchWithOfflineFallback('ln_v3_popular_chinese', async () => {
-            return POPULAR_CHINESE_NOVELS;
-        });
+        return POPULAR_CHINESE_NOVELS;
     },
 
     // 7. Single LN Details from AniList or Scraper
     async getDetails(id: string | number): Promise<LightNovel | null> {
         const idStr = String(id);
-        return fetchWithOfflineFallback(`ln_v3_details_${idStr}`, async () => {
+        return fetchWithOfflineFallback(`ln_v6_details_${idStr}`, async () => {
             // Check if this is a direct scraper ID (contains ':')
             if (idStr.includes(':')) {
                 // First check if it matches curated Korean / Chinese novels
                 const foundCurated = [...POPULAR_KOREAN_NOVELS, ...POPULAR_CHINESE_NOVELS].find(
                     (n) => String(n.id) === idStr || String(n.scraper_id) === idStr
                 );
+                if (foundCurated) {
+                    return {
+                        ...foundCurated,
+                        id: idStr,
+                        mal_id: idStr,
+                        scraper_id: idStr,
+                    };
+                }
 
                 const scraperDetails = await lnService.getScraperNovelDetails(idStr);
-                if (!scraperDetails && !foundCurated) return null;
+                if (!scraperDetails) return null;
 
-                const isKR = foundCurated?.countryOfOrigin === 'KR' ||
+                const isKR =
                     /korean|manhwa|solo.leveling|omniscient|second.life|nano.machine|overgeared|ranker|mount.hua|reincarnation|hunter|gacha|estate/i.test(`${idStr} ${scraperDetails?.title || ''}`);
-                const isCN = foundCurated?.countryOfOrigin === 'CN' ||
+                const isCN =
                     /chinese|xianxia|wuxia|cultivation|martial.peak|reverend|mysteries|battle.through|immortal|heavens|demon|witch|avatar/i.test(`${idStr} ${scraperDetails?.title || ''}`);
-                const country = isKR ? 'KR' : isCN ? 'CN' : (foundCurated?.countryOfOrigin || 'JP');
+                const country = isKR ? 'KR' : isCN ? 'CN' : 'JP';
 
                 return {
                     id: idStr,
                     mal_id: idStr,
-                    title: scraperDetails?.title || foundCurated?.title || idStr,
-                    title_english: scraperDetails?.title || foundCurated?.title_english || idStr,
-                    title_romaji: foundCurated?.title_romaji,
-                    title_native: foundCurated?.title_native,
+                    title: scraperDetails?.title || idStr,
+                    title_english: scraperDetails?.title || idStr,
                     images: {
                         jpg: {
-                            image_url: scraperDetails?.cover || foundCurated?.images.jpg.image_url || '',
-                            large_image_url: scraperDetails?.cover || foundCurated?.images.jpg.large_image_url || '',
+                            image_url: scraperDetails?.cover || '',
+                            large_image_url: scraperDetails?.cover || '',
                         },
                     },
-                    score: foundCurated?.score || 9.0,
-                    rank: foundCurated?.rank || 0,
-                    status: scraperDetails?.status || foundCurated?.status || 'Ongoing',
+                    score: 9.0,
+                    rank: 0,
+                    status: scraperDetails?.status || 'Ongoing',
                     type: 'NOVEL',
                     countryOfOrigin: country,
-                    source: scraperDetails?.source || foundCurated?.source || 'novelbin',
+                    source: (scraperDetails?.source as LightNovel['source']) || 'novelbin',
                     scraper_id: idStr,
-                    synopsis: scraperDetails?.description || foundCurated?.synopsis || '',
-                    author: scraperDetails?.author && scraperDetails.author !== 'Unknown' ? scraperDetails.author : foundCurated?.author || 'Unknown Author',
+                    synopsis: scraperDetails?.description || '',
+                    author: scraperDetails?.author && scraperDetails.author !== 'Unknown' ? scraperDetails.author : 'Unknown Author',
                     genres: scraperDetails?.genres
                         ? scraperDetails.genres.map((g, i) => (typeof g === 'string' ? { mal_id: i + 1, name: g } : g))
-                        : (foundCurated?.genres || []),
-                    bannerImage: scraperDetails?.cover || foundCurated?.bannerImage,
+                        : [],
+                    bannerImage: scraperDetails?.cover || '',
                 };
             }
 
@@ -333,6 +393,16 @@ export const lnService = {
                         genres
                         synonyms
                         staff(perPage: 5) { edges { role node { name { full } } } }
+                        characters(perPage: 25, sort: [ROLE, RELEVANCE, ID]) {
+                            edges {
+                                role
+                                node {
+                                    id
+                                    name { full }
+                                    image { large }
+                                }
+                            }
+                        }
                         relations {
                             edges {
                                 relationType
@@ -368,28 +438,80 @@ export const lnService = {
 
     // 8. Backend Integration: Resolve AniList title to backend scraper novel ID
     async resolveScraperId(titles: string[], expectedEdition: NovelEditionKind = 'light-novel'): Promise<string | null> {
-        const key = `ln_v3_resolve_${titles.join('_')}`;
+        const latinTitles = [...new Set(titles.map((value) => String(value || '').trim()).filter((value) => /[A-Za-z0-9]/.test(value)))];
+        if (latinTitles.length === 0) return null;
+
+        // Check curated Korean / Chinese novels first
+        const curatedHit = [...POPULAR_KOREAN_NOVELS, ...POPULAR_CHINESE_NOVELS].find((novel) =>
+            isConfirmedNovelMatch(latinTitles, novel.title_english || novel.title, 'unknown')
+            || (novel.title_romaji && isConfirmedNovelMatch(latinTitles, novel.title_romaji, 'unknown'))
+        );
+        if (curatedHit?.scraper_id) {
+            return String(curatedHit.scraper_id);
+        }
+
+        const key = `ln_v6_resolve_${latinTitles.join('_')}`;
+        const memCached = cacheMap.get(key);
+        if (memCached && Date.now() - memCached.timestamp < CACHE_TTL && memCached.data) {
+            return memCached.data as string;
+        }
+
         return fetchWithOfflineFallback(key, async () => {
             if (USES_LOCAL_SOURCES) {
-                const expectedTitles = [...new Set(titles.map((value) => value.trim()).filter(Boolean))];
-                for (const title of expectedTitles) {
-                    const results = await novelBinSource.search(title);
-                    const match = results.find((candidate) => isConfirmedNovelMatch(expectedTitles, candidate.title, expectedEdition));
-                    if (match?.id) return match.id;
+                // 1. Fast slug probe directly against AllNovelFull + NovelFire
+                const probedId = await novelBinSource.probeByTitles(latinTitles);
+                if (probedId) {
+                    cacheMap.set(key, { data: probedId, timestamp: Date.now() });
+                    return probedId;
+                }
+
+                // 2. Fallback to cleaned search queries across AllNovelFull + NovelFire
+                const searchQueries: string[] = [];
+                const addQuery = (q: string) => {
+                    const cleaned = q
+                        .replace(/\s*[\(\[].*?[\)\]]\s*/g, ' ')
+                        .replace(/[―–—:!?]/g, ' ')
+                        .replace(/\s+/g, ' ')
+                        .trim();
+                    if (cleaned.length >= 2 && !searchQueries.some((existing) => existing.toLowerCase() === cleaned.toLowerCase())) {
+                        searchQueries.push(cleaned);
+                    }
+                };
+                for (const title of latinTitles) {
+                    addQuery(title);
+                    const noSo = title.replace(/^so\s+/i, '');
+                    if (noSo !== title) addQuery(noSo);
+                    const colonBase = title.split(/[:–—―]/)[0]?.trim() || '';
+                    if (colonBase.length >= 4 && colonBase !== title) addQuery(colonBase);
+                }
+
+                for (const query of searchQueries.slice(0, 4)) {
+                    const results = await novelBinSource.search(query);
+                    const match = results.find((candidate) => isConfirmedNovelMatch(latinTitles, candidate.title, expectedEdition))
+                        || results.find((candidate) => isConfirmedNovelMatch(latinTitles, candidate.title, 'unknown'))
+                        || results.find((candidate) => latinTitles.some((title) => normalizeNovelTitle(title) === normalizeNovelTitle(candidate.title)));
+                    if (match?.id) {
+                        cacheMap.set(key, { data: match.id, timestamp: Date.now() });
+                        return match.id;
+                    }
                 }
                 return null;
             }
             try {
-                const { data } = await apiClient.post('/ln/resolve', { titles });
-                return data?.scraperId || null;
+                const { data } = await apiClient.post('/ln/resolve', { titles: latinTitles });
+                const resolved = data?.scraperId || null;
+                if (resolved) {
+                    cacheMap.set(key, { data: resolved, timestamp: Date.now() });
+                }
+                return resolved;
             } catch {
                 return null;
             }
-        });
+        }, (val) => !val);
     },
 
     // 9. Backend Integration: Get scraper novel details & chapters
-    async getScraperNovelDetails(scraperId: string, refresh = false): Promise<{
+    async getScraperNovelDetails(scraperId: string, refresh = false, chaptersOnly = false): Promise<{
         chapters: LNChapter[];
         description?: string;
         author?: string;
@@ -399,55 +521,75 @@ export const lnService = {
         genres?: string[];
         source?: string;
     } | null> {
-        return fetchWithOfflineFallback(`ln_v3_scraper_details_${scraperId}`, async () => {
-            if (USES_LOCAL_SOURCES) {
+        const key = `ln_v6_scraper_details_${scraperId}`;
+        if (!refresh) {
+            const memCached = cacheMap.get(key);
+            if (memCached && Date.now() - memCached.timestamp < CACHE_TTL && memCached.data?.chapters?.length > 0) {
+                return memCached.data;
+            }
+        }
+
+        return fetchWithOfflineFallback(
+            key,
+            async () => {
+                if (USES_LOCAL_SOURCES) {
+                    try {
+                        const details = await novelBinSource.getDetailsFast(scraperId, chaptersOnly);
+                        const payload = {
+                            ...details,
+                            chapters: details.chapters.map((chapter) => ({
+                                ...chapter,
+                                provider: details.source || 'novelbin',
+                                providerId: chapter.id,
+                                editionId: details.id,
+                                availability: 'available' as const,
+                            })),
+                        };
+                        if (payload.chapters.length > 0) {
+                            cacheMap.set(key, { data: payload, timestamp: Date.now() });
+                        }
+                        return payload;
+                    } catch {
+                        return null;
+                    }
+                }
                 try {
-                    const details = await novelBinSource.getDetails(scraperId);
-                    return {
-                        ...details,
-                        chapters: details.chapters.map((chapter) => ({
-                            ...chapter,
-                            provider: 'novelbin',
-                            providerId: chapter.id,
-                            editionId: details.id,
-                            availability: 'available' as const,
-                        })),
-                    };
+                    const query = refresh ? '?refresh=true' : '';
+                    const { data } = await apiClient.get(`/ln/details/${encodeURIComponent(scraperId)}${query}`);
+                    if (data?.success && data?.data) {
+                        const payload = {
+                            chapters: (data.data.chapters || []).map((chapter: LNChapter) => ({
+                                ...chapter,
+                                provider: chapter.provider || data.data.source || 'novelbin',
+                                providerId: chapter.providerId || chapter.id,
+                                editionId: chapter.editionId || scraperId,
+                                availability: chapter.availability || 'available',
+                            })),
+                            description: data.data.description,
+                            author: data.data.author,
+                            title: data.data.title,
+                            cover: data.data.cover,
+                            status: data.data.status,
+                            genres: data.data.genres,
+                            source: data.data.source,
+                        };
+                        if (payload.chapters.length > 0) {
+                            cacheMap.set(key, { data: payload, timestamp: Date.now() });
+                        }
+                        return payload;
+                    }
+                    return null;
                 } catch {
                     return null;
                 }
-            }
-            try {
-                const query = refresh ? '?refresh=true' : '';
-                const { data } = await apiClient.get(`/ln/details/${encodeURIComponent(scraperId)}${query}`);
-                if (data?.success && data?.data) {
-                    return {
-                        chapters: (data.data.chapters || []).map((chapter: LNChapter) => ({
-                            ...chapter,
-                            provider: chapter.provider || data.data.source || 'novelbin',
-                            providerId: chapter.providerId || chapter.id,
-                            editionId: chapter.editionId || scraperId,
-                            availability: chapter.availability || 'available',
-                        })),
-                        description: data.data.description,
-                        author: data.data.author,
-                        title: data.data.title,
-                        cover: data.data.cover,
-                        status: data.data.status,
-                        genres: data.data.genres,
-                        source: data.data.source,
-                    };
-                }
-                return null;
-            } catch {
-                return null;
-            }
-        });
+            },
+            (val) => !val || !Array.isArray(val.chapters) || val.chapters.length === 0
+        );
     },
 
     // 10. Backend Integration: Read Chapter Content
     async getChapterContent(chapterId: string): Promise<LNChapterContent | null> {
-        return fetchWithOfflineFallback(`ln_v3_content_${chapterId}`, async () => {
+        return fetchWithOfflineFallback(`ln_v4_content_${chapterId}`, async () => {
             if (USES_LOCAL_SOURCES) {
                 try {
                     const chapter = await novelBinSource.getContent(chapterId);
