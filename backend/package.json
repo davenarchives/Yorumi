@@ -16,6 +16,7 @@
         "migrate:mappings": "npx tsx scripts/migrate-anilist-mappings.ts --apply"
     },
     "dependencies": {
+        "@neondatabase/serverless": "^1.2.1",
         "@sparticuz/chromium": "^143.0.4",
         "@types/cheerio": "^0.22.35",
         "@upstash/redis": "^1.36.1",
@@ -29,7 +30,8 @@
         "graphql-request": "^7.4.0",
         "hianime": "^1.5.1",
         "puppeteer-extra": "^3.3.6",
-        "puppeteer-extra-plugin-stealth": "^2.11.2"
+        "puppeteer-extra-plugin-stealth": "^2.11.2",
+        "xbogus": "^1.0.2"
     },
     "devDependencies": {
         "@types/cors": "^2.8.17",
