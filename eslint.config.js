@@ -6,7 +6,19 @@ import tseslint from 'typescript-eslint'
 import unusedImports from 'eslint-plugin-unused-imports'
 
 export default tseslint.config(
-  { ignores: ['dist'] },
+  {
+    ignores: [
+      'dist',
+      'dist-app',
+      'dist-electron',
+      'backend/dist',
+      'android',
+      'ios',
+      'target',
+      'src-tauri/target',
+      'website/dist',
+    ],
+  },
   {
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
     files: ['**/*.{ts,tsx}'],
