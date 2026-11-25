@@ -1,7 +1,8 @@
 // In-app IndexedDB storage and downloader for offline anime playback
 import type { SubtitleTrack, StreamLink } from '../types/stream';
-import { API_BASE, API_ORIGIN } from '../config/api';
-import { selectEnglishSubtitleTracks } from '../utils/subtitles';
+import { API_BASE, API_ORIGIN, USES_LOCAL_SOURCES } from '../config/api';
+import { getText } from '../platform/nativeHttp';
+import { convertSubtitleTextToVtt, normalizeSubtitleTracks } from '../utils/subtitles';
 import { cacheImage, getCachedImage, prefetchImages } from './offlineImageCache';
 import {
     deleteNativeDownload,
@@ -9,6 +10,8 @@ import {
     isAndroidDownloadStorageAvailable,
     setNativeDownloadPaused,
 } from '../platform/nativeDownloadStorage';
+import { isTauri } from '../platform/runtime';
+import { tauriBridge } from '../platform/tauri/tauriBridge';
 
 export interface DownloadedEpisode {
     id: string; // Format: `${animeId}_ep_${episodeNumber}`
@@ -65,6 +68,144 @@ const waitUntilResumed = async (control?: DownloadControl) => {
 const DB_NAME = 'yorumi_downloads_v1';
 const STORE_NAME = 'episodes';
 const DB_VERSION = 1;
+const OFFLINE_SUBTITLES_KEY = 'yorumi_offline_subtitles_v1';
+const OFFLINE_ANIME_META_KEY = 'yorumi_offline_anime_meta_v1';
+
+export interface OfflineEpisodeMeta {
+    title?: string;
+    thumbnail?: string;
+    overview?: string;
+    airDate?: string;
+}
+
+export interface OfflineAnimeMetadata {
+    id: string;
+    anilistId?: number;
+    malId?: number;
+    tmdbId?: number;
+    title: string;
+    title_english?: string;
+    poster?: string;
+    banner?: string;
+    backdrop?: string;
+    synopsis?: string;
+    score?: number;
+    year?: number;
+    rating?: string;
+    status?: string;
+    type?: string;
+    episodes?: number | null;
+    genres?: string[];
+    episodeThumbs?: Record<number, OfflineEpisodeMeta>;
+    updatedAt: number;
+}
+
+const normalizeOfflineMetaTitle = (value?: string): string =>
+    String(value || '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, ' ')
+        .trim();
+
+const readOfflineAnimeMetaMap = (): Record<string, OfflineAnimeMetadata> => {
+    try {
+        const raw = localStorage.getItem(OFFLINE_ANIME_META_KEY);
+        return raw ? (JSON.parse(raw) as Record<string, OfflineAnimeMetadata>) : {};
+    } catch {
+        return {};
+    }
+};
+
+const writeOfflineAnimeMetaMap = (map: Record<string, OfflineAnimeMetadata>) => {
+    try {
+        // Cap stored entries at 80 most-recent to keep localStorage lightweight
+        const entries = Object.entries(map)
+            .sort((a, b) => (b[1].updatedAt || 0) - (a[1].updatedAt || 0))
+            .slice(0, 80);
+        localStorage.setItem(OFFLINE_ANIME_META_KEY, JSON.stringify(Object.fromEntries(entries)));
+    } catch {
+        // Ignore storage quota errors
+    }
+};
+
+const dataUriToBlobUrl = (url: string): string => {
+    if (!/^data:/i.test(url)) return url;
+    try {
+        const commaIdx = url.indexOf(',');
+        if (commaIdx < 0) return url;
+        const header = url.slice(5, commaIdx);
+        const payload = url.slice(commaIdx + 1);
+        const isBase64 = /;base64/i.test(header);
+        const mime = header.split(';')[0] || 'text/vtt';
+        const decoded = isBase64 ? atob(payload) : decodeURIComponent(payload);
+        const blob = new Blob([decoded], { type: mime });
+        return URL.createObjectURL(blob);
+    } catch {
+        return url;
+    }
+};
+
+const readOfflineSubtitleMap = (): Record<string, SubtitleTrack[]> => {
+    try {
+        const raw = localStorage.getItem(OFFLINE_SUBTITLES_KEY);
+        return raw ? (JSON.parse(raw) as Record<string, SubtitleTrack[]>) : {};
+    } catch {
+        return {};
+    }
+};
+
+const saveOfflineSubtitlesForKey = (key: string, subtitles?: SubtitleTrack[]) => {
+    if (!key || !subtitles || subtitles.length === 0) return;
+    const map = readOfflineSubtitleMap();
+    map[key] = subtitles;
+    try {
+        localStorage.setItem(OFFLINE_SUBTITLES_KEY, JSON.stringify(map));
+        return;
+    } catch {
+        // Quota exceeded: retry with primary subtitle track only for this episode
+        try {
+            map[key] = [subtitles[0]];
+            localStorage.setItem(OFFLINE_SUBTITLES_KEY, JSON.stringify(map));
+            return;
+        } catch {
+            // Still full: evict oldest keys until it fits
+            const keys = Object.keys(map).filter((k) => k !== key);
+            for (const oldKey of keys) {
+                delete map[oldKey];
+                try {
+                    localStorage.setItem(OFFLINE_SUBTITLES_KEY, JSON.stringify(map));
+                    return;
+                } catch {
+                    // keep pruning
+                }
+            }
+        }
+    }
+};
+
+const getOfflineSubtitlesForKey = (key: string): SubtitleTrack[] | undefined => {
+    if (!key) return undefined;
+    const map = readOfflineSubtitleMap();
+    return map[key];
+};
+
+const deleteOfflineSubtitlesForKey = (key: string) => {
+    if (!key) return;
+    try {
+        const map = readOfflineSubtitleMap();
+        if (key in map) {
+            delete map[key];
+            localStorage.setItem(OFFLINE_SUBTITLES_KEY, JSON.stringify(map));
+        }
+    } catch {
+        // Ignore storage errors
+    }
+};
+
+const buildTauriLocalFileUrl = (filePath: string): string => {
+    const isWindows = typeof navigator !== 'undefined' && /windows/i.test(navigator.userAgent);
+    const origin = isWindows ? 'http://yorumi-media.localhost' : 'yorumi-media://localhost';
+    return `${origin}/local-file?path=${encodeURIComponent(filePath)}`;
+};
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
@@ -143,6 +284,9 @@ export function resolveHlsUrl(baseUrl: string, relativeOrAbsolute: string): stri
 function isLocalMediaProxyUrl(rawUrl: string): boolean {
     try {
         const parsed = new URL(rawUrl);
+        if (parsed.protocol === 'yorumi-media:' || parsed.hostname === 'yorumi-media.localhost') {
+            return true;
+        }
         return parsed.port === '18765' && (parsed.hostname === '127.0.0.1' || parsed.hostname === 'localhost');
     } catch {
         return false;
@@ -193,24 +337,58 @@ function hasUsableDownloadedMedia(downloaded: DownloadedEpisode): boolean {
     return downloaded.fileSize === undefined || downloaded.fileSize > 0;
 }
 
-async function persistSubtitleTracks(subtitles?: SubtitleTrack[]): Promise<SubtitleTrack[] | undefined> {
-    const englishSubtitles = selectEnglishSubtitleTracks(subtitles);
-    if (!englishSubtitles.length) return undefined;
-    return Promise.all(englishSubtitles.map(async (subtitle) => {
-        if (/^(data:|blob:)/i.test(subtitle.url)) return subtitle;
+async function persistSubtitleTracks(subtitles?: SubtitleTrack[], referer?: string): Promise<SubtitleTrack[] | undefined> {
+    // Keep English first plus up to 11 other languages so offline downloads support the language dropdown
+    const normalizedSubtitles = normalizeSubtitleTracks(subtitles).slice(0, 12);
+    if (!normalizedSubtitles.length) return undefined;
+    const settled = await Promise.all(normalizedSubtitles.map(async (subtitle) => {
         try {
-            const response = await fetch(getFetchableUrl(subtitle.url));
-            if (!response.ok) return subtitle;
-            let text = await response.text();
-            if (!/^WEBVTT(?:\s|$)/i.test(text)) {
-                text = `WEBVTT\n\n${text.replace(/(\d{2}:\d{2}:\d{2}),([0-9]{3})/g, '$1.$2')}`;
+            if (/^data:/i.test(subtitle.url)) return subtitle;
+            const unwrapped = unwrapNativeStreamTarget(subtitle.url, referer);
+            const targetSubUrl = unwrapped.url || subtitle.url;
+            const targetReferer = unwrapped.referer || referer;
+            let text = '';
+            if (USES_LOCAL_SOURCES && /^https?:\/\//i.test(targetSubUrl) && !isLocalMediaProxyUrl(targetSubUrl)) {
+                try {
+                    const headers = targetReferer ? { Referer: targetReferer } : undefined;
+                    text = await getText(targetSubUrl, headers);
+                } catch {
+                    text = '';
+                }
             }
-            return { ...subtitle, url: `data:text/vtt;charset=utf-8,${encodeURIComponent(text)}` };
-        } catch (error) {
-            console.warn('Failed to persist subtitle for offline playback:', error);
-            return subtitle;
+            if (!text.trim()) {
+                try {
+                    const response = await fetch(getFetchableUrl(subtitle.url));
+                    if (response.ok) {
+                        text = await response.text();
+                    }
+                } catch {
+                    text = '';
+                }
+            }
+            if (!text.trim() && isTauri() && /^https?:\/\//i.test(targetSubUrl)) {
+                try {
+                    const isWindows = typeof navigator !== 'undefined' && /windows/i.test(navigator.userAgent);
+                    const origin = isWindows ? 'http://yorumi-media.localhost' : 'yorumi-media://localhost';
+                    const proxied = `${origin}/stream?url=${encodeURIComponent(targetSubUrl)}${targetReferer ? `&referer=${encodeURIComponent(targetReferer)}` : ''}`;
+                    const response = await fetch(proxied);
+                    if (response.ok) {
+                        text = await response.text();
+                    }
+                } catch {
+                    text = '';
+                }
+            }
+            const vttText = convertSubtitleTextToVtt(text);
+            if (!vttText) return null;
+            return { ...subtitle, url: `data:text/vtt;charset=utf-8,${encodeURIComponent(vttText)}` };
+        } catch (err) {
+            console.warn('Skipping failed subtitle track during download:', subtitle.url, err);
+            return null;
         }
     }));
+    const valid = settled.filter((track): track is SubtitleTrack => track !== null);
+    return valid.length ? valid : undefined;
 }
 
 function createOfflineHlsPlaylist(
@@ -288,13 +466,29 @@ function getFetchableUrl(rawUrl: string): string {
     if (rawUrl.startsWith('/')) {
         return `${API_ORIGIN}${rawUrl}`;
     }
-    if (isLocalMediaProxyUrl(rawUrl)) {
+    if (isLocalMediaProxyUrl(rawUrl) || USES_LOCAL_SOURCES) {
         return rawUrl;
     }
     if (rawUrl.startsWith('http') && !rawUrl.includes('localhost:3001') && !rawUrl.includes('127.0.0.1:3001') && !rawUrl.startsWith(API_ORIGIN)) {
         return `${API_BASE}/scraper/proxy?url=${encodeURIComponent(rawUrl)}`;
     }
     return rawUrl;
+}
+
+function unwrapNativeStreamTarget(rawUrl: string, explicitReferer?: string): { url: string; referer?: string } {
+    if (rawUrl && (isLocalMediaProxyUrl(rawUrl) || rawUrl.includes('/api/scraper/proxy?'))) {
+        try {
+            const parsed = new URL(rawUrl, 'http://127.0.0.1:18765');
+            const target = parsed.searchParams.get('url');
+            const proxyReferer = parsed.searchParams.get('referer') || undefined;
+            if (target && /^https?:\/\//i.test(target)) {
+                return { url: target, referer: explicitReferer || proxyReferer };
+            }
+        } catch {
+            // keep original
+        }
+    }
+    return { url: rawUrl, referer: explicitReferer };
 }
 
 async function isMpegTsBlob(blob: Blob): Promise<boolean> {
@@ -459,13 +653,21 @@ export const downloadService = {
 
     async getDownloads(): Promise<DownloadedEpisode[]> {
         let items: DownloadedEpisode[] = [];
-        const isElectron = typeof window !== 'undefined' && Boolean(window.electronAPI?.getLocalDownloads);
-        if (isElectron && window.electronAPI) {
+
+        if (isTauri()) {
             try {
-                const local = await window.electronAPI.getLocalDownloads();
-                items = (local || []).filter(hasUsableDownloadedMedia);
+                const local = await tauriBridge.getLocalDownloads();
+                items = (local || [])
+                    .filter((item) => hasUsableDownloadedMedia(item))
+                    .map((item) => {
+                        if (item.subtitles && item.subtitles.length > 0) return item;
+                        const savedSubs =
+                            getOfflineSubtitlesForKey(item.id)
+                            || getOfflineSubtitlesForKey(`${item.animeId}_ep_${item.episodeNumber}`);
+                        return savedSubs?.length ? { ...item, subtitles: savedSubs } : item;
+                    });
             } catch (error) {
-                console.error('Failed to get Electron downloads:', error);
+                console.error('Failed to get Tauri downloads:', error);
             }
         }
 
@@ -517,21 +719,26 @@ export const downloadService = {
         alternateEpNumbers?: (number | string | undefined)[]
     ): Promise<DownloadedEpisode | null> {
         const strAnimeId = String(animeId || '');
-        const isElectron = typeof window !== 'undefined' && Boolean(window.electronAPI?.getLocalDownload);
-        if (isElectron && window.electronAPI) {
+
+        if (isTauri()) {
             try {
-                const match = await window.electronAPI.getLocalDownload({
+                const match = await tauriBridge.getLocalDownload({
                     animeId: strAnimeId,
                     episodeNumber: Number(episodeNumber),
-                    title,
-                    anilistId,
-                    alternateEpNumbers,
                 });
                 if (match && hasUsableDownloadedMedia(match)) {
+                    if (!match.subtitles || match.subtitles.length === 0) {
+                        const savedSubs =
+                            getOfflineSubtitlesForKey(match.id)
+                            || getOfflineSubtitlesForKey(`${match.animeId}_ep_${match.episodeNumber}`);
+                        if (savedSubs?.length) {
+                            return { ...match, subtitles: savedSubs };
+                        }
+                    }
                     return match;
                 }
             } catch (error) {
-                console.error('Failed to get Electron download:', error);
+                console.error('Failed to get Tauri download:', error);
             }
         }
 
@@ -583,7 +790,9 @@ export const downloadService = {
             if (/\.tmp(?:\.ts)?$/i.test(actualPath)) {
                 actualPath = actualPath.replace(/\.tmp(?:\.ts)?$/i, '.mp4');
             }
-            const rawFileUrl = isAndroidDownloadStorageAvailable()
+            const rawFileUrl = isTauri()
+                ? buildTauriLocalFileUrl(actualPath)
+                : isAndroidDownloadStorageAvailable()
                 ? `http://127.0.0.1:18765/file?path=${encodeURIComponent(actualPath)}`
                 : `${API_BASE}/scraper/local-file?path=${encodeURIComponent(actualPath)}`;
             const isTs = downloaded.isHls !== undefined ? downloaded.isHls : actualPath.endsWith('.ts');
@@ -618,17 +827,99 @@ export const downloadService = {
             }
         }
 
+        const playableSubtitles = (downloaded.subtitles || []).map((track) => ({
+            ...track,
+            url: dataUriToBlobUrl(track.url),
+        }));
+
         return {
             quality: downloaded.quality || 'HD (Offline)',
             audio: downloaded.audio || 'sub',
             url: streamUrl,
             directUrl: streamUrl,
             isHls,
-            subtitles: downloaded.subtitles || [],
+            subtitles: playableSubtitles,
             duration: downloaded.duration || (downloaded.fileSize ? Math.max(300, Math.round((downloaded.fileSize * 8) / 1_600_000)) : undefined),
             provider: 'Offline Storage',
             server: 'offline',
         };
+    },
+
+    saveOfflineAnimeMetadata(meta: Omit<OfflineAnimeMetadata, 'updatedAt'>): void {
+        const key = String(meta.id || meta.anilistId || normalizeOfflineMetaTitle(meta.title)).trim();
+        if (!key || !meta.title) return;
+        const map = readOfflineAnimeMetaMap();
+        const existing = map[key];
+        const mergedThumbs: Record<number, OfflineEpisodeMeta> = {
+            ...(existing?.episodeThumbs || {}),
+            ...(meta.episodeThumbs || {}),
+        };
+        const next: OfflineAnimeMetadata = {
+            ...(existing || {}),
+            ...meta,
+            id: key,
+            synopsis: meta.synopsis?.trim() ? meta.synopsis : existing?.synopsis,
+            poster: meta.poster || existing?.poster,
+            banner: meta.banner || existing?.banner,
+            backdrop: meta.backdrop || existing?.backdrop,
+            score: meta.score && meta.score > 0 ? meta.score : existing?.score,
+            year: meta.year || existing?.year,
+            rating: meta.rating || existing?.rating,
+            genres: meta.genres?.length ? meta.genres : existing?.genres,
+            episodes: meta.episodes || existing?.episodes || null,
+            episodeThumbs: mergedThumbs,
+            updatedAt: Date.now(),
+        };
+        map[key] = next;
+        writeOfflineAnimeMetaMap(map);
+
+        if (typeof navigator !== 'undefined' && navigator.onLine) {
+            const thumbUrls = Object.values(mergedThumbs)
+                .map((ep) => ep.thumbnail)
+                .filter((u): u is string => Boolean(u))
+                .slice(0, 30);
+            void prefetchImages([next.poster, next.banner, next.backdrop, ...thumbUrls]).catch(() => undefined);
+        }
+    },
+
+    saveOfflineEpisodeThumbnail(animeId: string, animeTitle: string, episodeNumber: number, epMeta: OfflineEpisodeMeta): void {
+        const key = String(animeId || normalizeOfflineMetaTitle(animeTitle)).trim();
+        if (!key || !episodeNumber) return;
+        const map = readOfflineAnimeMetaMap();
+        const existing = map[key];
+        const mergedThumbs: Record<number, OfflineEpisodeMeta> = {
+            ...(existing?.episodeThumbs || {}),
+            [episodeNumber]: {
+                ...(existing?.episodeThumbs?.[episodeNumber] || {}),
+                ...epMeta,
+            },
+        };
+        map[key] = {
+            ...(existing || { id: key, title: animeTitle }),
+            episodeThumbs: mergedThumbs,
+            updatedAt: Date.now(),
+        };
+        writeOfflineAnimeMetaMap(map);
+        if (epMeta.thumbnail && typeof navigator !== 'undefined' && navigator.onLine) {
+            void cacheImage(epMeta.thumbnail).catch(() => undefined);
+        }
+    },
+
+    getOfflineAnimeMetadata(animeId?: string | number, title?: string, anilistId?: string | number): OfflineAnimeMetadata | null {
+        const map = readOfflineAnimeMetaMap();
+        const directKey = animeId ? String(animeId).trim() : '';
+        if (directKey && map[directKey]) return map[directKey];
+        const anilistKey = anilistId ? String(anilistId).trim() : '';
+        if (anilistKey && map[anilistKey]) return map[anilistKey];
+        const normTitle = normalizeOfflineMetaTitle(title);
+        for (const entry of Object.values(map)) {
+            if (directKey && isDownloadAnimeIdMatch(entry.id, directKey, anilistKey)) return entry;
+            if (anilistKey && entry.anilistId && String(entry.anilistId) === anilistKey) return entry;
+            if (normTitle && (normalizeOfflineMetaTitle(entry.title) === normTitle || normalizeOfflineMetaTitle(entry.title_english) === normTitle)) {
+                return entry;
+            }
+        }
+        return null;
     },
 
     async isEpisodeDownloaded(animeId: string, episodeNumber: number, title?: string, anilistId?: number | string): Promise<boolean> {
@@ -648,15 +939,15 @@ export const downloadService = {
     },
 
     async deleteDownload(animeId: string, episodeNumber: number, title?: string, anilistId?: number | string): Promise<boolean> {
-        const isElectron = typeof window !== 'undefined' && Boolean(window.electronAPI?.deleteLocalDownload);
-        if (isElectron && window.electronAPI) {
+        if (isTauri()) {
+            deleteOfflineSubtitlesForKey(`${animeId}_ep_${episodeNumber}`);
             try {
-                await window.electronAPI.deleteLocalDownload({
+                await tauriBridge.deleteLocalDownload({
                     animeId: String(animeId),
                     episodeNumber: Number(episodeNumber),
                 });
             } catch (error) {
-                console.error('Failed to delete Electron download:', error);
+                console.error('Failed to delete Tauri download:', error);
             }
         }
 
@@ -680,14 +971,11 @@ export const downloadService = {
     },
 
     openDownloadsFolder(category: 'Anime' | 'Manga' | 'LightNovels' = 'Anime'): boolean {
-        if (typeof window !== 'undefined' && window.electronAPI?.openDownloadsFolder) {
-            try {
-                window.electronAPI.openDownloadsFolder(category);
-                return true;
-            } catch (error) {
-                console.error('Failed to open downloads folder:', error);
-            }
+        if (isTauri()) {
+            tauriBridge.openDownloadsFolder(category);
+            return true;
         }
+
         return false;
     },
 
@@ -699,6 +987,7 @@ export const downloadService = {
             episodeNumber: number;
             episodeTitle?: string;
             streamUrl: string;
+            referer?: string;
             isHls?: boolean;
             quality?: string;
             audio?: 'sub' | 'dub';
@@ -711,34 +1000,90 @@ export const downloadService = {
             cacheImage(params.animeImage).catch(() => undefined);
         }
 
-        const offlineSubtitles = await persistSubtitleTracks(params.subtitles);
+        const nativeTarget = unwrapNativeStreamTarget(params.streamUrl, params.referer);
+        const offlineSubtitles = await persistSubtitleTracks(params.subtitles, nativeTarget.referer);
         const downloadableParams = { ...params, subtitles: offlineSubtitles };
-        const isElectron = typeof window !== 'undefined' && Boolean(window.electronAPI?.downloadEpisodeChunked);
-        if (isElectron && window.electronAPI) {
-            let unsubscribe: ((event: unknown, progress: ActiveDownloadProgress) => void) | null = null;
-            if (onProgress && window.electronAPI.onDownloadProgress) {
-                unsubscribe = window.electronAPI.onDownloadProgress((p: ActiveDownloadProgress) => {
-                    if (!p) return;
-                    const matchesEp = Number(p.episodeNumber) === Number(params.episodeNumber);
-                    const pId = String(p.animeId || '').trim().toLowerCase();
-                    const targetId = String(params.animeId || '').trim().toLowerCase();
-                    if (matchesEp && (!pId || !targetId || isDownloadAnimeIdMatch(pId, targetId))) {
-                        onProgress(p);
-                    }
-                });
+
+        if (isTauri()) {
+            const targetId = String(params.animeId).trim();
+            const epNum = Number(params.episodeNumber);
+            const subKey = `${targetId}_ep_${epNum}`;
+            if (offlineSubtitles && offlineSubtitles.length > 0) {
+                saveOfflineSubtitlesForKey(subKey, offlineSubtitles);
             }
+
+            const unlistenRef: { current: (() => void) | null } = { current: null };
             try {
-                const downloaded = await window.electronAPI.downloadEpisodeChunked(downloadableParams);
-                if (!downloaded || !downloaded.id || (!downloaded.filePath && !downloaded.videoBlob)) {
-                    const message = (downloaded as DownloadedEpisode & { error?: string } | undefined)?.error;
-                    throw new Error(message || 'The desktop downloader did not create a media file');
-                }
+                await new Promise<void>((resolve, reject) => {
+                    let settled = false;
+                    const finishResolve = () => {
+                        if (!settled) {
+                            settled = true;
+                            resolve();
+                        }
+                    };
+                    const finishReject = (err: Error) => {
+                        if (!settled) {
+                            settled = true;
+                            reject(err);
+                        }
+                    };
+
+                    void tauriBridge.onDownloadProgress((p: ActiveDownloadProgress) => {
+                        if (!p) return;
+                        const matchesEp = Number(p.episodeNumber) === epNum;
+                        const pId = String(p.animeId || '').trim().toLowerCase();
+                        const matchesAnime = !pId || !targetId || isDownloadAnimeIdMatch(pId, targetId);
+                        if (!matchesEp || !matchesAnime) return;
+
+                        onProgress?.(p);
+                        if (p.status === 'completed') {
+                            finishResolve();
+                        } else if (p.status === 'error') {
+                            finishReject(new Error(p.error || 'Download failed'));
+                        }
+                    }).then(async (fn) => {
+                        unlistenRef.current = fn;
+                        if (settled) {
+                            fn();
+                            return;
+                        }
+                        try {
+                            const started = await tauriBridge.startDownload({
+                                animeId: targetId,
+                                animeTitle: params.animeTitle,
+                                animeImage: params.animeImage,
+                                episodeNumber: epNum,
+                                episodeTitle: params.episodeTitle,
+                                streamUrl: nativeTarget.url,
+                                referer: nativeTarget.referer,
+                                quality: params.quality,
+                                audio: params.audio,
+                            });
+                            if (!started) {
+                                finishReject(new Error('Failed to start native desktop download'));
+                            }
+                        } catch (err) {
+                            finishReject(err instanceof Error ? err : new Error(String(err)));
+                        }
+                    }).catch((err) => {
+                        finishReject(err instanceof Error ? err : new Error(String(err)));
+                    });
+                });
+
+                const downloaded = await tauriBridge.getLocalDownload({
+                    animeId: targetId,
+                    episodeNumber: epNum,
+                });
                 window.dispatchEvent(new CustomEvent('yorumi-downloads-updated'));
-                return downloaded;
-            } finally {
-                if (unsubscribe && window.electronAPI.offDownloadProgress) {
-                    window.electronAPI.offDownloadProgress(unsubscribe);
+                if (downloaded) {
+                    return offlineSubtitles?.length
+                        ? { ...downloaded, subtitles: offlineSubtitles }
+                        : downloaded;
                 }
+                throw new Error('Download completed but file record was not found');
+            } finally {
+                unlistenRef.current?.();
             }
         }
 
@@ -766,11 +1111,12 @@ export const downloadService = {
 
         if (isAndroidDownloadStorageAvailable()) {
             try {
-                const isHls = params.isHls === true || streamUrl.includes('.m3u8') || streamUrl.includes('m3u8');
-                const extension = isHls ? 'ts' : 'mp4';
+                const isHls = params.isHls === true || nativeTarget.url.includes('.m3u8') || nativeTarget.url.includes('m3u8');
+                const extension = 'mp4';
                 const nativeResult = await downloadToNativeStorage({
                     operationId: key,
-                    url: streamUrl,
+                    url: nativeTarget.url,
+                    referer: nativeTarget.referer,
                     relativePath: `Anime/${animeId}/${animeTitle} - Episode ${episodeNumber}.${extension}`,
                     hls: isHls,
                     maxHeight: Number(quality?.match(/(\d{3,4})p?/i)?.[1]) || 720,
@@ -806,7 +1152,7 @@ export const downloadService = {
                     downloadedAt: Date.now(),
                     filePath: nativeResult.filePath,
                     subtitles: offlineSubtitles,
-                    isHls,
+                    isHls: false,
                     duration: nativeResult.duration,
                     hlsSegments: nativeResult.hlsSegments,
                 };
