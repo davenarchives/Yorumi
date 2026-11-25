@@ -26,6 +26,10 @@ interface AnimeContextType {
     topTenToday: Anime[];
     topTenWeek: Anime[];
     topTenMonth: Anime[];
+    topRatedAnime: Anime[];
+    animeMovies: Anime[];
+    upcomingAnime: Anime[];
+    airingAnime: Anime[];
     selectedAnime: Anime | null;
     showAnimeDetails: boolean;
     showWatchModal: boolean;
@@ -98,7 +102,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
     const { user } = useAuth();
 
     // Cache reader (defined early so useState initializers can use it)
-    const HOME_CACHE_PREFIX = 'yorumi_home_cache_v38';
+    const HOME_CACHE_PREFIX = 'yorumi_home_cache_v39';
     const HOME_LATEST_MIN_ITEMS = 10;
     const HOME_TRENDING_MIN_ITEMS = 10;
     const readHomeCache = <T,>(key: string, ttlMs: number): T | null => {
@@ -129,6 +133,10 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
     const cachedTrendingInit = readHomeCache<Anime[]>('trending', HOME_TTL_TRENDING);
     const cachedSeasonInit = readHomeCache<Anime[]>('popular-season', HOME_TTL_SEASON);
     const cachedMonthInit = readHomeCache<Anime[]>('popular-month', HOME_TTL_MONTH);
+    const cachedTopRatedInit = readHomeCache<Anime[]>('top-rated', HOME_TTL_SEASON);
+    const cachedMoviesInit = readHomeCache<Anime[]>('anime-movies', HOME_TTL_SEASON);
+    const cachedUpcomingInit = readHomeCache<Anime[]>('upcoming-v2', HOME_TTL_SEASON);
+    const cachedAiringInit = readHomeCache<Anime[]>('airing-v2', HOME_TTL_SEASON);
 
     // Data State — pre-filled from cache when available
     const [topAnime, setTopAnime] = useState<Anime[]>([]);
@@ -140,6 +148,10 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
     const [topTenToday, setTopTenToday] = useState<Anime[]>(cachedTopTenInit?.day ?? []);
     const [topTenWeek, setTopTenWeek] = useState<Anime[]>(cachedTopTenInit?.week ?? []);
     const [topTenMonth, setTopTenMonth] = useState<Anime[]>(cachedTopTenInit?.month ?? []);
+    const [topRatedAnime, setTopRatedAnime] = useState<Anime[]>(cachedTopRatedInit ?? []);
+    const [animeMovies, setAnimeMovies] = useState<Anime[]>(cachedMoviesInit ?? []);
+    const [upcomingAnime, setUpcomingAnime] = useState<Anime[]>(cachedUpcomingInit ?? []);
+    const [airingAnime, setAiringAnime] = useState<Anime[]>(cachedAiringInit ?? []);
     const [selectedAnime, setSelectedAnime] = useState<Anime | null>(null);
     const [watchedEpisodes, setWatchedEpisodes] = useState<Set<EpisodeHistoryKey>>(new Set());
 
@@ -312,7 +324,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
     };
 
     // SessionStorage-backed episode cache (survives in-app navigation)
-    const EPISODE_CACHE_PREFIX = 'yorumi_ep_cache_v7';
+    const EPISODE_CACHE_PREFIX = 'yorumi_ep_cache_v8';
     const readEpisodeSessionCache = (animeKey: string): { session: string; episodes: Episode[] } | null => {
         try {
             const raw = sessionStorage.getItem(`${EPISODE_CACHE_PREFIX}:${animeKey}`);
@@ -553,7 +565,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
                 setSpotlightAnime(fast.spotlightAnime);
                 setSpotlightLoading(false);
                 writeHomeCache('spotlight', fast.spotlightAnime);
-                preloadLogos(fast.spotlightAnime.map((a: Anime) => a.id || a.mal_id).filter(Boolean));
+                preloadLogos(fast.spotlightAnime.map((a: Anime) => a.tmdbId || 0).filter(Boolean));
                 applied = true;
             }
             if (Array.isArray(fast?.latestUpdates) && fast.latestUpdates.length > 0) {
@@ -562,7 +574,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
                 if (fast.latestUpdates.length >= HOME_LATEST_MIN_ITEMS) {
                     writeHomeCache('latest-updates', fast.latestUpdates);
                 }
-                preloadLogos(fast.latestUpdates.map((a: Anime) => a.id || a.mal_id).filter(Boolean));
+                preloadLogos(fast.latestUpdates.map((a: Anime) => a.tmdbId || 0).filter(Boolean));
                 applied = true;
             }
             if (Array.isArray(fast?.trendingAnime) && fast.trendingAnime.length > 0) {
@@ -603,6 +615,26 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
                 setLoading(false);
                 applied = true;
             }
+            if (Array.isArray(fast?.topRatedAnime) && fast.topRatedAnime.length > 0) {
+                setTopRatedAnime(fast.topRatedAnime);
+                writeHomeCache('top-rated', fast.topRatedAnime);
+                applied = true;
+            }
+            if (Array.isArray(fast?.animeMovies) && fast.animeMovies.length > 0) {
+                setAnimeMovies(fast.animeMovies);
+                writeHomeCache('anime-movies', fast.animeMovies);
+                applied = true;
+            }
+            if (Array.isArray(fast?.upcomingAnime) && fast.upcomingAnime.length > 0) {
+                setUpcomingAnime(fast.upcomingAnime);
+                writeHomeCache('upcoming-v2', fast.upcomingAnime);
+                applied = true;
+            }
+            if (Array.isArray(fast?.airingAnime) && fast.airingAnime.length > 0) {
+                setAiringAnime(fast.airingAnime);
+                writeHomeCache('airing-v2', fast.airingAnime);
+                applied = true;
+            }
             return applied;
         };
 
@@ -611,13 +643,13 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
         if (cachedSpotlight?.length) {
             setSpotlightAnime(cachedSpotlight);
             setSpotlightLoading(false);
-            preloadLogos(cachedSpotlight.map((a: Anime) => a.id || a.mal_id).filter(Boolean));
+            preloadLogos(cachedSpotlight.map((a: Anime) => a.tmdbId || 0).filter(Boolean));
         }
         const cachedLatest = readHomeCache<Anime[]>('latest-updates', HOME_TTL.latestUpdates);
         if (cachedLatest?.length) {
             setLatestUpdates(cachedLatest);
             setLatestUpdatesLoading(false);
-            preloadLogos(cachedLatest.map((a: Anime) => a.id || a.mal_id).filter(Boolean));
+            preloadLogos(cachedLatest.map((a: Anime) => a.tmdbId || 0).filter(Boolean));
         }
         const cachedTrending = readHomeCache<Anime[]>('trending', HOME_TTL.trending);
         if (cachedTrending && cachedTrending.length >= HOME_TRENDING_MIN_ITEMS) {
@@ -673,7 +705,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
             if (cached && cached.length > 0) {
                 setSpotlightAnime(cached);
                 setSpotlightLoading(false);
-                preloadLogos(cached.map((a: Anime) => a.id || a.mal_id).filter(Boolean));
+                preloadLogos(cached.map((a: Anime) => a.tmdbId || 0).filter(Boolean));
             } else {
                 setSpotlightLoading(true);
             }
@@ -683,7 +715,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
                 if (data && data.length > 0) {
                     setSpotlightAnime(data);
                     writeHomeCache('spotlight', data);
-                    preloadLogos(data.map((a: Anime) => a.id || a.mal_id).filter(Boolean));
+                    preloadLogos(data.map((a: Anime) => a.tmdbId || 0).filter(Boolean));
                     return;
                 }
             } catch (e) {
@@ -699,7 +731,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
             if (cached && cached.length >= HOME_TRENDING_MIN_ITEMS) {
                 setTrendingAnime(cached);
                 setTrendingLoading(false);
-                preloadLogos(cached.map((a: Anime) => a.id || a.mal_id).filter(Boolean));
+                preloadLogos(cached.map((a: Anime) => a.tmdbId || 0).filter(Boolean));
             } else {
                 setTrendingLoading(true);
             }
@@ -710,7 +742,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
                     if (tData.data.length >= HOME_TRENDING_MIN_ITEMS) {
                         writeHomeCache('trending', tData.data);
                     }
-                    preloadLogos(tData.data.map((a: Anime) => a.id || a.mal_id).filter(Boolean));
+                    preloadLogos(tData.data.map((a: Anime) => a.tmdbId || 0).filter(Boolean));
                 }
             } catch (e) { console.error(e); }
             finally { setTrendingLoading(false); }
@@ -722,7 +754,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
             if (!hasEnoughLatest && cached && cached.length >= HOME_LATEST_MIN_ITEMS) {
                 setLatestUpdates(cached);
                 setLatestUpdatesLoading(false);
-                preloadLogos(cached.map((a: Anime) => a.id || a.mal_id).filter(Boolean));
+                preloadLogos(cached.map((a: Anime) => a.tmdbId || 0).filter(Boolean));
             } else if (!hasEnoughLatest) {
                 setLatestUpdatesLoading(true);
             }
@@ -733,7 +765,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
                     if (latestData.data.length >= HOME_LATEST_MIN_ITEMS) {
                         writeHomeCache('latest-updates', latestData.data);
                     }
-                    preloadLogos(latestData.data.map((a: Anime) => a.id || a.mal_id).filter(Boolean));
+                    preloadLogos(latestData.data.map((a: Anime) => a.tmdbId || 0).filter(Boolean));
                 }
             } catch (e) { console.error(e); }
             finally { setLatestUpdatesLoading(false); }
@@ -1294,6 +1326,45 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
             }
         }
         if (USES_LOCAL_SOURCES) {
+            const count = getExpectedEpisodeCount(anime) || (String(anime.type || '').toUpperCase() === 'MOVIE' ? 1 : 0);
+            if (count > 0) {
+                const metaList = Array.isArray(anime.episodeMetadata) ? anime.episodeMetadata : [];
+                const syntheticEps: Episode[] = Array.from({ length: count }, (_, i) => {
+                    const epNum = i + 1;
+                    // Match metadata by explicit "Episode X" number first; never blindly index
+                    // streamingEpisodes[i] when streamingEpisodes starts mid-series (e.g. One Piece Ep 130).
+                    let meta = metaList.find((m) => {
+                        const match = m.title?.match(/Episode\s+(\d+(?:\.\d+)?)/i);
+                        return match && parseFloat(match[1]) === epNum;
+                    });
+                    if (!meta && metaList.length === count && metaList[i]) {
+                        const candidate = metaList[i];
+                        const match = candidate.title?.match(/Episode\s+(\d+(?:\.\d+)?)/i);
+                        if (!match || parseFloat(match[1]) === epNum) {
+                            meta = candidate;
+                        }
+                    }
+                    let cleanTitle = `Episode ${epNum}`;
+                    if (meta?.title) {
+                        const stripped = meta.title.replace(/^Episode\s+\d+(?:\.\d+)?\s*[-:]?\s*/i, '').trim();
+                        if (stripped) {
+                            cleanTitle = stripped;
+                        }
+                    }
+                    return {
+                        session: `local-ep-${epNum}`,
+                        episodeNumber: String(epNum),
+                        title: cleanTitle,
+                        snapshot: meta?.thumbnail,
+                    };
+                });
+                const localSession = `local:anime:${anime.id || anime.mal_id || anime.title}`;
+                if (cacheKey) scraperSessionCache.current.set(cacheKey, localSession);
+                episodesCache.current.set(localSession, syntheticEps);
+                if (cacheKey) writeEpisodeSessionCache(cacheKey, localSession, syntheticEps);
+                return { session: localSession, eps: syntheticEps };
+            }
+
             const altTitles = [
                 anime.title_english,
                 anime.title_romaji,
@@ -1317,25 +1388,6 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
                 }
             } catch (err) {
                 console.warn('[AnimeContext] Local HiAnime episode lookup failed:', err);
-            }
-
-            const count = getExpectedEpisodeCount(anime) || (String(anime.type || '').toUpperCase() === 'MOVIE' ? 1 : 0);
-            if (count > 0) {
-                const syntheticEps: Episode[] = Array.from({ length: count }, (_, i) => {
-                    const epNum = i + 1;
-                    const meta = anime.episodeMetadata?.[i];
-                    return {
-                        session: `local-ep-${epNum}`,
-                        episodeNumber: String(epNum),
-                        title: meta?.title || `Episode ${epNum}`,
-                        snapshot: meta?.thumbnail,
-                    };
-                });
-                const localSession = `local:anime:${anime.id || anime.mal_id || anime.title}`;
-                if (cacheKey) scraperSessionCache.current.set(cacheKey, localSession);
-                episodesCache.current.set(localSession, syntheticEps);
-                if (cacheKey) writeEpisodeSessionCache(cacheKey, localSession, syntheticEps);
-                return { session: localSession, eps: syntheticEps };
             }
         }
         return { session, eps: [] };
@@ -1635,7 +1687,13 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
             const detailsData = detailsId ? await animeService.getAnimeDetails(detailsId, currentAnime?.type) : null;
             if (isStaleRequest()) return;
 
-            if (detailsData?.data) {
+            const isIncompleteScraperShell = Boolean(
+                detailsData?.data &&
+                (!Number(detailsData.data.id) || Number(detailsData.data.id) <= 0) &&
+                (!detailsData.data.synopsis || !detailsData.data.score || !detailsData.data.genres?.length)
+            );
+
+            if (detailsData?.data && !isIncompleteScraperShell) {
                 currentAnime = preserveFreshnessHint(detailsData.data, currentAnime);
                 if (detailsId && String(detailsId).startsWith('s:')) {
                     if ((detailsData.data as any).scraperId) currentAnime.scraperId = (detailsData.data as any).scraperId;
@@ -1643,18 +1701,28 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
                 currentAnime = preserveFreshnessHint(currentAnime, anime);
                 setSelectedAnime(currentAnime);
             } else {
+                const preservedScraperId =
+                    (detailsData?.data as any)?.scraperId ||
+                    currentAnime.scraperId ||
+                    anime.scraperId ||
+                    (detailsId && String(detailsId).startsWith('s:') ? String(detailsId).replace(/^s:/, '') : undefined);
+                const lookupTitle = detailsData?.data?.title || anime.title || currentAnime.title;
                 let found = false;
-                if (anime.title) {
+                if (lookupTitle) {
                     try {
-                        const search = await animeService.searchAnime(anime.title, 1);
+                        const search = await animeService.searchAnime(lookupTitle, 1);
                         if (search?.data && search.data.length > 0) {
-                            let bestMatch = search.data[0];
+                            const normalizeMatch = (v: unknown) => String(v || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+                            const targetNorm = normalizeMatch(lookupTitle);
+                            let bestMatch = search.data.find((a: any) =>
+                                [a.title, a.title_english, a.title_romaji].some((t) => normalizeMatch(t) === targetNorm)
+                            ) || search.data[0];
                             if (anime.year) {
                                 const matched = search.data.find((a: any) => Math.abs(Number(a.year || 0) - Number(anime.year)) <= 1);
                                 if (matched) bestMatch = matched;
                             }
                             currentAnime = bestMatch;
-                            
+
                             const fullDetailsId = getPreferredDetailsId(currentAnime);
                             if (fullDetailsId) {
                                 const fullDetailsData = await animeService.getAnimeDetails(fullDetailsId, currentAnime?.type).catch(() => null);
@@ -1662,7 +1730,10 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
                                     currentAnime = preserveFreshnessHint(fullDetailsData.data, currentAnime);
                                 }
                             }
-                            
+
+                            if (preservedScraperId && !currentAnime.scraperId) {
+                                currentAnime = { ...currentAnime, scraperId: preservedScraperId };
+                            }
                             currentAnime = preserveFreshnessHint(currentAnime, anime);
                             setSelectedAnime(currentAnime);
                             found = true;
@@ -1670,6 +1741,13 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
                     } catch (e) {
                         console.error('Fallback search failed', e);
                     }
+                }
+                if (!found && detailsData?.data) {
+                    currentAnime = preserveFreshnessHint(detailsData.data, currentAnime);
+                    if (preservedScraperId) currentAnime.scraperId = preservedScraperId;
+                    currentAnime = preserveFreshnessHint(currentAnime, anime);
+                    setSelectedAnime(currentAnime);
+                    found = true;
                 }
                 if (!found && !anime.images) {
                     throw new Error('Anime not found');
@@ -1847,7 +1925,8 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
 
     return (
         <AnimeContext.Provider value={{
-            topAnime, spotlightAnime, latestUpdates, trendingAnime, popularSeason, popularMonth, topTenToday, topTenWeek, topTenMonth, selectedAnime,
+            topAnime, spotlightAnime, latestUpdates, trendingAnime, popularSeason, popularMonth, topTenToday, topTenWeek, topTenMonth,
+            topRatedAnime, animeMovies, upcomingAnime, airingAnime, selectedAnime,
             showAnimeDetails, showWatchModal, episodes, episodesAnimeKey, scraperSession, epLoading, episodesResolved,
             episodesBackgroundLoading,
             detailsLoading, loading, spotlightLoading, latestUpdatesLoading, trendingLoading, popularSeasonLoading, popularMonthLoading, topTenLoading, currentPage, lastVisiblePage,
