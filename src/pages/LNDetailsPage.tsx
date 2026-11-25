@@ -1,17 +1,23 @@
+import { supportsReadingExports } from '../platform/tauri/readingExports';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { lnService } from '../services/lnService';
 import type { LightNovel, LNChapter } from '../types/ln';
 import { useLNReadList } from '../hooks/useLNReadList';
+import { useFavoriteLN } from '../hooks/useFavoriteLN';
 import { useContinueLNReading } from '../hooks/useContinueLNReading';
 import { useTitleLanguage } from '../context/TitleLanguageContext';
 import { getDisplayTitle } from '../utils/titleLanguage';
 import { slugify } from '../utils/slugify';
-import { Play, Plus, Check, Search, Star, Download, FolderOpen, ArrowLeft, ChevronDown, ArrowUpDown, ArrowDown, ArrowUp, Grid2X2, List, User, Clock3 } from 'lucide-react';
-import ChapterViewToggle, { useChapterViewMode, type ChapterViewMode } from '../components/ui/ChapterViewToggle';
+import { Play, Download, FolderOpen, ArrowLeft, ArrowUpDown, Grid2X2, List } from 'lucide-react';
+import { useChapterViewMode, type ChapterViewMode } from '../components/ui/ChapterViewToggle';
 import { useLNDownloads } from '../hooks/useLNDownloads';
 import { downloadService } from '../services/downloadService';
 import DownloadStateIcon from '../components/ui/DownloadStateIcon';
+import ReadingDetailsHero from '../features/reading/components/ReadingDetailsHero';
+import MoreLikeReading from '../features/reading/components/MoreLikeReading';
+import DetailsCharacters from '../features/anime/components/details/DetailsCharacters';
+import type { Anime } from '../types/anime';
 
 // Chapter Grid Component matching Manga details format
 const LNChapterList = ({
@@ -69,53 +75,52 @@ const LNChapterList = ({
     }, [onViewModeChange, viewMode]);
 
     return (
-        <div className="mt-4 sm:mt-6 bg-transparent md:bg-[#111]/40 md:rounded-2xl p-0 md:p-6">
+        <div className="mt-4 sm:mt-6 bg-transparent p-0">
             <div className="mb-4 flex items-center gap-4 md:hidden">
                 <h3 className="whitespace-nowrap text-[22px] font-semibold text-white">
                     Chapters <span className="text-sm font-bold text-gray-500">({chapters.length})</span>
                 </h3>
                 <div className="h-px flex-1 bg-white/10" />
             </div>
-            <div className="hidden md:flex items-center justify-between gap-3 mb-4 sm:mb-6">
-                <h3 className="hidden md:block text-xl sm:text-2xl font-black text-white tracking-tight">
-                    {chapters.length} chapters
-                </h3>
-                <div className="flex items-center gap-2 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                    <button
-                        type="button"
-                        onClick={() => {
-                            setSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'));
-                        }}
-                        className="grid h-10 w-10 shrink-0 place-items-center text-gray-400 transition-colors hover:text-white"
-                        title={sortOrder === 'asc' ? 'Oldest first' : 'Newest first'}
-                        aria-label={sortOrder === 'asc' ? 'Sort chapters oldest first' : 'Sort chapters newest first'}
-                    >
-                        {sortOrder === 'asc' ? <ArrowUp className="h-5 w-5" /> : <ArrowDown className="h-5 w-5" />}
-                    </button>
-                    {onViewModeChange && <ChapterViewToggle viewMode={viewMode} onViewModeChange={onViewModeChange} activeClassName="text-amber-400" />}
-                    {headerActions}
-                </div>
-            </div>
-
-            <div className="hidden md:block mb-4 sm:mb-6">
-                <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                        <Search className="w-4 h-4 text-gray-400" />
-                    </div>
+            {/* Uniform Toolbar matching DetailsEpisodeGrid */}
+            <div className="hidden md:flex flex-wrap items-center justify-between gap-3 mb-6">
+                <div className="flex flex-wrap items-center gap-2.5">
                     <input
                         type="text"
-                        placeholder="Search chapters..."
                         value={searchQuery}
-                        onChange={(e) => {
-                            setSearchQuery(e.target.value);
-                        }}
-                        className="w-full bg-white/[0.04] border border-white/10 text-white pl-10 pr-4 py-2.5 rounded-xl text-sm placeholder-gray-500 focus:outline-none focus:border-amber-400/50 focus:bg-white/[0.07] transition-all"
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        placeholder="Search chapters"
+                        className="h-10 min-w-0 w-60 md:w-64 rounded-full bg-white/[0.10] px-4 text-[14px] font-semibold text-white placeholder-white/50 transition-colors focus:bg-white/[0.15] border-0 outline-none focus:outline-none"
                     />
+                    <button
+                        type="button"
+                        onClick={() => setSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'))}
+                        className="flex h-10 items-center gap-1.5 rounded-full bg-white/[0.10] px-4 text-[14px] font-bold text-white transition-colors hover:bg-white/[0.15] border-0 outline-none focus:outline-none cursor-pointer"
+                        title={sortOrder === 'asc' ? 'Sorted oldest first' : 'Sorted newest first'}
+                    >
+                        <ArrowUpDown className="h-3.5 w-3.5 text-white/80" />
+                        <span>{sortOrder === 'asc' ? 'Oldest' : 'Newest'}</span>
+                    </button>
+                    {onViewModeChange && (
+                        <button
+                            type="button"
+                            onClick={() => onViewModeChange(viewMode === 'list' ? 'grid' : 'list')}
+                            className="flex h-10 w-10 items-center justify-center rounded-full bg-white/[0.10] text-white/80 transition-colors hover:bg-white/[0.15] hover:text-white border-0 outline-none focus:outline-none cursor-pointer"
+                            title={viewMode === 'list' ? 'Switch to grid view' : 'Switch to list view'}
+                            aria-label={viewMode === 'list' ? 'Switch to grid view' : 'Switch to list view'}
+                        >
+                            {viewMode === 'list' ? <Grid2X2 className="h-4 w-4" /> : <List className="h-4 w-4" />}
+                        </button>
+                    )}
+                    {headerActions}
                 </div>
+                <span className="text-[13.5px] font-bold text-white/75">
+                    {chapters.filter((ch) => readChapters.has(String(ch.id))).length}/{chapters.length} read
+                </span>
             </div>
 
             {viewMode === 'grid' ? (
-                <div className="grid grid-cols-5 gap-2 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10">
+                <div className="grid grid-cols-4 gap-2.5 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10">
                     {currentChapters.map((ch, index) => {
                         const isRead = readChapters.has(String(ch.id));
                         const isDownloaded = isChapterDownloaded(novelId, ch.id);
@@ -128,15 +133,23 @@ const LNChapterList = ({
                         const subtitleStr = subMatch ? subMatch.replace(/^["'«]|["'»]$/g, '').trim() : '';
 
                         return (
-                            <button
+                            <div
                                 key={`${ch.id}-${index}`}
+                                role="button"
+                                tabIndex={0}
                                 onClick={() => onChapterClick(ch)}
+                                onKeyDown={(event) => {
+                                    if (event.key === 'Enter' || event.key === ' ') {
+                                        event.preventDefault();
+                                        onChapterClick(ch);
+                                    }
+                                }}
                                 title={ch.title}
                                 data-label={mainStr}
-                                className={`relative aspect-square flex items-center justify-center rounded-lg transition-all duration-200 text-center group
-                                    ${isRead ? 'opacity-50 bg-[#141414]' : 'bg-[#1a1a1a] hover:bg-[#252525]'} active:scale-95 cursor-pointer border border-white/5`}
+                                className={`relative aspect-square flex items-center justify-center rounded-[14px] transition-all duration-200 text-center group
+                                    ${isRead ? 'opacity-50 bg-white/[0.04]' : 'bg-white/[0.06] hover:bg-white/[0.09]'} active:scale-95 cursor-pointer`}
                             >
-                                <span className={`font-semibold text-xs sm:text-sm leading-tight ${isRead ? 'text-gray-400' : 'text-gray-200 group-hover:text-amber-400'} transition-colors line-clamp-2`}>
+                                <span className={`font-semibold text-sm leading-tight ${isRead ? 'text-gray-400' : 'text-gray-100 group-hover:text-amber-400'} transition-colors line-clamp-2`}>
                                     {ch.number}
                                 </span>
                                 {subtitleStr && (
@@ -144,12 +157,11 @@ const LNChapterList = ({
                                         {subtitleStr}
                                     </span>
                                 )}
-                                <span
-                                    role="button"
-                                    tabIndex={0}
-                                    className="absolute top-1 right-1 text-zinc-400"
+                                <button
+                                    type="button"
+                                    className="absolute top-0.5 right-0.5 z-20 flex h-7 w-7 items-center justify-center rounded-full text-zinc-300 hover:bg-white/10 active:bg-white/15 cursor-pointer"
                                     aria-label={isDownloaded ? 'Delete downloaded chapter' : 'Download chapter'}
-                                    aria-disabled={isDownloading}
+                                    disabled={isDownloading}
                                     onClick={(event) => {
                                         event.stopPropagation();
                                         if (isDownloading) return;
@@ -164,13 +176,10 @@ const LNChapterList = ({
                                             });
                                         }
                                     }}
-                                    onKeyDown={(event) => {
-                                        if (event.key === 'Enter' || event.key === ' ') event.currentTarget.click();
-                                    }}
                                 >
-                                    <DownloadStateIcon state={isDownloading ? 'downloading' : isDownloaded ? 'downloaded' : 'available'} progress={progress?.progress || 0} className="h-5 w-5" />
-                                </span>
-                            </button>
+                                    <DownloadStateIcon state={isDownloading ? 'downloading' : isDownloaded ? 'downloaded' : 'available'} progress={progress?.progress || 0} className="h-4 w-4" />
+                                </button>
+                            </div>
                         );
                     })}
                     {currentChapters.length === 0 && (
@@ -196,16 +205,16 @@ const LNChapterList = ({
                             <div
                                 key={`${ch.id}-${index}`}
                                 onClick={() => onChapterClick(ch)}
-                                className={`flex items-center justify-between gap-3 py-3.5 px-0 sm:px-3 transition-all duration-150 text-left group
+                                className={`flex items-center justify-between gap-2.5 py-2.5 px-0 sm:px-3 transition-all duration-150 text-left group
                                     ${isRead ? 'opacity-50' : ''} hover:bg-white/[0.03] active:bg-white/[0.06] rounded-xl cursor-pointer`}
                             >
-                                <div className="flex items-center gap-3 min-w-0 flex-1">
-                                    <span className={`w-2 h-2 rounded-full shrink-0 ${isRead ? 'bg-zinc-600' : 'bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.5)]'}`} />
+                                <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isRead ? 'bg-zinc-600' : 'bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.5)]'}`} />
                                     <div className="flex flex-col min-w-0">
-                                        <span className={`font-medium text-[17px] leading-snug ${isRead ? 'text-zinc-400' : 'text-zinc-100 group-hover:text-amber-400'} transition-colors line-clamp-1`}>
+                                        <span className={`font-medium text-[14px] sm:text-[15px] leading-snug ${isRead ? 'text-zinc-400' : 'text-zinc-100 group-hover:text-amber-400'} transition-colors line-clamp-1`}>
                                             {mainStr}{subtitleStr ? ` : ${subtitleStr}` : ''}
                                         </span>
-                                        <div className="flex items-center gap-2 text-sm text-zinc-500 font-normal mt-1">
+                                        <div className="flex items-center gap-1.5 text-xs text-zinc-400/80 font-normal mt-0.5">
                                             <span>{ch.releaseDate || 'Recent'}</span>
                                             {author && (
                                                 <>
@@ -218,7 +227,7 @@ const LNChapterList = ({
                                         </div>
                                     </div>
                                 </div>
-                                <div className="flex items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
+                                <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
                                     <button
                                         type="button"
                                         onClick={(e) => {
@@ -235,7 +244,7 @@ const LNChapterList = ({
                                             }
                                         }}
                                         disabled={isDownloading}
-                                        className={`grid h-10 w-10 place-items-center rounded-full transition-colors cursor-pointer ${
+                                        className={`grid h-8 w-8 place-items-center rounded-full transition-colors cursor-pointer ${
                                             isDownloaded
                                                 ? 'text-zinc-400 hover:bg-red-500/20 hover:text-red-400'
                                                 : isDownloading
@@ -253,7 +262,7 @@ const LNChapterList = ({
                                         <DownloadStateIcon
                                             state={isDownloading ? 'downloading' : isDownloaded ? 'downloaded' : 'available'}
                                             progress={progress?.progress || 0}
-                                            className="h-[26px] w-[26px]"
+                                            className="h-5 w-5"
                                         />
                                     </button>
                                 </div>
@@ -277,6 +286,10 @@ export default function LNDetailsPage() {
     const location = useLocation();
     const { language } = useTitleLanguage();
     const [viewMode, setViewMode] = useChapterViewMode();
+    const [activeSectionTab, setActiveSectionTab] = useState<'chapters' | 'related'>('chapters');
+    useEffect(() => {
+        setActiveSectionTab('chapters');
+    }, [id]);
 
     const routeLN = (location.state as { ln?: LightNovel } | null)?.ln ?? null;
 
@@ -284,14 +297,14 @@ export default function LNDetailsPage() {
     const [chapters, setChapters] = useState<LNChapter[]>([]);
     const [loading, setLoading] = useState(true);
     const [loadingChapters, setLoadingChapters] = useState(true);
-    const [synopsisExpanded, setSynopsisExpanded] = useState(false);
     const [compactFab, setCompactFab] = useState(false);
 
     const { isInLNReadList, toggleLNReadList } = useLNReadList();
+    const { isFavorite: isFavoriteLN, addFavorite: addFavoriteLN, removeFavorite: removeFavoriteLN } = useFavoriteLN();
     const { continueReadingList } = useContinueLNReading();
     const { downloads: lnDownloads, downloadAll: downloadAllLN } = useLNDownloads();
 
-    const isElectron = typeof window !== 'undefined' && Boolean(window.electronAPI?.openDownloadsFolder);
+    const isDesktopApp = supportsReadingExports();
 
     const handleOpenFolder = useCallback(() => {
         downloadService.openDownloadsFolder('LightNovels');
@@ -324,12 +337,32 @@ export default function LNDetailsPage() {
     useEffect(() => {
         if (!id) return;
         let mounted = true;
-        setLoading(true);
+        setLoading(!routeLN);
+        setLoadingChapters(true);
+        setChapters([]);
 
         const fetchDetailsAndChapters = async () => {
             try {
+                // Start resolving chapters immediately if routeLN already provides scraper_id or titles
+                const earlyTitles = [
+                    routeLN?.title_english,
+                    routeLN?.title,
+                    routeLN?.title_romaji,
+                    ...(Array.isArray(routeLN?.synonyms) ? routeLN.synonyms : []),
+                ].filter(Boolean) as string[];
+                const earlyScraperId = String(routeLN?.scraper_id || (id.includes(':') ? id : '')).trim();
+                const earlyResolvePromise = earlyScraperId
+                    ? Promise.resolve(earlyScraperId)
+                    : earlyTitles.length > 0
+                        ? lnService.resolveScraperId(earlyTitles)
+                        : Promise.resolve(null);
+
+                const [fullDetails, earlyResolvedId] = await Promise.all([
+                    lnService.getDetails(id).catch(() => null),
+                    earlyResolvePromise,
+                ]);
+
                 let fetchedLN = routeLN;
-                const fullDetails = await lnService.getDetails(id).catch(() => null);
                 if (fullDetails) {
                     fetchedLN = routeLN
                         ? {
@@ -346,16 +379,13 @@ export default function LNDetailsPage() {
                     setLoading(false);
                 }
 
-                // Now resolve and fetch backend scraper chapters
-                setLoadingChapters(true);
-                let scraperId = String(fetchedLN?.scraper_id || id);
-                if (!fetchedLN?.scraper_id && !id.includes(':')) {
+                // Resolve scraper ID if not resolved by the early parallel pass
+                let scraperId = String(earlyResolvedId || fetchedLN?.scraper_id || (id.includes(':') ? id : '')).trim();
+                if (!scraperId) {
                     const resolved = await lnService.resolveScraperId([
-                        fetchedLN?.title,
                         fetchedLN?.title_english,
+                        fetchedLN?.title,
                         fetchedLN?.title_romaji,
-                        fetchedLN?.title_native,
-                        fetchedLN?.title_japanese,
                         ...(Array.isArray(fetchedLN?.synonyms) ? fetchedLN.synonyms : []),
                     ].filter(Boolean) as string[]);
                     if (resolved) {
@@ -363,12 +393,18 @@ export default function LNDetailsPage() {
                     }
                 }
 
-                let scraperDetails = await lnService.getScraperNovelDetails(scraperId);
+                if (!scraperId) {
+                    if (mounted) setLoadingChapters(false);
+                    return;
+                }
+
+                const hasRichMetadata = Boolean(fetchedLN?.synopsis && (fetchedLN?.images?.jpg?.large_image_url || fetchedLN?.images?.jpg?.image_url));
+                let scraperDetails = await lnService.getScraperNovelDetails(scraperId, false, hasRichMetadata);
                 if (scraperDetails?.chapters && scraperDetails.chapters.length > 5) {
                     const chs = scraperDetails.chapters;
                     if (chs[0]?.title?.toLowerCase().includes('arc 1') && chs[1]?.title?.toLowerCase().includes('arc 5')) {
                         // Stale cache detected, force purge & fresh fetch
-                        const fresh = await lnService.getScraperNovelDetails(scraperId, true);
+                        const fresh = await lnService.getScraperNovelDetails(scraperId, true, hasRichMetadata);
                         if (fresh) scraperDetails = fresh;
                     }
                 }
@@ -379,6 +415,7 @@ export default function LNDetailsPage() {
                     }
                     setServerLN((prev) => prev ? {
                         ...prev,
+                        scraper_id: scraperId,
                         author: scraperDetails.author && scraperDetails.author !== 'Unknown' && scraperDetails.author !== 'Unknown Author' ? scraperDetails.author : prev.author,
                         synopsis: scraperDetails.description || prev.synopsis,
                         status: scraperDetails.status || prev.status,
@@ -466,9 +503,19 @@ export default function LNDetailsPage() {
 
     const handleChapterClick = useCallback((ch: LNChapter) => {
         navigate(`/ln/read/${slugify(displayTitle)}/${lnId}/${encodeURIComponent(ch.id)}`, {
+            replace: true,
             state: { chapter: ch, ln },
         });
     }, [displayTitle, lnId, ln, navigate]);
+
+    useEffect(() => {
+        if (displayTitle) {
+            document.title = `${displayTitle} • Yorumi`;
+        }
+        return () => {
+            document.title = 'Yorumi';
+        };
+    }, [displayTitle]);
 
     if (loading && !ln) {
         return (
@@ -514,14 +561,15 @@ export default function LNDetailsPage() {
 
     const isBookmarked = isInLNReadList(lnId);
     const handleBack = () => {
-        navigate('/ln', { replace: true });
+        if (((window.history.state as { idx?: number } | null)?.idx ?? 0) > 0) navigate(-1);
+        else navigate('/ln', { replace: true });
     };
 
     return (
-        <div className="min-h-screen bg-[#0a0a0a] text-white pb-24 md:pb-16 fade-in animate-in duration-300" style={{ paddingBottom: 'calc(5rem + env(safe-area-inset-bottom, 0px))' }}>
+        <div className="relative min-h-screen overflow-x-hidden bg-[#070707] text-white pb-24 md:pb-16 fade-in animate-in duration-300" style={{ paddingBottom: 'calc(5rem + env(safe-area-inset-bottom, 0px))' }}>
             <div
                 className={`fixed inset-x-0 top-0 z-40 md:hidden border-b transition-colors duration-300 ${compactFab ? 'border-purple-400/15 bg-[#24202b]/95 backdrop-blur-xl' : 'border-transparent bg-transparent'}`}
-                style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
+                style={{ paddingTop: 'max(env(safe-area-inset-top, 0px), 24px)' }}
             >
                 <div className="flex h-14 items-center gap-3 px-4">
                     <button type="button" onClick={handleBack} className="grid h-10 w-10 shrink-0 place-items-center text-white/90 transition-colors active:text-white" aria-label="Go back">
@@ -541,197 +589,67 @@ export default function LNDetailsPage() {
                     </button>
                 </div>
             </div>
-            {/* 1. Header Hero */}
-            <div className="relative h-[30vh] md:h-[40vh] w-full overflow-hidden">
-
-                <div className="absolute inset-0">
-                    <img
-                        src={ln.bannerImage || cover}
-                        alt={displayTitle}
-                        className="w-full h-full object-cover blur-sm opacity-55 scale-105"
-                        onError={(e) => { e.currentTarget.style.display = 'none'; }}
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0a] via-[#0a0a0a]/40 to-black/10" />
-                    <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-[#0a0a0a] to-transparent" />
-                </div>
-            </div>
-
-            {/* 2. Content Container */}
-            <div className="max-w-7xl mx-auto px-4 sm:px-8 md:px-14 -mt-24 md:-mt-32 relative z-10">
-                <div className="flex flex-row md:flex-row gap-4 md:gap-8 lg:gap-12 items-start">
-                    {/* Poster */}
-                    <div className="flex-shrink-0 w-28 sm:w-36 md:w-56 lg:w-60 group">
-                        <div className="rounded-xl overflow-hidden shadow-2xl shadow-black/50 aspect-[2/3]">
-                            <img
-                                src={cover}
-                                alt={displayTitle}
-                                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                            />
-                        </div>
+            <div className="mx-auto w-full max-w-[1440px] px-6 pt-24 sm:px-10 sm:pt-32 md:px-14 md:pt-40 lg:px-16 lg:pt-48">
+                <ReadingDetailsHero
+                    key={String(ln.id)}
+                    title={displayTitle}
+                    cover={cover}
+                    banner={ln.bannerImage}
+                    synopsis={ln.synopsis}
+                    details={[ln.score ? ln.score.toFixed(1) : '', ln.type || 'Light Novel', ln.author && ln.author !== 'Unknown Author' ? ln.author : '', effectiveChapters.length ? `${effectiveChapters.length} chapters` : '', ln.status || ''].filter(Boolean)}
+                    genres={ln.genres?.map((genre) => genre.name)}
+                    inList={isBookmarked}
+                    inFavorites={isFavoriteLN(lnId)}
+                    loading={loadingChapters}
+                    canRead={effectiveChapters.length > 0}
+                    readLabel="Read"
+                    onRead={() => {
+                        const startChapter = currentProgress ? effectiveChapters.find((chapter) => String(chapter.id) === String(currentProgress.chapterId)) || effectiveChapters[0] : effectiveChapters[0];
+                        if (startChapter) handleChapterClick(startChapter);
+                    }}
+                    onToggleList={() => toggleLNReadList({ id: ln.id, title: displayTitle, image: cover, score: ln.score, mediaStatus: ln.status, type: ln.type, synopsis: ln.synopsis, genres: ln.genres?.map((genre) => genre.name) })}
+                    onToggleFavorite={() => {
+                        if (isFavoriteLN(lnId)) {
+                            void removeFavoriteLN(lnId);
+                        } else {
+                            void addFavoriteLN({
+                                id: lnId,
+                                title: displayTitle,
+                                image: cover,
+                            });
+                        }
+                    }}
+                    onBack={handleBack}
+                />
+                {/* Chapters & More Like This Section */}
+                <div className="relative z-10 mt-6 w-full">
+                    {/* Section Tabs Row (below poster, before chapters) */}
+                    <div className="flex items-center gap-7 pt-2 pb-1">
+                        {(
+                            [
+                                { key: 'chapters', label: 'Chapters' },
+                                { key: 'related', label: 'More like this' },
+                            ] as const
+                        ).map((tab) => {
+                            const isActive = activeSectionTab === tab.key;
+                            return (
+                                <button
+                                    key={tab.key}
+                                    type="button"
+                                    onClick={() => setActiveSectionTab(tab.key)}
+                                    className={`text-[15px] font-extrabold transition-colors border-0 outline-none focus:outline-none cursor-pointer ${
+                                        isActive ? 'text-white' : 'text-white/50 hover:text-white/85'
+                                    }`}
+                                >
+                                    {tab.label}
+                                </button>
+                            );
+                        })}
                     </div>
 
-                    {/* Metadata Column */}
-                    <div className="flex-1 text-left space-y-3 md:space-y-4 min-w-0">
-                        <div className="space-y-1">
-                            <span className="hidden md:inline text-[11px] font-black uppercase tracking-widest text-amber-400">
-                                {ln.countryOfOrigin === 'KR' ? '🇰🇷 Korean Web Novel' : ln.countryOfOrigin === 'CN' ? '🇨🇳 Chinese Web Novel' : (ln.type || 'Light Novel')}
-                            </span>
-                            <h1 className="text-[26px] sm:text-3xl md:text-4xl lg:text-5xl font-semibold md:font-black text-white tracking-tight leading-[1.12]">
-                                {displayTitle}
-                            </h1>
-                            {(ln.author || ln.status) && (
-                                <div className="md:hidden space-y-1.5 text-[15px] leading-tight">
-                                    {ln.author && (
-                                        <div className="flex min-w-0 items-center gap-2 text-zinc-300">
-                                            <User className="h-4 w-4 shrink-0 text-zinc-400" />
-                                            <span className="truncate">{ln.author}</span>
-                                        </div>
-                                    )}
-                                    {ln.status && (
-                                        <div className="flex min-w-0 items-center gap-2 text-zinc-400">
-                                            <Clock3 className="h-4 w-4 shrink-0 text-zinc-500" />
-                                            <span className="truncate">{ln.status}</span>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Genres */}
-                        {ln.genres && ln.genres.length > 0 && (
-                            <div className="hidden md:flex flex-wrap items-center md:justify-start gap-2 pt-1">
-                                {ln.genres.slice(0, 4).map((genre) => (
-                                    <span key={genre.name} className="px-3 py-1 bg-white/5 border border-white/5 rounded-full text-xs font-semibold text-gray-300">
-                                        {genre.name}
-                                    </span>
-                                ))}
-                            </div>
-                        )}
-
-                        {/* Metadata Row */}
-                        <div className="hidden md:flex flex-wrap items-center md:justify-start gap-4 text-sm font-bold text-gray-400">
-                            {ln.score ? (
-                                <span className="flex items-center gap-1 text-[#facc15]">
-                                    <Star className="w-3.5 h-3.5 fill-current" />
-                                    {ln.score.toFixed(1)}
-                                </span>
-                            ) : null}
-                            {ln.author && (
-                                <span className="text-gray-300 truncate max-w-[200px]" title={ln.author}>
-                                    {ln.author}
-                                </span>
-                            )}
-                            {chapters.length > 0 && (
-                                <span>{chapters.length} Chapters</span>
-                            )}
-                            <span className="px-2 py-0.5 bg-white/10 rounded text-[10px] text-white uppercase">
-                                {ln.status || 'Ongoing'}
-                            </span>
-                        </div>
-
-                        {/* Synopsis */}
-                        <div className="hidden md:block text-gray-300 text-sm md:text-base leading-relaxed max-w-4xl line-clamp-4 pt-2">
-                            {ln.synopsis || 'No synopsis available.'}
-                        </div>
-
-                        {/* Actions Bar matching Manga details */}
-                        <div className="hidden md:flex w-full flex-row items-center md:justify-start gap-3 py-2">
-                            <button
-                                onClick={() => {
-                                    if (chapters.length > 0) {
-                                        const startChapter = currentProgress
-                                            ? chapters.find((c) => String(c.id) === String(currentProgress.chapterId)) || chapters[0]
-                                            : chapters[0];
-                                        handleChapterClick(startChapter);
-                                    }
-                                }}
-                                disabled={loadingChapters || chapters.length === 0}
-                                className="h-10 px-6 bg-[#1a1a1a] hover:bg-white/10 text-white text-sm font-bold rounded-xl transition-colors flex items-center gap-2 whitespace-nowrap disabled:opacity-50"
-                            >
-                                <Play className="w-4 h-4 fill-current" />
-                                <span>
-                                    {loadingChapters
-                                        ? 'Loading...'
-                                        : currentProgress
-                                            ? `Ch. ${currentProgress.chapterNumber}`
-                                            : 'Read'}
-                                </span>
-                            </button>
-
-                            <button
-                                onClick={() =>
-                                    toggleLNReadList({
-                                        id: ln.id,
-                                        title: displayTitle,
-                                        image: cover,
-                                        score: ln.score,
-                                        mediaStatus: ln.status,
-                                        type: ln.type,
-                                        synopsis: ln.synopsis,
-                                        genres: ln.genres?.map((g) => g.name),
-                                    })
-                                }
-                                className={`h-10 px-6 text-sm font-bold rounded-xl transition-colors flex items-center gap-2 whitespace-nowrap ${
-                                    isBookmarked
-                                        ? 'bg-amber-400/20 text-amber-300 hover:bg-amber-400/30'
-                                        : 'bg-[#1a1a1a] hover:bg-white/10 text-white'
-                                }`}
-                            >
-                                {isBookmarked ? <Check className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
-                                <span>{isBookmarked ? 'Saved' : 'Save'}</span>
-                            </button>
-
-                            <button
-                                onClick={handleBack}
-                                className="h-10 px-6 bg-[#1a1a1a] hover:bg-white/10 text-white text-sm font-bold rounded-xl transition-colors flex items-center gap-2 whitespace-nowrap cursor-pointer"
-                                title="Go back to previous page"
-                            >
-                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                                </svg>
-                                <span>Back</span>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="md:hidden mt-4 space-y-4">
-                    <div className="relative">
-                        <p className={`overflow-hidden text-base leading-7 text-zinc-300 transition-[max-height] duration-500 ease-out ${synopsisExpanded ? 'max-h-[40rem]' : 'max-h-[5.25rem]'}`}>
-                                {ln.synopsis || 'No synopsis available.'}
-                        </p>
-                        {!synopsisExpanded && (ln.synopsis || '').length > 140 && (
-                            <div className="pointer-events-none absolute inset-x-0 bottom-8 h-12 bg-gradient-to-t from-[#0a0a0a] via-[#0a0a0a]/85 to-transparent" />
-                        )}
-                        {(ln.synopsis || '').length > 140 && (
-                            <button
-                                type="button"
-                                onClick={() => setSynopsisExpanded((value) => !value)}
-                                className="mx-auto mt-1 flex h-8 w-8 items-center justify-center text-white/85 [&>span]:hidden"
-                                aria-label={synopsisExpanded ? 'Show less synopsis' : 'Show more synopsis'}
-                            >
-                                <ChevronDown className={`h-5 w-5 transition-transform duration-300 ${synopsisExpanded ? 'rotate-180' : ''}`} />
-                                <span className={`text-xl leading-none transition-transform ${synopsisExpanded ? 'rotate-180' : ''}`}>⌄</span>
-                            </button>
-                        )}
-                    </div>
-
-                    {ln.genres && ln.genres.length > 0 && (
-                        <div className={`${synopsisExpanded ? 'flex flex-wrap' : 'flex overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'} gap-2 pb-1 transition-all duration-300`}>
-                            {(synopsisExpanded ? ln.genres : ln.genres.slice(0, 8)).map((genre) => (
-                                <span key={genre.name} className="shrink-0 rounded-full bg-white/[0.07] px-3 py-1.5 text-xs font-semibold text-zinc-300">
-                                    {genre.name}
-                                </span>
-                            ))}
-                        </div>
-                    )}
-                </div>
-
-                {/* Chapters Section */}
-                <div className="w-full mt-6">
-                    <div id="chapters-section" className="pt-2">
+                    <div id="chapters-section" className={`pt-2 ${activeSectionTab === 'chapters' ? 'block' : 'hidden'}`}>
                         {loadingChapters ? (
-                            <div className="mt-4 bg-transparent md:bg-[#111]/40 rounded-none md:rounded-2xl p-0 md:p-6 animate-pulse">
+                            <div className="mt-4 bg-transparent p-0 animate-pulse">
                                 <div className="flex items-center justify-between gap-4 mb-6">
                                     <div className="h-7 w-32 bg-white/10 rounded-lg" />
                                     <div className="h-9 w-28 bg-white/10 rounded-xl" />
@@ -764,26 +682,26 @@ export default function LNDetailsPage() {
                                 author={ln.author}
                                 headerActions={
                                     <>
-                                        {isElectron && (
-                                            <button
-                                                type="button"
-                                                onClick={handleOpenFolder}
-                                                className="grid h-10 w-10 place-items-center text-gray-400 transition-colors hover:text-amber-400"
-                                                title="Open downloaded files on your computer"
-                                                aria-label="Open downloads folder"
-                                            >
-                                                <FolderOpen className="h-5 w-5" />
-                                            </button>
-                                        )}
                                         <button
                                             type="button"
                                             onClick={handleDownloadAllLN}
-                                            className="grid h-10 w-10 place-items-center text-gray-400 transition-colors hover:text-amber-400"
+                                            className="flex h-10 w-10 items-center justify-center rounded-full bg-white/[0.10] text-white/80 transition-colors hover:bg-white/[0.15] hover:text-white border-0 outline-none focus:outline-none cursor-pointer"
                                             title="Download all chapters for offline reading"
                                             aria-label="Download all chapters"
                                         >
-                                            <Download className="h-5 w-5" />
+                                            <Download className="h-4 w-4" />
                                         </button>
+                                        {isDesktopApp && (
+                                            <button
+                                                type="button"
+                                                onClick={handleOpenFolder}
+                                                className="flex h-10 w-10 items-center justify-center rounded-full bg-white/[0.10] text-white/80 transition-colors hover:bg-white/[0.15] hover:text-white border-0 outline-none focus:outline-none cursor-pointer"
+                                                title="Open downloaded files on your computer"
+                                                aria-label="Open downloads folder"
+                                            >
+                                                <FolderOpen className="h-4 w-4" />
+                                            </button>
+                                        )}
                                     </>
                                 }
                             />
@@ -793,6 +711,25 @@ export default function LNDetailsPage() {
                             </div>
                         )}
                     </div>
+                    {activeSectionTab === 'related' && (
+                        <div className="pt-2">
+                            <MoreLikeReading
+                                kind="novel"
+                                anilistId={Number(ln.externalIds?.anilist) > 0 ? Number(ln.externalIds?.anilist) : undefined}
+                                title={ln.title}
+                                genres={ln.genres?.map((g) => g.name)}
+                                embedded
+                            />
+                        </div>
+                    )}
+
+                    {/* Characters Section (if available) */}
+                    {ln.characters && (
+                        <DetailsCharacters
+                            characters={ln.characters as Anime['characters']}
+                            title="Characters"
+                        />
+                    )}
                 </div>
             </div>
 
@@ -806,8 +743,8 @@ export default function LNDetailsPage() {
                         type="button"
                         onClick={() => {
                             const startChapter = currentProgress
-                                ? chapters.find((c) => String(c.id) === String(currentProgress.chapterId)) || chapters[0]
-                                : chapters[0];
+                                ? effectiveChapters.find((c) => String(c.id) === String(currentProgress.chapterId)) || effectiveChapters[0]
+                                : effectiveChapters[0];
                             if (startChapter) handleChapterClick(startChapter);
                         }}
                         className={`flex items-center justify-center py-3.5 rounded-2xl bg-[#5b4b72]/95 hover:bg-[#6d5a88] text-white font-bold text-sm shadow-2xl shadow-black/80 border border-white/10 backdrop-blur-md active:scale-95 transition-all duration-500 ease-out cursor-pointer ${compactFab ? 'w-14 px-0 gap-0' : 'px-5 gap-2'}`}
