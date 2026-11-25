@@ -34,6 +34,7 @@ export type LocalAniListAnime = {
     trailer?: { id?: string; site?: string; thumbnail?: string };
     characters?: unknown;
     relations?: unknown;
+    recommendations?: unknown;
     studios?: unknown;
     streamingEpisodes?: Array<{ title?: string; thumbnail?: string; url?: string; site?: string }>;
 };
@@ -70,13 +71,93 @@ const ANIME_SEASON_CHAIN_NODE_FIELDS = `
     startDate { year month day }
 `;
 
-const queryAniList = async <T>(query: string, variables: Record<string, unknown>) => {
-    const result = await postJson<GraphQLResponse<T>>(ANILIST_GRAPHQL_URL, { query, variables });
-    if (result.errors?.length) {
-        throw new Error(result.errors.map((error) => error.message || 'AniList request failed').join('; '));
+let aniListQueue: Promise<void> = Promise.resolve();
+let lastAniListRequestAt = 0;
+const aniListInFlight = new Map<string, Promise<unknown>>();
+
+const waitForAniListSlot = async (minIntervalMs = 650) => {
+    const previous = aniListQueue;
+    let release!: () => void;
+    aniListQueue = new Promise<void>((resolve) => {
+        release = resolve;
+    });
+    await previous;
+    try {
+        const wait = Math.max(0, minIntervalMs - (Date.now() - lastAniListRequestAt));
+        if (wait > 0) {
+            await new Promise((resolve) => setTimeout(resolve, wait));
+        }
+        lastAniListRequestAt = Date.now();
+    } finally {
+        release();
     }
-    if (!result.data) throw new Error('AniList returned no data');
-    return result.data;
+};
+
+const queryAniList = async <T>(query: string, variables: Record<string, unknown>): Promise<T> => {
+    const dedupeKey = `${query.trim()}|${JSON.stringify(variables)}`;
+    const existing = aniListInFlight.get(dedupeKey);
+    if (existing) {
+        return existing as Promise<T>;
+    }
+
+    const promise = (async () => {
+        let lastError: unknown;
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+            await waitForAniListSlot(attempt === 0 ? 650 : 1800);
+            try {
+                const result = await postJson<GraphQLResponse<T>>(ANILIST_GRAPHQL_URL, { query, variables });
+                if (result.errors?.length) {
+                    throw new Error(result.errors.map((error) => error.message || 'AniList request failed').join('; '));
+                }
+                if (!result.data) throw new Error('AniList returned no data');
+                return result.data;
+            } catch (error) {
+                lastError = error;
+                const msg = String(error || '');
+                const retryable = msg.includes('429') || msg.includes('502') || msg.includes('503') || msg.includes('timeout') || msg.includes('Failed to fetch');
+                if (attempt < 2 && retryable) {
+                    await new Promise((resolve) => setTimeout(resolve, attempt === 0 ? 1500 : 3000));
+                    continue;
+                }
+                throw error;
+            }
+        }
+        throw lastError;
+    })();
+
+    aniListInFlight.set(dedupeKey, promise);
+    try {
+        return await promise;
+    } finally {
+        aniListInFlight.delete(dedupeKey);
+    }
+};
+
+// Rank the latest available daily snapshot, keeping anime in AniList's trend order.
+export const getLocalAniListDailyTrendingAnime = async (): Promise<LocalAniListAnime[]> => {
+    const latest = await queryAniList<{ Page: { mediaTrends: Array<{ date: number }> } }>(
+        `query LatestTrendDate($since: Int!) { Page(page: 1, perPage: 1) { mediaTrends(date_greater: $since, sort: DATE_DESC) { date } } }`,
+        { since: Math.floor(Date.now() / 1000) - 3 * 24 * 60 * 60 },
+    );
+    const date = latest.Page.mediaTrends[0]?.date;
+    if (!date) return [];
+    const items: LocalAniListAnime[] = [];
+    for (let page = 1; page <= 5 && items.length < 10; page++) {
+        const data = await queryAniList<{ Page: { pageInfo: { hasNextPage: boolean }; mediaTrends: Array<{ media: (LocalAniListAnime & { type?: string }) | null }> } }>(
+            `query DailyAnimeTrends($date: Int!, $page: Int!) {
+                Page(page: $page, perPage: 50) {
+                    pageInfo { hasNextPage }
+                    mediaTrends(date: $date, sort: TRENDING_DESC) { media { type ${MEDIA_FIELDS} } }
+                }
+            }`, { date, page },
+        );
+        for (const trend of data.Page.mediaTrends) {
+            if (trend.media?.type === 'ANIME' && !trend.media.isAdult) items.push(trend.media);
+            if (items.length === 10) break;
+        }
+        if (!data.Page.pageInfo.hasNextPage) break;
+    }
+    return items;
 };
 
 export type AnimeListOptions = {
@@ -87,6 +168,30 @@ export type AnimeListOptions = {
     format?: string;
     season?: string;
     seasonYear?: number;
+};
+
+export type StudioSort = 'newest' | 'popular' | 'topRated';
+
+export const getLocalAniListStudioPage = async (name: string, page = 1, sort: StudioSort = 'topRated') => {
+    const query = `
+        query StudioAnime($name: String!, $page: Int!, $sort: [MediaSort]) {
+            Studio(search: $name) {
+                name
+                media(page: $page, perPage: 24, sort: $sort) {
+                    pageInfo { currentPage lastPage hasNextPage total }
+                    nodes { ${MEDIA_FIELDS} relations { edges { relationType node { ${ANIME_SEASON_CHAIN_NODE_FIELDS} } } } }
+                }
+            }
+        }
+    `;
+    const data = await queryAniList<{
+        Studio: { name: string; media: { pageInfo: AniListPageInfo; nodes: LocalAniListAnime[] } };
+    }>(query, { name, page, sort: sort === 'newest' ? ['START_DATE_DESC', 'POPULARITY_DESC'] : sort === 'popular' ? ['POPULARITY_DESC'] : ['SCORE_DESC', 'POPULARITY_DESC'] });
+    return {
+        name: data.Studio.name,
+        pageInfo: data.Studio.media.pageInfo,
+        media: data.Studio.media.nodes.filter((item) => !item.isAdult),
+    };
 };
 
 export const getLocalAniListAnimePage = async ({
@@ -127,6 +232,88 @@ export const getLocalAniListAnimePage = async ({
     };
 };
 
+export const getLocalAniListTop100Anime = async (): Promise<LocalAniListAnime[]> => {
+    const query = `
+        query LocalTop100Anime($page: Int!) {
+            Page(page: $page, perPage: 50) {
+                media(type: ANIME, sort: SCORE_DESC, isAdult: false) { ${MEDIA_FIELDS} }
+            }
+        }
+    `;
+    const [page1, page2] = await Promise.all([
+        queryAniList<{ Page: { media: LocalAniListAnime[] } }>(query, { page: 1 }),
+        queryAniList<{ Page: { media: LocalAniListAnime[] } }>(query, { page: 2 }),
+    ]);
+    return [...(page1.Page?.media || []), ...(page2.Page?.media || [])]
+        .filter((item) => item.isAdult !== true)
+        .slice(0, 100);
+};
+
+export type AnimeBrowseOptions = {
+    page?: number;
+    perPage?: number;
+    sort?: string[];
+    genre?: string;
+    genres?: string[];
+    tag?: string;
+    format?: string;
+    season?: string;
+    seasonYear?: number;
+    status?: string;
+    minScore?: number;
+};
+
+export const browseLocalAniListAnime = async ({
+    page = 1,
+    perPage = 24,
+    sort = ['TRENDING_DESC', 'POPULARITY_DESC'],
+    genre,
+    genres,
+    tag,
+    format,
+    season,
+    seasonYear,
+    status,
+    minScore,
+}: AnimeBrowseOptions): Promise<AniListAnimePage> => {
+    const normalizedGenres = (genres || []).map((g) => g.trim()).filter(Boolean);
+    const query = `
+        query LocalBrowseAnime(
+            $page: Int!, $perPage: Int!, $sort: [MediaSort],
+            $genre: String, $genreIn: [String], $tag: String, $format: MediaFormat,
+            $season: MediaSeason, $seasonYear: Int, $status: MediaStatus,
+            $minScore: Int
+        ) {
+            Page(page: $page, perPage: $perPage) {
+                pageInfo { currentPage lastPage hasNextPage total }
+                media(
+                    type: ANIME, isAdult: false, sort: $sort,
+                    genre: $genre, genre_in: $genreIn, tag: $tag, format: $format,
+                    season: $season, seasonYear: $seasonYear, status: $status,
+                    averageScore_greater: $minScore
+                ) { ${MEDIA_FIELDS} }
+            }
+        }
+    `;
+    const data = await queryAniList<{ Page: AniListAnimePage }>(query, {
+        page,
+        perPage,
+        sort,
+        genre: normalizedGenres.length === 0 ? (genre || undefined) : undefined,
+        genreIn: normalizedGenres.length > 0 ? normalizedGenres : undefined,
+        tag: tag || undefined,
+        format: format || undefined,
+        season: season || undefined,
+        seasonYear: seasonYear || undefined,
+        status: status || undefined,
+        minScore: typeof minScore === 'number' && minScore > 0 ? minScore : undefined,
+    });
+    return {
+        ...data.Page,
+        media: (data.Page?.media || []).filter((item) => item.isAdult !== true),
+    };
+};
+
 export const getLocalAniListAnimeDetails = async (id: number): Promise<LocalAniListAnime> => {
     const query = `
         query LocalAnimeDetails($id: Int!) {
@@ -143,6 +330,15 @@ export const getLocalAniListAnimeDetails = async (id: number): Promise<LocalAniL
                             coverImage { large extraLarge }
                             bannerImage format episodes status season seasonYear
                             startDate { year month day }
+                        }
+                    }
+                }
+                recommendations(sort: [RATING_DESC, ID], perPage: 25) {
+                    nodes {
+                        mediaRecommendation {
+                            id idMal title { romaji english native userPreferred }
+                            coverImage { large extraLarge }
+                            bannerImage format episodes status genres averageScore
                         }
                     }
                 }
@@ -173,11 +369,12 @@ const isFranchiseEntry = (item?: LocalAniListAnime | null) =>
 
 export const getLocalAniListAnimeSeasonChain = async (title: string, id?: number): Promise<LocalAniListAnime | null> => {
     const search = String(title || '').replace(/\s+/g, ' ').trim();
+    const franchiseSearch = search.replace(/\s+(?:(?:the\s+)?final\s+season|season\s+\d+|\d+(?:st|nd|rd|th)\s+season|cour\s+\d+|part\s+\d+|\d+)\b.*$/i, '').trim() || search;
     const anilistId = Number(id || 0);
     if (!search) return null;
 
     const query = `
-        query LocalAnimeSeasonChain($id: Int, $hasId: Boolean!, $search: String!, $perPage: Int!) {
+        query LocalAnimeSeasonChain($id: Int, $hasId: Boolean!, $search: String!, $franchiseSearch: String!, $perPage: Int!) {
             rootById: Media(id: $id, type: ANIME) @include(if: $hasId) {
                 ${MEDIA_FIELDS}
                 relations {
@@ -197,7 +394,7 @@ export const getLocalAniListAnimeSeasonChain = async (title: string, id?: number
                 }
             }
             candidates: Page(page: 1, perPage: $perPage) {
-                media(search: $search, type: ANIME, sort: SEARCH_MATCH) {
+                media(search: $franchiseSearch, type: ANIME, sort: SEARCH_MATCH) {
                     ${ANIME_SEASON_CHAIN_NODE_FIELDS}
                     relations {
                         edges {
@@ -213,7 +410,7 @@ export const getLocalAniListAnimeSeasonChain = async (title: string, id?: number
         rootById: LocalAniListAnime | null;
         rootBySearch: LocalAniListAnime | null;
         candidates: { media: LocalAniListAnime[] };
-    }>(query, { id: anilistId > 0 ? anilistId : undefined, hasId: anilistId > 0, search, perPage: 50 });
+    }>(query, { id: anilistId > 0 ? anilistId : undefined, hasId: anilistId > 0, search, franchiseSearch, perPage: 50 });
     const root = data.rootById || data.rootBySearch;
     if (!root || root.isAdult) return null;
 
@@ -259,6 +456,42 @@ const currentSeason = () => {
     return 'FALL';
 };
 
+export const getLocalAniListExtendedSections = async () => {
+    const query = `
+        query LocalAnimeExtendedSections {
+            topRated: Page(page: 1, perPage: 20) {
+                pageInfo { currentPage lastPage hasNextPage total }
+                media(type: ANIME, sort: SCORE_DESC, isAdult: false) { ${MEDIA_FIELDS} }
+            }
+            movies: Page(page: 1, perPage: 20) {
+                pageInfo { currentPage lastPage hasNextPage total }
+                media(type: ANIME, format: MOVIE, sort: [SCORE_DESC, POPULARITY_DESC], isAdult: false) { ${MEDIA_FIELDS} }
+            }
+            upcoming: Page(page: 1, perPage: 16) {
+                pageInfo { currentPage lastPage hasNextPage total }
+                media(type: ANIME, status: NOT_YET_RELEASED, sort: POPULARITY_DESC, isAdult: false) { ${MEDIA_FIELDS} }
+            }
+            airing: Page(page: 1, perPage: 36) {
+                pageInfo { currentPage lastPage hasNextPage total }
+                media(type: ANIME, status: RELEASING, sort: POPULARITY_DESC, isAdult: false) { ${MEDIA_FIELDS} }
+            }
+        }
+    `;
+    const data = await queryAniList<{
+        topRated: AniListAnimePage;
+        movies: AniListAnimePage;
+        upcoming: AniListAnimePage;
+        airing: AniListAnimePage;
+    }>(query, {});
+
+    return {
+        topRated: { ...data.topRated, media: data.topRated.media.filter((item) => !item.isAdult) },
+        movies: { ...data.movies, media: data.movies.media.filter((item) => !item.isAdult) },
+        upcoming: { ...data.upcoming, media: data.upcoming.media.filter((item) => !item.isAdult) },
+        airing: { ...data.airing, media: data.airing.media.filter((item) => !item.isAdult) },
+    };
+};
+
 export const getLocalAniListAnimeHome = async () => {
     const year = new Date().getFullYear();
     const query = `
@@ -279,6 +512,22 @@ export const getLocalAniListAnimeHome = async () => {
                 pageInfo { currentPage lastPage hasNextPage total }
                 media(type: ANIME, sort: POPULARITY_DESC, isAdult: false) { ${MEDIA_FIELDS} }
             }
+            topRated: Page(page: 1, perPage: 20) {
+                pageInfo { currentPage lastPage hasNextPage total }
+                media(type: ANIME, sort: SCORE_DESC, isAdult: false) { ${MEDIA_FIELDS} }
+            }
+            movies: Page(page: 1, perPage: 20) {
+                pageInfo { currentPage lastPage hasNextPage total }
+                media(type: ANIME, format: MOVIE, sort: [SCORE_DESC, POPULARITY_DESC], isAdult: false) { ${MEDIA_FIELDS} }
+            }
+            upcoming: Page(page: 1, perPage: 16) {
+                pageInfo { currentPage lastPage hasNextPage total }
+                media(type: ANIME, status: NOT_YET_RELEASED, sort: POPULARITY_DESC, isAdult: false) { ${MEDIA_FIELDS} }
+            }
+            airing: Page(page: 1, perPage: 36) {
+                pageInfo { currentPage lastPage hasNextPage total }
+                media(type: ANIME, status: RELEASING, sort: POPULARITY_DESC, isAdult: false) { ${MEDIA_FIELDS} }
+            }
         }
     `;
     const data = await queryAniList<{
@@ -286,11 +535,19 @@ export const getLocalAniListAnimeHome = async () => {
         seasonal: AniListAnimePage;
         monthly: AniListAnimePage;
         topAnime: AniListAnimePage;
+        topRated: AniListAnimePage;
+        movies: AniListAnimePage;
+        upcoming: AniListAnimePage;
+        airing: AniListAnimePage;
     }>(query, { season: currentSeason(), seasonYear: year });
     const trending = { ...data.trending, media: data.trending.media.filter((item) => !item.isAdult) };
     const seasonal = { ...data.seasonal, media: data.seasonal.media.filter((item) => !item.isAdult) };
     const monthly = { ...data.monthly, media: data.monthly.media.filter((item) => !item.isAdult) };
     const topAnime = { ...data.topAnime, media: data.topAnime.media.filter((item) => !item.isAdult) };
+    const topRated = { ...data.topRated, media: data.topRated.media.filter((item) => !item.isAdult) };
+    const movies = { ...data.movies, media: data.movies.media.filter((item) => !item.isAdult) };
+    const upcoming = { ...data.upcoming, media: data.upcoming.media.filter((item) => !item.isAdult) };
+    const airing = { ...data.airing, media: data.airing.media.filter((item) => !item.isAdult) };
 
     return {
         spotlight: trending.media.slice(0, 8),
@@ -299,6 +556,10 @@ export const getLocalAniListAnimeHome = async () => {
         seasonal,
         monthly,
         topAnime,
+        topRated,
+        movies,
+        upcoming,
+        airing,
         topTen: {
             day: trending.media.slice(0, 10),
             week: seasonal.media.slice(0, 10),
