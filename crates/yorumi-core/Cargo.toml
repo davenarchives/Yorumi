@@ -1,0 +1,25 @@
+[package]
+name = "yorumi-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Shared pure-Rust core engine for Yorumi (Desktop GPUI, Android/iOS UniFFI, Tauri)"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+log.workspace = true
+tokio.workspace = true
+rusqlite.workspace = true
+futures-util.workspace = true
+reqwest.workspace = true
+scraper.workspace = true
+url.workspace = true
+regex.workspace = true
+async-trait.workspace = true
+thiserror.workspace = true
+base64.workspace = true
+urlencoding.workspace = true
+http.workspace = true
+axum.workspace = true
