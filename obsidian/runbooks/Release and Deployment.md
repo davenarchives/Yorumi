@@ -15,10 +15,9 @@ source_paths:
 
 ## Desktop
 
-- `.github/workflows/release.yml` builds Linux, macOS, and Windows on `main`, version tags, or manual dispatch.
-- CI installs root and backend dependencies, runs `npm run build`, then packages with the platform-specific Electron script.
-- Version tags publish artifacts to GitHub Releases using the release notes file.
-- Electron Builder outputs to `dist-app/` and publishes under `davenarchives/Yorumi`.
+- `.github/workflows/release.yml` builds Tauri bundles for Linux, macOS, and Windows on `main`, version tags, or manual dispatch.
+- CI installs Node, Rust, and Linux WebKit dependencies, then runs `npm run build:tauri`.
+- Artifacts are collected from `src-tauri/target/release/bundle/`; the workflow also normalizes the Windows installer, universal macOS DMG, and Linux AppImage to `Yorumi.exe`, `Yorumi.dmg`, and `Yorumi.AppImage` for website links. Version tags publish them to GitHub Releases.
 
 ## Android
 
@@ -34,7 +33,7 @@ source_paths:
 - `vercel.json` routes `/api/*` through the serverless entry and sends frontend routes to `index.html` with security headers.
 - `firebase.json` points to `firestore.rules`.
 - `website/` is a separate Vite marketing build.
-- Website download buttons are pinned to the release tag declared by `RELEASE_VERSION` in `website/src/App.tsx`; every linked filename must match an asset attached to that GitHub release. The macOS DMG and ZIP are universal builds, while Windows and Linux currently publish only the EXE and AppImage respectively.
+- Website download buttons are pinned to the release tag declared by `RELEASE_VERSION` in `website/src/App.tsx`; every linked filename must match an asset attached to that GitHub release. Verify the pinned asset names against the Tauri release before publishing.
 
 ## Version Checklist
 
