@@ -11,7 +11,7 @@ export const extractLocalHiAnimeSeasonNumber = (title: string) => {
     const match = value.match(/\bseason\s*(\d+)\b/i)
         || value.match(/\b(\d+)(?:st|nd|rd|th)\s*season\b/i)
         || value.match(/\b(?:series|part|cour)\s*(\d+)\b/i)
-        || value.match(/\s([2-9])\s*$/);
+        || value.match(/\s([2-9])(?:\s*(?:\(|\[|sub|dub|tv|ona|20\d\d)|\s*$)/i);
     const parsed = Number(match?.[1] || 0);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
 };
@@ -209,17 +209,79 @@ const resolveEmbed = async (embedUrl: string): Promise<ResolvedEmbed | null> => 
     }
 };
 
+const malIdLookupCache = new Map<string, number>();
+
+const resolveMalIdFromAniList = async (anilistId?: number, title?: string): Promise<number> => {
+    const cacheKey = anilistId && anilistId > 0 ? `id:${anilistId}` : `title:${String(title || '').trim().toLowerCase()}`;
+    if (!cacheKey || cacheKey === 'title:') return 0;
+    const cached = malIdLookupCache.get(cacheKey);
+    if (cached && cached > 0) return cached;
+
+    try {
+        if (anilistId && anilistId > 0) {
+            const response = await fetch('https://graphql.anilist.co', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+                body: JSON.stringify({
+                    query: 'query ($id: Int) { Media(id: $id, type: ANIME) { idMal } }',
+                    variables: { id: anilistId },
+                }),
+            });
+            if (!response.ok) return 0;
+            const payload = await response.json() as { data?: { Media?: { idMal?: number } } };
+            const idMal = Number(payload?.data?.Media?.idMal || 0);
+            if (Number.isFinite(idMal) && idMal > 0) {
+                malIdLookupCache.set(cacheKey, idMal);
+                return idMal;
+            }
+            return 0;
+        }
+
+        const searchTitle = String(title || '').trim();
+        if (!searchTitle) return 0;
+        const response = await fetch('https://graphql.anilist.co', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+            body: JSON.stringify({
+                query: 'query ($search: String) { Page(perPage: 10) { media(search: $search, type: ANIME) { idMal title { romaji english } } } }',
+                variables: { search: searchTitle },
+            }),
+        });
+        if (!response.ok) return 0;
+        const payload = await response.json() as {
+            data?: { Page?: { media?: Array<{ idMal?: number; title?: { romaji?: string; english?: string } }> } };
+        };
+        const items = payload?.data?.Page?.media || [];
+        const matched = items.find((item) => {
+            const titles = [item?.title?.english, item?.title?.romaji].filter((t): t is string => Boolean(t));
+            return Number(item?.idMal || 0) > 0 && titles.some((t) => isSafeLocalHiAnimeTitleMatch(searchTitle, t));
+        });
+        const idMal = Number(matched?.idMal || 0);
+        if (Number.isFinite(idMal) && idMal > 0) {
+            malIdLookupCache.set(cacheKey, idMal);
+            return idMal;
+        }
+    } catch {
+        // Ignore AniList lookup errors and fall back to HiAnime search
+    }
+    return 0;
+};
+
 export const getLocalHiAnimeStreams = async (
     title: string,
     episodeNumber: number,
     alternateTitles: string[] = [],
-    malId?: number
+    malId?: number,
+    anilistId?: number
 ): Promise<StreamLink[]> => {
-    // 1. Direct MAL ID shortcut (fastest path when MAL ID is known)
-    if (malId && malId > 0) {
+    // 1. Direct MAL ID shortcut (fastest path when MAL ID is known or resolvable from AniList)
+    const effectiveMalId = (malId && malId > 0)
+        ? malId
+        : await resolveMalIdFromAniList(anilistId, title);
+    if (effectiveMalId && effectiveMalId > 0) {
         try {
-            const directSub = `https://zokoanime.video/stream/mal/${malId}/${episodeNumber}/sub`;
-            const directDub = `https://zokoanime.video/stream/mal/${malId}/${episodeNumber}/dub`;
+            const directSub = `https://zokoanime.video/stream/mal/${effectiveMalId}/${episodeNumber}/sub`;
+            const directDub = `https://zokoanime.video/stream/mal/${effectiveMalId}/${episodeNumber}/dub`;
             const [subDirect, dubDirect] = await Promise.all([
                 resolveEmbed(directSub).catch(() => null),
                 resolveEmbed(directDub).catch(() => null),
