@@ -4,10 +4,13 @@ import type { Anime } from '../../../types/anime';
 import { useTitleLanguage } from '../../../context/TitleLanguageContext';
 import { getDisplayTitle } from '../../../utils/titleLanguage';
 import { getDisplayImageUrl } from '../../../utils/image';
+import { getAnimeWatchlistId } from '../../../utils/animeNavigation';
 import { cardItemVariants, pressMotion } from '../../../utils/motion';
 import { animeService, parseStudios } from '../../../services/animeService';
 import { getDisplayMetaLabel, isAnimeAiring } from '../../../utils/animeAiring';
 import CCIcon from '../../../components/ui/CCIcon';
+import { Plus, Check } from 'lucide-react';
+import { useWatchList } from '../../../hooks/useWatchList';
 
 interface AnimeCardProps {
     anime: Anime;
@@ -28,6 +31,7 @@ const AnimeCard: React.FC<AnimeCardProps> = ({
     disableTilt = false
 }) => {
     const { language } = useTitleLanguage();
+    const { isInWatchList, addToWatchList, removeFromWatchList } = useWatchList();
     const cardRef = React.useRef<HTMLDivElement>(null);
     const [rotation, setRotation] = React.useState({ x: 0, y: 0 });
     const [glare, setGlare] = React.useState({ x: 50, y: 50, opacity: 0 });
@@ -43,6 +47,31 @@ const AnimeCard: React.FC<AnimeCardProps> = ({
     const totalEpisodeCount = Number(tooltipAnime.episodes || 0) > 0 ? Number(tooltipAnime.episodes) : null;
     const displayTitle = getDisplayTitle(anime as unknown as Record<string, unknown>, language);
     const posterUrl = getDisplayImageUrl(anime.images.jpg.large_image_url || anime.images.jpg.image_url);
+    const animeIdStr = getAnimeWatchlistId(anime);
+    const effectiveInList = inList !== undefined ? inList : isInWatchList(animeIdStr);
+
+    const handleToggleWatchlist = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (onToggleList) {
+            onToggleList(anime);
+            return;
+        }
+        if (!animeIdStr) return;
+        if (effectiveInList) {
+            removeFromWatchList(animeIdStr);
+        } else {
+            addToWatchList({
+                id: animeIdStr,
+                anilistId: anime.id ? String(anime.id) : undefined,
+                malId: anime.mal_id ? String(anime.mal_id) : undefined,
+                title: displayTitle,
+                image: posterUrl,
+                score: anime.score,
+                type: anime.type,
+                status: 'watching',
+            });
+        }
+    };
     const cardStudios = parseStudios(tooltipAnime.studios || (tooltipAnime as any).anilist?.studios);
     const cardProducers = parseStudios(tooltipAnime.producers || (tooltipAnime as any).anilist?.producers);
     const studioName = getCreditName(cardStudios?.[0]) || getCreditName(cardProducers?.[0]) || 'Studio TBA';
@@ -185,7 +214,7 @@ const AnimeCard: React.FC<AnimeCardProps> = ({
             onMouseMove={handleMouseMove}
         >
             <div
-                className="relative aspect-[2/3] rounded-lg overflow-visible mb-1.5 md:mb-3 shadow-lg ring-0 outline-none transition-all duration-75 ease-out"
+                className="relative aspect-[2/3] rounded-[16px] overflow-visible mb-1.5 md:mb-3 shadow-lg ring-0 outline-none transition-all duration-75 ease-out"
                 style={{
                     transform: disableTilt
                         ? 'none'
@@ -196,7 +225,7 @@ const AnimeCard: React.FC<AnimeCardProps> = ({
                         : 'none'
                 }}
             >
-                <div className="relative h-full w-full overflow-hidden rounded-lg">
+                <div className="relative h-full w-full overflow-hidden rounded-[16px]">
                     <div
                         className="absolute inset-0 z-30 pointer-events-none mix-blend-overlay transition-opacity duration-300"
                         style={{
