@@ -1,16 +1,20 @@
 // API Service for Anime operations - TMDB catalog with legacy AniList ID resolution
-import { deleteDoc, doc, getDoc, setDoc } from "firebase/firestore";
 import axios from "axios";
 import type { Anime } from "../types/anime";
-import { db, isFirebaseEnabled } from "./firebase";
 import { API_BASE, USES_LOCAL_SOURCES } from "../config/api";
 import { getLocalHiAnimeStreams } from "../platform/sources/hianime";
+import type { StudioSort, AnimeBrowseOptions } from '../platform/sources/anilistAnime';
 import { getLocalAllMangaLatestUpdates } from "../platform/sources/allmangaAnime";
 import {
+    browseLocalAniListAnime,
     getLocalAniListAnimeDetails,
+    getLocalAniListDailyTrendingAnime,
     getLocalAniListAnimeHome,
     getLocalAniListAnimePage,
     getLocalAniListAnimeSeasonChain,
+    getLocalAniListStudioPage,
+    getLocalAniListTop100Anime,
+    getLocalAniListExtendedSections,
 } from "../platform/sources/anilistAnime";
 import { downloadService, type DownloadedEpisode, isDownloadAnimeIdMatch, isDownloadTitleMatch } from "./downloadService";
 import { getDisplayImageUrl } from "../utils/image";
@@ -207,6 +211,7 @@ const mapAnilistToAnime = (item: any): Anime => {
             site: e.site
         })) || [],
         relations: item.relations, // Map relations
+        recommendations: item.recommendations, // Map recommendations
         seasonChain: Array.isArray(item.seasonChain)
             ? item.seasonChain.map((season: any) => mapAnilistToAnime({ ...season, seasonChain: undefined }))
             : undefined,
@@ -708,6 +713,118 @@ const hasCompleteHomeBundle = (value: unknown) => {
 };
 
 export const animeService = {
+    async getDailyTrendingAnime(): Promise<Anime[]> {
+        const cacheKey = 'anilist-daily-trends-v1';
+        const cached = getCached(cacheKey, 10 * 60 * 1000) as Anime[] | null;
+        if (cached?.length) return cached;
+        const anime = (await getLocalAniListDailyTrendingAnime()).map(mapAnilistToAnime);
+        if (anime.length > 0) setCache(cacheKey, anime, 10 * 60 * 1000);
+        return anime;
+    },
+    async getTmdbTrendingNow(): Promise<Anime[]> {
+        const cacheKey = 'tmdb-trending-now-v1';
+        const cached = getCached(cacheKey, 10 * 60 * 1000) as Anime[] | null;
+        if (cached?.length) return cached;
+        const anime = (await tmdbService.getDailyTrendingAnime(24)).map(mapTmdbSearchResultToAnime);
+        if (anime.length > 0) setCache(cacheKey, anime, 10 * 60 * 1000);
+        return anime;
+    },
+    async getStudioAnime(name: string, page = 1, sort: StudioSort = 'topRated') {
+        const cacheKey = `studio-anime-v1:${name.toLowerCase()}:${page}:${sort}`;
+        const cached = getCached(cacheKey, DETAIL_CACHE_TTL);
+        if (cached) return cached;
+
+        if (inFlightRequests.has(cacheKey)) {
+            return inFlightRequests.get(cacheKey);
+        }
+
+        const promise = (async () => {
+            try {
+                const result = await getLocalAniListStudioPage(name, page, sort);
+                const mapped = { ...result, media: result.media.map(mapAnilistToAnime) };
+                if (mapped.media.length > 0) {
+                    setCache(cacheKey, mapped, DETAIL_CACHE_TTL);
+                }
+                return mapped;
+            } finally {
+                inFlightRequests.delete(cacheKey);
+            }
+        })();
+
+        inFlightRequests.set(cacheKey, promise);
+        return promise;
+    },
+    async browseAnime(options: AnimeBrowseOptions): Promise<{
+        media: Anime[];
+        pageInfo: { currentPage: number; lastPage: number; hasNextPage: boolean; total: number };
+    }> {
+        const cacheKey = `browse-anime-v1:${JSON.stringify(options)}`;
+        const cached = getCached(cacheKey, DETAIL_CACHE_TTL);
+        if (cached) return cached as { media: Anime[]; pageInfo: { currentPage: number; lastPage: number; hasNextPage: boolean; total: number } };
+
+        if (inFlightRequests.has(cacheKey)) {
+            return inFlightRequests.get(cacheKey);
+        }
+
+        const promise = (async () => {
+            try {
+                const result = await browseLocalAniListAnime(options);
+                const mapped = {
+                    pageInfo: result.pageInfo,
+                    media: result.media.map(mapAnilistToAnime),
+                };
+                if (mapped.media.length > 0) {
+                    setCache(cacheKey, mapped, DETAIL_CACHE_TTL);
+                }
+                return mapped;
+            } catch (err) {
+                const hasNarrowFilters = Boolean(
+                    options.genre || options.genres?.length || options.tag || options.format || options.season || options.seasonYear || options.minScore
+                );
+                if (!hasNarrowFilters) {
+                    const pageNum = options.page ?? 1;
+                    const perPageNum = options.perPage ?? 24;
+                    const sortStr = (options.sort || []).join(',');
+                    try {
+                        let fallbackList: Anime[] = [];
+                        if (sortStr.includes('SCORE_DESC')) {
+                            const top100 = await this.getTop100Anime();
+                            const start = (pageNum - 1) * perPageNum;
+                            fallbackList = top100.slice(start, start + perPageNum);
+                        } else if (options.status === 'RELEASING') {
+                            const res = await this.getPopularThisSeason(pageNum, perPageNum);
+                            fallbackList = res.data || [];
+                        } else if (sortStr.startsWith('POPULARITY_DESC')) {
+                            const res = await this.getTopAnime(pageNum);
+                            fallbackList = res.data || [];
+                        } else {
+                            const res = await this.getTrendingAnime(pageNum, perPageNum);
+                            fallbackList = res.data || [];
+                        }
+                        if (fallbackList.length > 0) {
+                            return {
+                                media: fallbackList,
+                                pageInfo: {
+                                    currentPage: pageNum,
+                                    lastPage: pageNum + 1,
+                                    hasNextPage: fallbackList.length >= perPageNum,
+                                    total: fallbackList.length,
+                                },
+                            };
+                        }
+                    } catch {
+                        // fall through to original error
+                    }
+                }
+                throw err;
+            } finally {
+                inFlightRequests.delete(cacheKey);
+            }
+        })();
+
+        inFlightRequests.set(cacheKey, promise);
+        return promise;
+    },
     peekAnimeDetailsCache(id: number | string) {
         return getCached(getAnimeDetailsCacheKey(id), DETAIL_CACHE_TTL);
     },
@@ -717,7 +834,7 @@ export const animeService = {
     },
 
     async getHomeFastData() {
-        const cacheKey = 'home-fast-data-v40';
+        const cacheKey = 'home-fast-data-v42';
         const cached = getCached(cacheKey, DETAIL_CACHE_TTL);
         if (cached) return cached;
 
@@ -731,15 +848,33 @@ export const animeService = {
                 if (USES_LOCAL_SOURCES) {
                     const [home, latest] = await Promise.all([
                         getLocalAniListAnimeHome(),
-                        getLocalAllMangaLatestUpdates(1, 18),
+                        getLocalAllMangaLatestUpdates(1, 18).catch(() => ({ data: [] })),
                     ]);
-                    payload = { ...home, latestEpisodes: latest.data };
+                    payload = {
+                        ...home,
+                        latestEpisodes: Array.isArray(latest?.data) && latest.data.length > 0 ? latest.data : home.latestEpisodes,
+                    };
                 } else {
-                    const res = await fetchJsonWithTimeout(`${API_BASE}/anilist/home-fast`, {}, 6000);
-                    if (!res.ok) {
-                        throw new Error(`Failed to fetch fast AniList home data: ${res.statusText}`);
+                    try {
+                        const [res, extended] = await Promise.all([
+                            fetchJsonWithTimeout(`${API_BASE}/anilist/home-fast`, {}, 6000),
+                            getLocalAniListExtendedSections().catch(() => null),
+                        ]);
+                        if (!res.ok) {
+                            throw new Error(`Failed to fetch fast AniList home data: ${res.statusText}`);
+                        }
+                        const basePayload = await res.json();
+                        payload = { ...basePayload, ...(extended || {}) };
+                    } catch {
+                        const [home, latest] = await Promise.all([
+                            getLocalAniListAnimeHome(),
+                            getLocalAllMangaLatestUpdates(1, 18).catch(() => ({ data: [] })),
+                        ]);
+                        payload = {
+                            ...home,
+                            latestEpisodes: Array.isArray(latest?.data) && latest.data.length > 0 ? latest.data : home.latestEpisodes,
+                        };
                     }
-                    payload = await res.json();
                 }
 
                 const spotlightAnime = Array.isArray(payload?.spotlight)
@@ -780,6 +915,10 @@ export const animeService = {
                     popularSeason: payload?.seasonal?.media?.map(mapTopTenItemToAnime) || [],
                     popularMonth: payload?.monthly?.media?.map(mapTopTenItemToAnime) || [],
                     topAnime: payload?.topAnime?.media?.map(mapTopTenItemToAnime) || [],
+                    topRatedAnime: payload?.topRated?.media?.map(mapTopTenItemToAnime) || [],
+                    animeMovies: payload?.movies?.media?.map(mapTopTenItemToAnime) || [],
+                    upcomingAnime: payload?.upcoming?.media?.map(mapTopTenItemToAnime) || [],
+                    airingAnime: payload?.airing?.media?.map(mapTopTenItemToAnime) || [],
                     topAnimePagination: {
                         last_visible_page: payload?.topAnime?.pageInfo?.lastPage || 1,
                         current_page: payload?.topAnime?.pageInfo?.currentPage || 1,
@@ -806,6 +945,74 @@ export const animeService = {
     peekTopAnime(page: number = 1, format?: string) {
         const cacheKey = `top-anime-v2-${page}-${format ?? 'all'}`;
         return getCached(cacheKey);
+    },
+
+    peekTop100Anime(): Anime[] | null {
+        return getCached('top-100-anime-v2', DETAIL_CACHE_TTL);
+    },
+
+    async getTop100Anime(): Promise<Anime[]> {
+        const cacheKey = 'top-100-anime-v2';
+        const cached = getCached(cacheKey, DETAIL_CACHE_TTL);
+        if (Array.isArray(cached) && cached.length > 0) return cached;
+
+        if (inFlightRequests.has(cacheKey)) {
+            return inFlightRequests.get(cacheKey);
+        }
+
+        const fetchPromise = (async () => {
+            try {
+                let collected: Anime[] = [];
+                try {
+                    const anilistItems = await getLocalAniListTop100Anime();
+                    collected = anilistItems.map(mapAnilistToAnime);
+                } catch (err) {
+                    console.warn('AniList Top 100 failed, falling back:', err);
+                }
+
+                if (collected.length === 0 && shouldUseDirectTmdb()) {
+                    const [tvPages, moviePages] = await Promise.all([
+                        Promise.all([1, 2, 3, 4, 5].map((p) =>
+                            tmdbService.discoverAnime({ page: p, sortBy: 'vote_average.desc', mediaType: 'tv', voteCountGte: 200 }).catch(() => [])
+                        )),
+                        Promise.all([1, 2].map((p) =>
+                            tmdbService.discoverAnime({ page: p, sortBy: 'vote_average.desc', mediaType: 'movie', voteCountGte: 200 }).catch(() => [])
+                        )),
+                    ]);
+                    const raw = [...tvPages.flat(), ...moviePages.flat()]
+                        .filter(tmdbService.isAnimeContent)
+                        .sort((a, b) => Number(b.vote_average || 0) - Number(a.vote_average || 0));
+                    collected = raw.map(mapTmdbSearchResultToAnime);
+                } else if (collected.length === 0) {
+                    const pages = await Promise.all([1, 2, 3, 4, 5, 6].map((p) =>
+                        this.getTopAnime(p).catch(() => ({ data: [] as Anime[] }))
+                    ));
+                    collected = pages
+                        .flatMap((res) => (Array.isArray(res?.data) ? res.data : []))
+                        .sort((a, b) => Number(b.score || 0) - Number(a.score || 0));
+                }
+
+                const seen = new Set<string>();
+                const deduped: Anime[] = [];
+                for (const item of collected) {
+                    const key = String(item.anilistId || item.id || item.mal_id || item.tmdbId || item.title || '').toLowerCase();
+                    if (!key || seen.has(key)) continue;
+                    seen.add(key);
+                    deduped.push(item);
+                    if (deduped.length >= 100) break;
+                }
+
+                if (deduped.length > 0) {
+                    setCache(cacheKey, deduped, DETAIL_CACHE_TTL);
+                }
+                return deduped;
+            } finally {
+                inFlightRequests.delete(cacheKey);
+            }
+        })();
+
+        inFlightRequests.set(cacheKey, fetchPromise);
+        return fetchPromise;
     },
 
     prefetchTopAnimeFormats() {
@@ -1247,7 +1454,7 @@ export const animeService = {
         if (!title) return null;
 
         const anilistId = anime.source === 'anilist' ? Number(anime.id || 0) : 0;
-        const cacheKey = `anilist-season-chain:v7:${anilistId || title.toLowerCase()}`;
+        const cacheKey = `anilist-season-chain:v8:${anilistId || title.toLowerCase()}`;
         const cached = getCached(cacheKey, 24 * 60 * 60 * 1000);
         if (cached) return cached as Anime;
         const inFlight = inFlightRequests.get(cacheKey);
@@ -1567,74 +1774,20 @@ export const animeService = {
             return inFlightRequests.get(cacheKey);
         }
 
-        const CACHE_COLLECTION = "anime_episodes_v7";
-        const docRef = db ? doc(db, CACHE_COLLECTION, session) : null;
-
-        const readFirebaseEpisodes = async (timeoutMs: number): Promise<{ episodes: any[] } | null> => {
-            if (!isFirebaseEnabled || !docRef) return null;
-            try {
-                const docSnap = await Promise.race([
-                    getDoc(docRef),
-                    new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs)),
-                ]);
-                if (!docSnap || !docSnap.exists()) return null;
-                const local = docSnap.data();
-                if (!Array.isArray(local?.episodes) || local.episodes.length === 0) return null;
-                const payload = { episodes: local.episodes };
-                if (!hasEnoughEpisodes(payload)) return null;
-                return payload;
-            } catch (error) {
-                console.warn("[AnimeService] Firebase read error:", error);
-                return null;
-            }
-        };
-
-        const fetchFromBackend = async () => {
-            const { data } = await apiClient.get('/scraper/episodes', {
-                params: {
-                    session,
-                    ...(expectedEpisodes > 0 ? { expectedEpisodes } : {}),
-                },
-            });
-
-            if (data?.episodes && Array.isArray(data.episodes) && data.episodes.length > 0) {
-                setCache(cacheKey, data, DETAIL_CACHE_TTL);
-                // Persist cache asynchronously; don't block the UI.
-                if (docRef) {
-                    setDoc(docRef, {
-                        episodes: data.episodes,
-                        lastUpdated: Date.now()
-                    }).catch((error) => {
-                        console.warn("[AnimeService] Firebase write error:", error);
-                    });
-                }
-            }
-
-            return data;
-        };
-
         const fetchPromise = (async () => {
-            const backendPromise = fetchFromBackend();
             try {
-                // Fast path: if Firebase has episodes cached, render immediately.
-                // Keep backend request running in background to refresh cache.
-                const quickFirebase = await readFirebaseEpisodes(350);
-                if (quickFirebase) {
-                    setCache(cacheKey, quickFirebase, DETAIL_CACHE_TTL);
-                    backendPromise.catch(() => undefined);
-                    return quickFirebase;
+                const { data } = await apiClient.get('/scraper/episodes', {
+                    params: {
+                        session,
+                        ...(expectedEpisodes > 0 ? { expectedEpisodes } : {}),
+                    },
+                });
+
+                if (data?.episodes && Array.isArray(data.episodes) && data.episodes.length > 0) {
+                    setCache(cacheKey, data, DETAIL_CACHE_TTL);
                 }
 
-                return await backendPromise;
-            } catch (primaryError) {
-                // Fallback to Firebase cache if backend request fails.
-                const fallback = await readFirebaseEpisodes(1200);
-                if (fallback) {
-                    setCache(cacheKey, fallback, DETAIL_CACHE_TTL);
-                    return fallback;
-                }
-
-                throw primaryError;
+                return data;
             } finally {
                 inFlightRequests.delete(cacheKey);
             }
@@ -1646,59 +1799,17 @@ export const animeService = {
 
     // Get mapping from AniList ID to Scraper Session
     async getAnimeMapping(malId: string | number) {
-        const key = String(malId);
-        const cached = mappingCache.get(key);
-        if (cached) return cached;
-        if (!isFirebaseEnabled || !db) return null;
-
-        const docRef = doc(db, "anime_mappings", key);
-        try {
-            const docSnap = await Promise.race([
-                getDoc(docRef),
-                new Promise<null>((resolve) => setTimeout(() => resolve(null), 250)),
-            ]);
-            if (!docSnap) return null;
-            if (docSnap.exists()) {
-                const data = docSnap.data();
-                if (data.session) {
-                    mappingCache.set(key, data.session);
-                    return data.session;
-                }
-            }
-        } catch (error) {
-            console.warn("[AnimeService] Error fetching mapping:", error);
-        }
-        return null;
+        return mappingCache.get(String(malId)) || null;
     },
 
     // Save mapping
     async saveAnimeMapping(malId: string | number, session: string) {
         if (!session) return;
-        const key = String(malId);
-        mappingCache.set(key, session);
-        if (!isFirebaseEnabled || !db) return;
-        const docRef = doc(db, "anime_mappings", key);
-        try {
-            await setDoc(docRef, {
-                session,
-                lastUpdated: Date.now()
-            });
-            console.log(`[AnimeService] Saved mapping: ${malId} -> ${session}`);
-        } catch (error) {
-            console.warn("[AnimeService] Error saving mapping:", error);
-        }
+        mappingCache.set(String(malId), session);
     },
 
     async clearAnimeMapping(malId: string | number) {
-        const key = String(malId);
-        mappingCache.delete(key);
-        if (!isFirebaseEnabled || !db) return;
-        const docRef = doc(db, "anime_mappings", key);
-        try {
-            await deleteDoc(docRef);
-        } catch {
-            // no-op
-        }
+        mappingCache.delete(String(malId));
     },
 
     invalidateAnimeDetailsFast(id: number | string) {
@@ -1744,6 +1855,7 @@ export const animeService = {
                         // ID here can resolve a different title with a valid
                         // response, leaving the player stuck on the wrong media.
                         options?.malId,
+                        options?.anilistId,
                     );
                     if (Array.isArray(localStreams) && localStreams.length > 0) {
                         setCachedStream(cacheKey, localStreams);
@@ -1900,7 +2012,7 @@ export const animeService = {
 
     async prefetchStreams(animeSession: string, episodeSessions: string[]) {
         const sessions = [...new Set(episodeSessions.filter(Boolean))];
-        if (!animeSession || sessions.length === 0) return;
+        if (!animeSession || sessions.length === 0 || USES_LOCAL_SOURCES) return;
 
         await fetch(`${API_BASE}/scraper/prefetch/streams`, {
             method: 'POST',
@@ -1924,9 +2036,11 @@ export const animeService = {
 
     // Wipe the backend in-memory stream cache + all frontend sessionStorage stream entries.
     async clearStreamCache() {
+        if (!USES_LOCAL_SOURCES) {
         try {
             await fetch(`${API_BASE}/scraper/clear-stream-cache`, { method: 'POST' });
         } catch { /* ignore if backend unavailable */ }
+        }
         try {
             const toDelete: string[] = [];
             for (let i = 0; i < sessionStorage.length; i++) {
