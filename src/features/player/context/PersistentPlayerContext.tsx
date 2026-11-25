@@ -1,10 +1,11 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router-dom';
 import VideoPlayer, { type VideoPlayerProps } from '../components/VideoPlayer';
-import { isNativeMobile } from '../../../platform/runtime';
+import { isMobileShell, isNativeMobile } from '../../../platform/runtime';
 import { setSystemPictureInPictureEnabled } from '../../../platform/immersiveMode';
 import { arePlayerAnimeIdsEquivalent } from '../../../utils/playerIdentity';
+import { SHOW_EPISODES_TAB_EVENT } from '../playerEvents';
 
 type PersistentPlayerContextValue = {
     registerPlayer: (props: VideoPlayerProps, watchUrl: string, watchState?: any) => void;
@@ -22,7 +23,7 @@ type MiniPosition = {
 };
 
 const getMiniSize = () => {
-    const width = Math.min(480, Math.max(320, window.innerWidth - 32));
+    const width = isMobileShell() ? Math.min(220, window.innerWidth - 32) : Math.min(480, Math.max(320, window.innerWidth - 32));
     return {
         width,
         height: width * 9 / 16,
@@ -57,11 +58,11 @@ export function PersistentPlayerProvider({ children }: { children: ReactNode }) 
     } | null>(null);
 
     const isWatchRoute = location.pathname.startsWith('/anime/details');
-    const hasPlayer = Boolean(playerProps && (playerProps.streamUrl || playerProps.isLoading || playerProps.isServerSwitching));
-    const isInlineAvailable = Boolean(isWatchRoute && inlineElement && document.body.contains(inlineElement));
+    const hasPlayer = Boolean(playerProps && (playerProps.streamUrl || playerProps.isLoading || playerProps.isServerSwitching || playerProps.streamExhausted));
+    const isInlineMounted = Boolean(isWatchRoute && inlineElement && document.body.contains(inlineElement));
 
-    useEffect(() => {
-        if (!isInlineAvailable || !inlineElement) {
+    useLayoutEffect(() => {
+        if (!isInlineMounted || !inlineElement) {
             setInlineRect(null);
             return;
         }
@@ -76,30 +77,37 @@ export function PersistentPlayerProvider({ children }: { children: ReactNode }) 
                     width: rect.width,
                     height: rect.height,
                 });
+            } else {
+                // Inline slot is hidden (e.g. Cast / More like this tab is active): drop to the mini player.
+                setInlineRect(null);
             }
         };
 
         updateRect();
 
         window.addEventListener('resize', updateRect, { passive: true });
+        window.addEventListener('scroll', updateRect, { passive: true, capture: true });
 
         const resizeObserver = new ResizeObserver(updateRect);
         resizeObserver.observe(inlineElement);
 
         return () => {
             window.removeEventListener('resize', updateRect);
+            window.removeEventListener('scroll', updateRect, true);
             resizeObserver.disconnect();
         };
-    }, [isInlineAvailable, inlineElement]);
+    }, [isInlineMounted, inlineElement]);
 
+    // On desktop the inline slot only counts while it is actually visible; native mobile keeps its previous behavior.
+    const isInlineAvailable = Boolean(isInlineMounted && inlineRect);
     const isInlineMode = Boolean(isInlineAvailable && inlineRect);
     const shouldShowInlinePlayer = Boolean(hasPlayer && !isClosed && isInlineAvailable);
-    const shouldShowMiniPlayer = Boolean(!isNativeMobile() && hasPlayer && !isClosed && !isInlineAvailable && playerProps?.streamUrl);
+    const shouldShowMiniPlayer = Boolean(!isMobileShell() && hasPlayer && !isClosed && !isInlineAvailable && playerProps?.streamUrl);
     const shouldRenderPlayer = shouldShowMiniPlayer || shouldShowInlinePlayer;
 
     useEffect(() => {
         if (!isNativeMobile()) return;
-        const enabled = Boolean(shouldShowInlinePlayer && playerProps?.streamUrl);
+        const enabled = false;
         setSystemPictureInPictureEnabled(enabled).catch(() => undefined);
         return () => {
             setSystemPictureInPictureEnabled(false).catch(() => undefined);
@@ -149,7 +157,7 @@ export function PersistentPlayerProvider({ children }: { children: ReactNode }) 
         const frameId = window.requestAnimationFrame(() => {
             setMiniPosition({
                 x: window.innerWidth - miniSize.width - MINI_PLAYER_MARGIN,
-                y: window.innerHeight - miniSize.height - MINI_PLAYER_MARGIN,
+                y: window.innerHeight - miniSize.height - (isMobileShell() ? 96 : MINI_PLAYER_MARGIN),
             });
         });
         return () => window.cancelAnimationFrame(frameId);
@@ -224,12 +232,20 @@ export function PersistentPlayerProvider({ children }: { children: ReactNode }) 
     }, []);
 
     const handleMiniExpand = useCallback(() => {
+        // Already on the details page with the inline slot hidden behind another tab: switch back to Episodes.
+        if (isInlineMounted && inlineElement) {
+            window.dispatchEvent(new Event(SHOW_EPISODES_TAB_EVENT));
+            window.requestAnimationFrame(() => {
+                inlineElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            });
+            return;
+        }
         const targetUrl = watchUrlRef.current || watchUrl;
         const targetState = watchStateRef.current || watchState;
         if (targetUrl) {
             navigate(targetUrl, { state: targetState });
         }
-    }, [navigate, watchUrl, watchState]);
+    }, [inlineElement, isInlineMounted, navigate, watchUrl, watchState]);
 
     const handleMiniPointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
         if (!shouldShowMiniPlayer || event.button !== 0) return;
@@ -294,7 +310,7 @@ export function PersistentPlayerProvider({ children }: { children: ReactNode }) 
                 }
                 : {
                     position: 'fixed',
-                    bottom: '24px',
+                    bottom: isMobileShell() ? 'calc(6rem + env(safe-area-inset-bottom, 0px))' : '24px',
                     right: '24px',
                     width: MINI_PLAYER_WIDTH,
                     aspectRatio: '16 / 9',
