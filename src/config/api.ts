@@ -8,13 +8,13 @@ const runtimePlatform = getRuntimePlatform();
 
 const getResolvedApiBase = () => {
   if (!explicitApiBase) {
-    if (runtimePlatform === 'electron' || isLocalHost) {
+    if (isLocalHost && runtimePlatform !== 'tauri') {
       return 'http://localhost:3001/api';
     }
 
     // Android/iOS will ultimately use direct in-app source adapters. Until a
     // source is migrated, an explicitly configured API remains available for
-    // development without changing the Electron backend contract.
+    // development.
     return `${origin}/api`;
   }
 
@@ -32,4 +32,4 @@ const getResolvedApiBase = () => {
 
 export const API_BASE = getResolvedApiBase();
 export const API_ORIGIN = API_BASE.replace(/\/+$/, '').replace(/\/api$/i, '');
-export const USES_LOCAL_SOURCES = runtimePlatform === 'android' || runtimePlatform === 'ios';
+export const USES_LOCAL_SOURCES = runtimePlatform === 'android' || runtimePlatform === 'ios' || runtimePlatform === 'tauri';
