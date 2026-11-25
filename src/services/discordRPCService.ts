@@ -1,45 +1,57 @@
-import type { DiscordPresenceOptions } from '../types/electron';
+import type { DiscordPresenceOptions } from '../types/discord';
+import { invoke } from '@tauri-apps/api/core';
+import { isTauri } from '../platform/runtime';
+import { DEFAULT_DISCORD_CLIENT_ID } from '../config/discord';
+
+const DISCORD_RPC_ENABLED_KEY = 'yorumi_discord_rpc_enabled';
 
 class DiscordRPCService {
     private currentPresence: DiscordPresenceOptions | null = null;
     private activityStartTime: number | null = null;
     private currentActivityKey: string | null = null;
 
+    public isEnabled(): boolean {
+        if (typeof localStorage === 'undefined') return true;
+        try {
+            const raw = localStorage.getItem(DISCORD_RPC_ENABLED_KEY);
+            return raw === null ? true : raw !== 'false';
+        } catch {
+            return true;
+        }
+    }
+
+    public async setEnabled(enabled: boolean): Promise<void> {
+        try {
+            localStorage.setItem(DISCORD_RPC_ENABLED_KEY, enabled ? 'true' : 'false');
+        } catch {
+            // ignore
+        }
+        if (!enabled) {
+            const saved = this.currentPresence;
+            await this.clearPresence();
+            this.currentPresence = saved;
+            return;
+        }
+        if (this.currentPresence) {
+            await this.updatePresence(this.currentPresence);
+        }
+    }
+
     public async updatePresence(options: DiscordPresenceOptions): Promise<boolean> {
         this.currentPresence = options;
-        if (typeof window !== 'undefined' && window.electronAPI?.updateDiscordPresence) {
-            try {
-                return await window.electronAPI.updateDiscordPresence(options);
-            } catch (err) {
-                console.error('[DiscordRPC] Failed to update presence:', err);
-            }
-        }
-        return false;
+        if (!this.isEnabled()) return false;
+        if (!isTauri()) return false;
+        try {
+            return await invoke<boolean>('update_discord_presence', { presence: options, clientId: import.meta.env.VITE_DISCORD_CLIENT_ID || DEFAULT_DISCORD_CLIENT_ID });
+        } catch { return false; }
     }
 
     public async clearPresence(): Promise<boolean> {
         this.currentPresence = null;
         this.currentActivityKey = null;
         this.activityStartTime = null;
-        if (typeof window !== 'undefined' && window.electronAPI?.clearDiscordPresence) {
-            try {
-                return await window.electronAPI.clearDiscordPresence();
-            } catch (err) {
-                console.error('[DiscordRPC] Failed to clear presence:', err);
-            }
-        }
-        return false;
-    }
-
-    public async setClientId(clientId: string): Promise<boolean> {
-        if (typeof window !== 'undefined' && window.electronAPI?.setDiscordClientId) {
-            try {
-                return await window.electronAPI.setDiscordClientId(clientId);
-            } catch (err) {
-                console.error('[DiscordRPC] Failed to update client ID:', err);
-            }
-        }
-        return false;
+        if (!isTauri()) return false;
+        try { return await invoke<boolean>('clear_discord_presence'); } catch { return false; }
     }
 
     public setWatchingAnime(animeTitle: string, episodeNumber: number | string, episodeTitle?: string, coverImage?: string) {
