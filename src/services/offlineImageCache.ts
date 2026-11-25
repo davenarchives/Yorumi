@@ -1,8 +1,16 @@
+import { isTauri } from '../platform/runtime';
+
 // Offline Image Cache using CacheStorage and IndexedDB fallback
 const CACHE_NAME = 'yorumi_images_cache_v1';
 const IDB_NAME = 'yorumi_offline_image_store_v1';
 const IDB_STORE = 'images';
 const IDB_VERSION = 1;
+
+const buildTauriImageProxyUrl = (rawUrl: string): string => {
+    const isWindows = typeof navigator !== 'undefined' && /windows/i.test(navigator.userAgent);
+    const origin = isWindows ? 'http://yorumi-media.localhost' : 'yorumi-media://localhost';
+    return `${origin}/stream?url=${encodeURIComponent(rawUrl)}`;
+};
 
 let idbPromise: Promise<IDBDatabase> | null = null;
 const memoryBlobUrlMap = new Map<string, string>();
@@ -45,7 +53,10 @@ export async function cacheImage(url: string): Promise<string> {
     }
 
     try {
-        const response = await fetch(rawUrl, { mode: 'cors' }).catch(() => null);
+        let response = await fetch(rawUrl, { mode: 'cors' }).catch(() => null);
+        if ((!response || !response.ok) && isTauri() && /^https?:\/\//i.test(rawUrl)) {
+            response = await fetch(buildTauriImageProxyUrl(rawUrl)).catch(() => null);
+        }
         if (!response || !response.ok) return rawUrl;
 
         const blob = await response.blob();
