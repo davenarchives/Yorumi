@@ -6,6 +6,9 @@ module.exports = {
     ],
     theme: {
         extend: {
+            fontFamily: {
+                sans: ['"Nunito Sans"', 'system-ui', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto', 'sans-serif'],
+            },
             colors: {
                 yorumi: {
                     main: '#00A3FF',  // vibrant Blue
