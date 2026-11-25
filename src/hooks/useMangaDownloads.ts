@@ -33,7 +33,7 @@ export function useMangaDownloads() {
 
     useEffect(() => {
         loadDownloads();
-        mangaDownloadService.syncExistingDownloadsToDisk();
+        void mangaDownloadService.syncExistingDownloadsToDisk();
 
         const handleUpdate = () => {
             loadDownloads();
