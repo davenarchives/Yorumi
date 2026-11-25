@@ -73,13 +73,16 @@ const getSearchTokens = (input: string): string[] =>
 
 const buildSearchQueries = (query: string): string[] => {
     const original = String(query || '').trim();
+    if (!/[A-Za-z0-9]/.test(original)) return [];
     const normalized = normalizeSearchText(original);
+    const colonPrefix = normalizeSearchText(original.split(/[:–—]/)[0] || '');
     const keywordCandidates = normalized
         .split(/\s+/)
         .filter((word) => word.length >= 4)
         .filter((word, index, array) => array.indexOf(word) === index);
 
     const focusedKeywords = [
+        colonPrefix.length >= 4 ? colonPrefix : '',
         keywordCandidates[0],
         keywordCandidates.find((word) => /san|chan|kun|sama/i.test(word)),
         [...keywordCandidates].sort((a, b) => b.length - a.length)[0],
@@ -89,25 +92,30 @@ const buildSearchQueries = (query: string): string[] => {
         original,
         normalized,
         ...focusedKeywords,
-    ].filter((value) => String(value || '').trim().length > 0))];
+    ].filter((value) => String(value || '').trim().length > 0))].slice(0, 4);
 };
 
-const scoreSearchResult = (query: string, item: MangaSearchResult): number => {
+const scoreSingleTitle = (query: string, candidateTitle: string): number => {
     const normalizedQuery = normalizeSearchText(query).toLowerCase();
-    const normalizedTitle = normalizeSearchText(item.title).toLowerCase();
+    const normalizedTitle = normalizeSearchText(candidateTitle).toLowerCase();
     if (!normalizedQuery || !normalizedTitle) return 0;
     if (normalizedTitle === normalizedQuery) return 100;
-    if (normalizedTitle.includes(normalizedQuery)) return 90;
+    if (normalizedTitle.includes(normalizedQuery) || (normalizedTitle.length >= 5 && normalizedQuery.startsWith(`${normalizedTitle} `))) return 90;
 
     const queryTokens = getSearchTokens(query);
     if (queryTokens.length === 0) return 0;
 
-    const titleTokens = new Set(getSearchTokens(item.title));
+    const titleTokens = new Set(getSearchTokens(candidateTitle));
     const overlap = queryTokens.filter((token) => titleTokens.has(token)).length;
     if (overlap === queryTokens.length) return 80;
     if (overlap === 0) return 0;
 
     return Math.round((overlap / queryTokens.length) * 70);
+};
+
+const scoreSearchResult = (query: string, item: MangaSearchResult): number => {
+    const candidates = [item.title, ...(Array.isArray(item.altNames) ? item.altNames : [])].filter(Boolean);
+    return candidates.reduce((best, candidate) => Math.max(best, scoreSingleTitle(query, candidate)), 0);
 };
 
 const rankSearchResults = (query: string, results: MangaSearchResult[]): MangaSearchResult[] =>
@@ -140,6 +148,7 @@ const parseMangaItemsFromList = ($: any): MangaSearchResult[] => {
         if (chapters.length > 0) {
             latestChapter = chapters.first().text().trim();
         }
+        const altNames = $el.find('.alt_name').text().split(';').map((s: string) => s.trim()).filter(Boolean);
 
         const id = url.replace(`${BASE_URL}/manga/`, '').replace(/\/$/, '');
         if (id && !results.some((item) => item.id === id)) {
@@ -150,7 +159,7 @@ const parseMangaItemsFromList = ($: any): MangaSearchResult[] => {
                 thumbnail,
                 latestChapter,
                 author: '',
-                altNames: [],
+                altNames,
                 source: 'mangakatana'
             });
         }
@@ -158,23 +167,131 @@ const parseMangaItemsFromList = ($: any): MangaSearchResult[] => {
     return results;
 };
 
+const mangaPageCache = new Map<string, { details: MangaDetails; chapters: Chapter[]; timestamp: number }>();
+const MANGA_PAGE_CACHE_TTL = 15 * 60 * 1000;
+
+const parseChaptersFromCheerio = ($: any): Chapter[] => {
+    const chapters: Chapter[] = [];
+    $('tr:has(.chapter)').each((_: number, element: any) => {
+        const $el = $(element);
+        const linkEl = $el.find('.chapter a');
+        const chapterTitle = linkEl.text().trim();
+        const rawChapterUrl = linkEl.attr('href') || '';
+        const chapterUrl = rawChapterUrl.startsWith('http')
+            ? rawChapterUrl
+            : `${BASE_URL}${rawChapterUrl.startsWith('/') ? '' : '/'}${rawChapterUrl}`;
+        const uploadDate = $el.find('.update_time').text().trim();
+        const chapterId = chapterUrl.replace(/\/$/, '').split('/').pop() || '';
+        if (chapterTitle && chapterUrl) {
+            chapters.push({
+                id: chapterId,
+                title: chapterTitle,
+                url: chapterUrl,
+                uploadDate,
+            });
+        }
+    });
+    return chapters;
+};
+
+const parseDetailsAndChaptersFromCheerio = ($: any, normalizedId: string, url: string) => {
+    const title = $('h1.heading').text().trim();
+    const altNames = $('.alt_name').text().split(';').map((s: string) => s.trim()).filter(Boolean);
+    const author = $('.author').text().trim();
+    const status = $('.value.status').text().trim();
+    const genres = $('.genres > a').map((_: number, el: any) => $(el).text().trim()).get();
+    const synopsis = $('.summary > p').text().trim();
+    const coverImage = toAbsoluteUrl(
+        $('meta[property="og:image"]').attr('content')
+        || $('.cover img').first().attr('data-src')
+        || $('.cover img').first().attr('src')
+        || $('div.media div.cover img').first().attr('data-src')
+        || $('div.media div.cover img').first().attr('src')
+        || $('.media .wrap_img img').first().attr('data-src')
+        || $('.media .wrap_img img').first().attr('src')
+        || ''
+    );
+    const details: MangaDetails = {
+        id: normalizedId,
+        title,
+        altNames,
+        author,
+        status,
+        genres,
+        synopsis,
+        coverImage,
+        url,
+        source: 'mangakatana',
+    };
+    const chapters = parseChaptersFromCheerio($);
+    if (title && chapters.length > 0) {
+        mangaPageCache.set(normalizedId, { details, chapters, timestamp: Date.now() });
+    }
+    return { details, chapters };
+};
+
+export const parseDirectMangaPage = (html: string): MangaSearchResult | null => {
+    const $ = cheerio.load(html);
+    const canonical = $('link[rel="canonical"]').attr('href') || $('meta[property="og:url"]').attr('content') || '';
+    const title = $('h1.heading').text().trim();
+    try {
+        const url = new URL(canonical, BASE_URL);
+        if (title && url.hostname === new URL(BASE_URL).hostname && /^\/manga\/[^/]+\/?$/.test(url.pathname)) {
+            const id = normalizeMangaId(url.href);
+            const { details, chapters } = parseDetailsAndChaptersFromCheerio($, id, url.href);
+            return {
+                id,
+                title: details.title || title,
+                url: url.href,
+                thumbnail: details.coverImage,
+                latestChapter: chapters[0]?.title,
+                author: details.author,
+                altNames: details.altNames,
+                source: 'mangakatana',
+            };
+        }
+    } catch {
+        // Invalid canonical URLs are not direct manga pages.
+    }
+    return null;
+};
+
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+let searchRequestQueue: Promise<void> = Promise.resolve();
+let lastSearchRequestAt = 0;
+
+const waitForSearchSlot = async () => {
+    const previous = searchRequestQueue;
+    let release!: () => void;
+    searchRequestQueue = new Promise<void>((resolve) => { release = resolve; });
+    await previous;
+    try {
+        const delay = Math.max(0, 1_200 - (Date.now() - lastSearchRequestAt));
+        if (delay > 0) await sleep(delay);
+        lastSearchRequestAt = Date.now();
+    } finally {
+        release();
+    }
+};
 
 const fetchSearchResults = async (searchQuery: string, mode: string): Promise<MangaSearchResult[]> => {
     const searchUrl = `${BASE_URL}/?search=${encodeURIComponent(searchQuery)}&search_by=${mode}`;
 
-    for (let attempt = 0; attempt < 3; attempt += 1) {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+        await waitForSearchSlot();
         const response = await axiosInstance.get(searchUrl);
         const html = typeof response.data === 'string' ? response.data : String(response.data || '');
 
         if (html.trim().length > 0) {
             const $ = cheerio.load(html);
+            const direct = parseDirectMangaPage(html);
+            if (direct) return [direct];
             const results = parseMangaItemsFromList($);
-            if (results.length > 0) return results;
+            return results;
         }
 
-        if (attempt < 2) {
-            await sleep(250 * (attempt + 1));
+        if (attempt === 0) {
+            await sleep(1_300);
         }
     }
 
@@ -232,7 +349,7 @@ export interface ChapterPage {
  */
 export async function searchManga(query: string): Promise<MangaSearchResult[]> {
     const searchQueries = buildSearchQueries(query);
-    const searchModes = ['m_name', 'book_name'];
+    const searchModes = ['book_name'];
     const collectedResults: MangaSearchResult[] = [];
     const seenIds = new Set<string>();
 
@@ -304,39 +421,14 @@ export async function getMangaDirectory(page: number = 1): Promise<{ results: Ma
 export async function getMangaDetails(mangaId: string): Promise<MangaDetails> {
     try {
         const normalizedId = normalizeMangaId(mangaId);
+        const cached = mangaPageCache.get(normalizedId);
+        if (cached && Date.now() - cached.timestamp < MANGA_PAGE_CACHE_TTL) {
+            return cached.details;
+        }
         const url = `${BASE_URL}/manga/${normalizedId}`;
         const response = await axiosInstance.get(url);
         const $ = cheerio.load(response.data);
-
-        const title = $('h1.heading').text().trim();
-        const altNames = $('.alt_name').text().split(';').map(s => s.trim()).filter(Boolean);
-        const author = $('.author').text().trim();
-        const status = $('.value.status').text().trim();
-        const genres = $('.genres > a').map((_, el) => $(el).text().trim()).get();
-        const synopsis = $('.summary > p').text().trim();
-        const coverImage = toAbsoluteUrl(
-            $('meta[property="og:image"]').attr('content')
-            || $('.cover img').first().attr('data-src')
-            || $('.cover img').first().attr('src')
-            || $('div.media div.cover img').first().attr('data-src')
-            || $('div.media div.cover img').first().attr('src')
-            || $('.media .wrap_img img').first().attr('data-src')
-            || $('.media .wrap_img img').first().attr('src')
-            || ''
-        );
-
-        return {
-            id: normalizedId,
-            title,
-            altNames,
-            author,
-            status,
-            genres,
-            synopsis,
-            coverImage,
-            url,
-            source: 'mangakatana',
-        };
+        return parseDetailsAndChaptersFromCheerio($, normalizedId, url).details;
     } catch (error) {
         console.error('Error fetching manga details:', error);
         throw error;
@@ -345,40 +437,19 @@ export async function getMangaDetails(mangaId: string): Promise<MangaDetails> {
 
 /**
  * Get chapter list for a manga
- * Uses Puppeteer to bypass bot protection (same as getHotUpdates)
  */
 export async function getChapterList(mangaId: string): Promise<Chapter[]> {
-    const parseFromHtml = (html: string) => {
-        const $ = cheerio.load(html);
-        const chapters: Chapter[] = [];
-        $('tr:has(.chapter)').each((_, element) => {
-            const $el = $(element);
-            const linkEl = $el.find('.chapter a');
-            const chapterTitle = linkEl.text().trim();
-            const rawChapterUrl = linkEl.attr('href') || '';
-            const chapterUrl = rawChapterUrl.startsWith('http')
-                ? rawChapterUrl
-                : `${BASE_URL}${rawChapterUrl.startsWith('/') ? '' : '/'}${rawChapterUrl}`;
-            const uploadDate = $el.find('.update_time').text().trim();
-            const chapterId = chapterUrl.replace(/\/$/, '').split('/').pop() || '';
-            if (chapterTitle && chapterUrl) {
-                chapters.push({
-                    id: chapterId,
-                    title: chapterTitle,
-                    url: chapterUrl,
-                    uploadDate,
-                });
-            }
-        });
-        return chapters;
-    };
-
     const normalizedId = normalizeMangaId(mangaId);
+    const cached = mangaPageCache.get(normalizedId);
+    if (cached && Date.now() - cached.timestamp < MANGA_PAGE_CACHE_TTL && cached.chapters.length > 0) {
+        return cached.chapters;
+    }
     const url = `${BASE_URL}/manga/${normalizedId}`;
     for (let attempt = 0; attempt < 2; attempt += 1) {
         try {
             const response = await axiosInstance.get(attempt === 0 ? url : `${url}?t=${Date.now()}`);
-            const chapters = parseFromHtml(response.data);
+            const $ = cheerio.load(response.data);
+            const { chapters } = parseDetailsAndChaptersFromCheerio($, normalizedId, url);
             if (chapters.length > 0) {
                 console.log(`[getChapterList:http] Found ${chapters.length} chapters (attempt ${attempt + 1})`);
                 return chapters;
