@@ -13,7 +13,7 @@ import { isNativeMobile } from '../../../platform/runtime';
 const AUTO_NEXT_STORAGE_KEY = 'yorumi:auto-next-enabled';
 const AUTO_SKIP_STORAGE_KEY = 'yorumi:auto-skip-enabled';
 
-export function usePlayer(animeId: string | undefined, animeSlugTitle?: string, fallbackEpisode?: Episode | null) {
+export function usePlayer(animeId: string | undefined, animeSlugTitle?: string, fallbackEpisode?: Episode | null, overrideAnime?: Anime | null) {
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
     const location = useLocation();
@@ -36,23 +36,24 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string, 
         handleAnimeClick
     } = animeHook;
 
-    // 2. Stream Data
+    // 2. Stream Data — always prefer the active season's anime metadata over the root selectedAnime
+    const effectiveAnime = overrideAnime || selectedAnime;
     const streamTitleCandidates = [
-        selectedAnime?.title,
-        selectedAnime?.title_english,
-        selectedAnime?.title_romaji,
-        selectedAnime?.title_japanese,
+        effectiveAnime?.title,
+        effectiveAnime?.title_english,
+        effectiveAnime?.title_romaji,
+        effectiveAnime?.title_japanese,
         animeSlugTitle,
-        ...(Array.isArray(selectedAnime?.synonyms) ? selectedAnime.synonyms : []),
+        ...(Array.isArray(effectiveAnime?.synonyms) ? effectiveAnime.synonyms : []),
     ].map((value) => String(value || '').trim()).filter(Boolean);
     const streamMetadata = {
         titlesKey: [...new Set(streamTitleCandidates)].join('|'),
-        year: selectedAnime?.year,
-        format: selectedAnime?.type,
-        anilistId: selectedAnime?.id,
-        malId: selectedAnime?.mal_id,
+        year: effectiveAnime?.year,
+        format: effectiveAnime?.type,
+        anilistId: effectiveAnime?.id,
+        malId: effectiveAnime?.mal_id,
     };
-    const streamsHook = useStreams(scraperSession, selectedAnime?.title || animeSlugTitle, streamMetadata);
+    const streamsHook = useStreams(scraperSession, effectiveAnime?.title || animeSlugTitle, streamMetadata);
     const {
         currentStream,
         serverSwitchLoading,
@@ -406,8 +407,8 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string, 
                 const isAlreadyCurrent = currentEpisode && getPlaybackEpisodeNumber(currentEpisode) === targetEpisodeNumber;
                 if (isAlreadyCurrent && (currentStream || streamLoading || serverSwitchLoading)) return;
 
-                const attemptKey = `${String(animeId || '')}:${targetEpisodeNumber}`;
-                if (autoLoadAttemptKeyRef.current === attemptKey && (streamLoading || serverSwitchLoading || (isAlreadyCurrent && currentStream))) {
+                const attemptKey = `${String(animeId || '')}:${targetEpisodeNumber}:${String(targetEp.session || '')}:${String(scraperSession || '')}`;
+                if (autoLoadAttemptKeyRef.current === attemptKey) {
                     return;
                 }
                 autoLoadAttemptKeyRef.current = attemptKey;
@@ -525,7 +526,7 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string, 
             bustEpisodeCache(currentEpisode.session);
             loadStream(currentEpisode);
         }, delay);
-    }, [currentEpisode, currentStream, scraperSession, bustEpisodeCache, loadStream, resetScheduledStreamRetry]);
+    }, [currentEpisode, currentStream, streamLoading, hasResolvedStreams, epNumParam, scraperSession, bustEpisodeCache, loadStream, resetScheduledStreamRetry]);
 
     useEffect(() => {
         return () => {
@@ -719,7 +720,7 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string, 
         const episodeWatchKey = getEpisodeWatchKey(ep);
         if (episodeWatchKey) markEpisodeComplete(episodeWatchKey);
         resetEpisodePlaybackState(false);
-        setSearchParams({ ep: String(episodeNumber) }, { state: getEpisodeNavigationState() });
+        setSearchParams({ ep: String(episodeNumber) }, { replace: isNativeMobile(), state: getEpisodeNavigationState() });
         loadStream(ep);
     };
 
@@ -826,15 +827,23 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string, 
         }) || (metadata.length >= episodeNumber && metadata[episodeNumber - 1] && (!metadata[episodeNumber - 1].title?.match(/Episode\s+(\d+)/i) || parseFloat(metadata[episodeNumber - 1].title?.match(/Episode\s+(\d+)/i)![1]) === episodeNumber) ? metadata[episodeNumber - 1] : null))
         : null;
 
-    const rawTitle = currentEpisodeData?.title;
-    const isBasicTitle = rawTitle && (
-        rawTitle.trim().toLowerCase() === 'untitled' || 
-        !isNaN(Number(rawTitle.trim())) ||
-        /^episode\s+\d+$/i.test(rawTitle.trim())
-    );
-    const cleanRawTitle = rawTitle && !isBasicTitle ? rawTitle : null;
+    const isGenericEpisodeTitle = (value?: string | null) => {
+        if (!value) return true;
+        const trimmed = value.trim();
+        return !trimmed ||
+            trimmed.toLowerCase() === 'untitled' ||
+            !isNaN(Number(trimmed)) ||
+            /^episode\s+\d+(?:\.\d+)?$/i.test(trimmed);
+    };
 
-    let cleanCurrentTitle = meta?.title?.replace(/^Episode \d+[\s-]*:?/i, '').trim() || cleanRawTitle;
+    const rawTitle = !isGenericEpisodeTitle(fallbackEpisode?.title)
+        ? fallbackEpisode?.title
+        : currentEpisodeData?.title;
+    const cleanRawTitle = rawTitle && !isGenericEpisodeTitle(rawTitle)
+        ? rawTitle.replace(/^Episode\s+\d+(?:\.\d+)?\s*[-:]?\s*/i, '').trim()
+        : null;
+
+    let cleanCurrentTitle = cleanRawTitle || meta?.title?.replace(/^Episode\s+\d+(?:\.\d+)?\s*[-:]?\s*/i, '').trim() || null;
     if (cleanCurrentTitle) {
         cleanCurrentTitle = cleanCurrentTitle.split('<note-split>')[0].trim();
     }
