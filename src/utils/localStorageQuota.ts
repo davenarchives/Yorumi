@@ -7,6 +7,8 @@ const VOLATILE_STORAGE_PREFIXES = [
     'yorumi_anilist_season_chain_',
     'yorumi_ep_cache_',
     'yorumi_tmdb_cache_',
+    'yorumi_manga_cache_',
+    'yorumi_ln_cache_',
 ];
 
 const isQuotaError = (error: unknown) => {
