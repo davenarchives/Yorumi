@@ -9,8 +9,9 @@ export const detectNovelEdition = (value: string): NovelEditionKind => {
 
 export const normalizeNovelTitle = (value: string) => String(value || '')
     .toLowerCase()
+    .replace(/['\u2019\u2018`]/g, '')
     .replace(/[^a-z0-9]+/g, ' ')
-    .replace(/\b(volume|vol)\s*\d*\b/g, ' ')
+    .replace(/\b(light novel|web novel|novel|ln|wn|volume|vol)\s*\d*\b/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 
@@ -29,10 +30,13 @@ export const isConfirmedNovelMatch = (
         const expected = normalizeNovelTitle(title);
         if (!expected) return false;
         if (candidate === expected) return true;
-        const expectedTokens = new Set(expected.split(' ').filter((token) => token.length > 2));
-        const candidateTokens = new Set(candidate.split(' ').filter((token) => token.length > 2));
+        if (expected.length >= 6 && (candidate.startsWith(`${expected} `) || expected.startsWith(`${candidate} `))) {
+            return true;
+        }
+        const expectedTokens = new Set(expected.split(' ').filter((token) => token.length >= 2));
+        const candidateTokens = new Set(candidate.split(' ').filter((token) => token.length >= 2));
         if (expectedTokens.size < 2 || candidateTokens.size < 2) return false;
         const shared = [...expectedTokens].filter((token) => candidateTokens.has(token)).length;
-        return shared / expectedTokens.size >= 0.8 && shared / candidateTokens.size >= 0.8;
+        return shared / expectedTokens.size >= 0.78 && shared / candidateTokens.size >= 0.78;
     });
 };
