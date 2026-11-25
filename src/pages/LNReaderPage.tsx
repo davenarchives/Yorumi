@@ -224,6 +224,10 @@ export default function LNReaderPage() {
                 if (mounted) {
                     if (data) {
                         setLoadedChapters([data]);
+                        // Silently warm the next chapter in cache so scrolling/Next Chapter is instant
+                        if (data.nextChapterId && typeof navigator !== 'undefined' && navigator.onLine) {
+                            void lnService.getChapterContent(data.nextChapterId).catch(() => undefined);
+                        }
                         if (novelId) {
                             saveLNProgressRef.current({
                                 novelId,
@@ -352,6 +356,7 @@ export default function LNReaderPage() {
         if (!targetChapterId || !novelId) return;
         setShowChaptersDropdown(false);
         navigate(`/ln/read/${slugTitle || 'novel'}/${novelId}/${encodeURIComponent(targetChapterId)}`, {
+            replace: true,
             state: { ln: passedLN },
         });
     };
@@ -406,7 +411,7 @@ export default function LNReaderPage() {
     const coverImage = passedLN?.images?.jpg?.large_image_url || novelDetails?.cover || '';
 
     return (
-        <div className="fixed inset-0 md:left-[70px] z-[130] md:z-[90] flex items-center justify-center bg-black/95 backdrop-blur-md transition-all duration-300">
+        <div className={`fixed inset-0 ${isNativeMobile() ? '' : 'top-8'} md:left-[70px] z-[130] md:z-[90] flex items-center justify-center bg-black/95 backdrop-blur-md transition-all duration-300`}>
             <div className={`w-full h-full flex flex-col ${themeStyle.bg} ${themeStyle.text} relative overflow-hidden transition-colors duration-300`}>
                 {/* Header (Matching Manga Header Height & Style) */}
                 <header
@@ -417,12 +422,13 @@ export default function LNReaderPage() {
                         paddingTop: 'env(safe-area-inset-top, 0px)',
                     }}
                 >
-                    <div className="w-full h-14 md:h-16 px-3 md:px-14 grid grid-cols-[minmax(0,1fr)_auto] md:grid-cols-3 items-center gap-3">
+                    <div className="w-full min-h-14 md:min-h-16 py-2 px-3 md:px-14 grid grid-cols-[minmax(0,1fr)_auto] md:grid-cols-3 items-center gap-3">
                         {/* Left side: Cover + Title */}
                         <div className="flex items-center gap-2.5 flex-1 min-w-0">
                         <button
+                            type="button"
                             onClick={handleOpenDetails}
-                            className="p-2 -ml-2 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white transition-colors flex items-center justify-center shrink-0"
+                            className="p-2 -ml-1 text-gray-300 hover:text-white transition-colors flex items-center justify-center shrink-0 active:scale-95"
                             title="Back"
                             aria-label="Back"
                         >
@@ -445,10 +451,10 @@ export default function LNReaderPage() {
                             )}
 
                             <span className="flex min-w-0 flex-col justify-center">
-                                <span className="truncate text-sm font-bold leading-tight text-white">
+                                <span className="break-words text-sm font-bold leading-tight text-white">
                                     {displayNovelTitle}
                                 </span>
-                                <span className="truncate text-xs leading-normal text-gray-400">
+                                <span className="break-words text-xs leading-snug text-gray-400">
                                     {headerChapterTitle}
                                 </span>
                             </span>
