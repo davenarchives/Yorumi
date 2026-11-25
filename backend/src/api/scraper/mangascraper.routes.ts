@@ -41,7 +41,9 @@ router.get('/details/:mangaId', async (req: Request, res: Response) => {
 
         if (includeChapters) {
             const payload = await mangaService.getMangaDetailsWithChapters(mangaId);
-            res.set('Cache-Control', 'public, max-age=60, s-maxage=180, stale-while-revalidate=600');
+            res.set('Cache-Control', payload.scraperId && payload.chapters.length > 0
+                ? 'public, max-age=60, s-maxage=180, stale-while-revalidate=600'
+                : 'no-store');
             res.json({
                 data: payload.details,
                 chapters: payload.chapters,
