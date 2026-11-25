@@ -7,12 +7,18 @@ import { useContinueLNReading } from '../hooks/useContinueLNReading';
 import { useReadList } from '../hooks/useReadList';
 import { useWatchList } from '../hooks/useWatchList';
 import { useLNReadList } from '../hooks/useLNReadList';
+import { useFavoriteAnime } from '../hooks/useFavoriteAnime';
+import { useFavoriteManga } from '../hooks/useFavoriteManga';
+import { useFavoriteLN } from '../hooks/useFavoriteLN';
 import { useDownloads } from '../hooks/useDownloads';
+import { downloadService } from '../services/downloadService';
 import { useMangaDownloads } from '../hooks/useMangaDownloads';
 import { useLNDownloads } from '../hooks/useLNDownloads';
 import { handleImageError } from '../utils/image';
 import { getAnimeDetailsRouteId, parseAnimeRouteId, buildAnimeRouteId } from '../utils/animeNavigation';
 import type { WatchListItem } from '../utils/storage';
+import type { PublicUserProfile } from '../services/userService';
+import LibraryProfileOverview from '../features/library/components/LibraryProfileOverview';
 
 export type LibraryTab = 'anime' | 'manga' | 'ln';
 
@@ -26,8 +32,13 @@ type MobileLibraryItem = {
     downloaded?: boolean;
     started?: boolean;
     completed?: boolean;
+    watchlisted?: boolean;
+    favorited?: boolean;
     updatedAt?: number;
 };
+
+const WATCHLIST_CATEGORY_ID = '__watchlist__';
+const FAVORITES_CATEGORY_ID = '__favorites__';
 
 type LibraryFilter = 'downloaded' | 'started' | 'completed';
 type LibrarySort = 'alphabetical' | 'count' | 'recent';
@@ -41,6 +52,12 @@ const LIBRARY_DISPLAY_KEY = 'yorumi_library_display_v1';
 const LIBRARY_ITEMS_PER_ROW_KEY = 'yorumi_library_items_per_row_v1';
 
 const EMPTY_LIBRARY_CATEGORIES: LibraryCategories = { anime: [], manga: [], ln: [] };
+
+const MOBILE_LIBRARY_TAB_LABELS: Record<LibraryTab, string> = {
+    anime: 'Anime',
+    manga: 'Manga',
+    ln: 'LN',
+};
 
 const LIBRARY_TAB_LABELS: Record<LibraryTab, string> = {
     anime: 'Anime',
@@ -59,17 +76,19 @@ const getAnimeRouteId = (item: WatchListItem) => {
     if (String(scraperId || '').startsWith('vault') || item.type === 'Vault Video') {
         return scraperId || `vault-anime:hanime:${item.id}`;
     }
-    if (scraperId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(scraperId.replace(/^s:/, ''))) {
-        return `s:${scraperId.replace(/^s:/, '')}`;
-    }
     const computed = getAnimeDetailsRouteId({
         id: item.anilistId || item.id,
         mal_id: item.malId,
         scraperId: item.scraperId,
     });
-    if (computed) return computed;
-    const rawId = String(item.id || item.anilistId || '').trim();
+    if (computed && !computed.startsWith('s:')) return computed;
+    const rawId = String(item.anilistId || item.id || '').trim();
     const parsed = parseAnimeRouteId(rawId);
+    if (parsed && parsed.source !== 'scraper') return buildAnimeRouteId(parsed);
+    if (scraperId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(scraperId.replace(/^s:/, ''))) {
+        return `s:${scraperId.replace(/^s:/, '')}`;
+    }
+    if (computed) return computed;
     if (parsed) return buildAnimeRouteId(parsed);
     return rawId || '';
 };
@@ -84,7 +103,8 @@ const getStoredAnilistId = (value: unknown) => {
     return parsed?.source === 'anilist' ? Number(parsed.id) : 0;
 };
 
-export default function LibraryPage() {
+export default function LibraryPage({ readOnlyProfile }: { readOnlyProfile?: PublicUserProfile } = {}) {
+    const isReadOnly = Boolean(readOnlyProfile);
     const [isOffline, setIsOffline] = useState(() => typeof navigator !== 'undefined' && !navigator.onLine);
     const [isMobileTabMenuOpen, setIsMobileTabMenuOpen] = useState(false);
     const [isLibraryActionsOpen, setIsLibraryActionsOpen] = useState(false);
@@ -150,10 +170,12 @@ export default function LibraryPage() {
         setActiveTab(tab);
         setActiveCategoryId('all');
         setSearchQuery('');
-        try {
-            localStorage.setItem(STORAGE_KEY, tab);
-        } catch {
-            // Ignore storage quota errors
+        if (!isReadOnly) {
+            try {
+                localStorage.setItem(STORAGE_KEY, tab);
+            } catch {
+                // Ignore storage quota errors
+            }
         }
     };
 
@@ -194,16 +216,39 @@ export default function LibraryPage() {
         }
     };
 
-    const { continueWatchingList, removeFromHistory: removeWatchingHistory } = useContinueWatching();
-    const { continueReadingList, removeFromHistory: removeReadingHistory } = useContinueReading();
-    const { continueReadingList: continueLNList, removeLNProgress } = useContinueLNReading();
-    const { watchList, removeFromWatchList } = useWatchList();
-    const { readList, removeFromReadList } = useReadList();
-    const { readList: lnReadList, toggleLNReadList } = useLNReadList();
-    const { downloads, deleteDownload } = useDownloads();
-    const { downloads: mangaDownloads, deleteDownload: deleteMangaDownload } = useMangaDownloads();
-    const { downloads: lnDownloads, deleteDownload: deleteLNDownload } = useLNDownloads();
+    const { continueWatchingList: localContinueWatchingList, removeFromHistory: removeWatchingHistory } = useContinueWatching();
+    const { continueReadingList: localContinueReadingList, removeFromHistory: removeReadingHistory } = useContinueReading();
+    const { continueReadingList: localContinueLNList, removeLNProgress } = useContinueLNReading();
+    const { watchList: localWatchList, removeFromWatchList } = useWatchList();
+    const { readList: localReadList, removeFromReadList } = useReadList();
+    const { readList: localLNReadList, toggleLNReadList } = useLNReadList();
+    const { favorites: localFavoriteAnime, removeFavorite: removeFavoriteAnime } = useFavoriteAnime();
+    const { favorites: localFavoriteManga, removeFavorite: removeFavoriteManga } = useFavoriteManga();
+    const { favorites: localFavoriteLN, removeFavorite: removeFavoriteLN } = useFavoriteLN();
+    const { downloads: localDownloads, deleteDownload } = useDownloads();
+    const { downloads: localMangaDownloads, deleteDownload: deleteMangaDownload } = useMangaDownloads();
+    const { downloads: localLNDownloads, deleteDownload: deleteLNDownload } = useLNDownloads();
     const navigate = useNavigate();
+
+    const continueWatchingList: typeof localContinueWatchingList = readOnlyProfile ? readOnlyProfile.continueWatching : localContinueWatchingList;
+    const continueReadingList: typeof localContinueReadingList = readOnlyProfile ? readOnlyProfile.continueReading : localContinueReadingList;
+    const continueLNList: typeof localContinueLNList = readOnlyProfile ? (readOnlyProfile.continueLN || []) : localContinueLNList;
+    const watchList: typeof localWatchList = readOnlyProfile ? readOnlyProfile.watchList : localWatchList;
+    const readList: typeof localReadList = readOnlyProfile ? readOnlyProfile.readList : localReadList;
+    const lnReadList: typeof localLNReadList = readOnlyProfile ? (readOnlyProfile.lnReadList || []) : localLNReadList;
+    const favoriteAnime: typeof localFavoriteAnime = readOnlyProfile ? readOnlyProfile.favoriteAnime : localFavoriteAnime;
+    const favoriteManga: typeof localFavoriteManga = readOnlyProfile ? readOnlyProfile.favoriteManga : localFavoriteManga;
+    const favoriteLN: typeof localFavoriteLN = readOnlyProfile ? (readOnlyProfile.favoriteLN || []) : localFavoriteLN;
+    const downloads: typeof localDownloads = readOnlyProfile ? [] : localDownloads;
+    const mangaDownloads: typeof localMangaDownloads = readOnlyProfile ? [] : localMangaDownloads;
+    const lnDownloads: typeof localLNDownloads = readOnlyProfile ? [] : localLNDownloads;
+    const activeCategories: LibraryCategories = readOnlyProfile
+        ? {
+            anime: readOnlyProfile.libraryCategories?.anime || [],
+            manga: readOnlyProfile.libraryCategories?.manga || [],
+            ln: readOnlyProfile.libraryCategories?.ln || [],
+        }
+        : categories;
 
     useEffect(() => {
         const updateNetworkStatus = () => setIsOffline(!navigator.onLine);
@@ -397,10 +442,41 @@ export default function LibraryPage() {
                 if (!first) return;
                 const existing = items.get(key) || [...items.values()].find((item) => item.title.toLowerCase() === first.animeTitle.toLowerCase());
                 const existingAnime = existing?.state?.anime as Record<string, unknown> | undefined;
+                const offlineMeta = downloadService.getOfflineAnimeMetadata(key, first.animeTitle, getStoredAnilistId(key) || undefined);
+                const bestImage = existing?.image || offlineMeta?.poster || first.animeImage;
                 items.set(existing?.id || key, {
-                    ...(existing || {}), id: existing?.id || key, title: first.animeTitle, image: existing?.image || first.animeImage,
-                    count: isOffline ? group.length : existing?.count, route: existing?.route || `/anime/details/${encodeURIComponent(normalizeStoredAnimeRouteId(key) || key)}`,
-                    state: { ...(existing?.state || {}), fromDownloads: isOffline, animeTitle: first.animeTitle, downloadedEpisodes: group, anime: { ...(existingAnime || {}), id: existingAnime?.id || getStoredAnilistId(key), mal_id: existingAnime?.mal_id || 0, title: first.animeTitle, title_english: first.animeTitle, images: { jpg: { image_url: existing?.image || first.animeImage, large_image_url: existing?.image || first.animeImage } } } },
+                    ...(existing || {}),
+                    id: existing?.id || key,
+                    title: offlineMeta?.title || first.animeTitle,
+                    image: bestImage,
+                    count: isOffline ? group.length : existing?.count,
+                    route: existing?.route || `/anime/details/${encodeURIComponent(normalizeStoredAnimeRouteId(key) || key)}`,
+                    state: {
+                        ...(existing?.state || {}),
+                        fromDownloads: isOffline,
+                        animeTitle: offlineMeta?.title || first.animeTitle,
+                        downloadedEpisodes: group,
+                        anime: {
+                            ...(existingAnime || {}),
+                            id: existingAnime?.id || offlineMeta?.anilistId || getStoredAnilistId(key),
+                            mal_id: existingAnime?.mal_id || offlineMeta?.malId || 0,
+                            tmdbId: existingAnime?.tmdbId || offlineMeta?.tmdbId,
+                            title: offlineMeta?.title || first.animeTitle,
+                            title_english: offlineMeta?.title_english || first.animeTitle,
+                            synopsis: (existingAnime?.synopsis as string) || offlineMeta?.synopsis || '',
+                            score: (existingAnime?.score as number) || offlineMeta?.score || 0,
+                            year: (existingAnime?.year as number) || offlineMeta?.year,
+                            rating: (existingAnime?.rating as string) || offlineMeta?.rating,
+                            status: (existingAnime?.status as string) || offlineMeta?.status,
+                            type: (existingAnime?.type as string) || offlineMeta?.type || 'TV',
+                            episodes: (existingAnime?.episodes as number) || offlineMeta?.episodes || group.length,
+                            genres: (existingAnime?.genres as Array<{ name: string; mal_id: number }>)?.length
+                                ? existingAnime?.genres
+                                : (offlineMeta?.genres || []).map((name) => ({ name, mal_id: 0 })),
+                            anilist_banner_image: (existingAnime?.anilist_banner_image as string) || offlineMeta?.banner || offlineMeta?.backdrop,
+                            images: { jpg: { image_url: bestImage, large_image_url: bestImage } },
+                        },
+                    },
                 });
             });
         } else if (activeTab === 'manga') {
@@ -455,48 +531,153 @@ export default function LibraryPage() {
                 });
             });
         }
+        if (activeTab === 'anime') {
+            favoriteAnime.forEach((fav) => {
+                const key = String(fav.id);
+                const normalizedTitle = normalizeLibraryTitle(fav.title);
+                const exists = [...items.values()].some((entry) => entry.id === key || normalizeLibraryTitle(entry.title) === normalizedTitle);
+                if (exists) return;
+                const parsedRouteRef = parseAnimeRouteId(key);
+                const finalRouteId = parsedRouteRef ? buildAnimeRouteId(parsedRouteRef) : key;
+                const parsedId = Number.parseInt(key, 10);
+                const hasNumericId = Number.isFinite(parsedId) && /^\d+$/.test(key);
+                items.set(key, {
+                    id: key,
+                    title: fav.title,
+                    image: fav.image,
+                    route: `/anime/details/${encodeURIComponent(finalRouteId)}`,
+                    state: {
+                        anime: {
+                            id: hasNumericId ? parsedId : 0,
+                            mal_id: 0,
+                            title: fav.title,
+                            title_english: fav.title,
+                            images: { jpg: { image_url: fav.image, large_image_url: fav.image } },
+                            synopsis: fav.synopsis || '',
+                            type: 'TV',
+                        },
+                    },
+                });
+            });
+        } else if (activeTab === 'manga') {
+            favoriteManga.forEach((fav) => {
+                const key = String(fav.id);
+                const normalizedTitle = normalizeLibraryTitle(fav.title);
+                const exists = [...items.values()].some((entry) => entry.id === key || normalizeLibraryTitle(entry.title) === normalizedTitle);
+                if (exists) return;
+                items.set(key, {
+                    id: key,
+                    title: fav.title,
+                    image: fav.image,
+                    route: `/manga/details/${encodeURIComponent(key)}`,
+                    state: {
+                        manga: {
+                            id: key,
+                            mal_id: key,
+                            title: fav.title,
+                            title_english: fav.title,
+                            images: { jpg: { image_url: fav.image, large_image_url: fav.image } },
+                        },
+                    },
+                });
+            });
+        } else {
+            favoriteLN.forEach((fav) => {
+                const key = String(fav.id);
+                const normalizedTitle = normalizeLibraryTitle(fav.title);
+                const exists = [...items.values()].some((entry) => entry.id === key || normalizeLibraryTitle(entry.title) === normalizedTitle);
+                if (exists) return;
+                items.set(key, {
+                    id: key,
+                    title: fav.title,
+                    image: fav.image,
+                    route: `/ln/details/${encodeURIComponent(key)}`,
+                    state: {
+                        ln: {
+                            id: key,
+                            mal_id: key,
+                            title: fav.title,
+                            title_english: fav.title,
+                            images: { jpg: { image_url: fav.image, large_image_url: fav.image } },
+                            type: 'NOVEL',
+                        },
+                    },
+                });
+            });
+        }
         return [...items.values()].map((item) => {
             const normalizedTitle = normalizeLibraryTitle(item.title);
             if (activeTab === 'anime') {
                 const progress = filteredWatching.find((entry) => String(entry.animeId) === item.id || normalizeLibraryTitle(entry.animeTitle) === normalizedTitle);
                 const bookmark = filteredWatchList.find((entry) => String(entry.id) === item.id || normalizeLibraryTitle(entry.title) === normalizedTitle);
+                const fav = favoriteAnime.find((entry) => String(entry.id) === item.id || normalizeLibraryTitle(entry.title) === normalizedTitle);
                 return {
                     ...item,
                     downloaded: downloads.some((entry) => String(entry.animeId) === item.id || normalizeLibraryTitle(entry.animeTitle) === normalizedTitle),
                     started: Boolean(progress),
                     completed: bookmark?.status === 'completed',
-                    updatedAt: progress?.lastWatched || progress?.timestamp || bookmark?.addedAt || 0,
+                    watchlisted: Boolean(bookmark),
+                    favorited: Boolean(fav),
+                    updatedAt: progress?.lastWatched || progress?.timestamp || bookmark?.addedAt || fav?.addedAt || 0,
                 };
             }
             if (activeTab === 'manga') {
                 const progress = filteredReading.find((entry) => String(entry.mangaId) === item.id || normalizeLibraryTitle(entry.mangaTitle) === normalizedTitle);
                 const bookmark = filteredReadList.find((entry) => String(entry.id) === item.id || normalizeLibraryTitle(entry.title) === normalizedTitle);
+                const fav = favoriteManga.find((entry) => String(entry.id) === item.id || normalizeLibraryTitle(entry.title) === normalizedTitle);
                 return {
                     ...item,
                     downloaded: mangaDownloads.some((entry) => String(entry.mangaId) === item.id || normalizeLibraryTitle(entry.mangaTitle) === normalizedTitle),
                     started: Boolean(progress),
                     completed: bookmark?.status === 'completed',
-                    updatedAt: progress?.lastRead || progress?.timestamp || bookmark?.addedAt || 0,
+                    watchlisted: Boolean(bookmark),
+                    favorited: Boolean(fav),
+                    updatedAt: progress?.lastRead || progress?.timestamp || bookmark?.addedAt || fav?.addedAt || 0,
                 };
             }
 
             const progress = filteredLN.find((entry) => String(entry.novelId) === item.id || normalizeLibraryTitle(entry.novelTitle) === normalizedTitle);
             const bookmark = filteredLNList.find((entry) => String(entry.id) === item.id || normalizeLibraryTitle(entry.title) === normalizedTitle);
+            const fav = favoriteLN.find((entry) => String(entry.id) === item.id || normalizeLibraryTitle(entry.title) === normalizedTitle);
             return {
                 ...item,
                 downloaded: lnDownloads.some((entry) => String(entry.novelId) === item.id || normalizeLibraryTitle(entry.novelTitle) === normalizedTitle),
                 started: Boolean(progress),
                 completed: /completed|finished/i.test(bookmark?.mediaStatus || ''),
-                updatedAt: progress ? Date.parse(progress.updatedAt) || 0 : Date.parse(bookmark?.addedAt || '') || 0,
+                watchlisted: Boolean(bookmark),
+                favorited: Boolean(fav),
+                updatedAt: progress ? Date.parse(progress.updatedAt) || 0 : Date.parse(bookmark?.addedAt || '') || fav?.addedAt || 0,
             };
         });
-    }, [activeTab, downloads, filteredLN, filteredLNList, filteredReadList, filteredReading, filteredWatchList, filteredWatching, isOffline, lnDownloads, mangaDownloads]);
+    }, [activeTab, downloads, favoriteAnime, favoriteLN, favoriteManga, filteredLN, filteredLNList, filteredReadList, filteredReading, filteredWatchList, filteredWatching, isOffline, lnDownloads, mangaDownloads]);
+
+    const hasWatchlist = useMemo(
+        () => mobileLibraryItems.some((item) => item.watchlisted),
+        [mobileLibraryItems]
+    );
+    const hasFavorites = useMemo(
+        () => mobileLibraryItems.some((item) => item.favorited),
+        [mobileLibraryItems]
+    );
+
+    useEffect(() => {
+        if (activeCategoryId === WATCHLIST_CATEGORY_ID && !hasWatchlist) {
+            setActiveCategoryId('all');
+        } else if (activeCategoryId === FAVORITES_CATEGORY_ID && !hasFavorites) {
+            setActiveCategoryId('all');
+        }
+    }, [activeCategoryId, hasFavorites, hasWatchlist]);
 
     const visibleMobileLibraryItems = useMemo(() => {
-        const category = categories[activeTab].find((entry) => entry.id === activeCategoryId);
+        const isWatchlistCategory = activeCategoryId === WATCHLIST_CATEGORY_ID;
+        const isFavoritesCategory = activeCategoryId === FAVORITES_CATEGORY_ID;
+        const isBuiltInCategory = isWatchlistCategory || isFavoritesCategory;
+        const category = isBuiltInCategory ? null : activeCategories[activeTab].find((entry) => entry.id === activeCategoryId);
         const categoryIds = category ? new Set(category.itemIds) : null;
         const query = normalizeLibraryTitle(searchQuery);
         const filtered = mobileLibraryItems.filter((item) => {
+            if (isWatchlistCategory && !item.watchlisted) return false;
+            if (isFavoritesCategory && !item.favorited) return false;
             if (categoryIds && !categoryIds.has(item.id)) return false;
             if (query && !normalizeLibraryTitle(item.title).includes(query)) return false;
             for (const filter of activeFilters) {
@@ -514,7 +695,7 @@ export default function LibraryPage() {
             if (sortBy === 'recent') comparison = (a.updatedAt || 0) - (b.updatedAt || 0);
             return sortAscending ? comparison : -comparison;
         });
-    }, [activeCategoryId, activeFilters, activeTab, categories, mobileLibraryItems, searchQuery, sortAscending, sortBy]);
+    }, [activeCategories, activeCategoryId, activeFilters, activeTab, mobileLibraryItems, searchQuery, sortAscending, sortBy]);
 
     const saveCategory = () => {
         const name = categoryName.trim();
@@ -553,6 +734,85 @@ export default function LibraryPage() {
         }
     };
 
+    const deleteLibraryEntry = (event: React.MouseEvent, item: MobileLibraryItem) => {
+        event.stopPropagation();
+        event.preventDefault();
+        const normalizedTitle = normalizeLibraryTitle(item.title);
+        const matchesIdOrTitle = (idVal: unknown, titleVal?: string) =>
+            String(idVal) === item.id || (Boolean(titleVal) && normalizeLibraryTitle(titleVal!) === normalizedTitle);
+
+        if (activeCategoryId === WATCHLIST_CATEGORY_ID) {
+            if (activeTab === 'anime') {
+                watchList.filter((e) => matchesIdOrTitle(e.id, e.title)).forEach((e) => removeFromWatchList(String(e.id)));
+            } else if (activeTab === 'manga') {
+                readList.filter((e) => matchesIdOrTitle(e.id, e.title)).forEach((e) => removeFromReadList(String(e.id)));
+            } else {
+                lnReadList.filter((e) => matchesIdOrTitle(e.id, e.title)).forEach((e) => toggleLNReadList(e));
+            }
+            return;
+        }
+
+        if (activeCategoryId === FAVORITES_CATEGORY_ID) {
+            if (activeTab === 'anime') {
+                favoriteAnime.filter((e) => matchesIdOrTitle(e.id, e.title)).forEach((e) => void removeFavoriteAnime(e.id));
+            } else if (activeTab === 'manga') {
+                favoriteManga.filter((e) => matchesIdOrTitle(e.id, e.title)).forEach((e) => void removeFavoriteManga(e.id));
+            } else {
+                favoriteLN.filter((e) => matchesIdOrTitle(e.id, e.title)).forEach((e) => void removeFavoriteLN(e.id));
+            }
+            return;
+        }
+
+        if (activeCategoryId !== 'all') {
+            const next = {
+                ...categories,
+                [activeTab]: categories[activeTab].map((cat) =>
+                    cat.id === activeCategoryId
+                        ? { ...cat, itemIds: cat.itemIds.filter((entryId) => entryId !== item.id) }
+                        : cat
+                ),
+            };
+            setCategories(next);
+            try {
+                localStorage.setItem(LIBRARY_CATEGORIES_KEY, JSON.stringify(next));
+            } catch {
+                // Ignore storage access errors.
+            }
+            return;
+        }
+
+        if (activeTab === 'anime') {
+            watchList.filter((e) => matchesIdOrTitle(e.id, e.title)).forEach((e) => removeFromWatchList(String(e.id)));
+            continueWatchingList.filter((e) => matchesIdOrTitle(e.animeId, e.animeTitle)).forEach((e) => removeWatchingHistory(e.animeId));
+            favoriteAnime.filter((e) => matchesIdOrTitle(e.id, e.title)).forEach((e) => void removeFavoriteAnime(e.id));
+            downloads.filter((e) => matchesIdOrTitle(e.animeId, e.animeTitle)).forEach((e) => void deleteDownload(e.animeId, e.episodeNumber));
+        } else if (activeTab === 'manga') {
+            readList.filter((e) => matchesIdOrTitle(e.id, e.title)).forEach((e) => removeFromReadList(String(e.id)));
+            continueReadingList.filter((e) => matchesIdOrTitle(e.mangaId, e.mangaTitle)).forEach((e) => removeReadingHistory(e.mangaId));
+            favoriteManga.filter((e) => matchesIdOrTitle(e.id, e.title)).forEach((e) => void removeFavoriteManga(e.id));
+            mangaDownloads.filter((e) => matchesIdOrTitle(e.mangaId, e.mangaTitle)).forEach((e) => void deleteMangaDownload(e.mangaId, e.chapterId));
+        } else {
+            lnReadList.filter((e) => matchesIdOrTitle(e.id, e.title)).forEach((e) => toggleLNReadList(e));
+            continueLNList.filter((e) => matchesIdOrTitle(e.novelId, e.novelTitle)).forEach((e) => removeLNProgress(e.novelId));
+            favoriteLN.filter((e) => matchesIdOrTitle(e.id, e.title)).forEach((e) => void removeFavoriteLN(e.id));
+            lnDownloads.filter((e) => matchesIdOrTitle(e.novelId, e.novelTitle)).forEach((e) => void deleteLNDownload(e.novelId, e.chapterId));
+        }
+
+        const nextCategories = {
+            ...categories,
+            [activeTab]: categories[activeTab].map((cat) => ({
+                ...cat,
+                itemIds: cat.itemIds.filter((entryId) => entryId !== item.id),
+            })),
+        };
+        setCategories(nextCategories);
+        try {
+            localStorage.setItem(LIBRARY_CATEGORIES_KEY, JSON.stringify(nextCategories));
+        } catch {
+            // Ignore storage access errors.
+        }
+    };
+
     const openRandomEntry = () => {
         if (visibleMobileLibraryItems.length === 0) return;
         const item = visibleMobileLibraryItems[Math.floor(Math.random() * visibleMobileLibraryItems.length)];
@@ -560,89 +820,103 @@ export default function LibraryPage() {
     };
 
     return (
-        <div className="min-h-screen bg-[#0a0a0a] pt-0 pb-24 md:pt-0">
-            {/* Header with Title, Media Selector, Controls, and Categories */}
-            <div className="sticky top-0 z-30 w-full border-b border-white/5 bg-[#0a0a0a]/95 backdrop-blur-xl pt-[calc(env(safe-area-inset-top,0px)+0.75rem)] pb-3 md:pt-8 md:pb-4 mb-6 md:mb-7">
-                <div className="w-full max-w-7xl mx-auto px-4 md:px-14">
-                    <div className="flex items-center justify-between gap-4">
-                        {/* Title and Media Switcher */}
-                        <div className="flex items-center gap-3.5">
-                            <h1 className="text-xl md:text-2xl font-bold tracking-tight text-white">
-                                Library
-                            </h1>
+        <div className="relative min-h-screen bg-[#0a0a0a] pt-0 pb-24 md:pt-0">
+            {/* Profile Banner + Activity & Top Genres Overview */}
+            <LibraryProfileOverview
+                continueWatchingList={filteredWatching}
+                continueReadingList={filteredReading}
+                continueLNList={filteredLN}
+                watchList={filteredWatchList}
+                readList={filteredReadList}
+                lnReadList={filteredLNList}
+                publicProfileOverride={readOnlyProfile}
+            />
 
-                            {/* Mobile Media Selector dropdown */}
-                            <div ref={mobileTabMenuRef} className="relative md:hidden">
-                                <button
-                                    type="button"
-                                    onClick={() => setIsMobileTabMenuOpen((open) => !open)}
-                                    className="flex h-10 items-center gap-1.5 rounded-lg bg-[#1c293c] px-3 text-xl font-semibold tracking-tight text-white transition-colors active:bg-[#26364d]"
-                                    aria-haspopup="menu"
-                                    aria-expanded={isMobileTabMenuOpen}
-                                >
-                                    <span>{LIBRARY_TAB_LABELS[activeTab]}</span>
-                                    <ChevronDown className={`h-4 w-4 text-white/60 transition-transform duration-200 ${isMobileTabMenuOpen ? 'rotate-180' : ''}`} />
-                                </button>
-                                {isMobileTabMenuOpen && (
-                                    <div
-                                        role="menu"
-                                        aria-label="Library category"
-                                        className="absolute left-0 top-[calc(100%+0.5rem)] z-50 min-w-48 overflow-hidden rounded-xl border border-white/10 bg-[#151d28] p-1.5 shadow-2xl shadow-black/60"
-                                    >
-                                        {(Object.keys(LIBRARY_TAB_LABELS) as LibraryTab[]).map((tab) => (
-                                            <button
-                                                key={tab}
-                                                type="button"
-                                                role="menuitemradio"
-                                                aria-checked={activeTab === tab}
-                                                onClick={() => {
-                                                    handleTabChange(tab);
-                                                    setIsMobileTabMenuOpen(false);
-                                                }}
-                                                className={`flex w-full items-center rounded-lg px-3 py-2.5 text-left text-sm font-semibold transition-colors ${
-                                                    activeTab === tab
-                                                        ? 'bg-[#223149] text-white'
-                                                        : 'text-[#aab5c5] hover:bg-white/5 hover:text-white'
-                                                }`}
-                                            >
-                                                {LIBRARY_TAB_LABELS[tab]}
-                                            </button>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Desktop Media Selector (Segmented pills) */}
-                            <div className="hidden md:flex items-center bg-[#141414] border border-white/10 rounded-xl p-1 gap-1">
+            {/* Single-row transparent Library toolbar matching DetailsPage style */}
+            <div className="relative z-20 w-full pt-1 pb-2 mb-4 md:mb-6">
+                <div className="w-full max-w-7xl mx-auto px-3.5 sm:px-4 md:px-14">
+                    <div className="flex items-center justify-between gap-2 md:gap-4">
+                        {/* Left: Media Switcher + Inline Categories (unified segmented pill on mobile & desktop) */}
+                        <div className="flex items-center gap-2 md:gap-5 min-w-0 flex-1">
+                            <div className="flex h-8 md:h-9 items-center bg-black/45 backdrop-blur-md rounded-full p-0.5 md:p-1 gap-0.5 shrink-0">
                                 {(Object.keys(LIBRARY_TAB_LABELS) as LibraryTab[]).map((tab) => {
                                     const Icon = tab === 'anime' ? Tv : tab === 'manga' ? BookOpen : BookText;
-                                    const activeClasses =
-                                        tab === 'anime'
-                                            ? 'bg-yorumi-accent text-black shadow-md'
-                                            : tab === 'manga'
-                                            ? 'bg-yorumi-manga text-white shadow-md'
-                                            : 'bg-emerald-500 text-black shadow-md';
                                     return (
                                         <button
                                             key={tab}
                                             type="button"
                                             onClick={() => handleTabChange(tab)}
-                                            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-sm font-semibold transition-all ${
+                                            className={`flex h-full items-center gap-1 md:gap-1.5 px-2 sm:px-2.5 md:px-3.5 rounded-full text-[11px] sm:text-xs md:text-[13px] whitespace-nowrap transition-all cursor-pointer ${
                                                 activeTab === tab
-                                                    ? activeClasses
-                                                    : 'text-zinc-400 hover:text-white hover:bg-white/5'
+                                                    ? 'bg-white text-black font-semibold'
+                                                    : 'text-white/75 hover:text-white hover:bg-white/10 font-medium'
                                             }`}
                                         >
-                                            <Icon className="w-4 h-4" />
-                                            <span>{LIBRARY_TAB_LABELS[tab]}</span>
+                                            <Icon className="w-3 h-3 md:w-3.5 md:h-3.5 shrink-0" />
+                                            <span className="md:hidden">{MOBILE_LIBRARY_TAB_LABELS[tab]}</span>
+                                            <span className="hidden md:inline">{LIBRARY_TAB_LABELS[tab]}</span>
                                         </button>
                                     );
                                 })}
                             </div>
+
+                            {/* Divider */}
+                            <span className="hidden md:block h-4 w-px bg-white/20 shrink-0" />
+
+                            {/* Desktop Inline Categories */}
+                            <div className="hidden md:flex items-center gap-5 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                                <button
+                                    type="button"
+                                    onClick={() => setActiveCategoryId('all')}
+                                    className={`relative shrink-0 py-1.5 text-[13px] transition-colors cursor-pointer ${
+                                        activeCategoryId === 'all' ? 'text-white font-semibold' : 'text-white/70 hover:text-white font-medium'
+                                    }`}
+                                >
+                                    All
+                                    {activeCategoryId === 'all' && <span className="absolute inset-x-0 bottom-0 h-0.5 rounded-full bg-white" />}
+                                </button>
+                                {hasWatchlist && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setActiveCategoryId(WATCHLIST_CATEGORY_ID)}
+                                        className={`relative shrink-0 py-1.5 text-[13px] transition-colors cursor-pointer ${
+                                            activeCategoryId === WATCHLIST_CATEGORY_ID ? 'text-white font-semibold' : 'text-white/70 hover:text-white font-medium'
+                                        }`}
+                                    >
+                                        {activeTab === 'anime' ? 'Watchlist' : 'Read list'}
+                                        {activeCategoryId === WATCHLIST_CATEGORY_ID && <span className="absolute inset-x-0 bottom-0 h-0.5 rounded-full bg-white" />}
+                                    </button>
+                                )}
+                                {hasFavorites && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setActiveCategoryId(FAVORITES_CATEGORY_ID)}
+                                        className={`relative shrink-0 py-1.5 text-[13px] transition-colors cursor-pointer ${
+                                            activeCategoryId === FAVORITES_CATEGORY_ID ? 'text-white font-semibold' : 'text-white/70 hover:text-white font-medium'
+                                        }`}
+                                    >
+                                        Favorites
+                                        {activeCategoryId === FAVORITES_CATEGORY_ID && <span className="absolute inset-x-0 bottom-0 h-0.5 rounded-full bg-white" />}
+                                    </button>
+                                )}
+                                {activeCategories[activeTab].map((category) => (
+                                    <button
+                                        key={category.id}
+                                        type="button"
+                                        onClick={() => setActiveCategoryId(category.id)}
+                                        className={`relative shrink-0 py-1.5 text-[13px] transition-colors cursor-pointer ${
+                                            activeCategoryId === category.id ? 'text-white font-semibold' : 'text-white/70 hover:text-white font-medium'
+                                        }`}
+                                    >
+                                        {category.name}
+                                        {activeCategoryId === category.id && <span className="absolute inset-x-0 bottom-0 h-0.5 rounded-full bg-white" />}
+                                    </button>
+                                ))}
+                            </div>
                         </div>
 
-                        {/* Right side controls: Search, Options, Actions */}
-                        <div className="flex items-center gap-1">
+                        {/* Right side controls: Search, Category actions, Options, More */}
+                        <div className="flex items-center gap-1 md:gap-1.5 shrink-0">
                             {/* Mobile Search Toggle Button */}
                             <button
                                 type="button"
@@ -654,22 +928,22 @@ export default function LibraryPage() {
                                         return next;
                                     });
                                 }}
-                                className={`grid h-10 w-10 place-items-center transition-colors md:hidden ${
-                                    isSearchOpen || searchQuery ? 'text-white' : 'text-zinc-400 hover:text-white'
+                                className={`grid h-8 w-8 place-items-center rounded-full bg-black/45 backdrop-blur-md transition-colors md:hidden ${
+                                    isSearchOpen || searchQuery ? 'text-white' : 'text-white/85 hover:text-white'
                                 }`}
                                 aria-label="Search library"
                             >
-                                <Search className="h-5 w-5" />
+                                <Search className="h-3.5 w-3.5" />
                             </button>
 
-                            {/* Desktop Expanding Search Input (search icon moves to the left as line extends) */}
+                            {/* Desktop Expanding Search Input (swapped before + New category) */}
                             <div
                                 ref={searchContainerRef}
                                 data-library-search="true"
-                                className={`hidden md:flex items-center border-b transition-all duration-300 ease-out overflow-hidden ${
+                                className={`hidden md:flex items-center rounded-full bg-black/40 backdrop-blur-md transition-all duration-300 ease-out overflow-hidden ${
                                     isSearchOpen
-                                        ? 'w-64 lg:w-72 border-white/40 focus-within:border-white mr-1'
-                                        : 'w-10 border-transparent'
+                                        ? 'w-56 lg:w-64 pr-1'
+                                        : 'w-9'
                                 }`}
                             >
                                 <button
@@ -680,12 +954,12 @@ export default function LibraryPage() {
                                             setTimeout(() => searchInputRef.current?.focus(), 50);
                                         }
                                     }}
-                                    className={`grid h-10 w-10 shrink-0 place-items-center transition-colors ${
-                                        isSearchOpen ? 'text-zinc-400 cursor-default' : 'text-zinc-400 hover:text-white'
+                                    className={`grid h-9 w-9 shrink-0 place-items-center transition-colors cursor-pointer ${
+                                        isSearchOpen ? 'text-white/80 cursor-default' : 'text-white/90 hover:text-white'
                                     }`}
                                     aria-label="Search library"
                                 >
-                                    <Search className="h-5 w-5" />
+                                    <Search className="h-4 w-4" />
                                 </button>
                                 <input
                                     ref={searchInputRef}
@@ -698,8 +972,8 @@ export default function LibraryPage() {
                                             setIsSearchOpen(false);
                                         }
                                     }}
-                                    placeholder={`Search ${LIBRARY_TAB_LABELS[activeTab]}…`}
-                                    className={`h-8 w-full bg-transparent px-1 text-sm text-white placeholder:text-zinc-500 outline-none transition-opacity duration-200 ${
+                                    placeholder={`Search ${MOBILE_LIBRARY_TAB_LABELS[activeTab]}…`}
+                                    className={`h-8 w-full bg-transparent px-1 text-sm text-white placeholder:text-white/55 outline-none transition-opacity duration-200 ${
                                         isSearchOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
                                     }`}
                                     tabIndex={isSearchOpen ? 0 : -1}
@@ -711,7 +985,7 @@ export default function LibraryPage() {
                                             setSearchQuery('');
                                             setIsSearchOpen(false);
                                         }}
-                                        className="grid h-8 w-8 shrink-0 place-items-center text-zinc-400 hover:text-white"
+                                        className="grid h-7 w-7 shrink-0 place-items-center text-white/75 hover:text-white cursor-pointer"
                                         aria-label="Close search"
                                     >
                                         <X className="h-4 w-4" />
@@ -719,18 +993,45 @@ export default function LibraryPage() {
                                 )}
                             </div>
 
+                            {!isReadOnly && activeCategoryId !== 'all' && activeCategoryId !== WATCHLIST_CATEGORY_ID && activeCategoryId !== FAVORITES_CATEGORY_ID && (
+                                <button
+                                    type="button"
+                                    onClick={() => setIsDeleteCategoryOpen(true)}
+                                    className="hidden md:flex h-9 items-center gap-1.5 rounded-full bg-black/40 hover:bg-black/55 backdrop-blur-md px-3.5 text-[13px] font-medium text-red-400 transition-colors cursor-pointer"
+                                    title="Delete category"
+                                >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                    <span>Delete</span>
+                                </button>
+                            )}
+
+                            {!isReadOnly && (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setCategoryItemIds(new Set());
+                                        setIsAddCategoryOpen(true);
+                                    }}
+                                    className="hidden md:flex h-9 items-center gap-1.5 rounded-full bg-black/40 hover:bg-black/55 backdrop-blur-md px-3.5 text-[13px] font-medium text-white/95 hover:text-white transition-colors cursor-pointer"
+                                    title="New category"
+                                >
+                                    <Plus className="h-3.5 w-3.5" />
+                                    <span>New category</span>
+                                </button>
+                            )}
+
                             {/* Filter, Sort & Display Options */}
                             <button
                                 type="button"
                                 onClick={() => setIsLibraryOptionsOpen(true)}
-                                className={`relative grid h-10 w-10 place-items-center transition-colors ${
-                                    activeFilters.size > 0 ? 'text-white' : 'text-zinc-400 hover:text-white'
+                                className={`relative grid h-8 w-8 md:h-9 md:w-9 place-items-center rounded-full bg-black/45 md:bg-black/40 hover:bg-black/55 backdrop-blur-md transition-colors cursor-pointer ${
+                                    activeFilters.size > 0 ? 'text-white' : 'text-white/90 hover:text-white'
                                 }`}
                                 aria-label="Filter, sort, and display options"
                             >
-                                <SlidersHorizontal className="h-5 w-5" />
+                                <SlidersHorizontal className="h-3.5 w-3.5 md:h-[18px] md:w-[18px]" />
                                 {activeFilters.size > 0 && (
-                                    <span className="absolute right-1.5 top-1.5 grid h-4 w-4 place-items-center rounded-full bg-white text-[10px] font-bold text-black">
+                                    <span className="absolute -right-0.5 -top-0.5 grid h-4 w-4 place-items-center rounded-full bg-white text-[10px] font-bold text-black">
                                         {activeFilters.size}
                                     </span>
                                 )}
@@ -741,53 +1042,57 @@ export default function LibraryPage() {
                                 <button
                                     type="button"
                                     onClick={() => setIsLibraryActionsOpen((open) => !open)}
-                                    className="grid h-10 w-10 place-items-center text-zinc-400 transition-colors hover:text-white"
+                                    className="grid h-8 w-8 md:h-9 md:w-9 place-items-center rounded-full bg-black/45 md:bg-black/40 hover:bg-black/55 backdrop-blur-md text-white/90 transition-colors hover:text-white cursor-pointer"
                                     aria-label="Library actions"
                                     aria-expanded={isLibraryActionsOpen}
                                 >
-                                    <MoreVertical className="h-5 w-5" />
+                                    <MoreVertical className="h-3.5 w-3.5 md:h-[18px] md:w-[18px]" />
                                 </button>
                                 {isLibraryActionsOpen && (
-                                    <div className="absolute right-0 top-[calc(100%+0.5rem)] z-50 w-52 overflow-hidden rounded-xl border border-white/10 bg-[#141414] py-1.5 shadow-2xl shadow-black/80">
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                setCategoryItemIds(new Set());
-                                                setIsAddCategoryOpen(true);
-                                                setIsLibraryActionsOpen(false);
-                                            }}
-                                            className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-zinc-100 transition-colors hover:bg-white/10"
-                                        >
-                                            <Plus className="h-4 w-4" />
-                                            Add category
-                                        </button>
-                                        <button
-                                            type="button"
-                                            disabled={categories[activeTab].length === 0}
-                                            onClick={() => {
-                                                const firstCat = categories[activeTab][0];
-                                                setMoveTargetCategoryId(firstCat?.id ?? '');
-                                                setMoveCategoryItemIds(new Set(firstCat?.itemIds ?? []));
-                                                setIsMoveEntriesToCategoryOpen(true);
-                                                setIsLibraryActionsOpen(false);
-                                            }}
-                                            className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-zinc-100 transition-colors hover:bg-white/10 disabled:text-zinc-600 disabled:hover:bg-transparent"
-                                        >
-                                            <FolderInput className="h-4 w-4" />
-                                            Move to category
-                                        </button>
-                                        <button
-                                            type="button"
-                                            disabled={categories[activeTab].length === 0}
-                                            onClick={() => {
-                                                setIsDeleteCategoryOpen(true);
-                                                setIsLibraryActionsOpen(false);
-                                            }}
-                                            className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-red-400 transition-colors hover:bg-white/10 disabled:text-zinc-600 disabled:hover:bg-transparent"
-                                        >
-                                            <Trash2 className="h-4 w-4" />
-                                            Delete category
-                                        </button>
+                                    <div className="absolute right-0 top-[calc(100%+0.5rem)] z-50 w-52 overflow-hidden rounded-lg border border-white/10 bg-[#0d0e12]/85 backdrop-blur-2xl py-1.5 shadow-2xl shadow-black/80">
+                                        {!isReadOnly && (
+                                            <>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setCategoryItemIds(new Set());
+                                                        setIsAddCategoryOpen(true);
+                                                        setIsLibraryActionsOpen(false);
+                                                    }}
+                                                    className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-zinc-100 transition-colors hover:bg-white/10"
+                                                >
+                                                    <Plus className="h-4 w-4" />
+                                                    Add category
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    disabled={categories[activeTab].length === 0}
+                                                    onClick={() => {
+                                                        const firstCat = categories[activeTab][0];
+                                                        setMoveTargetCategoryId(firstCat?.id ?? '');
+                                                        setMoveCategoryItemIds(new Set(firstCat?.itemIds ?? []));
+                                                        setIsMoveEntriesToCategoryOpen(true);
+                                                        setIsLibraryActionsOpen(false);
+                                                    }}
+                                                    className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-zinc-100 transition-colors hover:bg-white/10 disabled:text-zinc-600 disabled:hover:bg-transparent"
+                                                >
+                                                    <FolderInput className="h-4 w-4" />
+                                                    Move to category
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    disabled={categories[activeTab].length === 0}
+                                                    onClick={() => {
+                                                        setIsDeleteCategoryOpen(true);
+                                                        setIsLibraryActionsOpen(false);
+                                                    }}
+                                                    className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-red-400 transition-colors hover:bg-white/10 disabled:text-zinc-600 disabled:hover:bg-transparent"
+                                                >
+                                                    <Trash2 className="h-4 w-4" />
+                                                    Delete category
+                                                </button>
+                                            </>
+                                        )}
                                         <button
                                             type="button"
                                             disabled={visibleMobileLibraryItems.length === 0}
@@ -806,7 +1111,7 @@ export default function LibraryPage() {
                         </div>
                     </div>
 
-                    {/* Mobile Search Bar (down below header row) */}
+                    {/* Mobile Search Bar */}
                     {isSearchOpen && (
                         <div data-library-search="true" className="relative mt-3 md:hidden">
                             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
@@ -821,7 +1126,7 @@ export default function LibraryPage() {
                                         setIsSearchOpen(false);
                                     }
                                 }}
-                                placeholder={`Search ${LIBRARY_TAB_LABELS[activeTab]}…`}
+                                placeholder={`Search ${MOBILE_LIBRARY_TAB_LABELS[activeTab]}…`}
                                 className="h-10 w-full rounded-xl border border-white/10 bg-[#171717] pl-10 pr-10 text-sm text-white outline-none placeholder:text-zinc-500 focus:border-white/25"
                             />
                             {searchQuery ? (
@@ -846,66 +1151,90 @@ export default function LibraryPage() {
                         </div>
                     )}
 
-                    {/* Categories Bar */}
-                    <div className="mt-5 md:mt-6 flex items-center justify-between border-b border-white/10 pb-0.5">
-                        <div className="flex gap-7 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                    {/* Mobile Categories Bar */}
+                    <div className="mt-3 flex md:hidden items-center justify-between gap-3">
+                        <div className="flex gap-5 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                             <button
                                 type="button"
                                 onClick={() => setActiveCategoryId('all')}
-                                className={`relative shrink-0 pb-2.5 text-sm font-semibold transition-colors ${
-                                    activeCategoryId === 'all' ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'
+                                className={`relative shrink-0 pb-1.5 text-sm font-semibold transition-colors ${
+                                    activeCategoryId === 'all' ? 'text-white' : 'text-zinc-400'
                                 }`}
                             >
                                 All
-                                {activeCategoryId === 'all' && <span className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-white" />}
+                                {activeCategoryId === 'all' && <span className="absolute inset-x-0 bottom-0 h-0.5 rounded-full bg-white" />}
                             </button>
-                            {categories[activeTab].map((category) => (
+                            {hasWatchlist && (
+                                <button
+                                    type="button"
+                                    onClick={() => setActiveCategoryId(WATCHLIST_CATEGORY_ID)}
+                                    className={`relative shrink-0 pb-1.5 text-sm font-semibold transition-colors ${
+                                        activeCategoryId === WATCHLIST_CATEGORY_ID ? 'text-white' : 'text-zinc-400'
+                                    }`}
+                                >
+                                    {activeTab === 'anime' ? 'Watchlist' : 'Read list'}
+                                    {activeCategoryId === WATCHLIST_CATEGORY_ID && <span className="absolute inset-x-0 bottom-0 h-0.5 rounded-full bg-white" />}
+                                </button>
+                            )}
+                            {hasFavorites && (
+                                <button
+                                    type="button"
+                                    onClick={() => setActiveCategoryId(FAVORITES_CATEGORY_ID)}
+                                    className={`relative shrink-0 pb-1.5 text-sm font-semibold transition-colors ${
+                                        activeCategoryId === FAVORITES_CATEGORY_ID ? 'text-white' : 'text-zinc-400'
+                                    }`}
+                                >
+                                    Favorites
+                                    {activeCategoryId === FAVORITES_CATEGORY_ID && <span className="absolute inset-x-0 bottom-0 h-0.5 rounded-full bg-white" />}
+                                </button>
+                            )}
+                            {activeCategories[activeTab].map((category) => (
                                 <button
                                     key={category.id}
                                     type="button"
                                     onClick={() => setActiveCategoryId(category.id)}
-                                    className={`relative shrink-0 pb-2.5 text-sm font-semibold transition-colors ${
-                                        activeCategoryId === category.id ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'
+                                    className={`relative shrink-0 pb-1.5 text-sm font-semibold transition-colors ${
+                                        activeCategoryId === category.id ? 'text-white' : 'text-zinc-400'
                                     }`}
                                 >
                                     {category.name}
-                                    {activeCategoryId === category.id && <span className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-white" />}
+                                    {activeCategoryId === category.id && <span className="absolute inset-x-0 bottom-0 h-0.5 rounded-full bg-white" />}
                                 </button>
                             ))}
                         </div>
-
-                        <div className="flex items-center gap-4 shrink-0">
-                            {/* Delete category button when viewing a custom category */}
-                            {activeCategoryId !== 'all' && (
+                        {!isReadOnly && (
+                            <div className="flex items-center gap-2 shrink-0 pb-1">
                                 <button
                                     type="button"
-                                    onClick={() => setIsDeleteCategoryOpen(true)}
-                                    className="flex items-center gap-1.5 pb-2.5 text-sm font-medium text-red-400/90 hover:text-red-400 transition-colors"
-                                    title="Delete category"
+                                    onClick={() => {
+                                        setCategoryItemIds(new Set());
+                                        setIsAddCategoryOpen(true);
+                                    }}
+                                    className="flex h-7 items-center gap-1 rounded-full bg-black/45 backdrop-blur-md px-2.5 text-xs font-medium text-white/90 active:bg-white/15"
+                                    title="New category"
+                                    aria-label="New category"
                                 >
-                                    <Trash2 className="h-4 w-4" />
-                                    <span>Delete category</span>
+                                    <Plus className="h-3.5 w-3.5" />
+                                    <span>New</span>
                                 </button>
-                            )}
-
-                            {/* Desktop '+ New category' button */}
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    setCategoryItemIds(new Set());
-                                    setIsAddCategoryOpen(true);
-                                }}
-                                className="hidden md:flex items-center gap-1.5 pb-2.5 text-sm font-medium text-zinc-400 hover:text-white transition-colors"
-                            >
-                                <Plus className="h-4 w-4" />
-                                <span>New category</span>
-                            </button>
-                        </div>
+                                {activeCategoryId !== 'all' && activeCategoryId !== WATCHLIST_CATEGORY_ID && activeCategoryId !== FAVORITES_CATEGORY_ID && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsDeleteCategoryOpen(true)}
+                                        className="flex h-7 w-7 items-center justify-center rounded-full bg-black/45 backdrop-blur-md text-red-400 active:bg-red-500/20"
+                                        title="Delete category"
+                                        aria-label="Delete category"
+                                    >
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                    </button>
+                                )}
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>
 
-            <div className="w-full max-w-7xl mx-auto px-4 md:px-14 relative">
+            <div className="w-full max-w-7xl mx-auto px-4 md:px-14 relative z-10">
                 {/* Library Items Grid / List */}
                 <div
                     className={`grid items-start pb-12 ${
@@ -920,11 +1249,18 @@ export default function LibraryPage() {
                     }}
                 >
                     {visibleMobileLibraryItems.map((item) => (
-                        <button
+                        <div
                             key={`${activeTab}-${item.id}`}
-                            type="button"
+                            role="button"
+                            tabIndex={0}
                             onClick={() => navigate(item.route, { state: item.state })}
-                            className={`min-w-0 text-left transition-all duration-200 group ${
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                    e.preventDefault();
+                                    navigate(item.route, { state: item.state });
+                                }
+                            }}
+                            className={`relative min-w-0 text-left transition-all duration-200 group cursor-pointer ${
                                 displayMode === 'list'
                                     ? 'flex items-center gap-3.5 rounded-2xl bg-white/[0.035] hover:bg-white/[0.08] border border-white/5 hover:border-white/15 p-2.5 shadow-sm'
                                     : 'hover:scale-[1.02]'
@@ -947,11 +1283,31 @@ export default function LibraryPage() {
                                 {displayMode === 'compact' && (
                                     <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black via-black/75 to-transparent" />
                                 )}
-                                {/* Episode/chapter count badge */}
-                                {item.count && item.count > 0 && (
+                                {/* Episode/chapter count badge (grid views only, hidden in list mode) */}
+                                {displayMode !== 'list' && item.count && item.count > 0 && (
                                     <span className="absolute left-2 top-2 rounded-md bg-black/75 backdrop-blur px-2 py-0.5 text-[11px] font-bold text-white shadow">
                                         {item.count}
                                     </span>
+                                )}
+                                {/* Hover delete button (grid views) */}
+                                {!isReadOnly && displayMode !== 'list' && (
+                                    <button
+                                        type="button"
+                                        onClick={(e) => deleteLibraryEntry(e, item)}
+                                        title={
+                                            activeCategoryId === WATCHLIST_CATEGORY_ID
+                                                ? activeTab === 'anime' ? 'Remove from Watchlist' : 'Remove from Read list'
+                                                : activeCategoryId === FAVORITES_CATEGORY_ID
+                                                ? 'Remove from Favorites'
+                                                : activeCategoryId !== 'all'
+                                                ? 'Remove from category'
+                                                : 'Delete from Library'
+                                        }
+                                        aria-label={`Delete ${item.title}`}
+                                        className="absolute right-2 top-2 z-20 flex h-7 w-7 items-center justify-center rounded-full bg-black/75 text-white/90 hover:bg-black hover:text-white opacity-80 md:opacity-0 md:group-hover:opacity-100 focus:opacity-100 transition-opacity duration-150 cursor-pointer"
+                                    >
+                                        <X className="h-4 w-4" />
+                                    </button>
                                 )}
                                 {/* Cover only hover indicator */}
                                 {displayMode === 'cover' && (
@@ -980,33 +1336,62 @@ export default function LibraryPage() {
                                     <h2 className="text-sm font-semibold leading-snug text-white/95 line-clamp-2 group-hover:text-yorumi-accent transition-colors">
                                         {item.title}
                                     </h2>
-                                    <p className="mt-0.5 text-xs text-zinc-400">
-                                        {item.count || 0} {activeTab === 'anime' ? 'episodes' : 'chapters'}
-                                    </p>
+                                    {item.count && item.count > 0 ? (
+                                        <p className="mt-0.5 text-xs text-zinc-400">
+                                            {item.count} {activeTab === 'anime' ? (item.count === 1 ? 'episode' : 'episodes') : (item.count === 1 ? 'chapter' : 'chapters')}
+                                        </p>
+                                    ) : null}
                                 </div>
                             )}
                             {/* Title beside thumbnail: list only */}
                             {displayMode === 'list' && (
-                                <div className="min-w-0 flex-1">
-                                    <h2 className="truncate text-sm font-semibold text-white group-hover:text-yorumi-accent transition-colors">
-                                        {item.title}
-                                    </h2>
-                                    <div className="mt-1 flex items-center gap-2 text-xs text-zinc-400">
-                                        <span>{item.count || 0} {activeTab === 'anime' ? 'episodes' : 'chapters'}</span>
-                                        {item.downloaded && (
-                                            <span className="rounded bg-emerald-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-400">
-                                                Downloaded
-                                            </span>
-                                        )}
-                                        {item.completed && (
-                                            <span className="rounded bg-sky-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-sky-400">
-                                                Completed
-                                            </span>
+                                <>
+                                    <div className="min-w-0 flex-1">
+                                        <h2 className="truncate text-sm font-semibold text-white group-hover:text-yorumi-accent transition-colors">
+                                            {item.title}
+                                        </h2>
+                                        {(Boolean(item.count && item.count > 0) || item.downloaded || item.completed) && (
+                                            <div className="mt-1 flex items-center gap-2 text-xs text-zinc-400">
+                                                {item.count && item.count > 0 ? (
+                                                    <span>
+                                                        {item.count} {activeTab === 'anime' ? (item.count === 1 ? 'episode' : 'episodes') : (item.count === 1 ? 'chapter' : 'chapters')}
+                                                    </span>
+                                                ) : null}
+                                                {item.downloaded && (
+                                                    <span className="rounded bg-emerald-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-400">
+                                                        Downloaded
+                                                    </span>
+                                                )}
+                                                {item.completed && (
+                                                    <span className="rounded bg-sky-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-sky-400">
+                                                        Completed
+                                                    </span>
+                                                )}
+                                            </div>
                                         )}
                                     </div>
-                                </div>
+                                    {!isReadOnly && (
+                                        <button
+                                            type="button"
+                                            onClick={(e) => deleteLibraryEntry(e, item)}
+                                            title={
+                                                activeCategoryId === WATCHLIST_CATEGORY_ID
+                                                    ? activeTab === 'anime' ? 'Remove from Watchlist' : 'Remove from Read list'
+                                                    : activeCategoryId === FAVORITES_CATEGORY_ID
+                                                    ? 'Remove from Favorites'
+                                                    : activeCategoryId !== 'all'
+                                                    ? 'Remove from category'
+                                                    : 'Delete from Library'
+                                            }
+                                            aria-label={`Delete ${item.title}`}
+                                            className="mr-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-black/75 text-white/90 hover:bg-black hover:text-white opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity duration-150 cursor-pointer"
+                                        >
+                                            <X className="h-4 w-4" />
+                                        </button>
+                                    )}
+                                </>
                             )}
-                        </button>
+                        </div>
                     ))}
                     {visibleMobileLibraryItems.length === 0 && (
                         <div className="col-span-full flex flex-col items-center justify-center py-20 text-center">
@@ -1032,7 +1417,7 @@ export default function LibraryPage() {
             {isLibraryOptionsOpen && (
                 <div className="fixed inset-0 z-[80] flex items-end md:items-center md:justify-center" role="dialog" aria-modal="true" aria-label="Library options">
                     <button type="button" className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsLibraryOptionsOpen(false)} aria-label="Close library options" />
-                    <div className="relative z-10 flex max-h-[85vh] w-full flex-col overflow-hidden rounded-t-[28px] border border-white/10 bg-[#141414] pb-[calc(1.25rem+env(safe-area-inset-bottom,0px))] shadow-2xl md:max-w-md md:rounded-2xl">
+                    <div className="relative z-10 flex max-h-[85vh] w-full flex-col overflow-hidden rounded-t-[28px] border border-white/10 bg-[#0d0e12]/80 backdrop-blur-2xl pb-[calc(1.25rem+env(safe-area-inset-bottom,0px))] shadow-2xl shadow-black/80 md:max-w-md md:rounded-lg">
                         <div className="flex items-center justify-between border-b border-white/15 px-4 pt-1">
                             <div className="grid grid-cols-3 flex-1">
                                 {(['filter', 'sort', 'display'] as const).map((tab) => (
@@ -1174,9 +1559,9 @@ export default function LibraryPage() {
             )}
 
             {isAddCategoryOpen && (
-                <div className="fixed inset-0 z-[90] flex items-end bg-black/60 md:items-center md:justify-center" role="dialog" aria-modal="true" aria-label="Add library category">
+                <div className="fixed inset-0 z-[90] flex items-end bg-black/60 backdrop-blur-sm md:items-center md:justify-center" role="dialog" aria-modal="true" aria-label="Add library category">
                     <button type="button" className="absolute inset-0" onClick={() => setIsAddCategoryOpen(false)} aria-label="Close add category dialog" />
-                    <div className="relative z-10 flex max-h-[82vh] w-full flex-col rounded-t-[28px] border border-white/10 bg-[#141414] p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom,0px))] md:max-w-lg md:rounded-2xl">
+                    <div className="relative z-10 flex max-h-[82vh] w-full flex-col rounded-t-[28px] border border-white/10 bg-[#0d0e12]/80 backdrop-blur-2xl shadow-2xl shadow-black/80 p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom,0px))] md:max-w-lg md:rounded-lg">
                         <div className="mb-4 flex items-center justify-between">
                             <h2 className="text-lg font-semibold text-white">Add category</h2>
                             <button type="button" onClick={() => setIsAddCategoryOpen(false)} className="grid h-9 w-9 place-items-center text-zinc-400 hover:text-white transition-colors" aria-label="Close">
@@ -1230,9 +1615,9 @@ export default function LibraryPage() {
             )}
 
             {isMoveEntriesToCategoryOpen && (
-                <div className="fixed inset-0 z-[90] flex items-end bg-black/60 md:items-center md:justify-center" role="dialog" aria-modal="true" aria-label="Move entries to category">
+                <div className="fixed inset-0 z-[90] flex items-end bg-black/60 backdrop-blur-sm md:items-center md:justify-center" role="dialog" aria-modal="true" aria-label="Move entries to category">
                     <button type="button" className="absolute inset-0" onClick={() => setIsMoveEntriesToCategoryOpen(false)} aria-label="Close move entries dialog" />
-                    <div className="relative z-10 flex max-h-[82vh] w-full flex-col rounded-t-[28px] border border-white/10 bg-[#141414] p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom,0px))] md:max-w-lg md:rounded-2xl">
+                    <div className="relative z-10 flex max-h-[82vh] w-full flex-col rounded-t-[28px] border border-white/10 bg-[#0d0e12]/80 backdrop-blur-2xl shadow-2xl shadow-black/80 p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom,0px))] md:max-w-lg md:rounded-lg">
                         <div className="mb-4 flex items-center justify-between">
                             <h2 className="text-lg font-semibold text-white">Move to category</h2>
                             <button type="button" onClick={() => setIsMoveEntriesToCategoryOpen(false)} className="grid h-9 w-9 place-items-center text-zinc-400" aria-label="Close">
@@ -1292,9 +1677,9 @@ export default function LibraryPage() {
             )}
 
             {isDeleteCategoryOpen && (
-                <div className="fixed inset-0 z-[90] flex items-end bg-black/60 md:items-center md:justify-center" role="dialog" aria-modal="true" aria-label="Delete category">
+                <div className="fixed inset-0 z-[90] flex items-end bg-black/60 backdrop-blur-sm md:items-center md:justify-center" role="dialog" aria-modal="true" aria-label="Delete category">
                     <button type="button" className="absolute inset-0" onClick={() => setIsDeleteCategoryOpen(false)} aria-label="Close delete category dialog" />
-                    <div className="relative z-10 flex max-h-[82vh] w-full flex-col rounded-t-[28px] border border-white/10 bg-[#141414] p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom,0px))] md:max-w-md md:rounded-2xl">
+                    <div className="relative z-10 flex max-h-[82vh] w-full flex-col rounded-t-[28px] border border-white/10 bg-[#0d0e12]/80 backdrop-blur-2xl shadow-2xl shadow-black/80 p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom,0px))] md:max-w-md md:rounded-lg">
                         <div className="mb-4 flex items-center justify-between">
                             <h2 className="text-lg font-semibold text-white">Delete category</h2>
                             <button type="button" onClick={() => setIsDeleteCategoryOpen(false)} className="grid h-9 w-9 place-items-center text-zinc-400 hover:text-white transition-colors" aria-label="Close">
