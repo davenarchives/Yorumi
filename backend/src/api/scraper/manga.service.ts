@@ -14,10 +14,10 @@ const SEARCH_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 const CHAPTER_LIST_CACHE_KEY_PREFIX = 'manga:chapters:';
 const CHAPTER_PAGES_CACHE_KEY_PREFIX = 'manga:pages:';
 const SEARCH_CACHE_KEY_PREFIX = 'manga:search:';
-const HYDRATED_DETAILS_CACHE_KEY_PREFIX = 'manga:details-hydrated:v2:';
+const HYDRATED_DETAILS_CACHE_KEY_PREFIX = 'manga:details-hydrated:v4:';
 
 const hashKey = (input: string) => createHash('sha1').update(input).digest('hex');
-const MANGA_RESOLVE_CACHE_PREFIX = 'manga:resolve:v2:';
+const MANGA_RESOLVE_CACHE_PREFIX = 'manga:resolve:v3:';
 
 const hydratedDetailsCache = new Map<string, { data: HydratedMangaDetails; timestamp: number }>();
 const hydratedDetailsInFlight = new Map<string, Promise<HydratedMangaDetails>>();
@@ -56,8 +56,8 @@ const getTitleCandidates = (media: any): string[] => {
     return [...new Set([...primary, ...latinSynonyms, ...secondary])];
 };
 
-const scoreSearchResult = (candidate: any, titleCandidates: string[]) => {
-    const candidateTitle = normalizeTitle(String(candidate?.title || ''));
+const scoreSingleCandidateTitle = (rawCandidateTitle: string, titleCandidates: string[]) => {
+    const candidateTitle = normalizeTitle(String(rawCandidateTitle || ''));
     if (!candidateTitle) return 0;
 
     let bestScore = 0;
@@ -65,6 +65,10 @@ const scoreSearchResult = (candidate: any, titleCandidates: string[]) => {
         const normalized = normalizeTitle(title);
         if (!normalized) continue;
         if (candidateTitle === normalized) return 100;
+        if (candidateTitle.length >= 5 && (normalized.startsWith(`${candidateTitle} `) || candidateTitle.startsWith(`${normalized} `))) {
+            bestScore = Math.max(bestScore, 92);
+            continue;
+        }
         const candidateWords = new Set(candidateTitle.split(' ').filter(Boolean));
         const titleWords = normalized.split(' ').filter(Boolean);
         const shorterWordCount = Math.min(candidateWords.size, titleWords.length);
@@ -86,23 +90,31 @@ const scoreSearchResult = (candidate: any, titleCandidates: string[]) => {
     return bestScore;
 };
 
-const scoreMangaDetails = (details: any, titleCandidates: string[]) => {
+const scoreSearchResult = (candidate: any, titleCandidates: string[]) => {
     const sourceTitles = [
-        details?.title,
-        ...(Array.isArray(details?.altNames) ? details.altNames : []),
-    ];
+        candidate?.title,
+        ...(Array.isArray(candidate?.altNames) ? candidate.altNames : []),
+    ].filter(Boolean);
+    return sourceTitles.reduce((best, title) => Math.max(best, scoreSingleCandidateTitle(String(title || ''), titleCandidates)), 0);
+};
 
-    return sourceTitles.reduce((best, title) => Math.max(best, scoreSearchResult({ title }, titleCandidates)), 0);
+const scoreMangaDetails = (details: any, titleCandidates: string[]) => {
+    return scoreSearchResult(details, titleCandidates);
 };
 
 async function resolveScraperIdFromTitles(titles: string[]): Promise<string | null> {
-    const titleCandidates = [...new Set(titles.map((title) => String(title || '').trim()).filter(Boolean))];
+    const titleCandidates = [...new Set(titles.map((title) => String(title || '').trim()).filter((title) => /[A-Za-z0-9]/.test(title)))];
     if (titleCandidates.length === 0) {
         return null;
     }
 
+    const triedNormalized = new Set<string>();
     for (const title of titleCandidates.slice(0, 6)) {
-        const resolveCacheKey = `${MANGA_RESOLVE_CACHE_PREFIX}${normalizeTitle(title)}`;
+        const normKey = normalizeTitle(title);
+        if (!normKey || triedNormalized.has(normKey)) continue;
+        triedNormalized.add(normKey);
+
+        const resolveCacheKey = `${MANGA_RESOLVE_CACHE_PREFIX}${normKey}`;
         const cached = await cacheGet<string>(resolveCacheKey).catch(() => null);
         if (cached) {
             const cachedDetails = await getMangaDetails(cached).catch(() => null);
@@ -273,7 +285,7 @@ export async function getMangaDetailsWithChapters(id: string): Promise<HydratedM
                 throw new Error(`Manga details not found: ${normalizedId}`);
             }
 
-            const candidateScraperId = resolvedScraperId || (details as any)?.scraperId || details?.id;
+            const candidateScraperId = /^\d+$/.test(normalizedId) ? resolvedScraperId : (resolvedScraperId || details?.scraperId || details?.id);
             const scraperId = stripMangaKatanaPrefix(candidateScraperId);
             const chapters = scraperId ? await getChapterList(scraperId).catch((error) => {
                 console.warn(`[getMangaDetailsWithChapters] Chapter hydration failed for ${scraperId}:`, error);
@@ -286,7 +298,7 @@ export async function getMangaDetailsWithChapters(id: string): Promise<HydratedM
                 scraperId: scraperId || null,
             };
 
-            if (payload.details) {
+            if (payload.details && payload.scraperId && payload.chapters.length > 0) {
                 hydratedDetailsCache.set(cacheKey, { data: payload, timestamp: Date.now() });
                 cacheSet(redisKey, payload, Math.ceil(HYDRATED_DETAILS_CACHE_TTL / 1000)).catch((error) => {
                     console.warn(`[Cache] Redis write failed for hydrated manga details ${normalizedId}`, error);
