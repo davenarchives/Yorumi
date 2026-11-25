@@ -1,10 +1,10 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Nunito+Sans:ital,opsz,wght@0,6..12,200..1000;1,6..12,200..1000&display=swap');
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  font-family: 'Inter', system-ui, Avenir, Helvetica, Arial, sans-serif;
+  font-family: 'Nunito Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   line-height: 1.5;
   font-weight: 400;
 
@@ -33,12 +33,31 @@ html {
   overflow-y: overlay;
 }
 
+html.explore-open {
+  overflow: hidden;
+  scrollbar-gutter: auto;
+}
+
 body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
   background-color: #0a0a0a;
   @apply text-white;
+}
+
+@media (max-width: 767px) {
+  html,
+  body {
+    overscroll-behavior-y: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  button,
+  a,
+  [role="button"] {
+    touch-action: manipulation;
+  }
 }
 
 /* Scrollbar Styling */
@@ -49,6 +68,11 @@ body {
 
 ::-webkit-scrollbar-track {
   background: transparent;
+}
+
+/* Keep the document scrollbar below the fixed desktop title bar. */
+html.has-desktop-titlebar::-webkit-scrollbar-track {
+  margin-top: 2rem;
 }
 
 ::-webkit-scrollbar-thumb {
@@ -233,95 +257,6 @@ body.watch-safe-mode {
   background: rgba(255, 255, 255, 0.35);
 }
 
-/* The ambient projectors sit behind the watch page, matching youtube-ambilight's
-   compositing model instead of tinting UI and text from above. */
-body.yorumi-ambient-light-active .anime-details-page {
-  background: transparent;
-}
-
-body.yorumi-ambient-light-active .yorumi-ambient-projectors {
-  isolation: isolate;
-}
-
-body.yorumi-ambient-light-active .yorumi-desktop-sidebar {
-  background: rgba(10, 10, 10, 0.32);
-}
-
-body.yorumi-ambient-light-active .yorumi-episode-card {
-  background: rgba(10, 10, 10, 0.28) !important;
-}
-
-body.yorumi-ambient-light-active .yorumi-episode-card:hover {
-  background: rgba(10, 10, 10, 0.38) !important;
-}
-
-body.yorumi-ambient-light-active .yorumi-episode-thumbnail {
-  background: transparent;
-}
-
-body.yorumi-ambient-light-active .yorumi-player-popover {
-  background: rgba(18, 18, 18, 0.58) !important;
-}
-
-.yorumi-ambient-slider {
-  --ambient-progress: 0%;
-  appearance: none;
-  height: 18px;
-  border: 0;
-  border-radius: 9999px;
-  outline: none;
-  background:
-    linear-gradient(
-      to right,
-      rgb(56 189 248) 0 var(--ambient-progress),
-      rgb(255 255 255 / 0.28) var(--ambient-progress) 100%
-    ) center / 100% 5px no-repeat;
-}
-
-.yorumi-ambient-slider::-webkit-slider-runnable-track {
-  height: 5px;
-  border: 0;
-  background: transparent;
-}
-
-.yorumi-ambient-slider::-webkit-slider-thumb {
-  appearance: none;
-  width: 18px;
-  height: 18px;
-  margin-top: -6.5px;
-  border: 0;
-  border-radius: 9999px;
-  background: rgb(56 189 248);
-}
-
-.yorumi-ambient-slider::-moz-range-track {
-  height: 5px;
-  border: 0;
-  background: transparent;
-}
-
-.yorumi-ambient-slider::-moz-range-progress {
-  height: 5px;
-  background: transparent;
-}
-
-.yorumi-ambient-slider::-moz-range-thumb {
-  width: 18px;
-  height: 18px;
-  border: 0;
-  border-radius: 9999px;
-  background: rgb(56 189 248);
-}
-
-body.yorumi-ambient-light-active .watch-player-shell,
-body.yorumi-ambient-light-active .persistent-player-surface,
-body.yorumi-ambient-light-active .yorumi-player-surface,
-body.yorumi-ambient-light-active .yorumi-player-video,
-body.yorumi-ambient-light-active .yorumi-details-player-frame,
-body.yorumi-ambient-light-active .yorumi-player-mount {
-  background-color: transparent !important;
-}
-
 body.yorumi-player-landscape {
   overflow: hidden !important;
   -webkit-text-size-adjust: 100%;
@@ -340,6 +275,8 @@ body.yorumi-player-landscape .persistent-player-surface {
   z-index: 2147483647 !important;
 }
 
+
+
 body.yorumi-player-landscape .persistent-player-surface .watch-player-shell video {
   height: 100% !important;
 }
@@ -349,16 +286,20 @@ body.yorumi-player-landscape .watch-controls-deck {
   border-color: transparent !important;
 }
 
-body.yorumi-player-controls-hidden .mobile-player-header,
-body.yorumi-player-controls-hidden .watch-player-top-controls {
+body.yorumi-player-controls-hidden .mobile-player-header {
   opacity: 0 !important;
   pointer-events: none !important;
 }
 @media (max-width: 767px) {
+  .explore-feed {
+    padding-top: max(env(safe-area-inset-top, 0px), 24px);
+    padding-bottom: calc(4rem + env(safe-area-inset-bottom, 0px));
+  }
+
   .media-spotlight {
     width: 100%;
     margin-inline: 0;
-    min-height: 500px;
+    min-height: 400px;
     border-radius: 0;
     box-shadow: none;
   }
@@ -381,14 +322,73 @@ body.yorumi-player-controls-hidden .watch-player-top-controls {
   .numbered-media-sections > section:not(.animate-pulse) > .flex.items-center.gap-4.mb-6 > div:last-child:not(.h-px) {
     display: none;
   }
+
+  /* Mobile home performance: avoid per-frame backdrop re-blur while scrolling/swiping
+     and let carousels own horizontal gestures without fighting native vertical scroll. */
+  .media-home-perf *,
+  .media-home-perf *::before,
+  .media-home-perf *::after {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+
+  .media-home-perf section {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 320px;
+  }
+
+  .media-home-perf .overflow-hidden > .flex {
+    touch-action: pan-y pinch-zoom;
+  }
+
+  .media-home-perf img {
+    -webkit-user-drag: none;
+    -webkit-touch-callout: none;
+    transition: none !important;
+  }
 }
 
-/* Preserve a stable 16:9 viewport for 4:3 and other legacy sources. Ambient
-   mode changes only its backing paint; it never removes or resizes the frame. */
+/* Spotlight bottom fade mask is desktop-only; mobile uses a stationary gradient scrim
+   so the moving Embla track never forces per-frame mask recompositing. */
+@media (min-width: 768px) {
+  .spotlight-track-mask {
+    -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 35%, rgba(0,0,0,0.75) 58%, rgba(0,0,0,0.32) 74%, rgba(0,0,0,0.08) 88%, transparent 100%);
+    mask-image: linear-gradient(to bottom, #000 0%, #000 35%, rgba(0,0,0,0.75) 58%, rgba(0,0,0,0.32) 74%, rgba(0,0,0,0.08) 88%, transparent 100%);
+  }
+}
+
+/* Preserve a stable 16:9 viewport for 4:3 and other legacy sources. */
 .yorumi-details-player-frame {
   aspect-ratio: 16 / 9;
   background-color: #000;
 }
-body.yorumi-library-modal-open .yorumi-mobile-navbar {
-  display: none;
+body.yorumi-library-modal-open .yorumi-mobile-navbar,
+body.yorumi-explore-fullscreen .yorumi-mobile-navbar,
+body.explore-episodes-open .yorumi-mobile-navbar,
+html.explore-episodes-open .yorumi-mobile-navbar {
+  display: none !important;
 }
+
+@keyframes yorumi-explore-heart-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.35);
+  }
+  22% {
+    opacity: 1;
+    transform: scale(1.18);
+  }
+  42% {
+    opacity: 1;
+    transform: scale(0.96);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-28px) scale(1.25);
+  }
+}
+
+.yorumi-explore-heart-pop {
+  animation: yorumi-explore-heart-pop 700ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
