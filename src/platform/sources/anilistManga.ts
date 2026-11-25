@@ -54,12 +54,26 @@ const MEDIA_FIELDS = `
 `;
 
 const queryAniList = async <T>(query: string, variables: Record<string, unknown>) => {
-    const result = await postJson<GraphQLResponse<T>>(ANILIST_GRAPHQL_URL, { query, variables });
-    if (result.errors?.length) {
-        throw new Error(result.errors.map((error) => error.message || 'AniList request failed').join('; '));
+    let lastError: unknown;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+        try {
+            const result = await postJson<GraphQLResponse<T>>(ANILIST_GRAPHQL_URL, { query, variables });
+            if (result.errors?.length) {
+                throw new Error(result.errors.map((error) => error.message || 'AniList request failed').join('; '));
+            }
+            if (!result.data) throw new Error('AniList returned no data');
+            return result.data;
+        } catch (error) {
+            lastError = error;
+            const msg = String(error || '');
+            if (attempt === 0 && (msg.includes('429') || msg.includes('502') || msg.includes('503') || msg.includes('timeout'))) {
+                await new Promise((resolve) => setTimeout(resolve, 900));
+                continue;
+            }
+            throw error;
+        }
     }
-    if (!result.data) throw new Error('AniList returned no data');
-    return result.data;
+    throw lastError;
 };
 
 export type MangaListOptions = {
@@ -105,6 +119,23 @@ export const getLocalAniListMangaPage = async ({
         ...data.Page,
         media: data.Page.media.filter((item) => item.isAdult !== true),
     };
+};
+
+export const getLocalAniListTop100Manga = async (): Promise<LocalAniListManga[]> => {
+    const query = `
+        query LocalTop100Manga($page: Int!) {
+            Page(page: $page, perPage: 50) {
+                media(type: MANGA, sort: SCORE_DESC, isAdult: false) { ${MEDIA_FIELDS} }
+            }
+        }
+    `;
+    const [page1, page2] = await Promise.all([
+        queryAniList<{ Page: { media: LocalAniListManga[] } }>(query, { page: 1 }),
+        queryAniList<{ Page: { media: LocalAniListManga[] } }>(query, { page: 2 }),
+    ]);
+    return [...(page1.Page?.media || []), ...(page2.Page?.media || [])]
+        .filter((item) => item.isAdult !== true)
+        .slice(0, 100);
 };
 
 export const getLocalAniListMangaDetails = async (id: number): Promise<LocalAniListManga> => {
