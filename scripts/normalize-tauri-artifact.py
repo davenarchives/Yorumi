@@ -2,12 +2,35 @@ from pathlib import Path
 import shutil
 import sys
 
-bundle = Path('src-tauri/target/universal-apple-darwin/release/bundle' if sys.platform == 'darwin' else 'src-tauri/target/release/bundle')
+rel_subpath = (
+    'universal-apple-darwin/release/bundle'
+    if sys.platform == 'darwin'
+    else 'release/bundle'
+)
+candidate_roots = [
+    Path('target') / rel_subpath,
+    Path('src-tauri/target') / rel_subpath,
+]
+
 target = Path('release-assets/desktop')
 target.mkdir(parents=True, exist_ok=True)
-patterns = {'win32': ('nsis/*-setup.exe', 'Yorumi.exe'), 'darwin': ('dmg/*.dmg', 'Yorumi.dmg'), 'linux': ('appimage/*.AppImage', 'Yorumi.AppImage')}
+patterns = {
+    'win32': ('nsis/*-setup.exe', 'Yorumi.exe'),
+    'darwin': ('dmg/*.dmg', 'Yorumi.dmg'),
+    'linux': ('appimage/*.AppImage', 'Yorumi.AppImage'),
+}
 pattern, name = patterns[sys.platform]
-matches = list(bundle.glob(pattern))
+
+matches: list[Path] = []
+for root in candidate_roots:
+    if root.exists():
+        matches.extend(root.glob(pattern))
+
 if len(matches) != 1:
-    raise SystemExit(f'Expected one {pattern} bundle, found {len(matches)}')
+    searched = ', '.join(str(r) for r in candidate_roots)
+    raise SystemExit(
+        f'Expected one {pattern} bundle under [{searched}], found {len(matches)}: {matches}'
+    )
+
 shutil.copyfile(matches[0], target / name)
+print(f'Copied {matches[0]} -> {target / name}')
