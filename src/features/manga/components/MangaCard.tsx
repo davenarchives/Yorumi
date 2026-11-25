@@ -1,9 +1,12 @@
+import ReadingCardArtwork, { chapterBadge } from '../../reading/components/ReadingCardArtwork';
+import ReadingCardMetadata from '../../reading/components/ReadingCardMetadata';
 import React from 'react';
 import { m } from 'framer-motion';
 import type { Manga } from '../../../types/manga';
 import { useTitleLanguage } from '../../../context/TitleLanguageContext';
 import { getDisplayTitle } from '../../../utils/titleLanguage';
 import { cardItemVariants, pressMotion } from '../../../utils/motion';
+import { useReadList } from '../../../hooks/useReadList';
 
 interface MangaCardProps {
     manga: Manga;
@@ -12,54 +15,40 @@ interface MangaCardProps {
     inList?: boolean;
     onToggleList?: (manga: Manga) => void;
     disableTilt?: boolean;
+    rank?: number;
 }
 
-const MangaCard: React.FC<MangaCardProps> = ({ manga, onClick, onMouseEnter, inList, onToggleList, disableTilt = false }) => {
+const MangaCard: React.FC<MangaCardProps> = ({ manga, onClick, onMouseEnter, inList, onToggleList, disableTilt = false, rank }) => {
     const { language } = useTitleLanguage();
+    const { isInReadList, addToReadList, removeFromReadList } = useReadList();
     const cardRef = React.useRef<HTMLDivElement>(null);
     const [rotation, setRotation] = React.useState({ x: 0, y: 0 });
-    const [glare, setGlare] = React.useState({ x: 50, y: 50, opacity: 0 });
     const [isHovered, setIsHovered] = React.useState(false);
-    const [popupSide, setPopupSide] = React.useState<'left' | 'right'>('right');
-    const normalizedStatus = String(manga.status || '').toUpperCase();
-    const isOngoing = normalizedStatus === 'RELEASING' || normalizedStatus === 'PUBLISHING' || normalizedStatus === 'ONGOING';
     const displayTitle = getDisplayTitle(manga as unknown as Record<string, unknown>, language);
 
-    // Determine count display (Chapters -> Volumes)
-    const countDisplay = manga.chapters
-        ? `${manga.chapters} ch`
-        : manga.volumes
-            ? `${manga.volumes} vol`
-            : null;
+    const mangaIdStr = String(manga.id || manga.mal_id || '');
+    const effectiveInList = inList !== undefined ? inList : isInReadList(mangaIdStr);
+    const posterUrl = manga.images?.jpg?.large_image_url || manga.images?.jpg?.image_url || '';
+    const bannerUrl = manga.bannerImage || posterUrl;
 
-    const updatePopupSide = React.useCallback(() => {
-        if (typeof window === 'undefined' || !cardRef.current) {
-            setPopupSide('right');
+    const handleToggleList = () => {
+        if (onToggleList) {
+            onToggleList(manga);
             return;
         }
-
-        const rect = cardRef.current.getBoundingClientRect();
-        const boundary = cardRef.current.closest('[data-hover-boundary]');
-        const boundaryRect = boundary instanceof HTMLElement
-            ? boundary.getBoundingClientRect()
-            : { right: window.innerWidth - 16 };
-        const availableRight = Math.min(window.innerWidth - 16, boundaryRect.right);
-        const popupWidth = 260;
-        const gap = 16;
-
-        setPopupSide(rect.right + gap + popupWidth > availableRight ? 'left' : 'right');
-    }, []);
-
-    React.useEffect(() => {
-        if (!isHovered) return;
-
-        updatePopupSide();
-        window.addEventListener('resize', updatePopupSide);
-
-        return () => {
-            window.removeEventListener('resize', updatePopupSide);
-        };
-    }, [isHovered, updatePopupSide]);
+        if (effectiveInList) {
+            removeFromReadList(mangaIdStr);
+        } else {
+            addToReadList({
+                id: mangaIdStr,
+                title: displayTitle,
+                image: posterUrl || bannerUrl,
+                score: manga.score,
+                type: manga.type,
+                status: 'reading',
+            });
+        }
+    };
 
     const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
         if (disableTilt) {
@@ -78,12 +67,6 @@ const MangaCard: React.FC<MangaCardProps> = ({ manga, onClick, onMouseEnter, inL
         const rotateY = ((x - centerX) / centerX) * 12;
 
         setRotation({ x: rotateX, y: rotateY });
-        setGlare({
-            x: (x / rect.width) * 100,
-            y: (y / rect.height) * 100,
-            opacity: 1
-        });
-
         onMouseEnter?.(manga);
     };
 
@@ -93,7 +76,6 @@ const MangaCard: React.FC<MangaCardProps> = ({ manga, onClick, onMouseEnter, inL
             return;
         }
         setRotation({ x: 0, y: 0 });
-        setGlare(prev => ({ ...prev, opacity: 0 }));
         setIsHovered(false);
     };
 
@@ -104,121 +86,35 @@ const MangaCard: React.FC<MangaCardProps> = ({ manga, onClick, onMouseEnter, inL
             initial="initial"
             animate="animate"
             whileTap={pressMotion}
-            className="select-none cursor-pointer group relative z-0 hover:z-50"
+            className="select-none cursor-pointer group relative z-0"
             style={{ perspective: '1000px' }}
             onClick={() => onClick(manga)}
             onMouseEnter={(e) => {
                 setIsHovered(true);
-                updatePopupSide();
                 handleMouseMove(e);
             }}
             onMouseLeave={handleMouseLeave}
             onMouseMove={handleMouseMove}
         >
-            {/* Image Container with 3D Transform */}
-            <div
-                className="relative aspect-[2/3] rounded-lg overflow-hidden mb-1.5 md:mb-3 bg-[#141414] transition-all duration-75 ease-out"
-                style={{
-                    transform: disableTilt
-                        ? 'none'
-                        : `rotateX(${rotation.x}deg) rotateY(${rotation.y}deg) scale3d(${isHovered ? 1.05 : 1}, ${isHovered ? 1.05 : 1}, 1)`,
-                    transformStyle: 'preserve-3d',
-                }}
-            >
-                <img
-                    src={manga.images.jpg.large_image_url || manga.images.jpg.image_url}
-                    alt={displayTitle}
-                    className="w-full h-full object-cover"
-                    loading="lazy"
+            <div className="relative transition-transform duration-75" style={{ transform: disableTilt ? 'none' : `rotateX(${rotation.x}deg) rotateY(${rotation.y}deg) scale(${isHovered ? 1.05 : 1})` }}>
+                <ReadingCardArtwork
+                    title={displayTitle}
+                    image={bannerUrl}
+                    poster={posterUrl}
+                    badge={chapterBadge(manga.chapters, manga.status)}
+                    rank={rank}
+                    inList={effectiveInList}
+                    onToggleList={handleToggleList}
                 />
-
-                {/* Default Badges - Always Visible */}
-                {/* Top Right: Star Rating */}
-                {manga.score !== undefined && manga.score > 0 && (
-                    <div className="absolute top-2 right-2 z-10">
-                        <span className="bg-[#facc15] text-black px-2 py-1 rounded text-xs font-bold flex items-center gap-1">
-                            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" /></svg>
-                            {manga.score.toFixed(1)}
-                        </span>
-                    </div>
-                )}
-
-                {/* Bottom Left: Type + Count - Always Visible */}
-                <div className="absolute bottom-2 left-2 flex gap-1.5 z-10">
-                    <span className="rounded bg-black/55 px-1.5 py-0.5 text-[10px] font-bold uppercase text-white md:bg-white/20 md:px-2 md:py-1 md:text-xs md:backdrop-blur-sm">
-                        {manga.countryOfOrigin === 'KR' ? 'Manhwa' : manga.countryOfOrigin === 'CN' ? 'Manhua' : (manga.type || 'Manga')}
-                    </span>
-                </div>
-
-                {onToggleList && (
-                    <button
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            onToggleList(manga);
-                        }}
-                        className={`absolute bottom-2 right-2 z-10 flex h-10 w-10 items-center justify-center rounded-full transition-colors ${inList ? 'bg-yorumi-manga text-white hover:bg-yorumi-manga/80' : 'bg-[#1c2433]/90 text-white hover:bg-[#2b364a]'}`}
-                        title={inList ? 'Remove from List' : 'Add to List'}
-                    >
-                        {inList ? (
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                            </svg>
-                        ) : (
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-                            </svg>
-                        )}
-                    </button>
-                )}
-
-
             </div>
 
-            {isHovered && (
-                <div className={`pointer-events-none absolute top-2 z-[60] hidden w-[260px] rounded-2xl bg-[#1a1a2e] p-4 text-white shadow-xl lg:block ${popupSide === 'left' ? 'right-[calc(100%+16px)]' : 'left-[calc(100%+16px)]'}`}>
-                    <div
-                        className="absolute top-7 h-3 w-3 bg-[#1a1a2e]"
-                        style={popupSide === 'left'
-                            ? { right: -8, clipPath: 'polygon(0 0, 100% 50%, 0 100%)' }
-                            : { left: -8, clipPath: 'polygon(100% 0, 0 50%, 100% 100%)' }}
-                    />
-
-                    <div className="space-y-3">
-                        {/* Line 1: Year / Status */}
-                        <p className="text-sm font-extrabold tracking-wide text-[#e8dbff]">
-                            {manga.published?.from ? manga.published.from.substring(0, 4) : (isOngoing ? 'Ongoing' : (manga.status || 'Unknown Status'))}
-                        </p>
-
-                        {/* Line 2: Author */}
-                        {manga.authors && manga.authors.length > 0 && (
-                            <p className="text-sm font-bold text-[#d886ff]">
-                                {manga.authors[0].name}
-                            </p>
-                        )}
-
-                        {/* Line 3: Type • Chapters */}
-                        <p className="text-sm font-semibold text-[#b4a8d4]">
-                            {manga.countryOfOrigin === 'KR' ? 'Manhwa' : manga.countryOfOrigin === 'CN' ? 'Manhua' : (manga.type || 'Manga')} {countDisplay ? ` • ${countDisplay}` : ''}
-                            {manga.views ? ` • ${manga.views} views` : ''}
-                        </p>
-
-                        {manga.genres && manga.genres.length > 0 && (
-                            <div className="flex flex-wrap gap-2 pt-1">
-                                {manga.genres.slice(0, 2).map((genre) => (
-                                    <span key={genre.mal_id} className="rounded-full bg-[#d886ff] px-3 py-1 text-[11px] font-extrabold lowercase tracking-wide text-[#2e0a3d]">
-                                        {genre.name}
-                                    </span>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                </div>
-            )}
-
-            {/* Title Below Card */}
-            <h3 className="line-clamp-2 text-xs font-semibold leading-tight text-gray-100 transition-colors group-hover:text-yorumi-manga md:text-sm">
-                {displayTitle}
-            </h3>
+            <ReadingCardMetadata
+                title={displayTitle}
+                score={manga.score}
+                format={manga.type}
+                year={manga.published?.from?.match(/^\d{4}/)?.[0]}
+                theme="manga"
+            />
         </m.div>
     );
 };
