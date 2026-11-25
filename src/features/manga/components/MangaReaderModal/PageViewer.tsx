@@ -1,6 +1,8 @@
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useState, useCallback } from 'react';
 import type { MangaPage, MangaChapter } from '../../../../types/manga';
 import sleepingGif from '../../../../assets/sleeping.gif';
+import { createLocalMediaProxyUrl } from '../../../../platform/localMediaProxy';
+import { isTauri } from '../../../../platform/runtime';
 
 interface PageViewerProps {
     pages: MangaPage[];
@@ -16,6 +18,136 @@ interface PageViewerProps {
     onContentClick: () => void;
     onLoadChapter: (chapter: MangaChapter) => void;
     onPageChange: (index: number) => void;
+}
+
+const appendRetryParam = (url: string, attempt: number): string => {
+    if (!url || /^data:|^blob:/i.test(url)) return url;
+    const separator = url.includes('?') ? '&' : '?';
+    return `${url}${separator}_retry=${attempt}`;
+};
+
+function MangaPageImage({
+    src,
+    pageNumber,
+    className,
+    style,
+    eager = false,
+}: {
+    src: string;
+    pageNumber: number;
+    className: string;
+    style?: React.CSSProperties;
+    eager?: boolean;
+}) {
+    const [activeSrc, setActiveSrc] = useState(src);
+    const [retryCount, setRetryCount] = useState(0);
+    const [loaded, setLoaded] = useState(false);
+    const [failed, setFailed] = useState(false);
+    const imgRef = useRef<HTMLImageElement | null>(null);
+    const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    useEffect(() => {
+        if (retryTimerRef.current) {
+            clearTimeout(retryTimerRef.current);
+            retryTimerRef.current = null;
+        }
+        setActiveSrc(src);
+        setRetryCount(0);
+        setFailed(false);
+        // Immediately reveal if already decoded in browser cache so spinner never sticks
+        const el = imgRef.current;
+        if (el && el.complete && el.naturalWidth > 0 && el.src === src) {
+            setLoaded(true);
+        } else {
+            setLoaded(false);
+        }
+    }, [src]);
+
+    useEffect(() => {
+        const el = imgRef.current;
+        if (!loaded && el && el.complete && el.naturalWidth > 0) {
+            setLoaded(true);
+        }
+    }, [activeSrc, loaded]);
+
+    useEffect(() => () => {
+        if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+    }, []);
+
+    const handleError = useCallback(() => {
+        if (retryCount >= 3) {
+            setFailed(true);
+            return;
+        }
+
+        const nextAttempt = retryCount + 1;
+        setRetryCount(nextAttempt);
+
+        // On Tauri, if a direct remote HTTPS image fails (hotlink/referer block), switch to local proxy
+        const isDirectRemote = /^https?:\/\//i.test(src) && !src.includes('yorumi-media.localhost') && !src.includes('127.0.0.1');
+        const delayMs = nextAttempt === 1 ? 600 : nextAttempt * 1000;
+
+        retryTimerRef.current = setTimeout(() => {
+            retryTimerRef.current = null;
+            if (isTauri() && isDirectRemote && nextAttempt === 1) {
+                void createLocalMediaProxyUrl(src, '').then((proxied) => {
+                    setActiveSrc(appendRetryParam(proxied, nextAttempt));
+                });
+            } else {
+                setActiveSrc(appendRetryParam(src, nextAttempt));
+            }
+        }, delayMs);
+    }, [retryCount, src]);
+
+    const handleManualRetry = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        setFailed(false);
+        setLoaded(false);
+        const nextAttempt = retryCount + 1;
+        setRetryCount(nextAttempt);
+        setActiveSrc(appendRetryParam(src, nextAttempt));
+    };
+
+    if (failed) {
+        return (
+            <div className="flex min-h-[360px] w-full flex-col items-center justify-center gap-3 bg-white/[0.03] px-4 py-12 text-center">
+                <span className="text-xs font-medium text-white/50">Failed to load Page {pageNumber}</span>
+                <button
+                    type="button"
+                    onClick={handleManualRetry}
+                    className="rounded-lg border border-white/15 bg-white/10 px-4 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-white/20 cursor-pointer"
+                >
+                    Retry
+                </button>
+            </div>
+        );
+    }
+
+    return (
+        <>
+            {!loaded && (
+                <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-white/[0.02]">
+                    <div className="h-6 w-6 animate-spin rounded-full border-2 border-white/15 border-t-white/60" />
+                </div>
+            )}
+            <img
+                ref={imgRef}
+                src={activeSrc}
+                alt={`Page ${pageNumber}`}
+                referrerPolicy="no-referrer"
+                className={`${className} ${loaded ? 'opacity-100' : 'opacity-0'}`}
+                style={style}
+                loading={eager ? 'eager' : 'lazy'}
+                decoding="async"
+                fetchPriority={eager ? 'high' : 'auto'}
+                onLoad={() => {
+                    setLoaded(true);
+                    setFailed(false);
+                }}
+                onError={handleError}
+            />
+        </>
+    );
 }
 
 export default function PageViewer({
@@ -35,28 +167,34 @@ export default function PageViewer({
 }: PageViewerProps) {
     const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-    // Sequential image preloader: loads Page 1 first, then Page 2, 3... 50 in strict order
+    // Gentle 2-worker preloader delayed briefly so Page 1 gets full upstream bandwidth without throttling
     useEffect(() => {
-        if (!pages || pages.length === 0) return;
+        if (!pages || pages.length <= 1) return;
         let isCancelled = false;
+        let nextIndex = 2;
+        const CONCURRENCY = 2;
 
-        const preloadSequentially = (index: number) => {
-            if (isCancelled || index >= pages.length) return;
+        const runWorker = () => {
+            if (isCancelled || nextIndex >= pages.length) return;
+            const current = nextIndex++;
             const img = new Image();
-            img.src = pages[index].imageUrl;
-            img.onload = () => {
-                if (!isCancelled) preloadSequentially(index + 1);
-            };
-            img.onerror = () => {
-                if (!isCancelled) preloadSequentially(index + 1);
-            };
+            img.referrerPolicy = 'no-referrer';
+            img.decoding = 'async';
+            img.onload = runWorker;
+            img.onerror = runWorker;
+            img.src = pages[current].imageUrl;
         };
 
-        // Page 1 is fetched first, followed by remaining pages in order
-        preloadSequentially(0);
+        const timer = setTimeout(() => {
+            const workerCount = Math.min(CONCURRENCY, Math.max(0, pages.length - 2));
+            for (let i = 0; i < workerCount; i += 1) {
+                runWorker();
+            }
+        }, 400);
 
         return () => {
             isCancelled = true;
+            clearTimeout(timer);
         };
     }, [pages]);
 
@@ -109,14 +247,12 @@ export default function PageViewer({
                                     key={`${page.pageNumber}-${index}`}
                                     className="w-full flex justify-center min-h-[300px] bg-black/10 relative"
                                 >
-                                    <img
+                                    <MangaPageImage
                                         src={page.imageUrl}
-                                        alt={`Page ${page.pageNumber}`}
-                                        className="transition-opacity duration-300 block shadow-2xl"
+                                        pageNumber={page.pageNumber}
+                                        className="transition-opacity duration-100 block shadow-2xl"
                                         style={{ width: `${zoomLevel}%`, maxWidth: '100%' }}
-                                        loading={index === 0 ? 'eager' : 'lazy'}
-                                        decoding={index === 0 ? 'sync' : 'async'}
-                                        fetchPriority={index === 0 ? 'high' : 'auto'}
+                                        eager={index < 2}
                                     />
                                 </div>
                             ))}
@@ -153,15 +289,15 @@ export default function PageViewer({
                             className="flex items-center justify-center h-full w-full relative group select-none"
                             onClick={handlePageClick}
                         >
-                            <img
-                                src={pages[pageIndex]?.imageUrl}
-                                alt={`Page ${pageIndex + 1}`}
-                                className="max-h-full max-w-full object-contain shadow-2xl"
-                                style={{ transform: `scale(${zoomLevel / 100})` }}
-                                loading="eager"
-                                decoding="async"
-                                fetchPriority="high"
-                            />
+                            {pages[pageIndex] && (
+                                <MangaPageImage
+                                    src={pages[pageIndex].imageUrl}
+                                    pageNumber={pageIndex + 1}
+                                    className="max-h-full max-w-full object-contain shadow-2xl transition-opacity duration-200"
+                                    style={{ transform: `scale(${zoomLevel / 100})` }}
+                                    eager
+                                />
+                            )}
 
                             {/* Click Zone Overlays */}
                             <div className="absolute inset-y-0 left-0 w-1/3 cursor-w-resize z-10 opacity-0 group-hover:opacity-10 transition-opacity bg-gradient-to-r from-white to-transparent" title="Next Page" />
