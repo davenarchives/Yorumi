@@ -1,6 +1,3 @@
-import { collection, query, where, orderBy, limit, getDocs, doc, getDoc } from 'firebase/firestore';
-import { db, isFirebaseEnabled } from './firebase';
-
 type EpisodeHistoryMap = Record<string, Array<number | string>>;
 
 export interface PublicUserProfile {
@@ -11,11 +8,12 @@ export interface PublicUserProfile {
     banner: string | null;
     profileCardBackground: string | null;
     creationTime: string | null;
-    // Lists synced by syncStorage
     watchList: any[];
     readList: any[];
+    lnReadList?: any[];
     continueWatching: any[];
     continueReading: any[];
+    continueLN?: any[];
     episodeHistory: EpisodeHistoryMap;
     chapterHistory: Record<string, string[]>;
     animeWatchTime: Record<string, number>;
@@ -24,209 +22,91 @@ export interface PublicUserProfile {
     animeCompletionCache: Record<string, { title?: string; totalCount?: number; mediaStatus?: string }>;
     mangaCompletionCache: Record<string, { title?: string; totalCount?: number; mediaStatus?: string }>;
     mangaGenreCache: Record<string, string[]>;
-    // Subcollection data fetched separately
     activityHistory: Record<string, number>;
     favoriteAnime: any[];
     favoriteManga: any[];
+    favoriteLN?: any[];
+    libraryCategories?: {
+        anime: Array<{ id: string; name: string; itemIds: string[] }>;
+        manga: Array<{ id: string; name: string; itemIds: string[] }>;
+        ln: Array<{ id: string; name: string; itemIds: string[] }>;
+    };
 }
 
+const DEFAULT_SYNC_API_BASE = 'https://yorumibot-1.onrender.com/api';
+
+const getSyncApiBase = (): string => {
+    const explicit = String(import.meta.env.VITE_SYNC_API_URL || '').trim();
+    if (explicit) return explicit.replace(/\/+$/, '');
+
+    return DEFAULT_SYNC_API_BASE;
+};
+
+const USER_SEARCH_CACHE_TTL_MS = 60 * 1000;
+const USER_FETCH_TIMEOUT_MS = 4500;
+const userListCache = new Map<string, { data: PublicUserProfile[]; expiresAt: number }>();
+
+const fetchWithTimeout = async (url: string, timeoutMs = USER_FETCH_TIMEOUT_MS): Promise<Response> => {
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        return await fetch(url, { signal: controller.signal });
+    } finally {
+        window.clearTimeout(timer);
+    }
+};
+
 export const userSearchService = {
-    /**
-     * Search users by display name prefix (case-insensitive).
-     * Uses the `searchName` field (lowercased) for Firestore range queries.
-     */
     searchUsers: async (queryStr: string, maxResults = 12): Promise<PublicUserProfile[]> => {
-        if (!isFirebaseEnabled || !db) return [];
+        const q = queryStr.trim();
+        if (!q) return [];
+        const cacheKey = `q:${q.toLowerCase()}:${maxResults}`;
+        const cached = userListCache.get(cacheKey);
+        if (cached && cached.expiresAt > Date.now()) return cached.data;
+
         try {
-            const normalised = queryStr.trim().toLowerCase();
-            if (normalised.length < 2) return [];
-
-            // Firestore prefix range: searchName >= query AND searchName < query + '\uf8ff'
-            const usersRef = collection(db, 'users');
-            const q = query(
-                usersRef,
-                where('searchName', '>=', normalised),
-                where('searchName', '<=', normalised + '\uf8ff'),
-                orderBy('searchName'),
-                limit(maxResults),
-            );
-
-            const snapshot = await getDocs(q);
-            return snapshot.docs.map((docSnap) => {
-                const data = docSnap.data();
-                return {
-                    uid: docSnap.id,
-                    displayName: data.displayName || 'Unknown',
-                    email: data.email || '',
-                    avatar: data.avatar || null,
-                    banner: data.banner || null,
-                    profileCardBackground: data.profileCardBackground || null,
-                    creationTime: data.creationTime || null,
-                    watchList: data.watchList || [],
-                    readList: data.readList || [],
-                    continueWatching: data.continueWatching || [],
-                    continueReading: data.continueReading || [],
-                    episodeHistory: data.episodeHistory || {},
-                    chapterHistory: data.chapterHistory || {},
-                    animeWatchTime: data.animeWatchTime || {},
-                    animeWatchTimeTotalSeconds: data.animeWatchTimeTotalSeconds || 0,
-                    animeGenreCache: data.animeGenreCache || {},
-                    animeCompletionCache: data.animeCompletionCache || {},
-                    mangaCompletionCache: data.mangaCompletionCache || {},
-                    mangaGenreCache: data.mangaGenreCache || {},
-                } as PublicUserProfile;
-            });
-        } catch (error) {
-            console.error('Failed to search users:', error);
+            const url = `${getSyncApiBase()}/sync/users?q=${encodeURIComponent(q)}&limit=${maxResults}`;
+            const res = await fetchWithTimeout(url);
+            if (!res.ok) return [];
+            const json = (await res.json()) as { success?: boolean; data?: PublicUserProfile[] };
+            const data = Array.isArray(json?.data) ? json.data : [];
+            userListCache.set(cacheKey, { data, expiresAt: Date.now() + USER_SEARCH_CACHE_TTL_MS });
+            return data;
+        } catch {
             return [];
         }
     },
 
-    /**
-     * Get a list of users for the discovery page when not searching.
-     */
     getDiscoverUsers: async (maxResults = 20): Promise<PublicUserProfile[]> => {
-        if (!isFirebaseEnabled || !db) return [];
-        try {
-            const usersRef = collection(db, 'users');
-            const q = query(
-                usersRef,
-                limit(maxResults)
-            );
+        const cacheKey = `discover:${maxResults}`;
+        const cached = userListCache.get(cacheKey);
+        if (cached && cached.expiresAt > Date.now()) return cached.data;
 
-            const snapshot = await getDocs(q);
-            return snapshot.docs.map((docSnap) => {
-                const data = docSnap.data();
-                return {
-                    uid: docSnap.id,
-                    displayName: data.displayName || 'Unknown',
-                    email: data.email || '',
-                    avatar: data.avatar || null,
-                    banner: data.banner || null,
-                    profileCardBackground: data.profileCardBackground || null,
-                    creationTime: data.creationTime || null,
-                    watchList: data.watchList || [],
-                    readList: data.readList || [],
-                    continueWatching: data.continueWatching || [],
-                    episodeHistory: data.episodeHistory || {},
-                    chapterHistory: data.chapterHistory || {},
-                    animeWatchTime: data.animeWatchTime || {},
-                    animeWatchTimeTotalSeconds: data.animeWatchTimeTotalSeconds || 0,
-                    animeGenreCache: data.animeGenreCache || {},
-                    animeCompletionCache: data.animeCompletionCache || {},
-                    mangaCompletionCache: data.mangaCompletionCache || {},
-                    mangaGenreCache: data.mangaGenreCache || {},
-                } as PublicUserProfile;
-            });
-        } catch (error) {
-            console.error('Failed to get discover users:', error);
+        try {
+            const url = `${getSyncApiBase()}/sync/users?limit=${maxResults}`;
+            const res = await fetchWithTimeout(url);
+            if (!res.ok) return [];
+            const json = (await res.json()) as { success?: boolean; data?: PublicUserProfile[] };
+            const data = Array.isArray(json?.data) ? json.data : [];
+            if (data.length > 0) {
+                userListCache.set(cacheKey, { data, expiresAt: Date.now() + USER_SEARCH_CACHE_TTL_MS });
+            }
+            return data;
+        } catch {
             return [];
         }
     },
 
-    /**
-     * Get a single user's public profile by UID.
-     * Subcollections (favoriteAnime, favoriteManga, activityHistory) are fetched
-     * independently and fail gracefully if permissions are missing.
-     */
     getUserProfile: async (uid: string): Promise<PublicUserProfile | null> => {
-        if (!isFirebaseEnabled || !db) return null;
+        const cleanUid = uid.trim();
+        if (!cleanUid) return null;
         try {
-            // Main user document — this MUST succeed
-            const docRef = doc(db, 'users', uid);
-            const docSnap = await getDoc(docRef);
-            if (!docSnap.exists()) return null;
-
-            const data = docSnap.data();
-
-            // Subcollections — each resolves to a fallback if denied
-            const activityRef = doc(db, 'users', uid, 'activity', 'history');
-            const favAnimeRef = collection(db, 'users', uid, 'favoriteAnime');
-            const favMangaRef = collection(db, 'users', uid, 'favoriteManga');
-            const watchListRef = collection(db, 'users', uid, 'watchList');
-            const readListRef = collection(db, 'users', uid, 'readList');
-            const continueWatchingRef = collection(db, 'users', uid, 'continueWatching');
-            const continueReadingRef = collection(db, 'users', uid, 'continueReading');
-
-            const [activityResult, favAnimeResult, favMangaResult, watchListResult, readListResult, continueWatchingResult, continueReadingResult] = await Promise.allSettled([
-                getDoc(activityRef),
-                getDocs(query(favAnimeRef, orderBy('addedAt', 'desc'))),
-                getDocs(query(favMangaRef, orderBy('addedAt', 'desc'))),
-                getDocs(query(watchListRef, orderBy('addedAt', 'desc'))),
-                getDocs(query(readListRef, orderBy('addedAt', 'desc'))),
-                getDocs(query(continueWatchingRef, orderBy('lastWatched', 'desc'))),
-                getDocs(query(continueReadingRef, orderBy('lastRead', 'desc'))),
-            ]);
-
-            const activityHistory: Record<string, number> =
-                activityResult.status === 'fulfilled' && activityResult.value.exists()
-                    ? (activityResult.value.data() as Record<string, number>)
-                    : {};
-
-            const favoriteAnime: any[] =
-                favAnimeResult.status === 'fulfilled'
-                    ? favAnimeResult.value.docs.map(d => d.data())
-                    : [];
-
-            const favoriteManga: any[] =
-                favMangaResult.status === 'fulfilled'
-                    ? favMangaResult.value.docs.map(d => d.data())
-                    : [];
-
-            const watchList: any[] =
-                watchListResult.status === 'fulfilled'
-                    ? watchListResult.value.docs.map(d => d.data())
-                    : (data.watchList || []);
-
-            const readList: any[] =
-                readListResult.status === 'fulfilled'
-                    ? readListResult.value.docs.map(d => d.data())
-                    : (data.readList || []);
-
-            const continueWatching: any[] =
-                continueWatchingResult.status === 'fulfilled'
-                    ? continueWatchingResult.value.docs.map(d => d.data())
-                    : (data.continueWatching || []);
-
-            const continueReading: any[] =
-                continueReadingResult.status === 'fulfilled'
-                    ? continueReadingResult.value.docs.map(d => d.data())
-                    : (data.continueReading || []);
-
-            if (activityResult.status === 'rejected') console.warn('Could not load activity history (check Firestore rules):', activityResult.reason);
-            if (favAnimeResult.status === 'rejected') console.warn('Could not load favoriteAnime (check Firestore rules):', favAnimeResult.reason);
-            if (favMangaResult.status === 'rejected') console.warn('Could not load favoriteManga (check Firestore rules):', favMangaResult.reason);
-            if (watchListResult.status === 'rejected') console.warn('Could not load watchList (check Firestore rules):', watchListResult.reason);
-            if (readListResult.status === 'rejected') console.warn('Could not load readList (check Firestore rules):', readListResult.reason);
-            if (continueWatchingResult.status === 'rejected') console.warn('Could not load continueWatching (check Firestore rules):', continueWatchingResult.reason);
-            if (continueReadingResult.status === 'rejected') console.warn('Could not load continueReading (check Firestore rules):', continueReadingResult.reason);
-
-            return {
-                uid: docSnap.id,
-                displayName: data.displayName || 'Unknown',
-                email: data.email || '',
-                avatar: data.avatar || null,
-                banner: data.banner || null,
-                profileCardBackground: data.profileCardBackground || null,
-                creationTime: data.creationTime || null,
-                watchList,
-                readList,
-                continueWatching,
-                continueReading,
-                episodeHistory: data.episodeHistory || {},
-                chapterHistory: data.chapterHistory || {},
-                animeWatchTime: data.animeWatchTime || {},
-                animeWatchTimeTotalSeconds: data.animeWatchTimeTotalSeconds || 0,
-                animeGenreCache: data.animeGenreCache || {},
-                animeCompletionCache: data.animeCompletionCache || {},
-                mangaCompletionCache: data.mangaCompletionCache || {},
-                mangaGenreCache: data.mangaGenreCache || {},
-                activityHistory,
-                favoriteAnime,
-                favoriteManga,
-            } as PublicUserProfile;
-        } catch (error) {
-            console.error('Failed to get user profile:', error);
+            const url = `${getSyncApiBase()}/sync/users/${encodeURIComponent(cleanUid)}`;
+            const res = await fetchWithTimeout(url, 8000);
+            if (!res.ok) return null;
+            const json = (await res.json()) as { success?: boolean; data?: PublicUserProfile | null };
+            return json?.data || null;
+        } catch {
             return null;
         }
     },
