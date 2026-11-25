@@ -7,6 +7,7 @@ import type { Anime } from '../../types/anime';
 import type { Manga } from '../../types/manga';
 import { API_BASE, USES_LOCAL_SOURCES } from '../../config/api';
 import { getAnimeDetailsRouteId } from '../../utils/animeNavigation';
+import { resolveSearchAlias, suggestSearchCorrection } from '../../utils/searchIntelligence';
 
 export interface SearchPreviewItem {
     id: string | number;
@@ -66,9 +67,65 @@ type PreviewManga = Manga & {
     latestChapter?: string;
 };
 
+const PREVIEW_CACHE_TTL_MS = 3 * 60 * 1000;
+const previewCache = new Map<string, { data: SearchPreviewItem[]; expiresAt: number }>();
+const inflightPreview = new Map<string, Promise<SearchPreviewItem[]>>();
+
+const withPreviewCache = async (
+    key: string,
+    loader: () => Promise<SearchPreviewItem[]>,
+): Promise<SearchPreviewItem[]> => {
+    const now = Date.now();
+    const cached = previewCache.get(key);
+    if (cached && cached.expiresAt > now) {
+        return cached.data;
+    }
+    const existing = inflightPreview.get(key);
+    if (existing) return existing;
+
+    const promise = loader()
+        .then((items) => {
+            if (items.length > 0) {
+                previewCache.set(key, { data: items, expiresAt: Date.now() + PREVIEW_CACHE_TTL_MS });
+                if (previewCache.size > 120) {
+                    const oldest = previewCache.keys().next().value;
+                    if (oldest) previewCache.delete(oldest);
+                }
+            }
+            return items;
+        })
+        .finally(() => {
+            inflightPreview.delete(key);
+        });
+
+    inflightPreview.set(key, promise);
+    return promise;
+};
+
+const withTimeout = <T,>(promise: Promise<T>, ms: number, fallback: T): Promise<T> =>
+    new Promise((resolve) => {
+        const timer = window.setTimeout(() => resolve(fallback), ms);
+        promise.then(
+            (val) => {
+                window.clearTimeout(timer);
+                resolve(val);
+            },
+            () => {
+                window.clearTimeout(timer);
+                resolve(fallback);
+            },
+        );
+    });
+
 export const searchApi = {
     async getAnimePreview(rawQuery: string, language: TitleLanguage, limit = 8) {
-        const query = rawQuery.replace(/\s+movie$/i, '').trim() || rawQuery;
+        const cacheKey = `anime:${language}:${limit}:${rawQuery.trim().toLowerCase()}`;
+        return withPreviewCache(cacheKey, () => this._fetchAnimePreview(rawQuery, language, limit));
+    },
+
+    async _fetchAnimePreview(rawQuery: string, language: TitleLanguage, limit = 8) {
+        const stripped = rawQuery.replace(/\s+movie$/i, '').trim() || rawQuery;
+        const query = resolveSearchAlias(stripped) || stripped;
         if (!USES_LOCAL_SOURCES && sessionStorage.getItem('_yrm_vlt_s') === 'unlocked') {
             try {
                 const res = await fetch(`${API_BASE}/vault/anime/search?q=${encodeURIComponent(query)}`);
@@ -177,7 +234,13 @@ export const searchApi = {
         }) as SearchPreviewItem[];
     },
 
-    async getMangaPreview(query: string, language: TitleLanguage, limit = 8) {
+    async getMangaPreview(rawQuery: string, language: TitleLanguage, limit = 8) {
+        const cacheKey = `manga:${language}:${limit}:${rawQuery.trim().toLowerCase()}`;
+        return withPreviewCache(cacheKey, () => this._fetchMangaPreview(rawQuery, language, limit));
+    },
+
+    async _fetchMangaPreview(rawQuery: string, language: TitleLanguage, limit = 8) {
+        const query = resolveSearchAlias(rawQuery) || rawQuery;
         if (!USES_LOCAL_SOURCES && sessionStorage.getItem('_yrm_vlt_s') === 'unlocked') {
             try {
                 const res = await fetch(`${API_BASE}/vault/manga/search?q=${encodeURIComponent(query)}`);
@@ -202,16 +265,31 @@ export const searchApi = {
         }
 
         let data: Manga[] = [];
-        if (USES_LOCAL_SOURCES) {
-            const scraperResult = await mangaService.searchMangaScraper(query, 1, limit).catch(() => ({ data: [] as Manga[] }));
-            data = scraperResult.data || [];
-            if (data.length === 0) {
-                const catalogResult = await mangaService.searchManga(query, 1, limit).catch(() => ({ data: [] as Manga[] }));
-                data = catalogResult.data || [];
+        const catalogResult = await mangaService.searchManga(query, 1, limit).catch(() => ({ data: [] as Manga[] }));
+        data = catalogResult.data || [];
+
+        if (USES_LOCAL_SOURCES && data.length < 3) {
+            const scraperResult = await withTimeout(
+                mangaService.searchMangaScraper(query, 1, limit).catch(() => ({ data: [] as Manga[] })),
+                3500,
+                { data: [] as Manga[] },
+            );
+            const seen = new Set<string>(
+                data.map((item) => String(item.title_english || item.title || '').toLowerCase().replace(/[^a-z0-9]/g, ''))
+            );
+            for (const item of scraperResult.data || []) {
+                const key = String(item.title_english || item.title || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+                if (!key || seen.has(key)) continue;
+                seen.add(key);
+                data.push(item);
             }
-        } else {
-            const catalogResult = await mangaService.searchManga(query, 1, limit);
-            data = catalogResult.data || [];
+        }
+        if (data.length === 0) {
+            const typo = suggestSearchCorrection(rawQuery);
+            if (typo && typo.correctedQuery.toLowerCase() !== query.toLowerCase()) {
+                const retry = await mangaService.searchManga(typo.correctedQuery, 1, limit).catch(() => ({ data: [] as Manga[] }));
+                data = retry.data || [];
+            }
         }
         return (data as PreviewManga[]).slice(0, limit).map((item) => ({
             id: item.id || item.mal_id,
@@ -221,7 +299,11 @@ export const searchApi = {
             date: item.published?.string
                 ? item.published.string
                 : '',
-            type: item.type,
+            type: item.countryOfOrigin === 'KR'
+                ? 'MANHWA'
+                : item.countryOfOrigin === 'CN'
+                    ? 'MANHUA'
+                    : (item.type || 'MANGA'),
             duration: null,
             score: item.score,
             url: `/manga/details/${item.id || item.mal_id}`,
@@ -229,9 +311,21 @@ export const searchApi = {
         })) as SearchPreviewItem[];
     },
 
-    async getLNPreview(query: string, language: TitleLanguage, limit = 8) {
+    async getLNPreview(rawQuery: string, language: TitleLanguage, limit = 8) {
+        const cacheKey = `ln:${language}:${limit}:${rawQuery.trim().toLowerCase()}`;
+        return withPreviewCache(cacheKey, () => this._fetchLNPreview(rawQuery, language, limit));
+    },
+
+    async _fetchLNPreview(rawQuery: string, language: TitleLanguage, limit = 8) {
+        const query = resolveSearchAlias(rawQuery) || rawQuery;
         const { lnService } = await import('../../services/lnService');
-        const items = await lnService.searchNovels(query);
+        let items = await lnService.searchNovels(query);
+        if (items.length === 0) {
+            const typo = suggestSearchCorrection(rawQuery);
+            if (typo && typo.correctedQuery.toLowerCase() !== query.toLowerCase()) {
+                items = await lnService.searchNovels(typo.correctedQuery);
+            }
+        }
         return items.slice(0, limit).map((item) => ({
             id: item.id,
             title: getDisplayTitle(item as unknown as Record<string, unknown>, language),
