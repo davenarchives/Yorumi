@@ -31,13 +31,14 @@ export default function ReaderHeader({
                 paddingTop: 'env(safe-area-inset-top, 0px)',
             }}
         >
-            <div className="w-full h-14 md:h-16 max-w-7xl mx-auto px-4 md:px-14 flex items-center justify-between gap-3">
+            <div className="w-full min-h-14 md:min-h-16 py-2 max-w-7xl mx-auto px-4 md:px-14 flex items-center justify-between gap-3">
                 {/* LEFT: Nav & Title */}
                 <div className="flex items-center gap-2.5 flex-1 min-w-0">
                     {onClose && (
                         <button
+                            type="button"
                             onClick={onClose}
-                            className="p-2 -ml-1 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white transition-colors flex items-center justify-center shrink-0 active:scale-95"
+                            className="p-2 -ml-1 text-gray-300 hover:text-white transition-colors flex items-center justify-center shrink-0 active:scale-95"
                             title="Back"
                             aria-label="Back"
                         >
@@ -54,10 +55,10 @@ export default function ReaderHeader({
                     )}
 
                     <div className="flex flex-col min-w-0 justify-center">
-                        <h1 className="text-sm font-bold text-white truncate leading-tight">
+                        <h1 className="text-sm font-bold text-white break-words leading-tight">
                             {mangaTitle}
                         </h1>
-                        <span className="text-xs text-gray-400 truncate leading-normal">
+                        <span className="text-xs text-gray-400 break-words leading-snug">
                             {currentChapter ? currentChapter.title : 'Reading'}
                         </span>
                     </div>
@@ -77,7 +78,7 @@ export default function ReaderHeader({
                 </div>
 
                 {/* RIGHT: Controls (Removed per user request) */}
-                <div className="flex items-center justify-end gap-2 flex-1 shrink-0">
+                <div className="hidden sm:flex items-center justify-end gap-2 flex-1 shrink-0">
                 </div>
             </div>
         </header>
