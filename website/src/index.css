@@ -1,8 +1,11 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
   --color-yorumi-main: var(--color-main);
   --color-yorumi-accent: var(--color-accent);
+  --color-yorumi-manga: var(--color-manga);
+  --color-yorumi-ln: var(--color-ln);
   --color-yorumi-bg: var(--color-bg);
   --color-yorumi-card: var(--color-card);
   --color-yorumi-text: var(--color-text);
@@ -13,20 +16,45 @@
 
 @layer base {
   :root {
-    --color-main: #FF8FC7;      /* Sakura pink */
-    --color-accent: #B79CED;    /* Soft lavender */
-    --color-bg: #FFF7FA;        /* Blush white */
-    --color-card: #FFFFFF;      /* Pure white cards */
-    --color-text: #4A3B47;      /* Soft plum (gentle on eyes) */
-    --color-muted: #9B8B98;     /* Muted mauve */
+    --color-main: #0088DB;
+    /* Yorumi Blue */
+    --color-accent: #0284C7;
+    /* Anime Sky Blue */
+    --color-manga: #9333EA;
+    /* Manga Purple */
+    --color-ln: #D97706;
+    /* Light Novel Amber */
+    --color-bg: #FAFAFB;
+    /* Clean light canvas */
+    --color-card: #F0F2F5;
+    /* Flat light surface */
+    --color-text: #0A0A0A;
+    /* Neutral dark ink */
+    --color-muted: #52525B;
+    /* Zinc 600 */
   }
+
   .dark {
-    --color-main: #FF9ECE;      /* Sakura pink (dark) */
-    --color-accent: #C3ACF0;    /* Lavender (dark) */
-    --color-bg: #2A2230;        /* Deep plum night */
-    --color-card: #372C3E;      /* Plum card */
-    --color-text: #FFF0F6;      /* Blossom white */
-    --color-muted: #C0AFC5;     /* Dusty lavender */
+    --color-main: #00A3FF;
+    /* Yorumi Vibrant Blue */
+    --color-accent: #3DB4F2;
+    /* Anime Sky Blue */
+    --color-manga: #C084FC;
+    /* Manga Light Purple */
+    --color-ln: #FBBF24;
+    /* Light Novel Yellow */
+    --color-bg: #0A0A0A;
+    /* Yorumi Deep Dark */
+    --color-card: #141417;
+    /* Flat dark surface */
+    --color-text: #FFFFFF;
+    /* Pure white */
+    --color-muted: #A1A1AA;
+    /* Zinc 400 */
+  }
+
+  html {
+    scroll-behavior: smooth;
   }
 
   body {
@@ -35,53 +63,85 @@
   }
 }
 
-/* ---------- Kawaii animations ---------- */
+/* ---------- Animations ---------- */
 @keyframes kawaii-float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-12px); }
+
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-10px);
+  }
 }
 
 @keyframes kawaii-float-slow {
-  0%, 100% { transform: translateY(0) rotate(0deg); }
-  50% { transform: translateY(-18px) rotate(3deg); }
+
+  0%,
+  100% {
+    transform: translateY(0) rotate(0deg);
+  }
+
+  50% {
+    transform: translateY(-14px) rotate(2deg);
+  }
 }
 
-@keyframes kawaii-sparkle {
-  0%, 100% { opacity: 0; transform: scale(0.5) rotate(0deg); }
-  50% { opacity: 1; transform: scale(1) rotate(20deg); }
+.animate-kawaii-float {
+  animation: kawaii-float 4s ease-in-out infinite;
 }
 
-@keyframes kawaii-wiggle {
-  0%, 100% { transform: rotate(0deg); }
-  25% { transform: rotate(-6deg); }
-  75% { transform: rotate(6deg); }
+.animate-kawaii-float-slow {
+  animation: kawaii-float-slow 6s ease-in-out infinite;
 }
 
-.animate-kawaii-float { animation: kawaii-float 4s ease-in-out infinite; }
-.animate-kawaii-float-slow { animation: kawaii-float-slow 6s ease-in-out infinite; }
-.animate-kawaii-sparkle { animation: kawaii-sparkle 2.5s ease-in-out infinite; }
-.animate-kawaii-wiggle { animation: kawaii-wiggle 0.6s ease-in-out; }
-
-/* ---------- Kawaii utility helpers ---------- */
-.kawaii-shadow {
-  box-shadow: 0 8px 24px rgba(255, 143, 199, 0.18), 0 2px 8px rgba(183, 156, 237, 0.12);
+/* Flat clean card surface (no shadows, no strokes) */
+.tarsi-card {
+  background-color: var(--color-card);
 }
 
-.kawaii-shadow-lg {
-  box-shadow: 0 16px 48px rgba(255, 143, 199, 0.25), 0 4px 16px rgba(183, 156, 237, 0.15);
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 
-.dark .kawaii-shadow {
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35), 0 2px 8px rgba(255, 158, 206, 0.08);
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
 }
 
-.dark .kawaii-shadow-lg {
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45), 0 4px 16px rgba(255, 158, 206, 0.1);
+@keyframes shots-marquee {
+  0% { transform: translate3d(0, 0, 0); }
+  100% { transform: translate3d(-50%, 0, 0); }
 }
 
-/* Cute dotted divider */
-.kawaii-dots {
-  background-image: radial-gradient(circle, var(--color-main) 1.5px, transparent 1.5px);
-  background-size: 12px 12px;
-  opacity: 0.35;
+@keyframes shots-marquee-reverse {
+  0% { transform: translate3d(-50%, 0, 0); }
+  100% { transform: translate3d(0, 0, 0); }
+}
+
+.animate-shots-marquee {
+  display: flex;
+  width: max-content;
+  animation: shots-marquee 55s linear infinite;
+  will-change: transform;
+}
+
+.animate-shots-marquee-desktop {
+  display: flex;
+  width: max-content;
+  animation: shots-marquee 65s linear infinite;
+  will-change: transform;
+}
+
+.animate-shots-marquee-reverse {
+  display: flex;
+  width: max-content;
+  animation: shots-marquee-reverse 65s linear infinite;
+  will-change: transform;
+}
+
+.marquee-fade-mask {
+  -webkit-mask-image: linear-gradient(to right, transparent 0%, #000 6%, #000 94%, transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0%, #000 6%, #000 94%, transparent 100%);
 }
