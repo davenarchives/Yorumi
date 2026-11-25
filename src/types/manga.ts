@@ -20,11 +20,12 @@ export interface Manga {
     chapters?: number | null;
     volumes?: number | null;
     synopsis?: string;
+    bannerImage?: string;
     views?: string;
     author?: string;
     artist?: string;
     genres?: { mal_id: number; name: string; }[];
-    authors?: { mal_id: number; name: string; }[];
+    authors?: { mal_id: number; name: string; role?: string; }[];
     published?: {
         from?: string;
         to?: string;
