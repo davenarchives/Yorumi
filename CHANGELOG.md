@@ -1,5 +1,394 @@
 # Changelog
 
+## [Unreleased]
+
+## [5.0.0] - 2026-11-25
+
+- Added TikTok-style mobile Explore gestures (`src/pages/ExplorePage.tsx`, `src/index.css`): full-screen tap to play/pause (including above and below the 16:9 trailer), double-tap anywhere to like with an animated rose heart burst, long-press for `2x` playback speed with the anime-player `2x` pill, and fixed paused mobile trailers blacking out instead of freezing on the current frame.
+- Added the animated Discord community modal (`src/components/shared/DiscordInviteModal.tsx`, `DesktopTitleBar.tsx`, `Sidebar.tsx`) and Discord invite button across desktop, mobile, and the marketing website.
+- Fixed Phone ↔ PC Discord Cloud Sync (`src/services/cloudSyncService.ts`, `src/utils/storage.ts`) by invalidating `storageMemoryCache` immediately when applying pulled Neon data and adding throttled foreground pulls on `visibilitychange`, and fixed inflated Library watch hours (`LibraryProfileOverview.tsx`) to use actual tracked watch seconds and watched episode/chapter history instead of multiplying raw episode/chapter numbers.
+- Updated `website/` with a 2-row opposite-direction cropped desktop showcase marquee, sticky header on Docs & Changelogs, slower live GitHub download counter starting from 500, and `v5.0.0` release links & changelog; updated `README.md` and CI/CD workflows (`.github/workflows/release.yml`, `.github/workflows/mobile-release.yml`) for `v5.0.0` Tauri + Android releases.
+- Improved Explore trailer playback by preparing the next three trailers and removing playback and category overlays, hiding the feed scrollbar, and cropping embedded player chrome.
+
+- Revamped the Yorumi marketing website (`website/src/App.tsx`, `website/src/index.css`) with a Tarsi-inspired landing page layout while keeping Yorumi's sakura/lavender light & dark theme: clean top navbar with solid `Download Yorumi` CTA, split hero with inline keyword pills + tilted app preview frame with the Yorumi mascot popping out, 3 squircle feature cards, horizontal screenshot strip with lightbox modal, cross-platform `Included, not extra` highlight card, centered `Start watching today.` closer CTA, community strip, and multi-column footer (preserving `v4.3.0` downloads, CLI install commands, and Documentation).
+- Sped up Search across mobile and desktop (`SearchPage.tsx`, `src/features/search/api.ts`, `useNavbarSearch.ts`, `SearchModal.tsx`, `userService.ts`): replaced blocking `Promise.all` on mobile `/search` with progressive per-source streaming so fast AniList Anime/Manga results appear immediately without waiting on NovelBin scraping or Render cold starts, added a shared 3-minute in-memory preview cache with in-flight deduplication, reduced search debounce from `280ms` to `180ms`, bounded slow Manga scraper / User Search requests with timeouts, and stopped wasted background Anime searches when `SearchModal` is in User Search mode.
+- Made `AnimeBrowsePage.tsx` mobile-friendly: tightened mobile hero height and top spacing, compacted sort tabs onto a single horizontal row, replaced the 4-row wrapping filter pills on mobile with a compact `Filters` pill + removable active filter chips + `Shuffle` row backed by a native-style filter bottom sheet (desktop filter bar preserved).
+- Unified public user profile page (`/user/:uid` in `UserProfilePage.tsx`, `LibraryPage.tsx`, `LibraryProfileOverview.tsx`, `userService.ts`, `backend/src/api/sync/sync.routes.ts`) to render the exact same read-only Library interface (backdrop, avatar, Activity + Top Genres overview, `[Anime | Manga | LN]` switcher, custom categories, search/sort/display options, and clickable cards) without edit/delete controls.
+- Pointed Cloud Sync and User Search (`src/services/cloudSyncService.ts`, `src/services/userService.ts`) to the hosted Render service (`https://yorumibot-1.onrender.com/api` by default, overridable via `VITE_SYNC_API_URL`) so standalone `.exe` and `.apk` builds sync and search users out-of-the-box without bundling any database credentials.
+- Removed the icon container from the Android splash screen (`android/app/src/main/res/drawable-nodpi/splash_icon.png`, `drawable/splash_bg.xml`, `values/styles.xml`, `values-v31/styles.xml`): replaced `@mipmap/ic_launcher_foreground` on the launch theme with a transparent moon-and-cat cutout centered directly on the purple `@color/ic_launcher_background` with `windowSplashScreenIconBackgroundColor` set to transparent, keeping the home-screen launcher icon unchanged.
+- Added Neon-backed User Search across backend, Library desktop search, and mobile `/search` (`backend/src/api/sync/sync.routes.ts`, `src/services/userService.ts`, `Sidebar.tsx`, `SearchModal.tsx`, `SearchPage.tsx`): exposed `GET /api/sync/users` and `GET /api/sync/users/:uid` backed by Neon Postgres (`yorumi_users` + `yorumi_library_sync`), switched desktop Sidebar Search to User Search when on `/library`, and added a **Users** results section to mobile `/search`.
+- Added unified Mihon-style `AppUpdateModal` across Mobile, Web, and Desktop (`src/components/shared/AppUpdateModal.tsx`, `useAppUpdater.ts`, `DesktopTitleBar.tsx`, `App.tsx`): dynamically parses GitHub release notes and renders only the changelog categories present (`New Features`, `Changes`, `Improvements`, `Fixes`, `Removals`, `Under the hood`), adds Android `.apk` asset detection, and provides full-width `Download` / `Not now` controls with live progress.
+- Fixed mobile download buttons across Anime, Manga, and Light Novels (`AnimeDetailsPage.tsx`, `DetailsEpisodeGrid.tsx`, `MangaDetailsPage.tsx`, `LNDetailsPage.tsx`): added status-bar top clearance (`max(env(safe-area-inset-top, 0px), 24px)`) on all 3 mobile details headers so top-right Download/Sort/View buttons are never buried under the Android status bar, made Anime episode card download buttons visible and tappable on touch (`opacity-90 md:opacity-0 md:group-hover:opacity-100`) plus unhid the toolbar Download All button on mobile, and replaced invalid nested `<span role="button">` inside `<button>` on Manga & LN chapter grid tiles with proper `<button>` controls and larger `h-7 w-7` touch targets.
+- Diversified Explore feed (`candidatePoolService.ts`, `recommendationEngine.ts`): replaced hardcoded `page: 1` seasonal AniList queries with randomized deeper pages across classics (pages `1..10`), hidden gems (pages `1..12`), rotating genre spotlights (14 genres, pages `1..6`), trending, airing, and upcoming; bumped pool cache key to `yorumi_explore_pool_v2` to purge stale caches; and rebalanced `TARGET_DISTRIBUTION`, `freshnessScore`, and `varietyScore` so every Explore session surfaces a genuinely diverse mix across eras and genres.
+- Fixed duplicate anime/manga entries in Continue Watching & Continue Reading (`src/utils/storage.ts`): deduplicated entries across `animeId`, `anilistId`, `malId`, and normalized title on save, read, and delete so the same show opened under different IDs (e.g. AniList ID vs MAL ID) merges cleanly into one card while preserving resume timestamps.
+- Built a personalized "You may like" search recommendation engine (`src/utils/searchRecommendations.ts`, wired in `SearchPage.tsx`): ranks fresh, unwatched/unread suggestions using weighted genre affinity from watch time, episode/chapter history, favorites, and lists across Anime, Manga, and LN, combined with batched AniList recommendations for your top most-watched titles, with paged `Refresh` rotation.
+- Redesigned mobile `/search` page (`SearchPage.tsx`, `Sidebar.tsx`) with a TikTok-style full-page search UI: pill input + accent `Search` action, recent searches with `Clock` + `×` remove + `See more` toggle, and a 2-column `You may like` section with `Refresh` (top 2 highlighted in accent color) while keeping mobile top-right Search navigating to `/search`.
+- Refined mobile top-right controls (`Sidebar.tsx`, `SearchModal.tsx`, `ExplorePage.tsx`): reordered icons to Search, Chat, Notification with unboxed bare icon styling in the same top-right position across all pages including Explore, and hid Explore's mobile top-right refresh/mute buttons so the 3 icons never collide.
+- Upgraded mobile Library Activity & Top Genres cards (`LibraryProfileOverview.tsx`) to a fixed-height (`h-[196px]`, zero layout shift) tap-to-expand split row (`flex-1` expanded card + `72px` compact summary strip showing the latest 9 non-future activity days so active squares are always visible; 2-column grid preserved on desktop).
+- Fixed Spotlight horizontal touch swiping across Anime, Manga, and LN (`SpotlightHero.tsx`, `ReadingSpotlight.tsx`, `MobilePullToRefresh.tsx`): removed `pointer-events-auto` from the foreground text/logo overlay so touch drags anywhere on the spotlight pass through to Embla (`touch-pan-y`, `dragThreshold: 4`), and tightened pull-to-refresh vertical angle gating so horizontal swipes never conflict.
+- Fixed Activity heatmap square aspect ratio on mobile (`flex-col` 10-week 1:1 square grid) and added automatic batched AniList genre backfill (`LibraryProfileOverview.tsx`, `useContinueWatching.ts`) so Top Genres populates immediately for existing watched anime and caches for Neon sync.
+- Placed Library Activity and Top Genres side-by-side (`grid-cols-2`, compact 12-week heatmap + compact genre rows on mobile) in `LibraryProfileOverview.tsx`, and fixed `cloudSyncService.ts` to resolve `http://localhost:3001/api` on Tauri desktop and Capacitor mobile when `VITE_SYNC_API_URL` is unset (plus clean account-switch handling via `yorumi_cloud_sync_uid_v1`).
+- Tightened mobile Library layout and added non-stretching pull-to-refresh (`LibraryPage.tsx`, `LibraryProfileOverview.tsx`, `MobilePullToRefresh.tsx`, `src/index.css`): compacted the mobile `[Anime | Manga | LN]` switcher + icon buttons to fit cleanly on one row without overlap, fitted Activity stats onto one line and all 26 weeks (Jun–Nov) inside mobile screen width without horizontal clipping, disabled Android WebView overscroll stretch (`overscroll-behavior-y: none`), and added a floating pull-to-refresh indicator that syncs Neon cloud state and reloads without stretching the bottom navbar.
+- Updated mobile UI to match desktop (`Sidebar.tsx`, `GlobalChatDrawer.tsx`, `LibraryPage.tsx`, `LibraryProfileOverview.tsx`): added Global Chat and Watchlist Episode Notifications (with unread indicator and frosted-glass dropdown) beside Search in the mobile top action bar, replaced the mobile Library dropdown with desktop's 3-tab segmented media pill (`Anime | Manga | LN`), added a quick `+ New` category button on mobile, made card delete buttons touch-accessible on mobile, and tightened signed-out mobile Library hero spacing.
+- Fixed Library overview Activity counts, Top Genres, and Hours (`LibraryProfileOverview.tsx`, `useContinueLNReading.ts`, `cloudSyncService.ts`): recorded LN reading sessions in activity history, broke out watched anime / read manga / read LN counts in the Activity card and profile header, computed real + estimated hours across anime, manga, and LN (fixing `0.0h` display), and synced `yorumi_anime_genre_cache` and `yorumi_manga_genre_cache` to Neon Postgres alongside local history/activity/watch-time keys.
+- Added automatic debounced Discord-authenticated cloud sync (`src/services/cloudSyncService.ts`, wired in `src/App.tsx`, `useContinueLNReading.ts`, `useLNReadList.ts`): pulls and non-destructively merges user library/history keys on startup and sign-in, and debounces writes by 15s (plus `pagehide`/`visibilitychange` keepalive flush) to keep Neon Free tier compute usage minimal.
+- Fixed catastrophic `localStorage.clear()` bug in `src/services/mangaService.ts` that wiped all user watch history, watchlist, favorites, categories, and Discord session whenever `localStorage` hit its quota: replaced the shadow helper with the safe `setLocalStorageWithCleanup` from `src/utils/localStorageQuota.ts` and added `yorumi_manga_cache_` / `yorumi_ln_cache_` to `VOLATILE_STORAGE_PREFIXES` so only volatile caches are ever pruned.
+- Removed the Yumi AI chatbot across frontend and backend (`YumiPage.tsx`, `yumiService.ts`, `yumiRecommendations.ts`, `backend/src/api/chat/yumi.routes.ts`, `/yumi` route, and `/api/chat` mount).
+- Removed Firebase completely (`firebase` dependency, `src/services/firebase.ts`, and dead Firestore code in `animeService.ts`, `YumiPage.tsx`, `userService.ts`, `UserSearchPage.tsx`), cutting unused bundle weight.
+- Wired Neon Postgres (`@neondatabase/serverless`) into the Express backend (`backend/src/infrastructure/db/neon.ts`, `backend/src/api/sync/sync.routes.ts`, `backend/src/core/config/env.ts`, mounted at `/api/sync`): loads `.env.local`/`.env` across root and `backend/`, uses `DATABASE_URL_UNPOOLED` for schema initialization (`yorumi_users`, `yorumi_library_sync`) and pooled `DATABASE_URL` for runtime queries, exposes `GET /api/sync/health`, and provides Discord-token-authenticated `GET` / `PUT` / `DELETE /api/sync/library` endpoints (gracefully disabled when unset).
+- Fixed Season 1 episodes playing Season 2 (e.g. *Cyberpunk: Edgerunners* Ep 1 playing *Cyberpunk: Edgerunners 2* Ep 1) and masked the 3px H.264 GPU green bottom-edge artifact in `VideoPlayer.tsx`: updated `getExplicitSeasonNumber` in `AnimeDetailsPage.tsx` to detect trailing sequel numbers (`2`–`9`, `II`–`IV`), resolved TMDB season chip switches to the matching AniList season entry, guarded `<DetailsVideoPlayer>` against mismatched TMDB-season vs `displayAnime` identities, passed the active season's `anime` metadata from `DetailsVideoPlayer.tsx` into `usePlayer.ts`, updated `resolveMalIdFromAniList` in `src/platform/sources/hianime.ts`, and added explicit season filtering to `backend/src/scraper/anineko.ts`.
+- Removed MangaDex fallback completely (`src/platform/sources/mangadex.ts`, `tests/mangadex-match.test.ts`, and `mangaService.ts`) so manga reading uses MangaKatana exclusively; updated `crates/yorumi-core/src/media/proxy.rs` to detect image extensions (even when `i1.mangakatana.com` responds with `application/octet-stream`) so proper `image/*` MIME types and `Cache-Control: public, max-age=86400, immutable` are always set, and raised upstream media timeout to 60s for slow MangaKatana scans.
+- Codebase QA & cleanup: removed 7 dead frontend components (`LoadingSpinner`, `MediaSectionHeader`, `PopularSeason`, `TopTenSidebar`, `TopTenSkeleton`, `TrendingNow`, `LNContinueReading`), 2 dead backend modules (`backend/src/scraper/mangadex.ts`, `backend/src/utils/ytdlp.ts`), 6 unused/duplicated bundled assets (~1.44 MB saved: `src/assets/luffy.gif`, `src/assets/react.svg`, duplicate `src/assets/yorumi-icon.png`, `public/vite.svg`, `public/gcash-logo.svg`, `public/yorumi-icon.svg`), and 3 empty accidental root folders (`Untitled*`); fixed `eslint.config.js` to ignore generated/build folders; fixed `PageViewer.tsx` cached-image spinner sticking and reduced concurrent preloading to 2 workers so MangaKatana doesn't throttle Page 1 (`proxy.rs` timeout raised to 25s).
+- Accelerated manga and LN reader performance (`crates/yorumi-core/src/media/proxy.rs`, `crates/yorumi-core/src/scrapers/client.rs`, `PageViewer.tsx`, `LNReaderPage.tsx`): skipped unnecessary MPEG-TS demasking/buffer-cloning on plain manga images in Rust, added `Cache-Control: public, max-age=86400, immutable` on proxied images for instant WebView2 cache hits, enabled `tcp_nodelay(true)` + 24 idle connections/host in `ScraperClient`, upgraded `PageViewer` from 1-by-1 sequential preloading to a 6-worker parallel preload pool with 8 eager async-decoded pages, and prefetched the next LN chapter in the background on `LNReaderPage`.
+- Replaced raw `navigate(-1)` / `navigate(1)` in `DesktopTitleBar.tsx` with a deduplicated, loop-free in-app history stack (`<` / `>`) that replaces redirects and same-page query changes in-place and disables arrows at history bounds.
+- Fixed broken MangaDex and manga reader page images on desktop (`mangaService.ts`, `PageViewer.tsx`): routed MangaDex chapter pages through Tauri's `yorumi-media` proxy with `Referer: https://mangadex.org/` to prevent hotlink 403 blocks from `http://tauri.localhost/`, added `referrerPolicy="no-referrer"` on reader images and preloader, and added automatic retry with proxy fallback + manual Retry UI in `MangaPageImage`.
+- Removed the English-only subtitle filter in `backend/src/scraper/hianime.ts` so all native multi-language tracks are returned, and added on-demand auto-translated subtitle languages (`Spanish`, `French`, `German`, `Portuguese`, `Indonesian`, `Filipino`, `Arabic`, `Japanese`, `Korean`, `Chinese`, `Russian`, `Italian`, `Thai`, `Vietnamese`, `Hindi`) directly in the player's Subtitles dropdown (`src/utils/subtitles.ts`, `CustomVideoControls.tsx`).
+- Replaced fragile native `<track>` rendering with a deterministic WebVTT/SRT/ASS subtitle cue renderer in `CustomVideoControls.tsx` + `src/utils/subtitles.ts` (immune to WebView2/hls.js track resets and CORS issues for both online and offline playback), preserved all available subtitle languages in `VideoPlayer.tsx` and offline downloads (`downloadService.ts`), and updated the CC button to always open a frosted-glass subtitle language dropdown (`Off` + all available languages).
+- Persisted full offline anime metadata (poster, backdrop, synopsis, score, year, rating, genres, and episode thumbnails/titles) via `downloadService.saveOfflineAnimeMetadata` / `getOfflineAnimeMetadata`, fixed CORS-blocked image caching in `offlineImageCache.ts` via Tauri's `yorumi-media` proxy, wired `EpisodeThumbnail` to fall back to cached offline images, relaxed English subtitle matching (`src/utils/subtitles.ts`), converted offline `data:` VTT tracks to `blob:` URLs in `getOfflineStream()`, and prioritized servers with soft subtitles when downloading episodes in `DetailsEpisodeGrid.tsx`.
+- Fixed desktop (Tauri) anime episode downloads, offline playback, and offline subtitles (`downloadService.ts`, `DetailsEpisodeGrid.tsx`, `crates/yorumi-core/src/downloader/hls.rs`, `manager.rs`, `src-tauri/src/media/protocol.rs`): raced stream providers in parallel to pick the first working server (preferring tracks with subtitles), properly awaited Tauri `download-progress` completion/error instead of falling through to CORS-blocked browser fetch, added `Origin` headers + HTTP status checks + segment retries + accurate `is_hls` detection in the Rust HLS downloader, persisted self-contained offline VTT subtitles for Tauri downloads, and added `/local-file` range streaming to the `yorumi-media` Tauri protocol so downloaded episodes play 100% offline.
+- Added a Discord-style green desktop auto-updater button beside Global Chat in `DesktopTitleBar.tsx` (`src/hooks/useAppUpdater.ts`, `src-tauri/src/commands/updater.rs`): automatically checks GitHub Releases (`davenarchives/Yorumi`), surfaces an emerald download icon only when a newer version is available, streams the platform installer with live progress, and runs silent in-place update & restart (`install_desktop_update`).
+- Loaded the full Top 100 lists in `Top100Manga.tsx` (`mangaService.getTop100Manga`) and `Top100LN.tsx` (`lnService.getTop100Full`) so `<` / `>` pages all the way from `#1` through `#100`, and added on-demand pagination up to 50 slides (300 items) in `AnimeDashboard.tsx`'s `Browse Anime` section.
+- Preloaded Manga and Light Novel home sections on app startup (`App.tsx`, `lnService.ts` `peek*` + `preloadHome()`) and hydrated all 6 LN home components synchronously from cache (`LNSpotlight`, `PopularKoreanNovels`, `PopularChineseNovels`, `LatestLNUpdates`, `AllTimePopularLN`, `Top100LN`) so navigating to `/ln` renders instantly without skeleton flashes; removed the AniList portrait poster fallback on desktop 16:9 `AnimeLandscapeCard.tsx` cards; and restored the 3-row paged grids (12 items/page with `<` / `>` controls beside `View all >`) in `Top100Manga.tsx` and `Top100LN.tsx`.
+- Updated Anime `More like this` (`DetailsInfo.tsx`) to recommend similar close-genre anime (AniList recommendations + genre-overlap fallback, excluding same-franchise relations) instead of sequels/same-franchise entries; unified `MangaDetailsPage.tsx` and `LNDetailsPage.tsx` with `Chapters | More like this` tabs below the hero poster and the exact `DetailsEpisodeGrid` pill toolbar (`Search chapters`, `Newest/Oldest`, Grid/List, Download, Folder, and `X/Y read` counter, with close-genre fallback and same-franchise filtering in `MoreLikeReading.tsx`).
+- Unified modals (`SearchModal.tsx`, `LibraryPage.tsx` Filter/Sort/Display, Add/Move/Delete Category modals and menus) to share the same frosted glass surface (`bg-[#0d0e12]/80 backdrop-blur-2xl border-white/10`) and `rounded-lg` border radius, and switched `GlobalChatDrawer.tsx` auto-scroll to instant (`behavior: 'auto'`).
+- Updated `LibraryPage.tsx` toolbar to remove the blurred glass strip and compress the desktop media switcher (`Anime | Manga | Light Novel`), category tabs (`All`, `Watchlist`, `Favorites`, custom categories), and controls (`+ New category`, Search, Filter/Sort, More) into a single clean transparent row matching `AnimeDetailsPage`.
+- Added a full-screen `DetailsHero`-style backdrop (`tmdbService.getBackdropForAnime`, `h-screen` mask fade + matching vignette overlays) + Activity Heatmap + Top Genres overview (`src/features/library/components/LibraryProfileOverview.tsx`) above the Library grid in `LibraryPage.tsx`: renders the most recently watched anime's widescreen backdrop behind the entire top viewport, displays the signed-in Discord avatar/username (updating live via `yorumi-discord-session-updated` from `GlobalChatDrawer.tsx`) with `Joined · watched · in watchlist` stats, a 26-week Activity contribution heatmap (titles, active days, day streak), and a Top Genres breakdown with watch hours.
+- Updated Global Chat `▸ Now Watching` (`GlobalChatDrawer.tsx`, `AnimeDetailsPage.tsx`, `YorumiBot/src/app.js`) to attach live anime title, season, episode, and exact playback timestamp ONLY while actively watching an episode (never stale history), and made the `▸` tag clickable so other users jump directly to that episode and seek to that exact timestamp (`?ep=N&t=S`).
+- Added Discord OAuth2 sign-in to Global Chat (`GlobalChatDrawer.tsx`, `src-tauri/capabilities/default.json`, `YorumiBot/src/app.js` `/auth/discord/login`, `/auth/discord/callback`, `/auth/discord/poll`): allowlisted `yorumibot-1.onrender.com` and `discord.com` in Tauri's `opener:allow-open-url` capability and added Capacitor `Browser.open` support so clicking `Sign in` launches Discord OAuth2 cleanly on desktop and mobile.
+- Added a built-in non-deletable `Watchlist` (`Read list` on Manga/LN) category tab beside `All` and `Favorites` in `LibraryPage.tsx` that automatically appears only when at least one watchlisted/read-listed entry exists and filters directly to watchlisted entries.
+- Added a Global Discord Chat drawer (`GlobalChatDrawer.tsx`, defaulted to `https://yorumibot-1.onrender.com`) with live create, edit, and delete message sync via SSE + fallback polling, plus a Watchlist Episode Updates notification bell (`useWatchlistNotifications.ts`) in `DesktopTitleBar.tsx`.
+- Fixed broken anime episode downloads on both standalone desktop (Tauri) and mobile (Android) (`downloadService.ts`, `useDownloads.ts`, `DetailsEpisodeGrid.tsx`): fetched subtitle tracks via `nativeHttp.fetchText` instead of dead `localhost:3001/api/scraper/proxy` URLs (and made caption fetch failures non-fatal), forwarded `referer` and unwrapped proxy URLs to Tauri and Android native downloaders, and enlarged the episode card download icon to `h-6 w-6` without its dark circle container to match the watched circle.
+- Added a hover-reveal circular `×` delete button on Library cards and list rows (`LibraryPage.tsx`) to delete entries from Library (`All`), remove from `Favorites`, or remove from a custom category.
+- Removed the bordered background box around `Showing results for` / `Did you mean` search suggestions across `SearchModal.tsx`, `SearchPage.tsx`, and `SearchResultsPage.tsx` so they render as clean inline text.
+- Shortened the mobile Library media selector label from `Light Novel` to `LN` (`LibraryPage.tsx`).
+- Fixed Library anime entries opening incomplete scraper-only details (`LibraryPage.tsx`, `AnimeContext.tsx`): preferred canonical AniList/MAL/TMDB route IDs over `s:<uuid>` scraper IDs in `getAnimeRouteId`, and hydrated incomplete scraper shells via AniList title search + `getAnimeDetails` while preserving `scraperId` so score, year, synopsis, genres, airing countdown, and episode stills match the normal Details page.
+- Removed the Personal Hub banner/tabs from `LibraryPage.tsx` (deleted `LibraryOverviewHub.tsx`), updated Explore's right action rail (`ExplorePage.tsx`) to use solid filled icons on desktop and mobile, separated the Heart button to Like-only (`yorumi_explore_liked_anime`), switched the Bookmark button to add/remove Favorites, and added a built-in non-deletable `Favorites` category tab in `LibraryPage.tsx` that automatically appears only when at least one favorite entry exists for the active media tab.
+- Shared a single in-flight-deduped AniList poster/metadata cache (`src/utils/mangaPosterCache.ts`) with strict exact-title matching (removing loose substring and `data[0]` fallbacks so non-AniList comics like `Radiant` never inherit unrelated posters/badges like `Radiant Rewind`) across `LatestMangaUpdates.tsx`, `MangaSpotlight.tsx`, and `useManga.ts` (and fixed `MangaSpotlight`'s self-canceling `useEffect` dependency), and updated the Manga/LN Details primary CTA (`ReadingDetailsHero.tsx`, `MangaDetailsPage.tsx`, `LNDetailsPage.tsx`) to always display `Read` (disabled with `disabled:opacity-60` while loading).
+- Updated Global Chat `▸ Now Watching` (`GlobalChatDrawer.tsx`, `AnimeDetailsPage.tsx`, `YorumiBot/src/app.js`) to attach live anime title, season, episode, and exact playback timestamp ONLY while actively watching an episode (never stale history), and made the `▸` tag clickable so other users jump directly to that episode and seek to that exact timestamp (`?ep=N&t=S`).
+- Added Discord OAuth2 sign-in to Global Chat (`GlobalChatDrawer.tsx`, `src-tauri/capabilities/default.json`, `YorumiBot/src/app.js` `/auth/discord/login`, `/auth/discord/callback`, `/auth/discord/poll`): allowlisted `yorumibot-1.onrender.com` and `discord.com` in Tauri's `opener:allow-open-url` capability and added Capacitor `Browser.open` support so clicking `Sign in` launches Discord OAuth2 cleanly on desktop and mobile.
+- Added a built-in non-deletable `Watchlist` (`Read list` on Manga/LN) category tab beside `All` and `Favorites` in `LibraryPage.tsx` that automatically appears only when at least one watchlisted/read-listed entry exists and filters directly to watchlisted entries.
+- Added a Global Discord Chat drawer (`GlobalChatDrawer.tsx`, defaulted to `https://yorumibot-1.onrender.com`) with live create, edit, and delete message sync via SSE + fallback polling, plus a Watchlist Episode Updates notification bell (`useWatchlistNotifications.ts`) in `DesktopTitleBar.tsx`.
+- Fixed broken anime episode downloads on both standalone desktop (Tauri) and mobile (Android) (`downloadService.ts`, `useDownloads.ts`, `DetailsEpisodeGrid.tsx`): fetched subtitle tracks via `nativeHttp.fetchText` instead of dead `localhost:3001/api/scraper/proxy` URLs (and made caption fetch failures non-fatal), forwarded `referer` and unwrapped proxy URLs to Tauri and Android native downloaders, and enlarged the episode card download icon to `h-6 w-6` without its dark circle container to match the watched circle.
+- Added a hover-reveal circular `×` delete button on Library cards and list rows (`LibraryPage.tsx`) to delete entries from Library (`All`), remove from `Favorites`, or remove from a custom category.
+- Removed the bordered background box around `Showing results for` / `Did you mean` search suggestions across `SearchModal.tsx`, `SearchPage.tsx`, and `SearchResultsPage.tsx` so they render as clean inline text.
+- Shortened the mobile Library media selector label from `Light Novel` to `LN` (`LibraryPage.tsx`).
+- Fixed Library anime entries opening incomplete scraper-only details (`LibraryPage.tsx`, `AnimeContext.tsx`): preferred canonical AniList/MAL/TMDB route IDs over `s:<uuid>` scraper IDs in `getAnimeRouteId`, and hydrated incomplete scraper shells via AniList title search + `getAnimeDetails` while preserving `scraperId` so score, year, synopsis, genres, airing countdown, and episode stills match the normal Details page.
+- Removed the Personal Hub banner/tabs from `LibraryPage.tsx` (deleted `LibraryOverviewHub.tsx`), updated Explore's right action rail (`ExplorePage.tsx`) to use solid filled icons on desktop and mobile, separated the Heart button to Like-only (`yorumi_explore_liked_anime`), switched the Bookmark button to add/remove Favorites, and added a built-in non-deletable `Favorites` category tab in `LibraryPage.tsx` that automatically appears only when at least one favorite entry exists for the active media tab.
+- Shared a single in-flight-deduped AniList poster/metadata cache (`src/utils/mangaPosterCache.ts`) with strict exact-title matching (removing loose substring and `data[0]` fallbacks so non-AniList comics like `Radiant` never inherit unrelated posters/badges like `Radiant Rewind`) across `LatestMangaUpdates.tsx`, `MangaSpotlight.tsx`, and `useManga.ts` (and fixed `MangaSpotlight`'s self-canceling `useEffect` dependency), and updated the Manga/LN Details primary CTA (`ReadingDetailsHero.tsx`, `MangaDetailsPage.tsx`, `LNDetailsPage.tsx`) to always display `Read` (disabled with `disabled:opacity-60` while loading).
+- Fixed Manga/Manhwa/Manhua type chips (`mangaService.ts`, `src/features/search/api.ts`, `SearchModal.tsx`, `MangaDetailsPage.tsx`) to derive `MANHWA` (`countryOfOrigin === 'KR'`) and `MANHUA` (`countryOfOrigin === 'CN'`) instead of labeling all AniList manga entries as `MANGA`, made `getMangaPreview` AniList-first (only falling back to MangaKatana when `< 3` results) so desktop search no longer stalls behind MangaKatana's rate-limit queue, and added clickable `Did you mean ...?` typo/alias suggestions to desktop `SearchModal.tsx`.
+- Fixed MangaKatana scraper matching (`mangakatana.ts`, `mangaService.ts`) so serialized manga like `One-Punch Man` and `One Piece` never lock onto 1-chapter oneshots (`Chapter 0: Oneshot`): penalized oneshot/pilot/spinoff candidates, rewarded chapter depth, inspected multiple confirmed candidates in `resolveLocalMangaKatanaDetails` to pick the real serialized entry, and bumped `PERSISTED_CACHE_PREFIX` (`yorumi_manga_cache_v6`) to purge stale 1-chapter mappings.
+- Added fuzzy typo correction (`Did you mean ...?`) and alternative title / shorthand alias search (`src/utils/searchIntelligence.ts`, `src/features/search/api.ts`, `SearchPage.tsx`, `SearchResultsPage.tsx`) across Anime, Manga (merging AniList synonym-indexed search with MangaKatana), and Light Novels.
+
+- Kept the primary `Read` / `Ch. N` CTA button in `ReadingDetailsHero.tsx` crisp white with its label instead of swapping to dimmed `Loading...` while chapters resolve, matching Anime Details on both desktop and mobile.
+
+- Unified the desktop and mobile video player controls in `CustomVideoControls.tsx` to use the sleek mobile-fullscreen player layout (top episode title header + Cast/Lock, center `-10s` / `Play-Pause` / `+10s`, thin white timeline above clean bottom controls with desktop hover volume slider, dedicated server selector, and slide-over episodes drawer; removed duplicate Server entry from Settings, removed the Aspect Ratio button, and restricted the desktop Episodes drawer button to fullscreen).
+
+- Fixed Explore feed loading & preloading (`candidatePoolService.ts`, `exploreService.ts`, `useExploreFeed.ts`, `App.tsx`): migrated AniList queries to `postJson` (`nativeHttp.ts`), trimmed heavy `characters`/`stats` fields from the batched query, added retry + `exploreService` fallback + `localStorage` pool caching (`yorumi_explore_pool_v1`), and preloaded the candidate pool on app startup so Explore trailers load immediately on click; also moved `<AnimeLogoImage />` in `SpotlightHero.tsx` into the `z-20` foreground layer so spotlight logos always render bright above all gradient vignettes.
+
+- Updated the Android splash screen (`styles.xml`, `values-v31/styles.xml`, `drawable/splash_bg.xml`) to use the exact Yorumi logo purple (`@color/ic_launcher_background` `#291F6F`) for a seamless launch transition.
+
+- Tightened chapter list row sizing (`text-[14px] sm:text-[15px]`, `py-2.5`, compact `h-5 w-5` download icon) and updated chapter grid tiles to 4 squares per row on mobile (`grid-cols-4 gap-2.5`) with the same translucent glass surface (`rounded-[14px] bg-white/[0.06] hover:bg-white/[0.09]`) across mobile and desktop in `LNDetailsPage.tsx` and `MangaDetailsPage.tsx`.
+
+- Replaced the broken `novel-bin.com` scraper (now returning `<title>Redirecting...</title>` anti-bot pages) with **AllNovelFull** (`allnovelfull.com`, using single-request `/ajax-chapter-option` full chapter loading) and **NovelFire** (`novelfire.net`, clean `#content` HTML + broad Japanese LN coverage) in `src/platform/sources/novelbin.ts`, updated curated Korean/Chinese novel IDs in `src/services/lnData.ts` to verified `anf:` slugs, and bumped LN cache keys (`ln_v6_*`, `ln_v4_content_`) in `src/services/lnService.ts` to purge stale failed entries on mobile and desktop.
+
+- Hid chapter counts on mobile only in `LNSpotlight.tsx` and `MangaSpotlight.tsx` (`SpotlightMetadata.tsx` `desktopOnly` flag) so the metadata row fits without clipping, replaced all 24 dead `novel-bin.com/files/image/*` covers in `lnData.ts` (`POPULAR_KOREAN_NOVELS`, `POPULAR_CHINESE_NOVELS`) with verified `s4.anilist.co` URLs (and bypassed the empty AniList `format: NOVEL` KR/CN query in `lnService.ts` + bumped `ln_v5_details_`), consolidated `ChapterViewToggle.tsx` into a single toggle button, and unified the desktop sort button icon to `ArrowUpDown` with default white styling across `LNDetailsPage.tsx` and `MangaDetailsPage.tsx`.
+
+- Fixed `MangaSpotlight.tsx` to prefer the manga's own `images.jpg.large_image_url` so the spotlight poster matches `MangaDetailsPage`, matched `ReadingDetailsHero.tsx` mobile poster visibility/sizing (`invisible sm:visible`) to Anime Details (`DetailsInfo.tsx`), and replaced dead `novel-bin.com/files/image/*` Light Novel covers in `LNSpotlight.tsx` and `lnService.ts` (`getPopularKoreanNovels`, `getPopularChineseNovels`) with AniList `s4.anilist.co` covers (`ln_v4_popular_korean`, `ln_v4_popular_chinese`).
+
+- Updated mobile hero backdrops across `DetailsHero.tsx`, `ReadingDetailsHero.tsx`, `AnimeBrowsePage.tsx`, `Top100Page.tsx`, and `AnimeStudioPage.tsx` to use the crisp vertical portrait poster (`bg-top`) on mobile instead of stretching horizontal banners/backdrops.
+
+- Removed "See all" from `Top 10 Today` and `Trending Now` in `AnimeDashboard.tsx`, added a global AniList request pacing queue (`650ms`) + in-flight deduplication in `anilistAnime.ts` to prevent `429` bursts, and wired `animeService.browseAnime` to fall back to `getTrendingAnime` / `getPopularThisSeason` / `getTopAnime` / `getTop100Anime` if AniList rate-limits.
+
+- Updated mobile `SpotlightHero.tsx`, `ReadingSpotlight.tsx` (Manga & LN), and `SpotlightSkeleton.tsx` to a compact `70svh` (`min-h-[460px] max-h-[600px]`) height instead of full screen, using crisp vertical portrait posters (`object-top`) on mobile.
+
+- Ensured the mobile bottom navbar (`Sidebar.tsx`, `ExploreEpisodesDrawer.tsx`, `index.css`) unmounts and hides reliably when the Explore episodes sheet is open.
+
+- Hardened `/anime/browse` against AniList `429` rate limits: upgraded `queryAniList` retry backoff (`anilistAnime.ts`), added fallback to cached home sections in `animeService.browseAnime`, and added a dedicated error state with a **Retry** button in `AnimeBrowsePage.tsx`.
+
+- Added the circular Heart (favorite) button to `ReadingDetailsHero.tsx` on both mobile and desktop (matching `DetailsInfo.tsx`), wired to `useFavoriteManga` in `MangaDetailsPage.tsx` and a new `useFavoriteLN` hook (`src/hooks/useFavoriteLN.ts`) in `LNDetailsPage.tsx`.
+
+- Extracted the shared pure-Rust engine into `crates/yorumi-core` inside a root Cargo workspace (`Cargo.toml`), adding a persistent SQLite WAL `kv_cache` layer (Stale-While-Revalidate), unified AniList `get_top_100` / `browse_anime` / `get_reading_list` queries, a SQLite-cached TMDB artwork client (`tmdb.rs`), a decoupled `DownloadManager` (`tokio::sync::broadcast`), and a local `127.0.0.1` HTTP HLS proxy (`LocalMediaProxy`), while keeping `src-tauri/` working as a thin adapter behind the React UI.
+
+- Updated `AnimeBrowsePage.tsx` to match the Studio Catalogue hero layout: crisp `520px` hero backdrop sourced from the first anime (upgraded via TMDB `w1280` backdrop), `#08090d` gradient fade, `text-4xl sm:text-6xl` heading aligned with the card grid, and `#0596ff` active pills.
+
+- Added `/anime/browse` (`AnimeBrowsePage.tsx`, `anilistAnime.ts`, `animeService.ts`) with Trending/Popular/Top Rated/Airing/Upcoming tabs, Genre/Tag/Format/Season/Year/Status/Rating filter dropdowns, shuffle random button, infinite scroll, and 4-column landscape card grid; wired `AnimeDashboard.tsx` "See all" links to `/anime/browse`.
+
+- Updated `LNCard.tsx` and `Top100LN.tsx` to use the same stroke-free pastel circular rank badges (`RankBadge`) and added a **View all** button navigating to `/ln/top-100` (`Top100Page.tsx`, `lnService.getTop100Full()`).
+
+- Removed the floating back button on `Top100Page.tsx` and unified `mangaService.getTop100Manga()` (`anilistManga.ts`, `mangaService.ts`) to use `getHomeSections().top` + AniList `SCORE_DESC` (`getLocalAniListTop100Manga`) so `/manga/top-100` matches the `Top 100 Manga` home grid `#1`–`#100`.
+
+- Unified `animeService.getTop100Anime()` (`anilistAnime.ts`, `animeService.ts`) to query AniList `SCORE_DESC` (`getLocalAniListTop100Anime`) so the `/anime/top-100` "View all" page matches the `Top 100 Anime` carousel rankings (`#1`–`#100`).
+
+- Aligned the studio logo, title, and filter pills to the card grid in `AnimeStudioPage.tsx` (`max-w-[1440px] px-4 sm:px-10 md:px-14 lg:px-16`, `grid-cols-2 md:grid-cols-3 xl:grid-cols-4`), and updated `Top100Page.tsx` to use the same hero backdrop and left-aligned header/grid layout.
+
+- Disabled the `hqdefault.jpg` trailer preview image overlay on desktop Explore (`ExplorePage.tsx`) and kept the trailer iframe `md:opacity-100` so scrolling goes directly to video.
+
+- Fixed desktop `ExploreEpisodesDrawer` height/width (`md:static md:max-h-none md:h-full md:w-[420px] lg:w-[440px] md:shrink-0`) and `ExplorePage` flex container (`flex-1 min-w-0`) so the episodes sidebar fills 100% height with no bottom black gap or right-edge clipping, and removed the dimmed `mqdefault.jpg` pause cover overlay in `ExplorePage.tsx`.
+
+- Expanded the desktop Explore episodes sidebar (`480px` width in `ExploreEpisodesDrawer.tsx` and `ExplorePage.tsx`) and removed all backdrop dimming/blur and shadow gradients behind/beside the episodes panel on both desktop and mobile.
+
+- Fixed `ExploreEpisodesDrawer` on mobile to portal to `document.body` and hide `.yorumi-mobile-navbar` (`html.explore-episodes-open`) while open, without affecting desktop.
+- Fixed studio catalog loading reliability in `src-tauri/src/commands/http.rs` (avoid duplicate `Accept`/`Content-Type`/`User-Agent` headers in `http_fetch_post`), added retry on transient AniList errors (`anilistAnime.ts`), and added caching/in-flight deduplication for `getStudioAnime` (`animeService.ts`).
+
+- Added stroke-free pastel circular rank badges (`RankBadge.tsx`) for Top 100 Anime (`AnimeDashboard.tsx`, `AnimeLandscapeCarousel.tsx`, `AnimeLandscapeCard.tsx`) and Top 100 Manga (`Top100Manga.tsx`, `MangaCard.tsx`, `ReadingCardArtwork.tsx`) on both desktop and mobile, plus "View all" navigation to dedicated `/anime/top-100` and `/manga/top-100` pages (`Top100Page.tsx`) showing full `#1`–`#100` ranked lists.
+
+- Fixed desktop spotlight bottom seam across Anime, Manga, and LN (`SpotlightHero.tsx`, `ReadingSpotlight.tsx`, `AnimeDashboard.tsx`, `MangaPage.tsx`, `LNPage.tsx`) by applying `.spotlight-track-mask` to the vignette overlay and tucking the first content row (`md:-mt-8` / `md:-mt-6`) into the faded spotlight edge for a seamless blend into the ambient backdrop.
+
+- Made the top-right `+` list button hover-only on desktop (`AnimeLandscapeCard.tsx`, `ReadingCardArtwork.tsx`), and removed blocking `AnimatePresence mode="wait"` route transitions on desktop (`AppRoutes.tsx`) for instant, lightweight navigation.
+
+- Restored the inverted rounded cutout notch mask (`AnimeLandscapeCard.tsx`) on mobile airing badges so the card corners match the desktop seamless rounded cutout look.
+
+- Updated `ExploreEpisodesDrawer` and `MainActivity.kt` on mobile: removed the episode watched circle badge and header `X` close button, added pointer drag-to-dismiss on the mobile sheet handle/header, extended the sheet above the bottom navbar (`z-[2147483620]`), and synced Android system navigation bar color (`#121318`) with the drawer surface while open.
+
+- Added mobile-accurate skeleton loading across all mobile tabs: created `ExploreSkeleton` for `ExplorePage` and `/explore` route fallback, updated `SpotlightSkeleton` to match the centered mobile Anime/Manga/LN spotlight layout (split action buttons and indicator dots), and added a Library grid skeleton in `AppRoutes` `RouteFallback`.
+
+- Fixed `ExplorePage` preloaded trailers so inactive slides pause and reset to `0:00` instead of playing silently in the background, ensuring every trailer starts from the beginning when scrolled into view.
+
+- Optimized mobile navigation and WebView responsiveness: forced scroll-to-top (`0, 0`) on tab switches and route pushes (`ScrollRestoration.tsx`), bypassed blocking `AnimatePresence mode="wait"` route transitions on mobile (`AppRoutes.tsx`), enabled `reducedMotion="always"` for Framer Motion on mobile (`App.tsx`), and added `touch-action: manipulation`, `-webkit-tap-highlight-color: transparent`, and `overscroll-behavior-y: contain` in `src/index.css`.
+
+- Moved `ReadingSpotlight` titles back into the outer foreground (`z-20`) without `AnimatePresence` remounting so Manga and LN spotlight titles stay crisp white like the synopsis with zero swipe delay.
+
+- Updated Manga and LN reader headers (`ReaderHeader.tsx`, `LNReaderPage.tsx`) to display full manga/novel and chapter names without truncation, removed the back button box container, and updated reader back navigation (`MangaReaderPage.tsx`, `LNReaderPage.tsx`, `MangaDetailsPage.tsx`, `LNDetailsPage.tsx`) to always return cleanly to the series details page without looping or getting stuck.
+
+- Applied the same 1:1 slide-locked title and instant metadata/stationary button optimization to `ReadingSpotlight` (used by Manga and LN spotlights), removing `AnimatePresence` remount delays and updating `selectedIndex` immediately on swipe.
+
+- Made `SpotlightHero` logos move 1:1 with each Embla slide poster on both mobile and desktop, and removed `AnimatePresence` remount transitions so ratings, year, genre, content rating, and synopsis update instantaneously while Play/Details stay stationary.
+
+- Made mobile anime spotlight logos move with their artwork and kept action buttons stationary while slide metadata updates immediately.
+
+- Restored the season and episode number beside the episode title on the mobile watch page.
+
+- Prevented mobile Back from looping between anime details and watched episodes; details now returns to Anime Home.
+
+- Kept mobile episode dates and durations on a single row.
+
+- Kept mobile player controls mounted while resolving streams and removed malformed fullscreen metadata text.
+
+- Corrected mobile player season labels and garbled separators, simplified the episode subtitle, and opened the player while the selected episode is resolving.
+
+- Moved the mobile fullscreen anime timeline above the controls and restored inline player sizing after the portrait rotation completes.
+
+- Made mobile detail and Android system back navigation return to the previous page, with section fallbacks for direct links.
+
+- Smoothed Explore transitions by retaining preloaded playback and showing artwork while a trailer starts; deferred mobile spotlight foreground updates until swipes settle.
+
+- **Mobile Explore 16:9 Trailer Format & Native Fullscreen Mode**:
+  - Updated `ExplorePage.tsx` on mobile (`< md`) to display trailers in a clean centered `16:9` (`aspect-video`) frame on a black canvas with a TikTok-style `Full screen` pill button directly underneath, clean text anime titles, and spaced TikTok-style right action buttons above the bottom navbar.
+  - Showed the mobile bottom progress bar only once paused/clicked (`!isFullscreen && isActive && isPaused`) flush at `bottom-0` with full touch/pointer drag-to-scrub seeking (`touch-none`), removed the offset `centerAction` pop overlay and circular Play/Pause icon containers, pre-buffered the next 2 trailers automatically (`activeIndex + 2`), and reset scrolled slides to `0:00`.
+  - Updated the Explore Heart button label to show the total number of AniList users who rated the anime (`stats.scoreDistribution`, formatted like `9,999`, `100.0K`, `999.9K`, `1M`) with a `+1` local increment when liked.
+  - Guarded the desktop `<aside>` sidebar (`Sidebar.tsx`) and `md:ml-[70px]` shell offset (`App.tsx`) with `!isMobileShell()` so the desktop sidebar never appears or offsets layout on mobile even in landscape fullscreen.
+  - Removed the active-tab top white indicator line from the mobile bottom navbar (`Sidebar.tsx`), positioned the mobile Explore progress bar flush onto the navbar border line (`z-[2147483605]`), and reset `isPaused` synchronously on scroll (`useLayoutEffect` + `handleScroll`/`scrollToIndex`) so the Play icon never appears after scrolling.
+  - Replaced CSS `rotate-90` tilt fullscreen with native OS-level landscape fullscreen (`enterLandscapePlayerMode` / `exitLandscapePlayerMode` and web `requestFullscreen` fallback), increased YouTube iframe overscan (`w-[152%] h-[176%]`) + opaque dimmed poster pause cover (`opacity-0` iframe + `mqdefault.jpg` over `bg-black` when paused) so YouTube overlays are completely hidden, and added the floating `sleeping.gif` loading animation matching `VideoPlayer.tsx` for Explore feed and trailer buffering.
+
+- **Mobile Reading Spotlight & Details Polish**:
+  - Updated `SpotlightMetadata.tsx` to keep score, author/chapters, and format chip (`MANHWA` / `LIGHT NOVEL` / etc.) on a single non-wrapping row (`flex-nowrap`, `whitespace-nowrap`) with compact mobile spacing and zero dead space.
+  - Hid the redundant circular back button in `ReadingDetailsHero.tsx` on mobile (`hidden md:flex`) for both Manga and Light Novels since the mobile top bar already provides navigation back.
+
+- **Mobile Swipe & Scroll Performance Pass**:
+  - Spotlights (`SpotlightHero.tsx`, `ReadingSpotlight.tsx`) now render artwork only for the active slide and its neighbours, load `w1280` TMDB backdrops on mobile instead of `original` (4K), and moved the bottom fade `mask-image` off the moving Embla track on mobile (`.spotlight-track-mask`, desktop-only).
+  - Heavy spotlight side-effects (episode prefetch, details fetch, ambient backdrop updates, parent `onSelect`) now run on Embla `settle` instead of `select`, so no page-wide re-renders happen mid-swipe; ambient backdrop updates are skipped on mobile.
+  - Disabled `backdrop-filter` inside mobile home pages (`.media-home-perf`) and on the fixed mobile Search button (`Sidebar.tsx`), and set `touch-action: pan-y pinch-zoom` on carousel tracks so horizontal swipes don't fight vertical scrolling.
+  - `AnimeLandscapeCard.tsx` skips TMDB backdrop lookups on mobile (portrait posters are shown there), removes per-card SVG `<mask>` compositing and `AnimeLogoImage` overlays on mobile, and uses `content-visibility: auto` on mobile `.media-home-perf section` elements to eliminate vertical section scroll lag.
+
+- **Mobile Smooth Scrolling, Spotlight Swiping & Browse Limit**:
+  - Moved spotlight slide artwork directly inside Embla Carousel slides (`SpotlightHero.tsx`, `ReadingSpotlight.tsx`) with `will-change-transform` and parallel TMDB backdrop preloading for seamless 1:1 finger-tracked swiping without `AnimatePresence` crossfade lag.
+  - Disabled heavy full-screen `blur(100px)` / `blur-[120px]` ambient backdrop layers on mobile (`< md`) in `AnimeDashboard.tsx`, `MangaPage.tsx`, `LNPage.tsx`, and `App.tsx` to eliminate GPU overdraw during vertical scrolling and remove the muddy brown tint in empty regions.
+  - Tightened mobile spotlight height/bottom padding (`pb-6`, `h-[76svh]`) and removed double-stacked bottom padding above the mobile bottom navbar (`AnimeDashboard.tsx`, `MangaPage.tsx`, `LNPage.tsx`, `AnimeLandscapeCarousel.tsx`, `App.tsx`).
+  - Limited "Browse Anime" (`AnimeDashboard.tsx`) to 6 cards per page (`ITEMS_PER_BLOCK = 6`, skeleton count `6`).
+
+- **Player Fullscreen Zoom Rotation & Genre-Based Recommendations**:
+  - Replaced franchise relations in "More Like This" (`DetailsVideoPlayer.tsx`) with genuine genre-matched recommendations via AniList community recommendations and `animeService.getAnimeByGenre`.
+  - Added strict filtering against sequels, prequels, spin-offs, and matching franchise keywords, ensuring "More Like This" only features similar anime from other franchises rather than sequels.
+  - Fixed mobile fullscreen zoom button click crash caused by unsupported orientation lock calls under Tauri Android WebView, eliminating blocking promises and failed state rollbacks.
+  - Added seamless CSS landscape rotation (`yorumi-player-rotated`) fallback when devices are held in portrait with auto-rotate locked, dynamically toggling based on viewport orientation.
+  - Added right-hand sliding Episodes Drawer in landscape/fullscreen mode matching reference styling, with episode thumbnails, active checkmark badges, episode titles, "Now playing" tags, duration, audio badges, and synopsis overviews.
+  - Added dedicated Server selector popover button and Cast button to the landscape player controls deck.
+
+- **Mobile Video Controls & Player Redesign**:
+  - Redesigned video player controls for mobile viewports (`CustomVideoControls.tsx`) matching the reference style:
+    - Removed container pill capsules (`GLASS_PANEL_CLASS`, `GLASS_BUTTON_CLASS`) in favor of clean, container-less white icons with drop-shadows and active touch feedback.
+    - Updated time display to show remaining duration with a minus sign (e.g. `-23:49`) instead of elapsed / total duration.
+    - Repositioned the progress scrubber flush along the very bottom edge of the player video, placing the control buttons row above it.
+    - Updated seek buttons to 10 seconds (`SEEK_SECONDS = 10`) with `SeekIcon` displaying "10".
+    - Added clean circular center controls (10s rewind, play/pause, 10s forward) and skip-intro pill.
+    - Top-left header overlay in fullscreen/landscape mode displays Season, Episode, Anime title, and Episode title.
+  - Added clean bold title and Season/Episode subtitle directly below the player video in portrait mode (`DetailsVideoPlayer.tsx`).
+  - Aligned "More Like This" cards with a fixed 2-row title container (`h-[2.5rem] min-h-[2.5rem]` with `line-clamp-2 text-ellipsis overflow-hidden`) and `rounded-[16px]` artwork to guarantee equal card heights and alignment.
+  - Corrected `getRuntimePlatform()` in `runtime.ts` to identify Android environments running under Tauri, enabling native orientation lock and immersive mode.
+
+- Remove mobile mini-player playback and align related-title cards on the mobile viewing page, with anime and episode information below the video.
+
+- Add a dedicated mobile anime viewing page with related titles and persistent mini-player playback.
+
+- Preserve the original mobile anime details placement while hiding the poster.
+
+- Simplified mobile anime details and changed episode cards to compact thumbnail rows.
+
+- Match manga and light novel spotlight background blur to their detail pages on desktop and mobile.
+
+- **Card Action Buttons & LN Page Fixes**:
+  - Removed the three-dots (`...`) action button from all cards across Anime (`AnimeLandscapeCard.tsx`, `AnimeCard.tsx`), Manga (`MangaCard.tsx`, `ReadingCardArtwork.tsx`), and Light Novels (`LNCard.tsx`, `ReadingCardArtwork.tsx`), retaining only the single `+` / check button.
+  - Resolved Light Novels page black screen crash caused by conditional hooks violation in `LNCard.tsx` (React Error #310), CORS blocks on AniList GraphQL requests via `postJson` native bridge in `lnService.ts`, and safe parsing guards in `useLNReadList.ts`.
+  - Added synchronous fallback to Korean web novels in `LNSpotlight.tsx` to prevent blank hero banners on cold loads or rate-limiting.
+- **Latest Manga AniList Cover Enhancement**:
+  - Enhanced "Latest Updates" cards in `LatestMangaUpdates.tsx` with high-resolution AniList cover photos, horizontal banners, scores, and media format tags instead of raw pixelated scraper thumbnails.
+- **Manga Spotlight Desktop-Style Background Cover**:
+  - Enriched Manga spotlight items in `MangaSpotlight.tsx` with high-resolution widescreen horizontal backdrop banners (`bannerImage`) from AniList, matching the desktop spotlight presentation on mobile.
+
+- Support an explicit Vite hot-reload address for Android development over ADB reverse.
+
+- Fixed the light novel and manga spotlights crashing when loading finishes, and show manga posters in the mobile spotlight.
+
+- **Mobile Portrait Cards & Right Sidebar Hidden**:
+  - Transformed cards across Anime (`AnimeLandscapeCard.tsx`), Manga (`MangaCard.tsx`, `ReadingCardArtwork.tsx`), and Light Novels (`LNCard.tsx`, `ReadingCardArtwork.tsx`) into portrait format (`aspect-[2/3] md:aspect-video`) on mobile screens to match the reference design:
+    - Renders vertical portrait posters on mobile screens while preserving widescreen landscape backdrops/banners on desktop.
+    - Added twin floating translucent action buttons at the top right of each card: `...` (more details/options) and `+` (add to watchlist/read list, which shows a checkmark when added).
+    - Preserved top-left inverted cutout notch badges for episode airings and chapter numbers with seamless rounded corners (`rounded-[16px]`).
+    - Adjusted mobile carousel item widths (`flex-[0_0_148px] sm:flex-[0_0_175px] md:flex-[0_0_290px]`) and grid columns (`grid-cols-2`) for natural mobile scaling.
+  - Hidden the entire right sidebar (`AnimeHomeSidebar`) containing "Top Airing", "Upcoming", and "Airing schedule" on mobile/tablet viewports (`hidden xl:block`), displaying it only on desktop screens.
+
+- **Unified Manga & Light Novel Mobile Spotlight Styling**: Aligned the Manga and Light Novel spotlight hero (`ReadingSpotlight.tsx`) to match the Anime spotlight on mobile devices:
+  - Centered mobile layout with large bold title, circular score ring and format chip, clamped synopsis, and equal-width action pills ("Read" and "Details").
+  - Added mobile spotlight slide indicator dots (`h-2.5 w-2.5 rounded-full`) aligned to the bottom center.
+  - Reserved proper bottom clearance (`pb-[calc(6.5rem+env(safe-area-inset-bottom,0px))]`) above the global black navigation bar.
+- **Seamless 60fps Spotlight Swiping & Lag Fix**:
+  - Eliminated the 700ms `mode="wait"` animation delay across `SpotlightHero` and `ReadingSpotlight` in favor of concurrent `mode="sync"` transitions (`0.22s`) so content updates instantaneously on swipe.
+  - Removed GPU-intensive `scale: 1.03` layer transformations on fullscreen background covers during carousel transitions to prevent mobile GPU frame drops.
+  - Optimized Embla carousel snap duration to `18` with `skipSnaps: false` for snappy, immediate tactile swipe response.
+  - Memoized spotlight feed arrays (`display` and `items`) with `useMemo` in `MangaSpotlight` and `LNSpotlight` to prevent thrashing re-renders on slide changes.
+
+- **Anime Spotlight Backdrop Covers Restored**: Restored TMDB and source backdrop images as the full cover background in the Anime spotlight hero (`SpotlightHero.tsx`) across both mobile and desktop viewports, ensuring widescreen backdrop presentation.
+
+- **Unified Full-Width Black Navigation Across All Tabs**: Unified the global mobile navigation bar across all views (Explore, Anime, Manga, LN, and Library) using the full-width black navbar (`inset-x-0 bottom-0 bg-black border-t border-white/15 h-16`), featuring active top-edge indicator lines and labeled destinations. Adjusted Explore overlay and action button spacing (`bottom-20`) to sit seamlessly above the black navbar.
+
+- **TikTok Mobile Explore Redesign & Bottom-Sheet Episodes Modal**: Redesigned the Explore feed for mobile screens to precisely match TikTok's layout:
+  - Removed up and down navigation chevrons on mobile (`hidden md:flex`) in favor of natural vertical swipe scrolling.
+  - Positioned the character profile avatar in the right-side vertical action bar directly above the Heart icon, adorned with an overlapping `+` watchlist badge. Clicking the avatar navigates to anime details, and tapping the `+` badge toggles watchlist status.
+  - Cleaned the bottom-left overlay on mobile to display only the bold anime title and expandable synopsis with `#genre` hashtags and `... more` / `less` toggle, removing the redundant avatar and button clutter.
+  - Removed the standalone "Details" button on mobile (`hidden md:flex`), as the profile avatar now serves as the primary route to details.
+  - Transformed the Explore episodes drawer on mobile into a slide-up bottom sheet modal (`rounded-t-[28px]`, dark backdrop blur overlay, drag handle pill, and close `X` button), while preserving the side drawer panel layout on desktop.
+
+- **Tauri Android Live HMR Development**: Configured Tauri Android development to enable live Hot Module Replacement (HMR) for frontend UI updates without needing to rebuild or reinstall the debug APK. Added `TAURI_DEV_HOST` binding and WebSocket configuration on port 5174 in `vite.config.ts`, multi-port process cleanup in `ensure-port-free.cjs`, automated `adb reverse` tunneling for ports 5173, 5174, and 3001 via `setup-android-reverse.cjs`, and `dev:tauri:android:reverse` for offline USB development.
+
+- Reduced the size of Explore?s mobile navigation icons.
+
+- **Explore mobile system bars**: Reserve room for the Android status bar and use a full-width black navigation bar with labelled destinations.
+
+- **Mobile navigation and spotlight**: Add a floating Explore, Anime, Manga, LN, and Library bar and center the anime spotlight actions for mobile.
+
+- **Tauri Android startup**: Hide the desktop title bar on mobile and prevent the external font stylesheet from blocking the initial render.
+
+- **TikTok-Style Floating Action Icons & Decimal Score**: Removed circular background containers from the Explore vertical action bar to match TikTok's clean aesthetic, rendering bare icons with strong drop shadows and hover scaling. Formatted ratings as single-decimal scores (e.g. `6.1`, `6.6`, `8.4`) instead of raw percentages.
+
+- **Explore Episodes Drawer Hook Order & Empty State Fix**: Resolved React hooks order violation in `ExploreEpisodesDrawer` where an early return preceded `displayedEpisodes = useMemo()`, which crashed component render when clicking the "Eps" icon. Moved component guards after all hooks and added an empty state fallback ("No episodes available yet") when no episodes have aired.
+
+- **Upcoming and Unreleased Episode Suppression**: Hid the "Eps" action button and suppressed the episode drawer entirely for upcoming and unreleased anime titles in the Explore feed. Prevented the details page video player from mounting when an unreleased anime is visited with episode query parameters, avoiding black screen player states.
+
+- **Explore Main Character Profile Avatar**: Replaced the anime cover poster in the bottom-left Explore feed profile circle with the anime's main character portrait queried directly from AniList character edges.
+- **Explore Released Episodes & Streaming Metadata Sync**: Resolved missing thumbnails and generic titles in the Explore episodes drawer by capping airing series to officially released episodes (preventing unreleased future placeholder cards from cluttering the feed) and resolving episode titles and high-quality thumbnails from streaming and AniZip metadata.
+- **Explore Episodes Drawer Watch Progress & Clean Header**: Connected the Explore episodes drawer to application-wide watch progress and continue watching history. Removed the season dropdown chip and chevron pagination controls, displaying a full scrollable episode list with real-time `Now playing` highlights, thumbnail progress bars, and watched checkmarks synchronized with the anime details page. Clicking an episode immediately registers it into Continue Watching and launches details playback.
+- **TikTok-Style Expandable Synopsis with Genre Hashtags**: Styled the Explore card synopsis to match TikTok's expandable caption layout, showing a compact preview with an inline bold `... more` toggle that expands into the full synopsis with `#Genre` hashtags and a `less` toggle.
+- **Explore 1080p High-Resolution Playback**: Enforced 1080p high-resolution playback on Explore trailers by supplying `vq=hd1080` parameters on YouTube player embeds and dispatching `setPlaybackQuality('hd1080')` and `setPlaybackQuality('highres')` on player initialization and state changes. Cleaned up standalone TikTok scraper routes and services.
+- **Browse Anime 3x3 Grid Block Pagination**: Restored the 3x3 (9 items) landscape grid layout for Browse Anime while keeping white active pills (`Newest`, `Popular`, `Top rated`) and `See all >`. Wired the Studios-style `<` and `>` arrow buttons to paginate the entire 9-card block smoothly across pages instead of scrolling as a 1-row carousel.
+- **TMDB setup**: Open the API settings and guide in the system browser on Tauri.
+
+- **Tauri development**: Start or reuse the local API and wait for it before Vite starts, avoiding connection-refused errors.
+
+- **Explore feed**: Remove extra document scrolling, reset the feed on refresh, and start available trailers as soon as the player is ready.
+
+- **Tauri desktop migration**: Restore Discord Rich Presence and manga/novel disk exports, migrate existing offline chapters, and publish stable desktop download filenames for website links.
+
+- **Desktop builds**: Restore the custom title bar and replace Electron packaging with Tauri desktop releases, and remove obsolete Electron-only frontend branches.
+
+- **Desktop title bar**: Keep the page scrollbar below the window header.
+
+- **Explore playback**: Start with sound enabled and hide the feed scrollbar.
+
+- **Desktop setup window**: Show the desktop title bar and window controls on the TMDB setup screen.
+
+- **Desktop readers and Tauri manga pages**: Keep manga and novel readers below the desktop title bar, proxy MangaKatana page images in Tauri, avoid caching empty chapter responses, and recognize the alternate novel source?s current search layout.
+
+- **Explore trailer transitions**: Preload adjacent muted trailers without pausing them on scroll, start playback on the active card, and hide loading or unavailable YouTube embeds against a black background.
+
+- **Explore Seamless Looping & Loading Screen Removal**: Removed the center "Generating Fresh Explore Feed..." loading screen and spinning icon for a clean, immediate dark transition. Implemented continuous player telemetry handshake and proactive near-end rewind detection (looping back to 0:00 when within 0.45s of completion or on ended state) so trailers loop continuously without ever showing the YouTube replay button or end screen.
+- **Explore Play/Pause Animation & Scroll Polish**: Eliminated pause triggers and YouTube pause bezel flashes when scrolling between trailers on Explore by mounting the active trailer only and removing pre-pause commands during slide transitions. Added the exact watch-page center pop animation (`@keyframes animetsu-center-pop`, `bg-[#2A2322]/75`, 520ms bezier pop scale 0.62 -> 1 -> 1.18 -> 1.72 with white Play/Pause icons) when pausing or resuming playback.
+- **Dynamic, Personalized Explore Recommendation Algorithm**: Upgraded Explore with a session-based multi-category recommendation engine. Every visit to Explore (initial entry, navigating back from details/library/search, or clicking the sidebar Explore icon) generates a fresh session with unique random seed, multi-bucket candidate retrieval (Airing, Trending, Upcoming, Classics, Personalized, and Experimental), 24-hour exposure cooldown with dynamic relaxation, real-time user interest modeling (tracking genres, studios, watchlist, likes, trailer dwell time, and skips), and anti-clustering genre diversity. Added a subtle "Hide" (Not Interested) action to exclude unwanted titles permanently and a 1-click feed refresh button.
+- **Removed Native YouTube Controls & Added TikTok Interaction Barrier**: Eliminated native YouTube on-screen overlay controls (the `|<<` previous and `>>|` next track playlist buttons and `( || )` center pause circle) by removing `playlist` query parameter injection and adding a transparent interaction barrier over the video. Added clean programmatic play/pause toggling via YouTube IFrame API `postMessage`, an animated TikTok-style play indicator on pause, instant mute toggling, and automatic seamless looping.
+- **Sidebar Explore Navigation**: Replaced the redundant Back button with an Explore compass icon (`/explore`), preserving the 5-click logo Vault unlock mechanism.
+
+- **Discord-style custom desktop header & window controls**: Replaced native OS window frame with a sleek frameless title bar matching Discord's layout (`decorations: false` in Tauri). Features back/forward navigation arrows (`← →`), a clean frameless context display with Yorumi icon (showing "Anime" on home and dynamic media titles on details pages), and custom window control buttons (minimize, maximize/restore toggle with state tracking, and close with Windows/Discord red hover styling). Added window management permissions in Tauri capabilities and adjusted desktop sidebar/page layout spacing.
+
+- **Seamless skeleton loading states across Anime, Manga, and Light Novels**: Updated Spotlight skeleton layouts for Manga and Light Novels to include the right-hand 3D rotating cover stack and large title headlines, aligned landscape card skeletons (`aspect-video rounded-[14px]`) across all Manga/LN carousels and Top 100 grids, exported `AnimeLandscapeCardSkeleton` to prevent runtime component errors, eager-loaded top-level hub pages (`MangaPage` and `LNPage`), and replaced bare `Loading…` text fallback with context-aware skeleton shells.
+
+- **Unified Anime Cast pill styling for Manga and Light Novels**: Restored the original Anime details "Cast" tab with translucent 4-column pills, circular avatars, and dual voice actor credits; aligned Manga and Light Novel character sections to follow this exact same styling.
+
+- **Manga & Light Novel scraper speed and chapter reliability**: Eliminated home-page background MangaKatana scraping that triggered IP rate-limiting, paced search requests with empty-response retry, cached chapters directly from MangaKatana 302 detail redirects and `.alt_name` aliases, added fast NovelBin `/ajax/chapter-list` slug probing with AllNovelFull fallback, parallelized AniList metadata and chapter resolution on details pages, and prevented empty chapter lists from polluting offline caches.
+- **Tauri dev server port cleanup**: Updated `ensure-port-free.cjs` and `vite.config.ts` to wait for Windows TCP port release before starting Vite so `npm run dev:tauri` loads cleanly on the first run.
+
+- **Manga chapters**: Fall back to available English MangaDex chapters when MangaKatana returns empty responses, and label the potentially incomplete list.
+
+- **Manga credits**: Show only the primary story author in the details and spotlight metadata.
+
+- **Manga chapter resolution**: Handle MangaKatana search redirects and keyword fallbacks, and avoid caching unresolved chapter sources.
+
+- **Reading backgrounds**: Apply the same soft blur to manga and light novel spotlight and details artwork.
+
+- **Manga and light novel cards**: Match the anime landscape card style, show available scores and publication years, and show available chapter counts for unfinished titles.
+
+- **Light novel spotlight**: Match the manga spotlight with softened artwork, yellow controls, rating and metadata styling, cover placement, and a four-line synopsis.
+
+- **Manga spotlight ratings**: Look up matching AniList scores for MangaKatana titles and reuse the anime metadata row with a manga format chip.
+
+- **Manga spotlight**: Show the rating and a four-line synopsis, and move the cover carousel left.
+
+- **Reading spotlights**: Reduce the size of the manga and light novel cover carousel.
+
+- **Reading spotlight backgrounds**: Show full-screen artwork and restore purple manga and yellow light novel accents.
+
+- **Reading details backgrounds**: Restore full-screen manga and light novel artwork, using a softly blurred cover when no banner is available.
+
+- **Reading recommendations**: Show a More like this carousel of AniList recommendations below manga and novel chapters.
+
+- **Manga and novel details**: Match the anime details presentation while retaining chapter reading, list, and download controls.
+
+- **Reading spotlights**: Restore a larger three-cover carousel for manga and light novels.
+
+- **Reading spotlight artwork**: Use landscape banners when available and display portrait covers without stretching them across the screen.
+
+- **Manga and novel home pages**: Match the anime home spotlight and section styling while preserving portrait cover cards and reading navigation.
+
+- **Continue Watching details**: Preserve AniList and MAL identities and artwork when resuming saved history, avoiding mismatched details from legacy numeric IDs.
+
+- **Continue Watching**: Match anime carousel card sizing and logo overlays while showing episode thumbnails, inset white progress, season and episode labels, and remaining time.
+
+- **Episode cards and seasons**: Show a simple Now Playing indicator and label single-season series without a dropdown.
+
+- **Cleaner video player**: Remove the adjacent-episode background panels and the video ambient-light effect and control.
+- **Playback source failures**: Stop repeatedly restarting an exhausted movie or episode lookup and show the unavailable-stream state when all sources fail.
+- **Anime home rankings**: Rank Top 10 Today using AniList's latest daily trend snapshot and use TMDB daily trending for Trending Now.
+- **Studio layout**: Center the studio card grid within the available page width.
+- **Complete season discovery**: Search the base franchise name when resolving related seasons, so entries such as The Apothecary Diaries Season 1 are not omitted when viewing Season 3.
+- **Studio card consistency**: Match the anime carousel's landscape card width and hide title overlays when logo artwork is unavailable.
+- **Studio card details and logos**: Include complete season relation metadata, tolerate older partial records, and retry logo lookups without confusing AniList and TMDB IDs.
+- **Studio catalogue main titles**: Exclude short-form and special entries and group explicitly linked alternative film editions into a single card.
+- **Studio logos and sorting**: Show available company logos and add Newest, Popular, and Top Rated sorting to studio catalogues.
+- **Studio browsing**: Load additional anime automatically while scrolling, with skeleton cards during each request.
+- **Fullscreen anime spotlight**: Restore the anime home backdrop and its loading skeleton to viewport height.
+- **Studio series grouping**: Combine explicitly related seasons and specials into one series card while leaving movies separate.
+- **Studio catalogue duplicates**: Filter repeated AniList media IDs across studio pages.
+- **Anime home and studios**: Show up to ten scrollable airing and upcoming titles, and open ranked studio catalogues with the top-rated anime's backdrop.
+- **Tauri mobile storage paths**: Place the mobile database and anime downloads in the platform-provided app data directory, and report database initialization failures instead of silently losing data in memory.
+- **Tauri Android TLS build**: Use Rustls for native HTTP to avoid a cross-compiled OpenSSL dependency.
+- **Tauri media protocol portability**: Use the platform-specific custom protocol URL for playback and preserve it when rewriting HLS playlists.
+- **Tauri Android scaffolding**: Initialize the Android project and add development and APK build commands for the ongoing native migration.
+- **Anime details tabs & mini player auto-minimize**: Removed the redundant 'About' tab from anime details (synopsis and metadata remain accessible in the hero section). Switching to the 'Cast' or 'More like this' tabs while playing automatically minimizes the video into the persistent floating mini player so audio and video continue smoothly, while expanding the mini player automatically navigates back to the 'Episodes' tab and scrolls into view.
+- **Landscape recommendations ('More like this')**: Renamed 'Related' to 'More like this' on the details page and rendered recommendations using 4-column landscape cards matching the home page carousel styling.
+- **Seamless cutout notch on anime cards**: Preserved the inverted curved tab notch geometry (`buildTopLeftNotchGeometry`) on landscape cards with an SVG cutout mask on the image container so the ambient background naturally shines through, extending the mask coordinates outward to eliminate subpixel anti-aliasing edge lines.
+- **Harmonized Anime Home spotlight skeleton**: Synchronized `SpotlightSkeleton` dimensions and gradient alpha mask directly with `SpotlightHero`, eliminating vertical layout jumps and flashing dark boxes during home page loading.
+- **Vivarium-style ambient light page blending**: Re-engineered full-page ambient illumination using oversized high-saturation bloom canvases, removing hard bottom borders with progressive linear-gradient alpha masks so backdrop artwork smoothly dissolves into luminous colored ambient light across the entire viewport.
+- **Pinned Details poster card alignment**: Fixed details page portrait poster shifting downwards when expanding synopsis descriptions.
+- **Tauri protocol CORS & panic resilience**: Fixed stream requests getting blocked by Chromium WebView2 CORS policy.
+
 ## [4.3.0] - 2026-10-16
 
 - **Bounded Android HLS downloads**: Fixed large mobile episode downloads slowing down or stopping partway through when temporary segments consumed the same amount of storage as the final video. Android now keeps a small parallel prefetch window, assembles segments into the final temporary file as they arrive in playlist order, deletes staged segments immediately, checks estimated free space before starting, and reports the failing segment's network error when retries are exhausted.
