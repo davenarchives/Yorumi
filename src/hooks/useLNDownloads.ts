@@ -33,7 +33,7 @@ export function useLNDownloads() {
 
     useEffect(() => {
         loadDownloads();
-        lnDownloadService.syncExistingDownloadsToDisk();
+        void lnDownloadService.syncExistingDownloadsToDisk();
 
         const handleUpdate = () => {
             loadDownloads();
