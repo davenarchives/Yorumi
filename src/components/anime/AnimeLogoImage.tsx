@@ -1,9 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
-import { API_BASE } from '../../config/api';
+import { API_BASE, USES_LOCAL_SOURCES } from '../../config/api';
 import { setLocalStorageWithCleanup } from '../../utils/localStorageQuota';
 import type { Anime } from '../../types/anime';
 import { tmdbService } from '../../services/tmdbService';
-import { isNativeMobile } from '../../platform/runtime';
 
 interface AnimeLogoImageProps {
     tmdbId?: number | null;
@@ -16,10 +15,11 @@ interface AnimeLogoImageProps {
     size?: 'small' | 'medium' | 'large'; // small: 80px, medium: 120px, large: 160px
     anime?: Anime;
     preferLogo?: boolean;
+    hideFallbackText?: boolean;
 }
 
 // Namespace bump clears stale negative entries written while logo rendering was disabled.
-const LOGO_CACHE_KEY = 'yorumi_logo_cache_v3';
+const LOGO_CACHE_KEY = 'yorumi_logo_cache_v4';
 
 // Hydrate logo cache from localStorage on module load
 function loadCacheFromStorage(): Map<string, string | null> {
@@ -31,7 +31,6 @@ function loadCacheFromStorage(): Map<string, string | null> {
                 k.includes(':') ? k : `id:${parseInt(k, 10)}`,
                 typeof v === 'string' ? v : null
             ] as [string, string | null]);
-            console.log(`[LogoCache] Hydrated ${entries.length} logos from storage`);
             return new Map(entries);
         }
     } catch (e) {
@@ -68,7 +67,6 @@ function persistCache() {
             const obj: Record<string, string | null> = {};
             logoCache.forEach((v, k) => { obj[k] = v; });
             setLocalStorageWithCleanup(LOGO_CACHE_KEY, JSON.stringify(obj));
-            console.log('[LogoCache] Persisted to storage');
         } catch (e) {
             console.warn('[LogoCache] Failed to persist:', e);
         }
@@ -80,18 +78,15 @@ function persistCache() {
  * Call this when spotlight/trending anime data loads
  */
 export async function preloadLogos(tmdbIds: number[]): Promise<void> {
-    if (isNativeMobile()) return;
-    // Filter out already cached IDs
+    if (USES_LOCAL_SOURCES) return;
     const uncachedIds = tmdbIds
         .map(getPositiveId)
         .filter((id): id is number => Boolean(id))
-        .filter(id => !logoCache.has(`id:${id}`));
+        .filter(id => !logoCache.has(`tmdb:${id}`));
 
     if (uncachedIds.length === 0) {
-        return; // All cached, no logging needed
+        return;
     }
-
-    console.log('[LogoPreload] Fetching', uncachedIds.length, 'logos...');
 
     try {
         const response = await fetch(`${API_BASE}/logo/batch`, {
@@ -106,15 +101,12 @@ export async function preloadLogos(tmdbIds: number[]): Promise<void> {
             for (const [id, result] of Object.entries(data)) {
                 const logoResult = result as { logo: string | null; source: 'fanart' | 'fallback' };
                 if (logoResult.source === 'fanart' && logoResult.logo) {
-                    logoCache.set(`id:${parseInt(id, 10)}`, logoResult.logo);
+                    logoCache.set(`tmdb:${parseInt(id, 10)}`, logoResult.logo);
                     newCount++;
-                } else {
-                    logoCache.set(`id:${parseInt(id, 10)}`, null);
                 }
             }
             if (newCount > 0) {
                 persistCache();
-                console.log('[LogoPreload] ✓', newCount, 'logos cached');
             }
         }
     } catch (error) {
@@ -124,7 +116,7 @@ export async function preloadLogos(tmdbIds: number[]): Promise<void> {
 
 export async function preloadSpotlightLogos(animes: Anime[]): Promise<void> {
     const spotlightAnime = animes.slice(0, 8);
-    await preloadLogos(spotlightAnime.map((anime) => anime.id || anime.mal_id).filter(Boolean));
+    await preloadLogos(spotlightAnime.map((anime) => anime.tmdbId || 0).filter(Boolean));
 
     let cursor = 0;
     const workers = Array.from({ length: Math.min(2, spotlightAnime.length) }, async () => {
@@ -132,10 +124,10 @@ export async function preloadSpotlightLogos(animes: Anime[]): Promise<void> {
             const anime = spotlightAnime[cursor++];
             const id = getPositiveId(anime.id || anime.mal_id);
             const title = anime.title_english || anime.title_romaji || anime.title;
-            const cacheKey = isNativeMobile()
+            const cacheKey = USES_LOCAL_SOURCES
                 ? getTitleCacheKey(`${title}:${anime.year || ''}`)
-                : id ? `id:${id}` : getTitleCacheKey(title);
-            if (!cacheKey || logoCache.get(cacheKey)) continue;
+                : id ? `anime:${id}` : getTitleCacheKey(title);
+            if (!cacheKey || logoCache.has(cacheKey)) continue;
 
             const logo = await tmdbService.getLogoForAnime(anime).catch(() => null);
             if (logo) logoCache.set(cacheKey, logo);
@@ -146,13 +138,32 @@ export async function preloadSpotlightLogos(animes: Anime[]): Promise<void> {
     persistCache();
 }
 
-export default function AnimeLogoImage({ tmdbId, title, year, episodes, format, className = '', size = 'medium', style, anime, preferLogo = false }: AnimeLogoImageProps) {
-    const [logoUrl, setLogoUrl] = useState<string | null>(null);
+export default function AnimeLogoImage({
+    tmdbId,
+    title,
+    year,
+    episodes,
+    format,
+    className = '',
+    size = 'medium',
+    style,
+    anime,
+    preferLogo = false,
+    hideFallbackText = false,
+}: AnimeLogoImageProps) {
+    const resolvedId = getPositiveId(tmdbId ?? anime?.id ?? anime?.mal_id);
+    const cacheKey = USES_LOCAL_SOURCES
+        ? getTitleCacheKey(`${title}:${year ?? anime?.year ?? ''}`)
+        : resolvedId ? `anime:${resolvedId}` : getTitleCacheKey(title);
+    const initialCachedLogo = (preferLogo && cacheKey && logoCache.has(cacheKey))
+        ? (logoCache.get(cacheKey) ?? null)
+        : null;
+
+    const [logoUrl, setLogoUrl] = useState<string | null>(initialCachedLogo);
     const [hasError, setHasError] = useState(false);
     const animeRef = useRef(anime);
     animeRef.current = anime;
 
-    // Determine max height based on size prop
     const getMaxHeight = () => {
         switch (size) {
             case 'small': return '80px';
@@ -169,12 +180,14 @@ export default function AnimeLogoImage({ tmdbId, title, year, episodes, format, 
             return;
         }
         let isMounted = true;
+        if (cacheKey && logoCache.has(cacheKey)) {
+            const cached = logoCache.get(cacheKey) ?? null;
+            setLogoUrl(cached);
+            setHasError(!cached);
+            return;
+        }
         setLogoUrl(null);
         setHasError(false);
-        const resolvedId = getPositiveId(tmdbId);
-        const cacheKey = isNativeMobile()
-            ? getTitleCacheKey(`${title}:${year || ''}`)
-            : resolvedId ? `id:${resolvedId}` : getTitleCacheKey(title);
 
         if (!cacheKey) {
             setHasError(true);
@@ -185,24 +198,19 @@ export default function AnimeLogoImage({ tmdbId, title, year, episodes, format, 
 
         const fetchLogo = async () => {
             const key = cacheKey as string;
-            // Check cache first
             if (logoCache.has(key)) {
                 const cached = logoCache.get(key);
-                if (cached && isMounted) {
-                    setLogoUrl(cached);
-                    setHasError(false);
-                    return;
+                if (isMounted) {
+                    if (cached) {
+                        setLogoUrl(cached);
+                        setHasError(false);
+                    } else {
+                        setHasError(true);
+                    }
                 }
-                // A Fanart miss must not prevent the per-title TMDB artwork
-                // fallback used by standalone Android and unconfigured hosts.
-                if (!animeRef.current) {
-                    if (isMounted) setHasError(true);
-                    return;
-                }
-                logoCache.delete(key);
+                return;
             }
 
-            // Check if there's already a pending request for this ID
             if (pendingRequests.has(key)) {
                 const result = await pendingRequests.get(key);
                 if (isMounted) {
@@ -216,7 +224,6 @@ export default function AnimeLogoImage({ tmdbId, title, year, episodes, format, 
                 return;
             }
 
-            // Make new request
             const fetchPromise = (async () => {
                 try {
                     const params = new URLSearchParams();
@@ -225,13 +232,14 @@ export default function AnimeLogoImage({ tmdbId, title, year, episodes, format, 
                     if (episodes) params.set('episodes', String(episodes));
                     if (format) params.set('format', format);
                     let resolvedLogo: string | null = null;
-                    if (!isNativeMobile() && resolvedId) {
-                        const response = await fetch(`${API_BASE}/logo/${resolvedId}`);
-                        if (response.ok) {
+                    const actualTmdbId = getPositiveId(animeRef.current?.tmdbId);
+                    if (!USES_LOCAL_SOURCES && actualTmdbId) {
+                        const response = await fetch(`${API_BASE}/logo/${actualTmdbId}`).catch(() => null);
+                        if (response?.ok) {
                             const data = await response.json();
                             if (data.logo && data.source === 'fanart') {
                                 resolvedLogo = data.logo;
-                                if (data.tmdbId) logoCache.set(`id:${data.tmdbId}`, data.logo);
+                                if (data.tmdbId) logoCache.set(`tmdb:${data.tmdbId}`, data.logo);
                             }
                         }
                     }
@@ -243,16 +251,9 @@ export default function AnimeLogoImage({ tmdbId, title, year, episodes, format, 
                     if (resolvedLogo) {
                         logoCache.set(key, resolvedLogo);
                         persistCache();
-                        return resolvedLogo;
-                    } else {
-                        logoCache.set(key, null);
-                        persistCache();
-                        return null;
                     }
-                } catch (error) {
-                    console.warn('[AnimeLogoImage] Failed to fetch logo:', error);
-                    logoCache.set(key, null);
-                    persistCache();
+                    return resolvedLogo || null;
+                } catch {
                     return null;
                 } finally {
                     pendingRequests.delete(key);
@@ -272,36 +273,36 @@ export default function AnimeLogoImage({ tmdbId, title, year, episodes, format, 
             }
         };
 
-        fetchLogo();
+        void fetchLogo();
 
         return () => {
             isMounted = false;
         };
-    }, [tmdbId, title, year, episodes, format, preferLogo]);
+    }, [tmdbId, title, year, episodes, format, preferLogo, cacheKey, resolvedId]);
 
-    // If logo is available and no error, show the logo
     if (logoUrl && !hasError) {
         return (
             <img
                 src={logoUrl || undefined}
                 alt={title}
-                className={`max-w-full h-auto object-contain fade-in ${className}`}
+                className={`max-w-full h-auto object-contain ${className}`}
                 style={{
                     maxHeight: getMaxHeight(),
-                    filter: 'drop-shadow(0 4px 12px rgba(0, 0, 0, 0.8))',
                     ...style
                 }}
                 onError={() => {
-                    console.warn('[AnimeLogoImage] Image load error, falling back to text');
                     setHasError(true);
                 }}
-                loading="eager"
+                loading={size === 'large' ? 'eager' : 'lazy'}
+                decoding="async"
             />
         );
     }
 
-    // Default: Show text title immediately while logo is resolving.
-    // This provides instant content - user sees title immediately
+    if (hideFallbackText) {
+        return null;
+    }
+
     return (
         <h1 className={`text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-black text-white leading-tight line-clamp-3 ${className}`}>
             {title}
