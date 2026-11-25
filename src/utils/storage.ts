@@ -11,6 +11,11 @@ export interface WatchProgress {
     animeTitle: string;
     animeImage: string;
     animePoster?: string;
+    episodeThumbnail?: string;
+    seasonNumber?: number;
+    seasonEpisodeNumber?: number;
+    anilistId?: number;
+    malId?: number;
     totalCount?: number;
     mediaStatus?: string;
     positionSeconds?: number;
@@ -273,6 +278,82 @@ const removePendingDeleteId = (key: string, id: string) => {
     setScopedItem(key, JSON.stringify(next));
 };
 
+const normalizeMediaTitleKey = (title?: string): string =>
+    String(title || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+
+const getWatchProgressIdSet = (item: Pick<WatchProgress, 'animeId' | 'anilistId' | 'malId'>): Set<string> => {
+    const ids = new Set<string>();
+    for (const raw of [item.animeId, item.anilistId, item.malId]) {
+        const s = raw !== undefined && raw !== null ? String(raw).trim() : '';
+        if (s && s !== '0') ids.add(s);
+    }
+    return ids;
+};
+
+const isSameWatchProgress = (
+    a: Pick<WatchProgress, 'animeId' | 'anilistId' | 'malId' | 'animeTitle'>,
+    b: Pick<WatchProgress, 'animeId' | 'anilistId' | 'malId' | 'animeTitle'>,
+): boolean => {
+    const idsA = getWatchProgressIdSet(a);
+    const idsB = getWatchProgressIdSet(b);
+    for (const id of idsA) {
+        if (idsB.has(id)) return true;
+    }
+    const titleA = normalizeMediaTitleKey(a.animeTitle);
+    const titleB = normalizeMediaTitleKey(b.animeTitle);
+    return Boolean(titleA && titleB && titleA === titleB);
+};
+
+const dedupeContinueWatching = (items: WatchProgress[]): WatchProgress[] => {
+    const sorted = [...items].sort(
+        (a, b) => (b.lastWatched || b.timestamp || 0) - (a.lastWatched || a.timestamp || 0),
+    );
+    const result: WatchProgress[] = [];
+    for (const item of sorted) {
+        const existingIdx = result.findIndex((kept) => isSameWatchProgress(kept, item));
+        if (existingIdx === -1) {
+            result.push(item);
+        } else {
+            const kept = result[existingIdx];
+            result[existingIdx] = {
+                ...item,
+                ...kept,
+                anilistId: kept.anilistId || item.anilistId,
+                malId: kept.malId || item.malId,
+                positionSeconds: kept.positionSeconds ?? item.positionSeconds,
+                durationSeconds: kept.durationSeconds ?? item.durationSeconds,
+                episodeThumbnail: kept.episodeThumbnail || item.episodeThumbnail,
+                animePoster: kept.animePoster || item.animePoster,
+                animeImage: kept.animeImage || item.animeImage,
+            };
+        }
+    }
+    return result;
+};
+
+const isSameReadProgress = (
+    a: Pick<ReadProgress, 'mangaId' | 'mangaTitle'>,
+    b: Pick<ReadProgress, 'mangaId' | 'mangaTitle'>,
+): boolean => {
+    if (String(a.mangaId || '').trim() && String(a.mangaId) === String(b.mangaId)) return true;
+    const titleA = normalizeMediaTitleKey(a.mangaTitle);
+    const titleB = normalizeMediaTitleKey(b.mangaTitle);
+    return Boolean(titleA && titleB && titleA === titleB);
+};
+
+const dedupeContinueReading = (items: ReadProgress[]): ReadProgress[] => {
+    const sorted = [...items].sort(
+        (a, b) => (b.lastRead || b.timestamp || 0) - (a.lastRead || a.timestamp || 0),
+    );
+    const result: ReadProgress[] = [];
+    for (const item of sorted) {
+        if (!result.some((kept) => isSameReadProgress(kept, item))) {
+            result.push(item);
+        }
+    }
+    return result;
+};
+
 export const storage = {
     // Continue Watching
     saveProgress: (progress: Omit<WatchProgress, 'lastWatched'>) => {
@@ -281,10 +362,32 @@ export const storage = {
         try {
             removePendingDeleteId(delKey, progress.animeId);
             const current = storage.getContinueWatching();
-            const updated = [
-                { ...progress, lastWatched: Date.now() },
-                ...current.filter(item => item.animeId !== progress.animeId)
-            ].slice(0, 20); // Keep last 20
+            const existingMatch = current.find((item) => isSameWatchProgress(item, progress));
+            const mergedEntry: WatchProgress = {
+                ...progress,
+                anilistId: progress.anilistId || existingMatch?.anilistId,
+                malId: progress.malId || existingMatch?.malId,
+                animePoster: progress.animePoster || existingMatch?.animePoster,
+                animeImage: progress.animeImage || existingMatch?.animeImage || '',
+                episodeThumbnail: progress.episodeThumbnail || existingMatch?.episodeThumbnail,
+                positionSeconds:
+                    progress.positionSeconds !== undefined
+                        ? progress.positionSeconds
+                        : (existingMatch && existingMatch.episodeNumber === progress.episodeNumber
+                            ? existingMatch.positionSeconds
+                            : undefined),
+                durationSeconds:
+                    progress.durationSeconds !== undefined
+                        ? progress.durationSeconds
+                        : (existingMatch && existingMatch.episodeNumber === progress.episodeNumber
+                            ? existingMatch.durationSeconds
+                            : undefined),
+                lastWatched: Date.now(),
+            };
+            const updated = dedupeContinueWatching([
+                mergedEntry,
+                ...current.filter((item) => !isSameWatchProgress(item, mergedEntry)),
+            ]).slice(0, 20); // Keep last 20
 
             setScopedItem(key, JSON.stringify(updated));
             emitStorageUpdated();
@@ -297,7 +400,8 @@ export const storage = {
         const key = STORAGE_KEYS.CONTINUE_WATCHING;
         try {
             const data = getScopedItem(key);
-            return data ? JSON.parse(data) : [];
+            const parsed = data ? (JSON.parse(data) as WatchProgress[]) : [];
+            return Array.isArray(parsed) ? dedupeContinueWatching(parsed) : [];
         } catch (error) {
             console.error('Failed to get continue watching:', error);
             return [];
@@ -307,7 +411,8 @@ export const storage = {
     setContinueWatching: (items: WatchProgress[]) => {
         const key = STORAGE_KEYS.CONTINUE_WATCHING;
         try {
-            setScopedItem(key, JSON.stringify(Array.isArray(items) ? items : []));
+            const deduped = Array.isArray(items) ? dedupeContinueWatching(items) : [];
+            setScopedItem(key, JSON.stringify(deduped));
             emitStorageUpdated();
         } catch (error) {
             console.error('Failed to set continue watching:', error);
@@ -320,7 +425,17 @@ export const storage = {
         try {
             addPendingDeleteId(delKey, animeId);
             const current = storage.getContinueWatching();
-            const updated = current.filter(item => item.animeId !== animeId);
+            const target = current.find(
+                (item) =>
+                    item.animeId === animeId ||
+                    String(item.anilistId || '') === animeId ||
+                    String(item.malId || '') === animeId,
+            );
+            const updated = current.filter((item) => {
+                if (item.animeId === animeId) return false;
+                if (target && isSameWatchProgress(item, target)) return false;
+                return true;
+            });
             setScopedItem(key, JSON.stringify(updated));
             emitStorageUpdated();
         } catch (error) {
@@ -335,10 +450,10 @@ export const storage = {
         try {
             removePendingDeleteId(delKey, progress.mangaId);
             const current = storage.getContinueReading();
-            const updated = [
+            const updated = dedupeContinueReading([
                 { ...progress, lastRead: Date.now() },
-                ...current.filter(item => item.mangaId !== progress.mangaId)
-            ].slice(0, 20); // Keep last 20
+                ...current.filter((item) => !isSameReadProgress(item, progress)),
+            ]).slice(0, 20); // Keep last 20
 
             setScopedItem(key, JSON.stringify(updated));
             emitStorageUpdated();
@@ -351,7 +466,8 @@ export const storage = {
         const key = STORAGE_KEYS.CONTINUE_READING;
         try {
             const data = getScopedItem(key);
-            return data ? JSON.parse(data) : [];
+            const parsed = data ? (JSON.parse(data) as ReadProgress[]) : [];
+            return Array.isArray(parsed) ? dedupeContinueReading(parsed) : [];
         } catch (error) {
             console.error('Failed to get continue reading:', error);
             return [];
@@ -386,11 +502,13 @@ export const storage = {
     addToWatchList: (item: Omit<WatchListItem, 'addedAt' | 'status'>, status: WatchListItem['status'] = 'watching') => {
         const key = STORAGE_KEYS.WATCH_LIST;
         try {
+            const normalizedId = String(item.id || '').trim();
+            if (!normalizedId) return;
             const current = storage.getWatchList();
-            if (current.some(i => i.id === item.id)) return; // Already in list
+            if (current.some(i => i.id === normalizedId)) return; // Already in list
 
             const updated = [
-                { ...item, status, addedAt: Date.now() },
+                { ...item, id: normalizedId, status, addedAt: Date.now() },
                 ...current
             ];
 
@@ -404,8 +522,10 @@ export const storage = {
     removeFromWatchList: (animeId: string) => {
         const key = STORAGE_KEYS.WATCH_LIST;
         try {
+            const normalizedId = String(animeId || '').trim();
+            if (!normalizedId) return;
             const current = storage.getWatchList();
-            const updated = current.filter(item => item.id !== animeId);
+            const updated = current.filter(item => item.id !== normalizedId);
             setScopedItem(key, JSON.stringify(updated));
             emitStorageUpdated();
         } catch (error) {
@@ -417,7 +537,10 @@ export const storage = {
         const key = STORAGE_KEYS.WATCH_LIST;
         try {
             const data = getScopedItem(key);
-            return data ? JSON.parse(data) : [];
+            const parsed = data ? JSON.parse(data) : [];
+            return Array.isArray(parsed)
+                ? parsed.filter((item): item is WatchListItem => Boolean(item && String(item.id || '').trim()))
+                : [];
         } catch (error) {
             console.error('Failed to get watch list:', error);
             return [];
@@ -427,7 +550,10 @@ export const storage = {
     setWatchList: (items: WatchListItem[]) => {
         const key = STORAGE_KEYS.WATCH_LIST;
         try {
-            setScopedItem(key, JSON.stringify(Array.isArray(items) ? items : []));
+            const validItems = Array.isArray(items)
+                ? items.filter((item) => Boolean(item && String(item.id || '').trim()))
+                : [];
+            setScopedItem(key, JSON.stringify(validItems));
             emitStorageUpdated();
         } catch (error) {
             console.error('Failed to set watch list:', error);
@@ -435,8 +561,10 @@ export const storage = {
     },
 
     isInWatchList: (animeId: string): boolean => {
+        const normalizedId = String(animeId || '').trim();
+        if (!normalizedId) return false;
         const list = storage.getWatchList();
-        return list.some(item => item.id === animeId);
+        return list.some(item => item.id === normalizedId);
     },
 
     // Read List
@@ -764,6 +892,16 @@ export const storage = {
     getReadChapters: (mangaId: string): string[] => {
         const history = storage.getChapterHistory();
         return history[mangaId] || [];
+    },
+
+    invalidateMemoryCache: (keys?: readonly string[]) => {
+        if (!keys || keys.length === 0) {
+            storageMemoryCache.clear();
+            return;
+        }
+        for (const key of keys) {
+            storageMemoryCache.delete(key);
+        }
     }
 };
 
