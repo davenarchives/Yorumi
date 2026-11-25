@@ -5,9 +5,13 @@ import axios from 'axios';
 import { API_BASE, USES_LOCAL_SOURCES } from '../config/api';
 import { getDisplayImageUrl } from '../utils/image';
 import { mangaKatanaSource } from '../platform/sources/mangakatana';
+import { isTauri } from '../platform/runtime';
+import { createLocalMediaProxyUrl } from '../platform/localMediaProxy';
+import { setLocalStorageWithCleanup } from '../utils/localStorageQuota';
 import {
     getLocalAniListMangaDetails,
     getLocalAniListMangaPage,
+    getLocalAniListTop100Manga,
     getLocalRandomMangaIds,
 } from '../platform/sources/anilistManga';
 const apiClient = axios.create({
@@ -45,7 +49,7 @@ const scheduleLocalMangaResolution = async <T>(task: () => Promise<T>): Promise<
         pendingLocalMangaResolutions.shift()?.();
     }
 };
-const PERSISTED_CACHE_PREFIX = 'yorumi_manga_cache_v5';
+const PERSISTED_CACHE_PREFIX = 'yorumi_manga_cache_v6';
 const SEARCH_CACHE_TTL = 5 * 60 * 1000;
 const DETAIL_CACHE_TTL = 15 * 60 * 1000;
 const LIST_CACHE_TTL = 10 * 60 * 1000;
@@ -58,15 +62,6 @@ const isEmptyData = (data: any) => {
     if (Array.isArray(data) && data.length === 0) return true;
     if (Array.isArray(data.data) && data.data.length === 0) return true;
     return false;
-};
-
-const setLocalStorageWithCleanup = (key: string, value: string) => {
-    try {
-        localStorage.setItem(key, value);
-    } catch (e) {
-        localStorage.clear();
-        localStorage.setItem(key, value);
-    }
 };
 
 const readPersistedCache = (key: string, ttl: number) => {
@@ -98,7 +93,7 @@ const writePersistedCache = (key: string, data: any, timestamp: number) => {
 try {
     if (typeof window !== 'undefined' && window.localStorage) {
         Object.keys(localStorage).forEach(k => {
-            const isLegacyVersion = /^yorumi_manga_cache_v[1-4]:/.test(k);
+            const isLegacyVersion = /^yorumi_manga_cache_v[1-5]:/.test(k);
             const isUnversionedLegacy = /^(manga-unified|manga-spotlight|manga-top|manga-popular)(:|$)/.test(k);
             if (isLegacyVersion || isUnversionedLegacy) {
                 localStorage.removeItem(k);
@@ -176,6 +171,7 @@ interface AniListManga {
         extraLarge?: string;
     };
     description?: string;
+    bannerImage?: string;
     format?: string;
     chapters?: number;
     volumes?: number;
@@ -209,7 +205,8 @@ const mapAnilistToManga = (item: AniListManga) => ({
         }
     },
     synopsis: item.description?.replace(/<[^>]*>/g, '') || '',
-    type: item.format,
+    bannerImage: item.bannerImage,
+    type: item.countryOfOrigin === 'KR' ? 'MANHWA' : item.countryOfOrigin === 'CN' ? 'MANHUA' : (item.format || 'MANGA'),
     chapters: item.chapters,
     volumes: item.volumes,
     score: item.averageScore ? item.averageScore / 10 : 0,
@@ -318,15 +315,20 @@ const qualifyMangaChapters = (mangaId: string, chapters: MangaChapter[]): MangaC
     id: chapter.id || `${mangaId}:${chapter.url}`,
 }));
 
-const getMangaTitleCandidates = (manga: Partial<Manga>) => ([
-    manga.title,
-    manga.title_english,
-    manga.title_romaji,
-    manga.title_native,
-    ...(Array.isArray(manga.synonyms) ? manga.synonyms : []),
-])
-    .map((value) => String(value || '').trim())
-    .filter(Boolean);
+const getMangaTitleCandidates = (manga: Partial<Manga>) => {
+    const raw = [
+        manga.title_english,
+        manga.title,
+        manga.title_romaji,
+        ...(Array.isArray(manga.synonyms) ? manga.synonyms : []),
+        manga.title_native,
+    ]
+        .map((value) => String(value || '').trim())
+        .filter(Boolean);
+    const latin = raw.filter((value) => /[A-Za-z0-9]/.test(value));
+    const nonLatin = raw.filter((value) => !/[A-Za-z0-9]/.test(value));
+    return [...new Set([...latin, ...nonLatin])];
+};
 
 const normalizeComparableTitle = (value: string) => String(value || '')
     .toLowerCase()
@@ -356,21 +358,58 @@ const isConfirmedMangaSourceMatch = (manga: Partial<Manga>, sourceDetails: { tit
     }));
 };
 
-const resolveLocalMangaKatanaDetails = async (manga: Partial<Manga>) => {
-    for (const title of [...new Set(getMangaTitleCandidates(manga))]) {
-        try {
-            const match = (await mangaKatanaSource.search(title))[0];
-            if (!match?.id) continue;
-            const details = await mangaKatanaSource.getDetails(match.id);
-            if (!isConfirmedMangaSourceMatch(manga, details)) continue;
-            if (Array.isArray(details.chapters) && details.chapters.length > 0) {
-                return details;
-            }
-        } catch {
-            // Try the next title candidate.
+const isLikelyOneshotDetails = (details: { title?: string; chapters?: MangaChapter[] }) => {
+    const chapters = details.chapters || [];
+    if (chapters.length === 0) return true;
+    if (chapters.length <= 2) {
+        const allOneshotOrZero = chapters.every((ch) =>
+            /\b(one[\s-]?shot|pilot|chapter\s*0\b|ch\.?\s*0\b)/i.test(ch.title || '')
+        );
+        if (allOneshotOrZero || /\b(one[\s-]?shot|pilot)\b/i.test(details.title || '')) {
+            return true;
         }
     }
-    return null;
+    return false;
+};
+
+const resolveLocalMangaKatanaDetails = async (manga: Partial<Manga>, triedNormalized = new Set<string>()) => {
+    const candidates = getMangaTitleCandidates(manga).filter((title) => /[A-Za-z0-9]/.test(title));
+    const expectsOneshot = /ONE[_\s-]?SHOT/i.test(String(manga.type || ''));
+    let bestDetails: Awaited<ReturnType<typeof mangaKatanaSource.getDetails>> | null = null;
+    let fallbackOneshot: Awaited<ReturnType<typeof mangaKatanaSource.getDetails>> | null = null;
+
+    for (const title of candidates) {
+        const normKey = normalizeComparableTitle(title);
+        if (!normKey || triedNormalized.has(normKey)) continue;
+        triedNormalized.add(normKey);
+        try {
+            const matches = await mangaKatanaSource.search(title);
+            for (const match of matches.slice(0, 4)) {
+                if (!match?.id) continue;
+                const details = await mangaKatanaSource.getDetails(match.id);
+                if (!isConfirmedMangaSourceMatch(manga, details)) continue;
+                const count = Array.isArray(details.chapters) ? details.chapters.length : 0;
+                if (count === 0) continue;
+
+                if (!expectsOneshot && isLikelyOneshotDetails(details)) {
+                    if (!fallbackOneshot) fallbackOneshot = details;
+                    continue;
+                }
+
+                if (!bestDetails || count > (bestDetails.chapters?.length || 0)) {
+                    bestDetails = details;
+                }
+                // Once we find a confirmed serialized entry with plenty of chapters, return immediately
+                if (count >= 10) {
+                    return bestDetails;
+                }
+            }
+            if (bestDetails) return bestDetails;
+        } catch (error) {
+            console.warn('[MangaKatana] Source resolution failed for candidate:', title, error);
+        }
+    }
+    return bestDetails || fallbackOneshot;
 };
 
 const enrichLocalManga = async (manga: Manga): Promise<HydratedManga> => {
@@ -454,7 +493,7 @@ export const mangaService = {
         }));
     },
     peekUnifiedMangaDetails(id: string | number) {
-        return getCached(`manga-unified:v3:${String(id)}`, DETAIL_CACHE_TTL) as Manga | null;
+        return getCached(`manga-unified:v7:${String(id)}`, DETAIL_CACHE_TTL) as Manga | null;
     },
 
     peekTopManga(page: number = 1) {
@@ -490,7 +529,7 @@ export const mangaService = {
     },
 
     peekEnrichedSpotlight() {
-        return getCached(`manga-spotlight:v3`, SPOTLIGHT_CACHE_TTL) as { data: Manga[] } | null;
+        return getCached(`manga-spotlight:v4`, SPOTLIGHT_CACHE_TTL) as { data: Manga[] } | null;
     },
 
     // Fetch top manga from AniList (sorted by SCORE)
@@ -519,6 +558,45 @@ export const mangaService = {
                 console.warn('getTopManga failed, using directory fallback', e);
             }
             return mangaService.getMangaDirectory(page);
+        });
+    },
+
+    peekTop100Manga(): Manga[] | null {
+        const cached = getCached('manga-top-100-v2', LIST_CACHE_TTL);
+        return Array.isArray(cached) && cached.length > 0 ? cached : null;
+    },
+
+    async getTop100Manga(): Promise<Manga[]> {
+        return fetchWithCache('manga-top-100-v2', LIST_CACHE_TTL, async () => {
+            const [homeSections, anilistTop100] = await Promise.all([
+                mangaService.getHomeSections().catch(() => null),
+                getLocalAniListTop100Manga().then((items) => items.map(mapAnilistToManga)).catch(() => [] as Manga[]),
+            ]);
+
+            const combined: Manga[] = [
+                ...(homeSections?.top || []),
+                ...anilistTop100,
+            ];
+
+            if (combined.length < 100) {
+                const pages = await Promise.all([1, 2, 3, 4, 5].map((p) =>
+                    mangaService.getTopManga(p).catch(() => ({ data: [] as Manga[] }))
+                ));
+                for (const page of pages) {
+                    combined.push(...(page?.data || []));
+                }
+            }
+
+            const seen = new Set<string>();
+            const deduped: Manga[] = [];
+            for (const item of combined) {
+                const key = String(item.id || item.mal_id || item.title || '').toLowerCase();
+                if (!key || seen.has(key)) continue;
+                seen.add(key);
+                deduped.push(item);
+                if (deduped.length >= 100) break;
+            }
+            return deduped;
         });
     },
 
@@ -740,7 +818,7 @@ export const mangaService = {
             .then((data) => {
                 if (data?.chapters && Array.isArray(data.chapters)) {
                     data.chapters = qualifyMangaChapters(mangaId, data.chapters);
-                    chapterListCache.set(mangaId, { data, timestamp: Date.now() });
+                    if (data.chapters.length > 0) chapterListCache.set(mangaId, { data, timestamp: Date.now() });
                 }
                 return data;
             })
@@ -767,7 +845,10 @@ export const mangaService = {
         const fetchOnce = async () => {
             let resultData;
             if (USES_LOCAL_SOURCES && chapterUrl.includes('mangakatana.com')) {
-                resultData = { pages: await mangaKatanaSource.getContent(chapterUrl) };
+                const pages = await mangaKatanaSource.getContent(chapterUrl);
+                resultData = { pages: isTauri() ? await Promise.all(pages.map(async (page) => ({
+                    ...page, imageUrl: await createLocalMediaProxyUrl(page.imageUrl, chapterUrl),
+                }))) : pages };
             } else if (chapterUrl.includes('toonily.com') || chapterUrl.includes('manhwaread.com')) {
                 const res = await fetch(`${API_BASE}/vault/manga/pages?url=${encodeURIComponent(chapterUrl)}`);
                 const vaultData = await res.json();
@@ -787,7 +868,7 @@ export const mangaService = {
                 resultData = data;
             }
             
-            if (resultData?.pages && Array.isArray(resultData.pages)) {
+            if (resultData?.pages && Array.isArray(resultData.pages) && resultData.pages.length > 0) {
                 chapterPagesCache.set(chapterUrl, { data: resultData, timestamp: Date.now() });
             }
             return resultData;
@@ -960,6 +1041,7 @@ export const mangaService = {
     },
 
     async prefetchChapters(urls: string[]) {
+        if (USES_LOCAL_SOURCES) return;
         try {
             await apiClient.post('/manga/prefetch', { urls });
         } catch (err) {
@@ -968,7 +1050,7 @@ export const mangaService = {
     },
 
     async getEnrichedSpotlight() {
-        return fetchWithCache(`manga-spotlight:v3`, SPOTLIGHT_CACHE_TTL, async () => {
+        return fetchWithCache(`manga-spotlight:v4`, SPOTLIGHT_CACHE_TTL, async () => {
             if (USES_LOCAL_SOURCES) {
                 // Match Electron exactly: the spotlight is selected from the
                 // first eight MangaKatana hot updates, never from AniList.
@@ -1034,7 +1116,7 @@ export const mangaService = {
     // Get scraper details (fallback for string IDs)
     // Get scraper details (fallback for string IDs)
     async getScraperMangaDetails(id: string) {
-        const cacheKey = `manga-scraper-details:v3:${id}`;
+        const cacheKey = `manga-scraper-details:v4:${id}`;
         const cached = getCached(cacheKey, DETAIL_CACHE_TTL);
         if (cached) return cached;
         if (inFlightRequests.has(cacheKey)) {
@@ -1080,8 +1162,8 @@ export const mangaService = {
     },
 
     // Unified details endpoint (supports AniList numeric IDs and scraper IDs)
-    async getUnifiedMangaDetails(id: string | number) {
-        const cacheKey = `manga-unified:v3:${String(id)}`;
+    async getUnifiedMangaDetails(id: string | number, seedManga?: Partial<Manga> | null) {
+        const cacheKey = `manga-unified:v7:${String(id)}`;
         const cached = getCached(cacheKey, DETAIL_CACHE_TTL);
         if (cached) return cached;
         if (inFlightRequests.has(cacheKey)) {
@@ -1092,40 +1174,54 @@ export const mangaService = {
             if (!/^\d+$/.test(String(id))) {
                 return mangaService.getScraperMangaDetails(String(id));
             }
-            const localDetails = await mangaService.getMangaDetails(id);
-            const mapped = localDetails.data as HydratedManga | null;
-            if (!mapped) return mapped;
+            const request = (async () => {
+                const triedNormalized = new Set<string>();
+                const seedHasTitles = Boolean(seedManga && (seedManga.title || seedManga.title_english || seedManga.title_romaji));
+                const [localDetails, initialSourceDetails] = await Promise.all([
+                    mangaService.getMangaDetails(id),
+                    seedHasTitles ? resolveLocalMangaKatanaDetails(seedManga!, triedNormalized) : Promise.resolve(null),
+                ]);
+                const mapped = (localDetails.data || seedManga || null) as HydratedManga | null;
+                if (!mapped) return mapped;
 
-            const sourceDetails = await resolveLocalMangaKatanaDetails(mapped);
-            if (sourceDetails) {
-                const sourceChapters = qualifyMangaChapters(sourceDetails.id, sourceDetails.chapters || []);
-                mapped.scraper_id = sourceDetails.id;
-                mapped.externalIds = { ...mapped.externalIds, mangakatana: sourceDetails.id };
-                mapped.mappingStatus = 'verified';
-                mapped.readingProvider = 'mangakatana';
-                mapped.resolvedChapters = sourceChapters;
-                mapped.chapters = sourceChapters.length || mapped.chapters;
-                mapped.title_english = mapped.title_english || sourceDetails.title;
-                mapped.synonyms = [...new Set([...(mapped.synonyms || []), ...(sourceDetails.altNames || [])])];
-                const chapterPayload = { chapters: sourceChapters };
-                [
-                    String(id),
-                    String(mapped.id || ''),
-                    String(mapped.mal_id || ''),
-                    String(sourceDetails.id || ''),
-                ]
-                    .map((key) => key.trim())
-                    .filter(Boolean)
-                    .forEach((key) => {
-                        chapterListCache.set(key, { data: chapterPayload, timestamp: Date.now() });
-                    });
-            }
+                const sourceDetails = initialSourceDetails || await resolveLocalMangaKatanaDetails(mapped, triedNormalized);
+                if (sourceDetails) {
+                    const sourceChapters = qualifyMangaChapters(sourceDetails.id, sourceDetails.chapters || []);
+                    mapped.scraper_id = sourceDetails.id;
+                    mapped.externalIds = { ...mapped.externalIds, mangakatana: sourceDetails.id };
+                    mapped.mappingStatus = 'verified';
+                    mapped.readingProvider = 'mangakatana';
+                    mapped.resolvedChapters = sourceChapters;
+                    mapped.chapters = sourceChapters.length || mapped.chapters;
+                    mapped.title_english = mapped.title_english || sourceDetails.title;
+                    mapped.synonyms = [...new Set([...(mapped.synonyms || []), ...(sourceDetails.altNames || [])])];
+                    const chapterPayload = { chapters: sourceChapters };
+                    [
+                        String(id),
+                        String(mapped.id || ''),
+                        String(mapped.mal_id || ''),
+                        String(sourceDetails.id || ''),
+                    ]
+                        .map((key) => key.trim())
+                        .filter(Boolean)
+                        .forEach((key) => {
+                            chapterListCache.set(key, { data: chapterPayload, timestamp: Date.now() });
+                        });
+                }
 
-            setCached(cacheKey, mapped);
-            return mapped;
+                if (mapped.resolvedChapters?.length) {
+                    setCached(cacheKey, mapped);
+                }
+                return mapped;
+            })().finally(() => {
+                inFlightRequests.delete(cacheKey);
+            });
+
+            inFlightRequests.set(cacheKey, request);
+            return request;
         }
 
-        const request = fetch(`${API_BASE}/manga/details/${encodeURIComponent(String(id))}?includeChapters=1`)
+        const request = fetch(`${API_BASE}/manga/details/${encodeURIComponent(String(id))}?includeChapters=1&v=4`, { cache: 'no-store' })
             .then(async (res) => {
                 if (!res.ok) throw new Error(`Failed to fetch unified manga details (${res.status})`);
                 const json = await res.json();
@@ -1163,7 +1259,7 @@ export const mangaService = {
                         });
                 }
 
-                if (mapped) {
+                if (mapped?.resolvedChapters?.length) {
                     setCached(cacheKey, mapped);
                 }
                 return mapped;
