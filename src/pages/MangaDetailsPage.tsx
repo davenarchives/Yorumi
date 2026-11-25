@@ -1,8 +1,11 @@
+import { supportsReadingExports } from '../platform/tauri/readingExports';
+import { getPrimaryMangaAuthor } from '../utils/mangaAuthor';
 import { useCallback, useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { Check, Plus, Play, Download, FolderOpen, ArrowLeft, Search, ChevronDown, ArrowUpDown, ArrowDown, ArrowUp, Grid2X2, List, User, Clock3 } from 'lucide-react';
+import { Play, Download, FolderOpen, ArrowLeft, ArrowUpDown, Grid2X2, List } from 'lucide-react';
 import { useManga } from '../hooks/useManga';
 import { useReadList } from '../hooks/useReadList';
+import { useFavoriteManga } from '../hooks/useFavoriteManga';
 import { useContinueReading } from '../hooks/useContinueReading';
 import { useMangaDownloads } from '../hooks/useMangaDownloads';
 import { downloadService } from '../services/downloadService';
@@ -13,8 +16,10 @@ import DetailsCharacters from '../features/anime/components/details/DetailsChara
 import { useTitleLanguage } from '../context/TitleLanguageContext';
 import { getDisplayTitle } from '../utils/titleLanguage';
 import type { ReadListItem } from '../utils/storage';
-import ChapterViewToggle, { useChapterViewMode, type ChapterViewMode } from '../components/ui/ChapterViewToggle';
+import { useChapterViewMode, type ChapterViewMode } from '../components/ui/ChapterViewToggle';
 import DownloadStateIcon from '../components/ui/DownloadStateIcon';
+import ReadingDetailsHero from '../features/reading/components/ReadingDetailsHero';
+import MoreLikeReading from '../features/reading/components/MoreLikeReading';
 
 const normalizeMangaRouteId = (value: unknown) =>
     String(value || '')
@@ -77,49 +82,52 @@ const ChapterList = ({
     }, [onViewModeChange, viewMode]);
 
     return (
-        <div className="mt-4 sm:mt-6 bg-transparent md:bg-[#111]/40 md:rounded-2xl p-0 md:p-6">
+        <div className="mt-4 sm:mt-6 bg-transparent p-0">
             <div className="mb-4 flex items-center gap-4 md:hidden">
                 <h3 className="whitespace-nowrap text-[22px] font-semibold text-white">
                     Chapters <span className="text-sm font-bold text-gray-500">({chapters.length})</span>
                 </h3>
                 <div className="h-px flex-1 bg-white/10" />
             </div>
-            <div className="hidden md:flex items-center justify-between gap-3 mb-4 sm:mb-6">
-                <h3 className="hidden md:block text-xl sm:text-2xl font-black text-white tracking-tight">
-                    {chapters.length} chapters
-                </h3>
-                <div className="flex items-center gap-2 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                    <button 
+            {/* Uniform Toolbar matching DetailsEpisodeGrid */}
+            <div className="hidden md:flex flex-wrap items-center justify-between gap-3 mb-6">
+                <div className="flex flex-wrap items-center gap-2.5">
+                    <input
+                        type="text"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        placeholder="Search chapters"
+                        className="h-10 min-w-0 w-60 md:w-64 rounded-full bg-white/[0.10] px-4 text-[14px] font-semibold text-white placeholder-white/50 transition-colors focus:bg-white/[0.15] border-0 outline-none focus:outline-none"
+                    />
+                    <button
                         type="button"
-                        onClick={() => { setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc'); }}
-                        className="grid h-10 w-10 shrink-0 place-items-center text-gray-400 transition-colors hover:text-white"
-                        title={sortOrder === 'desc' ? 'Newest first' : 'Oldest first'}
-                        aria-label={sortOrder === 'desc' ? 'Sort chapters newest first' : 'Sort chapters oldest first'}
+                        onClick={() => setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc')}
+                        className="flex h-10 items-center gap-1.5 rounded-full bg-white/[0.10] px-4 text-[14px] font-bold text-white transition-colors hover:bg-white/[0.15] border-0 outline-none focus:outline-none cursor-pointer"
+                        title={sortOrder === 'desc' ? 'Sorted newest first' : 'Sorted oldest first'}
                     >
-                        {sortOrder === 'desc' ? <ArrowDown className="h-5 w-5" /> : <ArrowUp className="h-5 w-5" />}
+                        <ArrowUpDown className="h-3.5 w-3.5 text-white/80" />
+                        <span>{sortOrder === 'desc' ? 'Newest' : 'Oldest'}</span>
                     </button>
-                    {onViewModeChange && <ChapterViewToggle viewMode={viewMode} onViewModeChange={onViewModeChange} />}
+                    {onViewModeChange && (
+                        <button
+                            type="button"
+                            onClick={() => onViewModeChange(viewMode === 'list' ? 'grid' : 'list')}
+                            className="flex h-10 w-10 items-center justify-center rounded-full bg-white/[0.10] text-white/80 transition-colors hover:bg-white/[0.15] hover:text-white border-0 outline-none focus:outline-none cursor-pointer"
+                            title={viewMode === 'list' ? 'Switch to grid view' : 'Switch to list view'}
+                            aria-label={viewMode === 'list' ? 'Switch to grid view' : 'Switch to list view'}
+                        >
+                            {viewMode === 'list' ? <Grid2X2 className="h-4 w-4" /> : <List className="h-4 w-4" />}
+                        </button>
+                    )}
                     {headerActions}
                 </div>
-            </div>
-
-            <div className="hidden md:block mb-4 sm:mb-6">
-                <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                        <Search className="w-4 h-4 text-gray-400" />
-                    </div>
-                    <input 
-                        type="text" 
-                        placeholder="Search chapters..." 
-                        value={searchQuery}
-                        onChange={(e) => { setSearchQuery(e.target.value); }}
-                        className="w-full bg-white/[0.04] border border-white/10 text-white pl-10 pr-4 py-2.5 rounded-xl text-sm placeholder-gray-500 focus:outline-none focus:border-yorumi-manga/50 focus:bg-white/[0.07] transition-all"
-                    />
-                </div>
+                <span className="text-[13.5px] font-bold text-white/75">
+                    {chapters.filter((ch) => readChapters.has(ch.id)).length}/{chapters.length} read
+                </span>
             </div>
 
             {viewMode === 'grid' ? (
-                <div className="grid grid-cols-5 gap-2 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10">
+                <div className="grid grid-cols-4 gap-2.5 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10">
                     {currentChapters.map((ch, index) => {
                         const isRead = readChapters.has(ch.id);
                         const isDownloaded = isChapterDownloaded(mangaId, ch.id);
@@ -132,15 +140,23 @@ const ChapterList = ({
                         const subtitleStr = subMatch ? subMatch.replace(/^["'«]|["'»]$/g, '').trim() : '';
 
                         return (
-                            <button
+                            <div
                                 key={`${ch.id}-${index}`}
+                                role="button"
+                                tabIndex={0}
                                 onClick={() => onChapterClick(ch)}
+                                onKeyDown={(event) => {
+                                    if (event.key === 'Enter' || event.key === ' ') {
+                                        event.preventDefault();
+                                        onChapterClick(ch);
+                                    }
+                                }}
                                 title={ch.title}
                                 data-label={mainStr}
-                                className={`relative aspect-square flex items-center justify-center rounded-lg transition-all duration-200 text-center group
-                                    ${isRead ? 'opacity-50 bg-[#141414]' : 'bg-[#1a1a1a] hover:bg-[#252525]'} active:scale-95 cursor-pointer border border-white/5`}
+                                className={`relative aspect-square flex items-center justify-center rounded-[14px] transition-all duration-200 text-center group
+                                    ${isRead ? 'opacity-50 bg-white/[0.04]' : 'bg-white/[0.06] hover:bg-white/[0.09]'} active:scale-95 cursor-pointer`}
                             >
-                                <span className={`font-semibold text-xs sm:text-sm leading-tight ${isRead ? 'text-gray-400' : 'text-gray-200 group-hover:text-yorumi-manga'} transition-colors line-clamp-2`}>
+                                <span className={`font-semibold text-sm leading-tight ${isRead ? 'text-gray-400' : 'text-gray-100 group-hover:text-yorumi-manga'} transition-colors line-clamp-2`}>
                                     {ch.title.match(/(?:chapter|ch\.?)\s*([\d.]+)/i)?.[1] || ch.title.match(/[\d.]+/)?.[0] || String(index + 1)}
                                 </span>
                                 {subtitleStr && (
@@ -148,25 +164,21 @@ const ChapterList = ({
                                         {subtitleStr}
                                     </span>
                                 )}
-                                <span
-                                    role="button"
-                                    tabIndex={0}
-                                    className="absolute top-1 right-1 text-zinc-400"
+                                <button
+                                    type="button"
+                                    className="absolute top-0.5 right-0.5 z-20 flex h-7 w-7 items-center justify-center rounded-full text-zinc-300 hover:bg-white/10 active:bg-white/15 cursor-pointer"
                                     aria-label={isDownloaded ? 'Delete downloaded chapter' : 'Download chapter'}
-                                    aria-disabled={isDownloading}
+                                    disabled={isDownloading}
                                     onClick={(event) => {
                                         event.stopPropagation();
                                         if (isDownloading) return;
                                         if (isDownloaded) deleteDownload(mangaId, ch.id);
                                         else startDownload({ mangaId, mangaTitle, mangaImage, chapter: ch });
                                     }}
-                                    onKeyDown={(event) => {
-                                        if (event.key === 'Enter' || event.key === ' ') event.currentTarget.click();
-                                    }}
                                 >
-                                    <DownloadStateIcon state={isDownloading ? 'downloading' : isDownloaded ? 'downloaded' : 'available'} progress={progress?.progress || 0} className="h-5 w-5" />
-                                </span>
-                            </button>
+                                    <DownloadStateIcon state={isDownloading ? 'downloading' : isDownloaded ? 'downloaded' : 'available'} progress={progress?.progress || 0} className="h-4 w-4" />
+                                </button>
+                            </div>
                         );
                     })}
                     {currentChapters.length === 0 && (
@@ -192,16 +204,16 @@ const ChapterList = ({
                             <div
                                 key={`${ch.id}-${index}`}
                                 onClick={() => onChapterClick(ch)}
-                                className={`flex items-center justify-between gap-3 py-3.5 px-0 sm:px-3 transition-all duration-150 text-left group
+                                className={`flex items-center justify-between gap-2.5 py-2.5 px-0 sm:px-3 transition-all duration-150 text-left group
                                     ${isRead ? 'opacity-50' : ''} hover:bg-white/[0.03] active:bg-white/[0.06] rounded-xl cursor-pointer`}
                             >
-                                <div className="flex items-center gap-3 min-w-0 flex-1">
-                                    <span className={`w-2 h-2 rounded-full shrink-0 ${isRead ? 'bg-zinc-600' : 'bg-yorumi-manga shadow-[0_0_8px_rgba(229,57,69,0.5)]'}`} />
+                                <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isRead ? 'bg-zinc-600' : 'bg-yorumi-manga shadow-[0_0_8px_rgba(229,57,69,0.5)]'}`} />
                                     <div className="flex flex-col min-w-0">
-                                        <span className={`font-medium text-[17px] leading-snug ${isRead ? 'text-zinc-400' : 'text-zinc-100 group-hover:text-yorumi-manga'} transition-colors line-clamp-1`}>
+                                        <span className={`font-medium text-[14px] sm:text-[15px] leading-snug ${isRead ? 'text-zinc-400' : 'text-zinc-100 group-hover:text-yorumi-manga'} transition-colors line-clamp-1`}>
                                             {mainStr}{subtitleStr ? ` : ${subtitleStr}` : ''}
                                         </span>
-                                        <div className="flex items-center gap-2 text-sm text-zinc-500 font-normal mt-1">
+                                        <div className="flex items-center gap-1.5 text-xs text-zinc-400/80 font-normal mt-0.5">
                                             <span>{ch.uploadDate || 'Recent'}</span>
                                             {(manga?.author || (ch as MangaChapterWithCredits).scanlator) && (
                                                 <>
@@ -214,7 +226,7 @@ const ChapterList = ({
                                         </div>
                                     </div>
                                 </div>
-                                <div className="flex items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
+                                <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
                                     <button
                                         type="button"
                                         onClick={(e) => {
@@ -231,7 +243,7 @@ const ChapterList = ({
                                             }
                                         }}
                                         disabled={isDownloading}
-                                        className={`grid h-10 w-10 place-items-center rounded-full transition-colors cursor-pointer ${
+                                        className={`grid h-8 w-8 place-items-center rounded-full transition-colors cursor-pointer ${
                                             isDownloaded
                                                 ? 'text-zinc-400 hover:bg-red-500/20 hover:text-red-400'
                                                 : isDownloading
@@ -249,7 +261,7 @@ const ChapterList = ({
                                         <DownloadStateIcon
                                             state={isDownloading ? 'downloading' : isDownloaded ? 'downloaded' : 'available'}
                                             progress={progress?.progress || 0}
-                                            className="h-[26px] w-[26px]"
+                                            className="h-5 w-5"
                                         />
                                     </button>
                                 </div>
@@ -273,7 +285,10 @@ export default function MangaDetailsPage() {
     const location = useLocation();
     const routeManga = (location.state as { manga?: Manga } | null)?.manga ?? null;
     const [viewMode, setViewMode] = useChapterViewMode();
-    const [synopsisExpanded, setSynopsisExpanded] = useState(false);
+    const [activeSectionTab, setActiveSectionTab] = useState<'chapters' | 'related'>('chapters');
+    useEffect(() => {
+        setActiveSectionTab('chapters');
+    }, [id]);
     const [compactFab, setCompactFab] = useState(false);
 
     const {
@@ -286,11 +301,12 @@ export default function MangaDetailsPage() {
     } = useManga();
 
     const { isInReadList, addToReadList, removeFromReadList } = useReadList();
+    const { isFavorite: isFavoriteManga, addFavorite: addFavoriteManga, removeFavorite: removeFavoriteManga } = useFavoriteManga();
     const { continueReadingList } = useContinueReading();
     const { language } = useTitleLanguage();
     const { downloads: mangaDownloads, downloadAll: downloadAllManga } = useMangaDownloads();
 
-    const isElectron = typeof window !== 'undefined' && Boolean(window.electronAPI?.openDownloadsFolder);
+    const isDesktopApp = supportsReadingExports();
 
     const handleOpenFolder = useCallback(() => {
         downloadService.openDownloadsFolder('Manga');
@@ -336,6 +352,15 @@ export default function MangaDetailsPage() {
 
     const effectiveChapters = mangaChapters.length > 0 ? mangaChapters : downloadedChapters;
 
+    useEffect(() => {
+        if (displayManga?.title) {
+            document.title = `${displayManga.title} • Yorumi`;
+        }
+        return () => {
+            document.title = 'Yorumi';
+        };
+    }, [displayManga?.title]);
+
     const handleDownloadAllManga = useCallback(() => {
         const mangaId = displayManga?.id || displayManga?.mal_id || id || '';
         if (!mangaId) return;
@@ -366,7 +391,7 @@ export default function MangaDetailsPage() {
         const title = slugify(displayManga.title || 'manga');
         const chapterMatch = chapter.title.match(/Chapter\s+(\d+[.]?\d*)/i);
         const chapterNum = chapterMatch ? chapterMatch[1] : '1';
-        navigate(`/manga/read/${title}/${id}/c${chapterNum}`, { state: { manga: displayManga, chapter } });
+        navigate(`/manga/read/${title}/${id}/c${chapterNum}`, { replace: true, state: { manga: displayManga, chapter } });
     }, [displayManga, id, navigate]);
 
     // Fetch details on mount or ID change
@@ -443,12 +468,12 @@ export default function MangaDetailsPage() {
 
     // Determine banner
     // If we have no banner, use the large cover logic or a blur
-    const bannerImage = displayManga.images.jpg.large_image_url;
+    const bannerImage = displayManga.bannerImage;
     const displayTitle = getDisplayTitle(displayManga as unknown as Record<string, unknown>, language);
     const hasReadableChapters = effectiveChapters.length > 0;
     const metadataChapterCount = Number(displayManga.chapters || 0);
     const hasResolvedChapterSource = Boolean(String(displayManga.scraper_id || '').trim()) || hasReadableChapters;
-    const displayAuthor = displayManga.author || displayManga.authors?.map((author) => author.name).filter(Boolean).join(', ');
+    const displayAuthor = getPrimaryMangaAuthor(displayManga);
 
     const mangaId = String(displayManga.scraper_id || displayManga.id || displayManga.mal_id);
 
@@ -477,14 +502,15 @@ export default function MangaDetailsPage() {
     };
 
     const handleBack = () => {
-        navigate('/manga', { replace: true });
+        if (((window.history.state as { idx?: number } | null)?.idx ?? 0) > 0) navigate(-1);
+        else navigate('/manga', { replace: true });
     };
 
     return (
-        <div className="min-h-screen bg-[#0a0a0a] text-white pb-24 md:pb-16 fade-in animate-in duration-300" style={{ paddingBottom: 'calc(5rem + env(safe-area-inset-bottom, 0px))' }}>
+        <div className="relative min-h-screen overflow-x-hidden bg-[#070707] text-white pb-24 md:pb-16 fade-in animate-in duration-300" style={{ paddingBottom: 'calc(5rem + env(safe-area-inset-bottom, 0px))' }}>
             <div
                 className={`fixed inset-x-0 top-0 z-40 md:hidden border-b transition-colors duration-300 ${compactFab ? 'border-purple-400/15 bg-[#24202b]/95 backdrop-blur-xl' : 'border-transparent bg-transparent'}`}
-                style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
+                style={{ paddingTop: 'max(env(safe-area-inset-top, 0px), 24px)' }}
             >
                 <div className="flex h-14 items-center gap-3 px-4">
                     <button type="button" onClick={handleBack} className="grid h-10 w-10 shrink-0 place-items-center text-white/90 transition-colors active:text-white" aria-label="Go back">
@@ -504,200 +530,69 @@ export default function MangaDetailsPage() {
                     </button>
                 </div>
             </div>
-            {/* 1. Header Hero */}
-            <div className="relative h-[30vh] md:h-[40vh] w-full overflow-hidden">
-
-                {/* Background Image with Blur */}
-                <div className="absolute inset-0">
-                    <img
-                        src={bannerImage}
-                        alt={displayTitle}
-                        className="w-full h-full object-cover blur-sm opacity-55 scale-105"
-                        onError={(e) => { e.currentTarget.style.display = 'none'; }}
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0a] via-[#0a0a0a]/40 to-black/10" />
-                    <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-[#0a0a0a] to-transparent" />
-                </div>
-            </div>
-
-            {/* 2. Content */}
-            <div className="max-w-7xl mx-auto px-4 sm:px-8 md:px-14 -mt-24 md:-mt-32 relative z-10">
-                <div className="flex flex-row md:flex-row gap-4 md:gap-8 lg:gap-12 items-start md:items-start">
-                    {/* Poster */}
-                    <div className="flex-shrink-0 w-28 sm:w-36 md:w-56 lg:w-60 group">
-                        <div className="rounded-xl md:rounded-xl overflow-hidden shadow-2xl shadow-black/50 aspect-[2/3]">
-                            <img
-                                src={displayManga.images.jpg.large_image_url}
-                                alt={displayTitle}
-                                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                            />
-                        </div>
-                    </div>
-
-                    {/* Meta Data */}
-                    <div className="flex-1 text-left space-y-3 md:space-y-4 min-w-0">
-                        {/* Overline & Title */}
-                        <div className="space-y-2">
-                            <h1 className="text-[26px] sm:text-3xl md:text-4xl lg:text-5xl font-semibold md:font-black text-white tracking-tight leading-[1.12]">
-                                {displayTitle}
-                            </h1>
-                            {(displayAuthor || displayManga.status) && (
-                                <div className="md:hidden space-y-1.5 text-[15px] leading-tight">
-                                    {displayAuthor && (
-                                        <div className="flex min-w-0 items-center gap-2 text-zinc-300">
-                                            <User className="h-4 w-4 shrink-0 text-zinc-400" />
-                                            <span className="truncate">{displayAuthor}</span>
-                                        </div>
-                                    )}
-                                    {displayManga.status && (
-                                        <div className="flex min-w-0 items-center gap-2 text-zinc-400">
-                                            <Clock3 className="h-4 w-4 shrink-0 text-zinc-500" />
-                                            <span className="truncate">{displayManga.status}</span>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Genres */}
-                        {displayManga.genres && displayManga.genres.length > 0 && (
-                            <div className="hidden md:flex flex-wrap items-center md:justify-start gap-2 pt-1">
-                                {displayManga.genres.slice(0, 4).map((genre) => (
-                                    <span key={genre.name} className="px-3 py-1 bg-white/5 border border-white/5 rounded-full text-xs font-semibold text-gray-300">
-                                        {genre.name}
-                                    </span>
-                                ))}
-                            </div>
-                        )}
-
-                        {/* Metadata Row */}
-                        <div className="hidden md:flex flex-wrap items-center md:justify-start gap-4 text-sm font-bold text-gray-400">
-                            {(displayManga.score || 0) > 0 && (
-                                <span className="flex items-center gap-1 text-[#facc15]">
-                                    <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" /></svg>
-                                    {displayManga.score}
-                                </span>
-                            )}
-                            {displayManga.views && (
-                                <span className="flex items-center gap-1 text-gray-300">
-                                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
-                                    {displayManga.views} Views
-                                </span>
-                            )}
-                            {displayAuthor && (
-                                <span className="text-gray-300 truncate max-w-[200px]" title={displayAuthor}>
-                                    {displayAuthor}
-                                </span>
-                            )}
-                            {!displayManga.views && displayManga.published?.from && (
-                                <span>{new Date(displayManga.published.from).getFullYear()}</span>
-                            )}
-                            {!displayManga.views && (hasReadableChapters || metadataChapterCount > 0) && (
-                                <span>
-                                    {hasReadableChapters ? `${mangaChapters.length} Chapters` : `${metadataChapterCount} Chapters`}
-                                </span>
-                            )}
-                            {!displayManga.views && displayManga.type && (
-                                <span className="px-2 py-0.5 bg-white/10 rounded text-[10px] text-white">
-                                    {displayManga.type}
-                                </span>
-                            )}
-                        </div>
-
-                        {/* Synopsis */}
-                        <div className="hidden md:block text-gray-300 text-sm md:text-base leading-relaxed max-w-4xl line-clamp-4 pt-2">
-                            {displayManga.synopsis || 'No synopsis available.'}
-                        </div>
-
-                        {/* Actions */}
-                        <div className="hidden md:flex w-full flex-row items-center md:justify-start gap-3 py-2">
-                            <button
-                                onClick={() => {
-                                    if (mangaChapters.length > 0) {
-                                        const startChapter = currentProgress
-                                            ? mangaChapters.find((c) => {
-                                                if (c.id === currentProgress.chapterId) return true;
-                                                const match = c.title.match(/Chapter\s+(\d+[.]?\d*)/i);
-                                                return match && match[1] === currentProgress.chapterNumber;
-                                            }) || mangaChapters[mangaChapters.length - 1]
-                                            : mangaChapters[mangaChapters.length - 1];
-                                        handleChapterClick(startChapter);
-                                    }
-                                }}
-                                disabled={mangaChaptersLoading || mangaChapters.length === 0}
-                                className="h-10 px-6 bg-[#1a1a1a] hover:bg-white/10 text-white text-sm font-bold rounded-xl transition-colors flex items-center gap-2 whitespace-nowrap disabled:opacity-50"
-                            >
-                                <Play className="w-4 h-4 fill-current" />
-                                <span>
-                                    {mangaChaptersLoading
-                                        ? 'Loading...'
-                                        : currentProgress
-                                            ? `Ch. ${currentProgress.chapterNumber}`
-                                            : 'Read'}
-                                </span>
-                            </button>
-                            
-                            <div className="relative">
+            <div className="mx-auto w-full max-w-[1440px] px-6 pt-24 sm:px-10 sm:pt-32 md:px-14 md:pt-40 lg:px-16 lg:pt-48">
+                <ReadingDetailsHero
+                    key={String(displayManga.id || displayManga.mal_id)}
+                    title={displayTitle}
+                    cover={displayManga.images?.jpg?.large_image_url || displayManga.images?.jpg?.image_url || ''}
+                    banner={bannerImage}
+                    synopsis={displayManga.synopsis}
+                    details={[displayManga.score ? displayManga.score.toFixed(1) : '', displayManga.countryOfOrigin === 'KR' ? 'Manhwa' : displayManga.countryOfOrigin === 'CN' ? 'Manhua' : (displayManga.type || 'Manga'), displayAuthor || '', hasReadableChapters ? `${effectiveChapters.length} chapters` : metadataChapterCount > 0 ? `${metadataChapterCount} chapters` : ''].filter(Boolean)}
+                    genres={displayManga.genres?.map((genre) => genre.name)}
+                    inList={isInReadList(mangaId)}
+                    inFavorites={isFavoriteManga(mangaId)}
+                    loading={mangaChaptersLoading}
+                    canRead={effectiveChapters.length > 0}
+                    readLabel="Read"
+                    onRead={() => {
+                        const startChapter = currentProgress
+                            ? effectiveChapters.find((chapter) => chapter.id === currentProgress.chapterId || chapter.title.match(/Chapter\s+(\d+[.]?\d*)/i)?.[1] === currentProgress.chapterNumber) || effectiveChapters[effectiveChapters.length - 1]
+                            : effectiveChapters[effectiveChapters.length - 1];
+                        if (startChapter) handleChapterClick(startChapter);
+                    }}
+                    onToggleList={handleToggleReadList}
+                    onToggleFavorite={() => {
+                        if (isFavoriteManga(mangaId)) {
+                            void removeFavoriteManga(mangaId);
+                        } else {
+                            void addFavoriteManga({
+                                id: mangaId,
+                                title: displayTitle,
+                                image: displayManga.images?.jpg?.large_image_url || displayManga.images?.jpg?.image_url || '',
+                            });
+                        }
+                    }}
+                    onBack={handleBack}
+                />
+                <div className="relative z-10 mt-6 w-full">
+                    {/* Section Tabs Row (below poster, before chapters) */}
+                    <div className="flex items-center gap-7 pt-2 pb-1">
+                        {(
+                            [
+                                { key: 'chapters', label: 'Chapters' },
+                                { key: 'related', label: 'More like this' },
+                            ] as const
+                        ).map((tab) => {
+                            const isActive = activeSectionTab === tab.key;
+                            return (
                                 <button
-                                    onClick={handleToggleReadList}
-                                    className={`h-10 px-6 text-sm font-bold rounded-xl transition-colors flex items-center gap-2 whitespace-nowrap ${isInReadList(mangaId)
-                                        ? 'bg-yorumi-manga/20 text-yorumi-manga hover:bg-yorumi-manga/30'
-                                        : 'bg-[#1a1a1a] hover:bg-white/10 text-white'
-                                        }`}
+                                    key={tab.key}
+                                    type="button"
+                                    onClick={() => setActiveSectionTab(tab.key)}
+                                    className={`text-[15px] font-extrabold transition-colors border-0 outline-none focus:outline-none cursor-pointer ${
+                                        isActive ? 'text-white' : 'text-white/50 hover:text-white/85'
+                                    }`}
                                 >
-                                    {isInReadList(mangaId) ? <Check className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
-                                    <span>{isInReadList(mangaId) ? 'Saved' : 'Save'}</span>
+                                    {tab.label}
                                 </button>
-                            </div>
-
-                            <button
-                                onClick={handleBack}
-                                className="h-10 px-6 bg-[#1a1a1a] hover:bg-white/10 text-white text-sm font-bold rounded-xl transition-colors flex items-center gap-2 whitespace-nowrap"
-                            >
-                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
-                                <span>Back</span>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="md:hidden mt-4 space-y-4">
-                    <div className="relative">
-                        <p className={`overflow-hidden text-base leading-7 text-zinc-300 transition-[max-height] duration-500 ease-out ${synopsisExpanded ? 'max-h-[40rem]' : 'max-h-[5.25rem]'}`}>
-                                {displayManga.synopsis || 'No synopsis available.'}
-                        </p>
-                        {!synopsisExpanded && (displayManga.synopsis || '').length > 140 && (
-                            <div className="pointer-events-none absolute inset-x-0 bottom-8 h-12 bg-gradient-to-t from-[#0a0a0a] via-[#0a0a0a]/85 to-transparent" />
-                        )}
-                        {(displayManga.synopsis || '').length > 140 && (
-                            <button
-                                type="button"
-                                onClick={() => setSynopsisExpanded((value) => !value)}
-                                className="mx-auto mt-1 flex h-8 w-8 items-center justify-center text-white/85 [&>span]:hidden"
-                                aria-label={synopsisExpanded ? 'Show less synopsis' : 'Show more synopsis'}
-                            >
-                                <ChevronDown className={`h-5 w-5 transition-transform duration-300 ${synopsisExpanded ? 'rotate-180' : ''}`} />
-                                <span className={`text-xl leading-none transition-transform ${synopsisExpanded ? 'rotate-180' : ''}`}>⌄</span>
-                            </button>
-                        )}
+                            );
+                        })}
                     </div>
 
-                    {displayManga.genres && displayManga.genres.length > 0 && (
-                        <div className={`${synopsisExpanded ? 'flex flex-wrap' : 'flex overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'} gap-2 pb-1 transition-all duration-300`}>
-                            {(synopsisExpanded ? displayManga.genres : displayManga.genres.slice(0, 8)).map((genre) => (
-                                <span key={genre.name} className="shrink-0 rounded-full bg-white/[0.07] px-3 py-1.5 text-xs font-semibold text-zinc-300">
-                                    {genre.name}
-                                </span>
-                            ))}
-                        </div>
-                    )}
-                </div>
-
-                <div className="w-full mt-6">
                     {/* Chapters Section */}
-                    <div id="chapters-section" className="pt-2">
+                    <div id="chapters-section" className={`pt-2 ${activeSectionTab === 'chapters' ? 'block' : 'hidden'}`}>
                         {mangaChaptersLoading ? (
-                            <div className="mt-4 bg-transparent md:bg-[#111]/40 rounded-none md:rounded-2xl p-0 md:p-6 animate-pulse">
+                            <div className="mt-4 bg-transparent p-0 animate-pulse">
                                 <div className="flex items-center justify-between gap-4 mb-6">
                                     <div className="h-7 w-32 bg-white/10 rounded-lg" />
                                     <div className="h-9 w-28 bg-white/10 rounded-xl" />
@@ -718,6 +613,8 @@ export default function MangaDetailsPage() {
                                 </div>
                             </div>
                         ) : effectiveChapters.length > 0 ? (
+                            <>
+                            {displayManga.readingProvider === 'mangadex' && <p className="mb-3 text-sm text-white/70">Showing available English chapters from MangaDex; some chapters may be unavailable.</p>}
                             <ChapterList
                                 chapters={effectiveChapters}
                                 readChapters={readChapters}
@@ -727,29 +624,30 @@ export default function MangaDetailsPage() {
                                 manga={displayManga}
                                 headerActions={
                                     <>
-                                        {isElectron && (
-                                            <button
-                                                type="button"
-                                                onClick={handleOpenFolder}
-                                                className="grid h-10 w-10 place-items-center text-gray-400 transition-colors hover:text-yorumi-manga"
-                                                title="Open downloaded files on your computer"
-                                                aria-label="Open downloads folder"
-                                            >
-                                                <FolderOpen className="h-5 w-5" />
-                                            </button>
-                                        )}
                                         <button
                                             type="button"
                                             onClick={handleDownloadAllManga}
-                                            className="grid h-10 w-10 place-items-center text-gray-400 transition-colors hover:text-yorumi-manga"
+                                            className="flex h-10 w-10 items-center justify-center rounded-full bg-white/[0.10] text-white/80 transition-colors hover:bg-white/[0.15] hover:text-white border-0 outline-none focus:outline-none cursor-pointer"
                                             title="Download all chapters for offline reading"
                                             aria-label="Download all chapters"
                                         >
-                                            <Download className="h-5 w-5" />
+                                            <Download className="h-4 w-4" />
                                         </button>
+                                        {isDesktopApp && (
+                                            <button
+                                                type="button"
+                                                onClick={handleOpenFolder}
+                                                className="flex h-10 w-10 items-center justify-center rounded-full bg-white/[0.10] text-white/80 transition-colors hover:bg-white/[0.15] hover:text-white border-0 outline-none focus:outline-none cursor-pointer"
+                                                title="Open downloaded files on your computer"
+                                                aria-label="Open downloads folder"
+                                            >
+                                                <FolderOpen className="h-4 w-4" />
+                                            </button>
+                                        )}
                                     </>
                                 }
                             />
+                            </>
                         ) : (
                             <div className="text-gray-500 text-center py-4 space-y-2">
                                 <div>
@@ -765,6 +663,18 @@ export default function MangaDetailsPage() {
                             </div>
                         )}
                     </div>
+
+                    {activeSectionTab === 'related' && (
+                        <div className="pt-2">
+                            <MoreLikeReading
+                                kind="manga"
+                                anilistId={Number(displayManga.externalIds?.anilist) > 0 ? Number(displayManga.externalIds?.anilist) : undefined}
+                                title={displayManga.title}
+                                genres={displayManga.genres?.map((g) => g.name)}
+                                embedded
+                            />
+                        </div>
+                    )}
 
                     {/* Characters Section (if available) */}
                     {displayManga.characters && (
@@ -786,12 +696,12 @@ export default function MangaDetailsPage() {
                         type="button"
                         onClick={() => {
                             const startChapter = currentProgress
-                                ? mangaChapters.find((c) => {
+                                ? effectiveChapters.find((c) => {
                                     if (c.id === currentProgress.chapterId) return true;
                                     const match = c.title.match(/Chapter\s+(\d+[.]?\d*)/i);
                                     return match && match[1] === currentProgress.chapterNumber;
-                                }) || mangaChapters[mangaChapters.length - 1]
-                                : mangaChapters[mangaChapters.length - 1];
+                                }) || effectiveChapters[effectiveChapters.length - 1]
+                                : effectiveChapters[effectiveChapters.length - 1];
                             if (startChapter) handleChapterClick(startChapter);
                         }}
                         className={`flex items-center justify-center py-3.5 rounded-2xl bg-[#5b4b72]/95 hover:bg-[#6d5a88] text-white font-bold text-sm shadow-2xl shadow-black/80 border border-white/10 backdrop-blur-md active:scale-95 transition-all duration-500 ease-out cursor-pointer ${compactFab ? 'w-14 px-0 gap-0' : 'px-5 gap-2'}`}
