@@ -34,11 +34,17 @@ source_paths:
 
 Do not fix unrelated failures. Report them clearly.
 
+## Tauri development
+
+- Install backend dependencies with `npm ci --prefix backend`. `npm run dev:tauri` starts the local backend when needed and waits for it before Vite; an existing Yorumi backend on port 3001 is reused. A different service on that port is left untouched and reported. Some desktop flows still depend on this API.
+
+- For a connected Android development build using ADB reverse, run `adb reverse tcp:5174 tcp:5174`, set `YORUMI_MOBILE_HMR_HOST=127.0.0.1`, and start Vite with `npx vite --host 127.0.0.1 --port 5174 --strictPort`. Keep the server running for frontend hot reload. Android Tauri development must use `http://127.0.0.1:5174` as its dev URL. Native changes still require rebuilding the app.
+
 ## Useful Diagnostics
 
 - `rg --files` for ownership discovery.
 - `rg -n "pattern" src backend/src` for data-flow tracing.
 - `adb logcat` and `chrome://inspect` for Android/WebView.
-- Electron renderer devtools plus backend terminal logs.
+- Tauri webview devtools plus backend terminal logs.
 - Network panel to distinguish identity, API, proxy, and media failures.
 
