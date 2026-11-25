@@ -175,6 +175,7 @@ export function useDownloads() {
             episodeNumber: number;
             episodeTitle?: string;
             streamUrl: string;
+            referer?: string;
             isHls?: boolean;
             quality?: string;
             audio?: 'sub' | 'dub';
