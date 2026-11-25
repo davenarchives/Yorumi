@@ -4,7 +4,7 @@ import { useAnime } from '../hooks/useAnime';
 import { useWatchList } from '../hooks/useWatchList';
 import { useFavoriteAnime } from '../hooks/useFavoriteAnime';
 import { useDownloads } from '../hooks/useDownloads';
-import { isDownloadTitleMatch, isDownloadAnimeIdMatch } from '../services/downloadService';
+import { downloadService, isDownloadTitleMatch, isDownloadAnimeIdMatch } from '../services/downloadService';
 import type { Anime, Episode } from '../types/anime';
 import type { WatchListItem } from '../utils/storage';
 import { animeService } from '../services/animeService';
@@ -13,6 +13,7 @@ import { episodeMetadataService, type AnimeMetadataPayload } from '../services/e
 import { animeMappingService, type CanonicalAnimeMapping } from '../services/animeMappingService';
 import { isNativeMobile } from '../platform/runtime';
 import { setLocalStorageWithCleanup } from '../utils/localStorageQuota';
+import { getDisplayImageUrl } from '../utils/image';
 import { getEpisodeWatchKey, getPlaybackEpisodeNumber } from '../utils/episodeWatchKey';
 import { isPrimaryAnimeMapping, mapTmdbMetadataToLocalEpisodes } from '../utils/animeEpisodeMapping';
 import { buildAnimeRouteId, getCanonicalAnimeKey, getDirectScraperRouteId, parseAnimeRouteId, type AnimeRouteRef } from '../utils/animeNavigation';
@@ -148,7 +149,7 @@ type RecursiveRelationNode = RelationNode & {
     };
 };
 
-const ANILIST_SEASON_CHAIN_CACHE_PREFIX = 'yorumi_anilist_season_chain_v14';
+const ANILIST_SEASON_CHAIN_CACHE_PREFIX = 'yorumi_anilist_season_chain_v15';
 const ANILIST_SEASON_CHAIN_CACHE_TTL = 7 * 24 * 60 * 60 * 1000;
 
 type SeasonChainCachePayload = {
@@ -162,8 +163,15 @@ const getExplicitSeasonNumber = (item: Partial<Anime>) => {
     const title = getSeasonTitle(item);
     const match =
         title.match(/\bseason\s*(\d+)\b/i) ||
-        title.match(/\b(\d+)(st|nd|rd|th)\s*season\b/i);
-    return match ? Number(match[1]) : 0;
+        title.match(/\b(\d+)(st|nd|rd|th)\s*season\b/i) ||
+        title.match(/\s([2-9])\s*$/);
+    if (match) return Number(match[1]);
+    const romanMatch = title.match(/\s(II|III|IV)\s*$/);
+    if (romanMatch) {
+        const romanMap: Record<string, number> = { II: 2, III: 3, IV: 4 };
+        return romanMap[romanMatch[1]] || 0;
+    }
+    return 0;
 };
 
 const getExplicitUnitNumber = (item: Partial<Anime>, unit: 'cour' | 'part') => {
@@ -234,6 +242,12 @@ const getRelatedSeasonCandidates = (anime: Anime) => {
         if (!nodeId || visited.has(nodeId)) continue;
         visited.add(nodeId);
 
+        // Older cached studio results may contain only relation IDs and formats.
+        // They can establish a link but cannot be rendered as a season yet.
+        if (!edge.node.title || !edge.node.coverImage) {
+            pending.push(...(edge.node.relations?.edges || []));
+            continue;
+        }
         const candidate = mapRelationNodeToAnime(edge.node);
         if (isAnimeFranchiseEntry(candidate)) candidates.push(candidate);
         if (isMainTimeline) pending.push(...(edge.node.relations?.edges || []));
@@ -290,7 +304,7 @@ const buildSeasonChips = (items: Anime[], activeId: number): SeasonChip[] => {
                 const existingTitle = getSeasonTitle(existing).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
                 if (id > 0 && existingId > 0 && id === existingId) return true;
-                if (tmdbId > 0 && existingTmdbId > 0 && tmdbId === existingTmdbId) return true;
+                if ((!id || !existingId) && tmdbId > 0 && existingTmdbId > 0 && tmdbId === existingTmdbId) return true;
                 if (normTitle && existingTitle && normTitle === existingTitle) return true;
                 return false;
             });
@@ -473,7 +487,9 @@ function AnimeDetailsPageContent() {
     const [compactToolbar, setCompactToolbar] = useState(false);
 
     const handleBack = useCallback(() => {
-        navigate('/', { replace: true });
+        if (isNativeMobile()) navigate('/', { replace: true });
+        else if (((window.history.state as { idx?: number } | null)?.idx ?? 0) > 0) navigate(-1);
+        else navigate('/', { replace: true });
     }, [navigate]);
 
     const [searchParams, setSearchParams] = useSearchParams();
@@ -497,7 +513,7 @@ function AnimeDetailsPageContent() {
         next.delete('ep');
         next.delete('t');
         Object.entries(params).forEach(([key, value]) => next.set(key, value));
-        setSearchParams(next, { state: location.state });
+        setSearchParams(next, { replace: isNativeMobile(), state: location.state });
     };
     const getTmdbRouteId = (anime: Partial<Anime> | null | undefined) => {
         const tmdbAnime = anime as (Partial<Anime> & { tmdbId?: unknown; tmdb_id?: unknown }) | null | undefined;
@@ -515,6 +531,22 @@ function AnimeDetailsPageContent() {
         window.addEventListener('scroll', onScroll, { passive: true });
         return () => window.removeEventListener('scroll', onScroll);
     }, []);
+
+    useEffect(() => {
+        const title =
+            selectedAnime?.title_english ||
+            selectedAnime?.title ||
+            selectedAnime?.title_romaji ||
+            location.state?.anime?.title_english ||
+            location.state?.anime?.title ||
+            location.state?.animeTitle;
+        if (title) {
+            document.title = `${title} • Yorumi`;
+        }
+        return () => {
+            document.title = 'Yorumi';
+        };
+    }, [selectedAnime?.title, selectedAnime?.title_english, selectedAnime?.title_romaji, location.state]);
 
     const scrollToPlayer = () => {
         setTimeout(() => {
@@ -923,6 +955,35 @@ function AnimeDetailsPageContent() {
             return { ...chip, isActive: chip.id === matchedAniListChip?.id };
         })
         .sort(compareSeasonChips);
+
+    const canonicalSeasonsCount = useMemo(() => {
+        if (!displayChips || displayChips.length === 0) return 1;
+
+        const seasonNumbers = new Set<number>();
+        for (const chip of displayChips) {
+            if (chip.tmdbSeasonNumber && chip.tmdbSeasonNumber > 0) {
+                seasonNumbers.add(chip.tmdbSeasonNumber);
+                continue;
+            }
+            const text = `${chip.label || ''} ${chip.title || ''}`;
+            const match = text.match(/\bseason\s*(\d+)\b/i) || text.match(/\b(\d+)(?:st|nd|rd|th)\s*season\b/i);
+            if (match) {
+                seasonNumbers.add(Number(match[1]));
+            }
+        }
+
+        if (seasonNumbers.size > 0) {
+            return Math.max(1, Math.max(...Array.from(seasonNumbers), seasonNumbers.size));
+        }
+
+        const validTmdbSeasons = tmdbDetails?.seasons?.filter((s) => Number(s.season_number) > 0);
+        if (validTmdbSeasons && validTmdbSeasons.length > 0) {
+            return validTmdbSeasons.length;
+        }
+
+        return Math.max(1, displayChips.length);
+    }, [displayChips, tmdbDetails]);
+
     const activeDisplayChip = displayChips.find((chip) => chip.isActive);
     const activeMappingChip = mappingSeasonChips.find((chip) =>
         Number(chip.anilistId || chip.id) === Number(activeDisplayChip?.anilistId || activeDisplayChip?.id || 0)
@@ -1333,39 +1394,194 @@ function AnimeDetailsPageContent() {
     const isFromDownloads = Boolean(location.state?.fromDownloads);
     const hasOfflineDownloads = (!navigator.onLine || isFromDownloads) && matchingDownloads.length > 0;
 
+    const offlineSavedMeta = useMemo(() => {
+        const first = matchingDownloads[0];
+        return downloadService.getOfflineAnimeMetadata(
+            first?.animeId || targetRouteStr,
+            first?.animeTitle || lookupTitle || stateAnime?.title,
+            currentRouteRef?.source === 'anilist' ? currentRouteRef.id : undefined
+        );
+    }, [matchingDownloads, targetRouteStr, lookupTitle, stateAnime?.title, currentRouteRef?.source, currentRouteRef?.id]);
+
     const downloadFallbackAnime = useMemo<Anime | null>(() => {
         if (matchingDownloads.length > 0) {
             const first = matchingDownloads[0];
+            const poster = offlineSavedMeta?.poster || first.animeImage;
             return {
-                id: Number(first.animeId) || 0,
-                mal_id: 0,
-                title: first.animeTitle,
-                title_english: first.animeTitle,
+                id: offlineSavedMeta?.anilistId || Number(first.animeId) || 0,
+                mal_id: offlineSavedMeta?.malId || 0,
+                tmdbId: offlineSavedMeta?.tmdbId,
+                title: offlineSavedMeta?.title || first.animeTitle,
+                title_english: offlineSavedMeta?.title_english || first.animeTitle,
                 images: {
                     jpg: {
-                        image_url: first.animeImage,
-                        large_image_url: first.animeImage,
+                        image_url: poster,
+                        large_image_url: poster,
                     },
                 },
-                episodes: matchingDownloads.length,
-                status: 'Completed',
-                synopsis: 'Offline Downloaded Series',
+                anilist_cover_image: poster,
+                anilist_banner_image: offlineSavedMeta?.banner || offlineSavedMeta?.backdrop,
+                episodes: offlineSavedMeta?.episodes || matchingDownloads.length,
+                status: offlineSavedMeta?.status || 'Completed',
+                type: offlineSavedMeta?.type || 'TV',
+                score: offlineSavedMeta?.score || 0,
+                year: offlineSavedMeta?.year,
+                rating: offlineSavedMeta?.rating,
+                synopsis: offlineSavedMeta?.synopsis || 'Offline Downloaded Series',
+                genres: (offlineSavedMeta?.genres || []).map((name) => ({ name, mal_id: 0 })),
             } as Anime;
         }
         if (stateAnime && stateAnime.title) {
             return stateAnime as Anime;
         }
         return null;
-    }, [matchingDownloads, stateAnime]);
+    }, [matchingDownloads, offlineSavedMeta, stateAnime]);
 
     const stateAnimeMatch = stateAnime && currentRouteRef && doesAnimeMatchRouteRef(stateAnime, currentRouteRef)
         ? (stateAnime as Anime)
         : (stateAnime?.title ? (stateAnime as Anime) : null);
 
-    const activeSelectedAnime = (selectedAnime && currentRouteRef && doesAnimeMatchRouteRef(selectedAnime, currentRouteRef) ? selectedAnime : null)
+    const rawActiveSelectedAnime = (selectedAnime && currentRouteRef && doesAnimeMatchRouteRef(selectedAnime, currentRouteRef) ? selectedAnime : null)
         || stateAnimeMatch
         || (hasOfflineDownloads ? downloadFallbackAnime : null)
         || selectedAnime;
+
+    const activeSelectedAnime = useMemo<Anime | null>(() => {
+        if (!rawActiveSelectedAnime) return null;
+        if (!offlineSavedMeta) return rawActiveSelectedAnime;
+        const poster = rawActiveSelectedAnime.images?.jpg?.large_image_url
+            || rawActiveSelectedAnime.images?.jpg?.image_url
+            || offlineSavedMeta.poster
+            || '';
+        return {
+            ...rawActiveSelectedAnime,
+            synopsis: rawActiveSelectedAnime.synopsis?.trim() ? rawActiveSelectedAnime.synopsis : (offlineSavedMeta.synopsis || ''),
+            score: Number(rawActiveSelectedAnime.score) > 0 ? rawActiveSelectedAnime.score : (offlineSavedMeta.score || 0),
+            year: rawActiveSelectedAnime.year || offlineSavedMeta.year,
+            rating: rawActiveSelectedAnime.rating || offlineSavedMeta.rating,
+            genres: rawActiveSelectedAnime.genres?.length
+                ? rawActiveSelectedAnime.genres
+                : (offlineSavedMeta.genres || []).map((name) => ({ name, mal_id: 0 })),
+            anilist_banner_image: rawActiveSelectedAnime.anilist_banner_image || offlineSavedMeta.banner || offlineSavedMeta.backdrop,
+            images: {
+                jpg: {
+                    image_url: poster,
+                    large_image_url: poster,
+                },
+            },
+        };
+    }, [offlineSavedMeta, rawActiveSelectedAnime]);
+
+    const currentWatchingAnime = activeSeasonAnime || activeSelectedAnime || selectedAnime;
+    const currentActiveEpParam = searchParams.get('ep');
+    const currentSeekParam = Number(searchParams.get('t') || 0);
+    const currentWatchSeasonNumber = currentWatchingAnime
+        ? (getExplicitSeasonNumber(currentWatchingAnime)
+            || activeDisplayChip?.tmdbSeasonNumber
+            || activeMappingSegments.find((segment) => segment.tmdbSeason > 0)?.tmdbSeason
+            || undefined)
+        : undefined;
+
+    useEffect(() => {
+        const win = window as Window & {
+            __yorumiNowWatching?: {
+                title: string;
+                seasonNumber?: number;
+                episodeNumber: string;
+                routeBase: string;
+            } | null;
+        };
+        if (currentActiveEpParam && currentWatchingAnime && currentWatchingAnime.status !== 'NOT_YET_RELEASED') {
+            win.__yorumiNowWatching = {
+                title: currentWatchingAnime.title_english || currentWatchingAnime.title || 'Anime',
+                seasonNumber: currentWatchSeasonNumber,
+                episodeNumber: currentActiveEpParam,
+                routeBase: `${location.pathname}?ep=${encodeURIComponent(currentActiveEpParam)}`,
+            };
+        } else {
+            win.__yorumiNowWatching = null;
+        }
+        return () => {
+            win.__yorumiNowWatching = null;
+        };
+    }, [currentActiveEpParam, currentWatchSeasonNumber, currentWatchingAnime, location.pathname]);
+
+    useEffect(() => {
+        if (!currentActiveEpParam || !Number.isFinite(currentSeekParam) || currentSeekParam <= 0) return;
+        let applied = false;
+        const trySeek = () => {
+            if (applied) return;
+            const video = document.querySelector('video');
+            if (!video) return;
+            if (video.readyState >= 1 && Number.isFinite(video.duration) && video.duration > 0) {
+                video.currentTime = Math.min(currentSeekParam, Math.max(0, video.duration - 2));
+                applied = true;
+            }
+        };
+        const interval = window.setInterval(() => {
+            trySeek();
+            if (applied) window.clearInterval(interval);
+        }, 400);
+        const timeout = window.setTimeout(() => window.clearInterval(interval), 15_000);
+        return () => {
+            window.clearInterval(interval);
+            window.clearTimeout(timeout);
+        };
+    }, [currentActiveEpParam, currentSeekParam, location.pathname]);
+
+    // Persist anime details + episode thumbnails for offline viewing whenever rich metadata is available online
+    useEffect(() => {
+        if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+        const target = activeSeasonAnime || activeSelectedAnime;
+        if (!target?.title) return;
+        const hasRichMeta = Boolean(target.synopsis?.trim() || (target.genres && target.genres.length > 0) || Number(target.score) > 0);
+        if (!hasRichMeta && matchingDownloads.length === 0) return;
+
+        const keyId = String(target.id || target.mal_id || id || target.title);
+        const poster = target.images?.jpg?.large_image_url || target.images?.jpg?.image_url || target.anilist_cover_image || '';
+        const cachedBackdrop = tmdbService.getCachedBackdropForAnime(target, 'w780') || tmdbService.getCachedBackdropForAnime(target, 'original') || undefined;
+        const episodeThumbs: Record<number, { title?: string; thumbnail?: string; overview?: string; airDate?: string }> = {};
+        if (Array.isArray(target.episodeMetadata)) {
+            target.episodeMetadata.forEach((ep, idx) => {
+                const epNum = Number(ep.title?.match(/Episode\s+(\d+)/i)?.[1] || idx + 1);
+                if (epNum > 0 && ep.thumbnail) {
+                    episodeThumbs[epNum] = { title: ep.title, thumbnail: ep.thumbnail };
+                }
+            });
+        }
+        tmdbEpisodes.forEach((ep) => {
+            const epNum = Number(ep.episode_number || 0);
+            if (epNum > 0) {
+                episodeThumbs[epNum] = {
+                    title: ep.name || undefined,
+                    thumbnail: ep.still_path ? tmdbService.imgUrl(ep.still_path, 'original') : undefined,
+                    overview: ep.overview || undefined,
+                    airDate: ep.air_date || undefined,
+                };
+            }
+        });
+
+        downloadService.saveOfflineAnimeMetadata({
+            id: keyId,
+            anilistId: Number(target.id) > 0 ? Number(target.id) : undefined,
+            malId: Number(target.mal_id) > 0 ? Number(target.mal_id) : undefined,
+            tmdbId: Number((target as Anime & { tmdbId?: number }).tmdbId) > 0 ? Number((target as Anime & { tmdbId?: number }).tmdbId) : undefined,
+            title: target.title,
+            title_english: target.title_english || undefined,
+            poster: poster || undefined,
+            banner: target.anilist_banner_image || undefined,
+            backdrop: cachedBackdrop,
+            synopsis: target.synopsis || undefined,
+            score: Number(target.score) > 0 ? Number(target.score) : undefined,
+            year: target.year || undefined,
+            rating: target.rating || undefined,
+            status: target.status || undefined,
+            type: target.type || undefined,
+            episodes: target.episodes ?? null,
+            genres: (target.genres || []).map((g) => g.name).filter(Boolean),
+            episodeThumbs,
+        });
+    }, [activeSeasonAnime, activeSelectedAnime, id, matchingDownloads.length, tmdbEpisodes]);
 
     // The page remains mounted while search navigation changes the route. Never
     // paint the prior title's hero/poster while the new title is resolving.
@@ -1388,7 +1604,15 @@ function AnimeDetailsPageContent() {
         );
     }
 
-    const displayAnime = activeSeasonAnime || activeSelectedAnime || selectedAnime;
+    const rawDisplayAnime = activeSeasonAnime || activeSelectedAnime || selectedAnime;
+    const displayAnime: Anime = {
+        ...rawDisplayAnime,
+        anilist_banner_image:
+            stateAnimeMatch?.anilist_banner_image ||
+            rawDisplayAnime.anilist_banner_image ||
+            activeSelectedAnime?.anilist_banner_image ||
+            selectedAnime?.anilist_banner_image,
+    };
 
     const hasResolvedTitle = Boolean(
         displayAnime.title?.trim() ||
@@ -1465,7 +1689,48 @@ function AnimeDetailsPageContent() {
         }
         
         if (season.source === 'tmdb') {
-            setSelectedTmdbSeason({ activeId: activeSeasonId, seasonNumber: season.tmdbSeasonNumber || season.id });
+            const targetSeasonNum = season.tmdbSeasonNumber || season.id;
+            // If we have a matching AniList entry for this TMDB season (e.g. Cyberpunk: Edgerunners S1 vs S2),
+            // navigate to that AniList entry so title, mal_id, anilistId, and stream playback all match.
+            const anilistPool = [
+                ...(resolvedSeasonChips?.chips || []),
+                ...initialSeasonChips,
+                ...routeSeasonChips,
+            ].filter((chip) => chip.source === 'anilist' && Number(chip.anilistId || chip.id) > 0);
+            const matchedAnilist = anilistPool.find((chip) => {
+                const chipSeasonNum = chip.anime
+                    ? (getExplicitSeasonNumber(chip.anime) || 1)
+                    : (getExplicitSeasonNumber({ title: chip.title } as Anime) || 1);
+                return chipSeasonNum === targetSeasonNum;
+            }) || (targetSeasonNum >= 1 && targetSeasonNum <= anilistPool.length ? anilistPool[targetSeasonNum - 1] : undefined);
+
+            if (matchedAnilist && Number(matchedAnilist.anilistId || matchedAnilist.id) !== Number(displayAnime.id || 0)) {
+                const targetId = Number(matchedAnilist.anilistId || matchedAnilist.id);
+                const targetAnime = matchedAnilist.anime || ({
+                    id: targetId,
+                    mal_id: 0,
+                    source: 'anilist',
+                    title: matchedAnilist.title,
+                    images: { jpg: { image_url: '', large_image_url: '' } },
+                } as Anime);
+                handleAnimeClickRef.current(targetAnime);
+                const nextParams = new URLSearchParams(searchParams);
+                nextParams.delete('ep');
+                nextParams.delete('t');
+                nextParams.delete('season');
+                nextParams.delete('map');
+                const destinationId = buildAnimeRouteId({ source: 'anilist', id: targetId });
+                navigate(`/anime/details/${destinationId}${nextParams.size ? `?${nextParams}` : ''}`, {
+                    state: {
+                        ...location.state,
+                        anime: targetAnime,
+                        preventScrollTop: true,
+                    },
+                });
+                return;
+            }
+
+            setSelectedTmdbSeason({ activeId: activeSeasonId, seasonNumber: targetSeasonNum });
             updateSearchParams({}); // Clear active episode when switching TMDB seasons
             return;
         }
@@ -1699,16 +1964,36 @@ function AnimeDetailsPageContent() {
         });
 
         if (filtered.length > 0) {
-            visibleEpisodes = filtered;
+            visibleEpisodes = filtered.map((ep) => {
+                const epNum = Number(ep.episodeNumber || ep.playbackEpisodeNumber || 0);
+                const savedEp = offlineSavedMeta?.episodeThumbs?.[epNum];
+                return savedEp
+                    ? {
+                        ...ep,
+                        title: ep.title && !/^Episode\s+\d+$/i.test(ep.title) ? ep.title : (savedEp.title || ep.title),
+                        thumbnail: ep.thumbnail || savedEp.thumbnail,
+                        snapshot: ep.snapshot || savedEp.thumbnail,
+                        overview: ep.overview || savedEp.overview,
+                        airDate: ep.airDate || savedEp.airDate,
+                    }
+                    : ep;
+            });
         } else if (matchingDownloads.length > 0) {
-            visibleEpisodes = matchingDownloads.map((d): NormalizedEpisode => ({
-                session: d.id,
-                episodeNumber: String(d.episodeNumber),
-                title: d.episodeTitle || `Episode ${d.episodeNumber}`,
-                thumbnail: d.animeImage,
-                snapshot: d.animeImage,
-                playbackEpisodeNumber: Number(d.episodeNumber),
-            }));
+            visibleEpisodes = matchingDownloads.map((d): NormalizedEpisode => {
+                const epNum = Number(d.episodeNumber);
+                const savedEp = offlineSavedMeta?.episodeThumbs?.[epNum];
+                const thumb = savedEp?.thumbnail || offlineSavedMeta?.poster || d.animeImage;
+                return {
+                    session: d.id,
+                    episodeNumber: String(d.episodeNumber),
+                    title: savedEp?.title || d.episodeTitle || `Episode ${d.episodeNumber}`,
+                    thumbnail: thumb,
+                    snapshot: thumb,
+                    overview: savedEp?.overview,
+                    airDate: savedEp?.airDate,
+                    playbackEpisodeNumber: epNum,
+                };
+            });
         }
 
         // Sort ascending by episode number (1, 2, 3...)
@@ -1739,9 +2024,6 @@ function AnimeDetailsPageContent() {
         }) || null
         : null;
 
-    const activeIndex = activeVisibleEpisode ? visibleEpisodes.indexOf(activeVisibleEpisode) : -1;
-    const prevVisibleEpisode = activeIndex > 0 ? visibleEpisodes[activeIndex - 1] : null;
-    const nextVisibleEpisode = activeIndex >= 0 && activeIndex < visibleEpisodes.length - 1 ? visibleEpisodes[activeIndex + 1] : null;
     const activePlayableEpisode = activeEpParam
         ? episodes.find((episode) => {
             const playbackEpisodeNumber = Number(episode._tmdbAbsolute || episode.episodeNumber);
@@ -1765,11 +2047,37 @@ function AnimeDetailsPageContent() {
         Math.max(10, Number.isFinite(expectedEpisodeCount) && expectedEpisodeCount > 0 ? expectedEpisodeCount : 10)
     );
 
+    const detailsBackdrop = tmdbService.getCachedBackdropForAnime(displayAnime, 'original')
+        || tmdbService.getCachedBackdropForAnime(displayAnime, 'w780')
+        || displayAnime.anilist_banner_image
+        || (displayAnime as any).backgroundCover
+        || (displayAnime as any).backdrop
+        || displayAnime.images?.jpg?.large_image_url;
+    const displayDetailsBackdrop = detailsBackdrop ? getDisplayImageUrl(detailsBackdrop) : null;
+
     return (
-        <div className="anime-details-page relative z-[2] min-h-screen bg-[#0a0a0a] pb-20 fade-in animate-in duration-300">
+        <div className="anime-details-page relative z-[2] min-h-screen bg-[#070707] pb-20 overflow-x-hidden">
+            {/* Ambient Mood Background Layer (Vivarium-style moodBg) */}
+            {displayDetailsBackdrop && (
+                <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden select-none" aria-hidden="true">
+                    {/* Ambient Light Bloom Canvas: heavily blurred, highly saturated colored light */}
+                    <div
+                        className="absolute -inset-[20%] w-[140%] h-[140%] bg-cover bg-center bg-no-repeat"
+                        style={{
+                            backgroundImage: `url(${displayDetailsBackdrop})`,
+                            filter: 'blur(100px) saturate(2.4) brightness(1.05)',
+                            transform: 'scale(1.2)',
+                            opacity: 0.55,
+                        }}
+                    />
+                    {/* Ambient Tint Scrim */}
+                    <div className="absolute inset-0 bg-[#070707]/35" />
+                    <div className="absolute inset-0 bg-gradient-to-b from-[#070707]/10 via-[#070707]/25 to-[#070707]/55" />
+                </div>
+            )}
             {!searchParams.get('ep') && <div
                 className={`fixed inset-x-0 top-0 z-40 md:hidden border-b transition-colors duration-300 ${compactToolbar ? 'border-purple-400/15 bg-[#24202b]/95 backdrop-blur-xl' : 'border-transparent bg-transparent'}`}
-                style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
+                style={{ paddingTop: 'max(env(safe-area-inset-top, 0px), 24px)' }}
             >
                 <div className="flex h-14 items-center gap-3 px-4">
                     <button type="button" onClick={handleBack} className="grid h-10 w-10 shrink-0 place-items-center text-white/90" aria-label="Go back">
@@ -1789,20 +2097,19 @@ function AnimeDetailsPageContent() {
                     </button>
                 </div>
             </div>}
-            {/* Banner Section */}
+            {/* Fullscreen Seamless Backdrop Section */}
             <DetailsHero anime={displayAnime} breadcrumbParent={breadcrumbParent} />
 
             {/* Content Section */}
-            <div className="max-w-7xl mx-auto px-4 sm:px-8 md:px-14 -mt-20 md:-mt-32 relative z-10">
+            <div className="max-w-[1440px] mx-auto px-6 sm:px-10 md:px-14 lg:px-16 pt-24 sm:pt-32 md:pt-40 lg:pt-48 relative z-10">
                 <DetailsInfo
                     anime={displayAnime}
-                    episodesCount={activeChip?.source === 'anilist' && Number(displayAnime.episodes || 0) > 0
-                        ? Number(displayAnime.episodes)
-                        : visibleEpisodes.length}
+                    seasonsCount={canonicalSeasonsCount}
                     isLoading={isEpisodesResolving}
                     inList={inList}
                     inFavorites={inFavorites}
                     onWatch={() => {
+                        if (isUnreleased || !hasEpisodes) return;
                         updateSearchParams({ ep: '1' });
                         if (!isNativeMobile()) scrollToPlayer();
                     }}
@@ -1810,16 +2117,56 @@ function AnimeDetailsPageContent() {
                     onToggleFavorite={handleToggleFavorite}
                     onBack={handleBack}
                 >
-                    {activeEpParam && playbackAnimeId ? (
+                    {activeEpParam && playbackAnimeId && !isUnreleased ? (() => {
+                        const targetSeasonNum = activeDisplayChip?.source === 'tmdb'
+                            ? Number(activeDisplayChip.tmdbSeasonNumber || 0)
+                            : 0;
+                        const displaySeasonNum = getExplicitSeasonNumber(displayAnime) || 1;
+                        let effectivePlaybackAnime: Anime = displayAnime;
+
+                        if (targetSeasonNum > 0 && targetSeasonNum !== displaySeasonNum) {
+                            const anilistPool = [
+                                ...(resolvedSeasonChips?.chips || []),
+                                ...initialSeasonChips,
+                                ...routeSeasonChips,
+                            ].filter((chip) => chip.source === 'anilist' && chip.anime);
+                            const matchedSeasonAnime = anilistPool.find((chip) => {
+                                const chipSeasonNum = getExplicitSeasonNumber(chip.anime!) || 1;
+                                return chipSeasonNum === targetSeasonNum;
+                            })?.anime;
+
+                            if (matchedSeasonAnime) {
+                                effectivePlaybackAnime = matchedSeasonAnime;
+                            } else {
+                                const baseTitle = String(displayAnime.title_english || displayAnime.title || '')
+                                    .replace(/\s+(?:season\s*\d+|\d+(?:st|nd|rd|th)\s*season|(?:part|cour)\s*\d+|[2-9])$/i, '')
+                                    .trim();
+                                const tmdbChipTitle = String(activeDisplayChip?.title || '').trim();
+                                const cleanChipTitle = tmdbChipTitle && !/^season\s*\d+$/i.test(tmdbChipTitle)
+                                    ? tmdbChipTitle
+                                    : (targetSeasonNum > 1 ? `${baseTitle} Season ${targetSeasonNum}` : baseTitle);
+                                effectivePlaybackAnime = {
+                                    ...displayAnime,
+                                    id: 0,
+                                    mal_id: 0,
+                                    title: cleanChipTitle || baseTitle,
+                                    title_english: cleanChipTitle || baseTitle,
+                                    title_romaji: cleanChipTitle || baseTitle,
+                                    synonyms: [],
+                                };
+                            }
+                        }
+
+                        return (
                         <DetailsVideoPlayer 
-                            animeId={playbackAnimeId}
-                            animeTitle={displayAnime.title}
+                            animeId={effectivePlaybackAnime.id ? String(effectivePlaybackAnime.id) : playbackAnimeId}
+                            animeTitle={effectivePlaybackAnime.title}
+                            anime={effectivePlaybackAnime}
+                            seasonNumber={targetSeasonNum || getExplicitSeasonNumber(effectivePlaybackAnime) || activeDisplayChip?.tmdbSeasonNumber || activeMappingSegments.find((segment) => segment.tmdbSeason > 0)?.tmdbSeason || activeVisibleEpisode?.tmdbSeason}
                             onClose={() => updateSearchParams({})}
                             isWatched={Boolean(activeEpisodeWatchKey && watchedEpisodes.has(activeEpisodeWatchKey))}
                             isResolvingEpisode={isPlayerResolvingEpisode}
                             fallbackEpisode={activeVisibleEpisode}
-                            prevEpisode={prevVisibleEpisode}
-                            nextEpisode={nextVisibleEpisode}
                             episodes={visibleEpisodes}
                             onEpisodeSelect={(episode) => {
                                 updateSearchParams({ ep: String(getPlaybackEpisodeNumber(episode)) });
@@ -1828,7 +2175,8 @@ function AnimeDetailsPageContent() {
                                 if (activeEpisodeWatchKey) toggleEpisodeComplete(activeEpisodeWatchKey);
                             }}
                         />
-                    ) : null}
+                        );
+                    })() : null}
 
                     {!isUnreleased && (
                         <DetailsEpisodeGrid
@@ -1842,6 +2190,7 @@ function AnimeDetailsPageContent() {
                             animeId={animeId}
                             animeTitle={displayAnime.title}
                             animeImage={displayAnime.images?.jpg?.large_image_url || displayAnime.images?.jpg?.image_url || displayAnime.anilist_cover_image || ''}
+                            animeDuration={displayAnime.duration}
                             scraperSession={displayAnime.title}
                             anilistId={displayAnime.id}
                             isMovie={isMovie}
@@ -1853,8 +2202,6 @@ function AnimeDetailsPageContent() {
                             }}
                         />
                     )}
-
-
                 </DetailsInfo>
             </div>
         </div>
@@ -1864,13 +2211,16 @@ function AnimeDetailsPageContent() {
 function DetailsPageSkeleton() {
     return (
         <div className="min-h-screen bg-[#0a0a0a] animate-pulse">
-            <div className="w-full h-[50vh] md:h-[65vh] bg-white/5" />
-            <div className="max-w-7xl mx-auto px-8 md:px-14 -mt-24 md:-mt-32 relative z-10 flex flex-col md:flex-row gap-8">
-                <div className="w-48 md:w-64 aspect-[2/3] rounded-xl bg-white/10" />
-                <div className="flex-1 mt-4 md:mt-32 flex flex-col gap-4">
-                    <div className="h-8 w-2/3 bg-white/10 rounded" />
-                    <div className="h-4 w-1/3 bg-white/10 rounded" />
-                    <div className="h-20 w-full bg-white/10 rounded mt-4" />
+            <div className="max-w-[1440px] mx-auto px-6 sm:px-10 md:px-14 lg:px-16 pt-28 md:pt-44 relative z-10 flex flex-col sm:flex-row items-start sm:items-end gap-7">
+                <div className="w-32 sm:w-40 md:w-[190px] lg:w-[205px] aspect-[2/3] rounded-[16px] bg-white/[0.07]" />
+                <div className="flex-1 flex flex-col gap-3.5 w-full">
+                    <div className="h-12 w-64 bg-white/[0.08] rounded-lg" />
+                    <div className="h-5 w-48 bg-white/[0.06] rounded" />
+                    <div className="h-14 w-full max-w-2xl bg-white/[0.06] rounded-lg" />
+                    <div className="flex gap-2.5 pt-1">
+                        <div className="h-11 w-28 rounded-full bg-white/[0.08]" />
+                        <div className="h-11 w-32 rounded-full bg-white/[0.06]" />
+                    </div>
                 </div>
             </div>
         </div>
