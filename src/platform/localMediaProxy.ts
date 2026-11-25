@@ -1,5 +1,5 @@
 import { registerPlugin } from '@capacitor/core';
-import { isNativeMobile } from './runtime';
+import { isNativeMobile, isTauri } from './runtime';
 
 type LocalMediaProxyPlugin = {
     createUrl(options: { url: string; referer?: string }): Promise<{ url: string }>;
@@ -8,6 +8,16 @@ type LocalMediaProxyPlugin = {
 const proxy = registerPlugin<LocalMediaProxyPlugin>('LocalMediaProxy');
 
 export const createLocalMediaProxyUrl = async (url: string, referer = '') => {
+    if (isTauri()) {
+        const encodedUrl = encodeURIComponent(url);
+        const encodedReferer = referer ? `&referer=${encodeURIComponent(referer)}` : '';
+        // Windows and Android map custom schemes to an HTTP localhost origin.
+        const prefix = /Windows|Android/i.test(navigator.userAgent)
+            ? 'http://yorumi-media.localhost/stream'
+            : 'yorumi-media://localhost/stream';
+        return `${prefix}?url=${encodedUrl}${encodedReferer}`;
+    }
+
     if (!isNativeMobile()) return url;
     try {
         return (await proxy.createUrl({ url, referer })).url;
