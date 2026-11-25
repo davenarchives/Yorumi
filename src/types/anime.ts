@@ -92,6 +92,38 @@ export interface Anime {
             };
         }[];
     };
+    recommendations?: {
+        edges?: {
+            node?: {
+                mediaRecommendation?: {
+                    id: number;
+                    idMal?: number;
+                    title?: { romaji?: string; english?: string; native?: string };
+                    coverImage?: { large?: string; extraLarge?: string };
+                    bannerImage?: string;
+                    format?: string;
+                    episodes?: number | null;
+                    status?: string;
+                    genres?: string[];
+                    averageScore?: number;
+                };
+            };
+        }[];
+        nodes?: {
+            mediaRecommendation?: {
+                id: number;
+                idMal?: number;
+                title?: { romaji?: string; english?: string; native?: string };
+                coverImage?: { large?: string; extraLarge?: string };
+                bannerImage?: string;
+                format?: string;
+                episodes?: number | null;
+                status?: string;
+                genres?: string[];
+                averageScore?: number;
+            };
+        }[];
+    };
     seasonChain?: Anime[];
     countryOfOrigin?: string;
 }
@@ -106,5 +138,7 @@ export interface Episode {
     overview?: string;
     airDate?: string | null;
     playbackEpisodeNumber?: number;
+    tmdbSeason?: number;
+    tmdbEpisode?: number;
     _tmdbAbsolute?: number;
 }
