@@ -118,6 +118,27 @@ export const getAnimeDetailsRouteId = (item: AnimeRouteTarget): string => {
     return '';
 };
 
+export const getAnimeWatchlistId = (item: AnimeRouteTarget | null | undefined): string => {
+    if (!item) return '';
+
+    const tmdbId = toPositiveNumber(item.tmdbId ?? item.tmdb_id);
+    const source = String(item.source || '').toLowerCase();
+    if (source === 'tmdb' && tmdbId) return `tmdb-${tmdbId}`;
+
+    const anilistId = toPositiveNumber(item.anilistId) || toPositiveNumber(item.id);
+    if (anilistId) return String(anilistId);
+
+    const malId = toPositiveNumber(item.mal_id);
+    if (malId) return String(malId);
+
+    if (tmdbId) return `tmdb-${tmdbId}`;
+
+    const scraperId = normalizeScraperSession(item.scraperId);
+    if (scraperId) return scraperId;
+
+    return '';
+};
+
 export const getAnimeWatchRouteId = getAnimeDetailsRouteId;
 
 export const getCanonicalAnimeKey = (item: AnimeRouteTarget): string => {
