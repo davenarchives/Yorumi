@@ -1,13 +1,13 @@
 {
   "name": "yorumi",
   "private": true,
-  "version": "4.3.0",
+  "version": "5.0.0",
   "description": "Yorumi - Anime & Manga Streamer",
   "author": "davenarchives",
-  "main": "dist-electron/main.cjs",
   "type": "module",
   "scripts": {
-    "dev": "concurrently \"npm run dev --prefix backend\" \"vite\" \"wait-on tcp:5173 && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron .\"",
+    "dev": "concurrently \"npm run dev --prefix backend\" \"vite\"",
+    "dev:tauri:frontend": "concurrently --kill-others -s first -n backend,vite \"node scripts/tauri-backend.cjs\" \"node scripts/wait-dev-backend.cjs && node scripts/setup-android-reverse.cjs && node scripts/ensure-port-free.cjs 5173 5174 && vite\"",
     "dev:mobile": "concurrently \"npm run dev --prefix backend\" \"vite --host 0.0.0.0\"",
     "build:frontend": "tsc -b tsconfig.app.json tsconfig.node.json && vite build",
     "build": "npx esbuild backend/src/index.ts --bundle --platform=node --target=node18 --outfile=backend/dist/bundle.cjs --external:@sparticuz/chromium && tsc -b tsconfig.app.json tsconfig.node.json && vite build",
@@ -15,20 +15,17 @@
     "android:open": "cap open android",
     "android:build:debug": "npm run android:sync && node scripts/run-android-gradle.cjs assembleDebug",
     "android:build:release": "npm run android:sync && node scripts/run-android-gradle.cjs assembleRelease",
-    "build:electron": "npm run build && node scripts/build-electron.cjs",
-    "build:electron:win": "npm run build && node scripts/build-electron.cjs --win --x64 --arm64",
-    "build:electron:win:x64": "npm run build && node scripts/build-electron.cjs --win --x64",
-    "build:electron:win:arm64": "npm run build && node scripts/build-electron.cjs --win --arm64",
-    "build:electron:win:portable": "npm run build && node scripts/build-electron.cjs --win portable",
-    "build:electron:mac": "npm run build && node scripts/build-electron.cjs --mac --universal",
-    "build:electron:mac:arm64": "npm run build && node scripts/build-electron.cjs --mac --arm64",
-    "build:electron:mac:x64": "npm run build && node scripts/build-electron.cjs --mac --x64",
-    "build:electron:mac:universal": "npm run build && node scripts/build-electron.cjs --mac --universal",
-    "build:electron:linux": "npm run build && node scripts/build-electron.cjs --linux",
-    "build:electron:all": "npm run build && node scripts/build-electron.cjs --win --mac --linux",
-    "start": "concurrently \"npm run dev --prefix backend\" \"electron .\"",
+    "start": "npm run dev:tauri",
     "lint": "eslint .",
     "preview": "vite preview",
+    "tauri": "tauri",
+    "dev:tauri": "tauri dev",
+    "build:tauri": "tauri build",
+    "dev:tauri:android": "node scripts/setup-android-reverse.cjs && tauri android dev",
+    "dev:tauri:android:reverse": "node scripts/setup-android-reverse.cjs && tauri android dev --host localhost",
+    "dev:tauri:android:open": "node scripts/setup-android-reverse.cjs && tauri android dev --open",
+    "build:tauri:android:debug": "tauri android build --debug --apk",
+    "build:tauri:android": "tauri android build --apk",
     "test:mappings": "npm exec --prefix backend -- tsx --test tests/anime-mapping.test.ts tests/content-identity.test.ts",
     "knip": "knip"
   },
@@ -42,18 +39,19 @@
     "@emotion/styled": "^11.14.1",
     "@mui/icons-material": "^9.1.1",
     "@mui/material": "^9.1.1",
+    "@neon/config": "^1.14.6",
+    "@neon/env": "^2.1.9",
     "@sparticuz/chromium": "^143.0.4",
+    "@tauri-apps/api": "^2.12.4",
+    "@tauri-apps/plugin-opener": "^2.7.3",
     "@upstash/redis": "^1.36.1",
     "axios": "^1.13.2",
     "cheerio": "^1.1.2",
     "cors": "^2.8.5",
-    "discord-rpc": "^4.0.1",
     "dotenv": "^17.2.3",
-    "electron-updater": "^6.8.9",
     "embla-carousel-autoplay": "^8.6.0",
     "embla-carousel-react": "^8.6.0",
     "express": "^5.2.1",
-    "firebase": "^12.8.0",
     "framer-motion": "^12.40.0",
     "fuzzball": "^2.2.3",
     "hls.js": "^1.6.15",
@@ -68,15 +66,13 @@
   "devDependencies": {
     "@capacitor/cli": "^8.5.2",
     "@eslint/js": "^9.39.1",
+    "@tauri-apps/cli": "^2.12.4",
     "@types/node": "^24.13.2",
     "@types/react": "^19.2.5",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",
     "autoprefixer": "^10.4.16",
     "concurrently": "^9.2.3",
-    "cross-env": "^10.1.0",
-    "electron": "^41.7.1",
-    "electron-builder": "^26.15.3",
     "esbuild": "^0.25.0",
     "eslint": "^9.39.1",
     "eslint-plugin-react-hooks": "^7.0.1",
@@ -90,66 +86,9 @@
     "tailwindcss": "^3.4.17",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.46.4",
-    "vite": "npm:rolldown-vite@7.2.5",
-    "wait-on": "^9.0.10"
+    "vite": "npm:rolldown-vite@7.2.5"
   },
   "overrides": {
     "vite": "npm:rolldown-vite@7.2.5"
-  },
-  "build": {
-    "appId": "com.yorumi.app",
-    "productName": "Yorumi",
-    "publish": {
-      "provider": "github",
-      "owner": "davenarchives",
-      "repo": "Yorumi"
-    },
-    "directories": {
-      "output": "dist-app"
-    },
-    "artifactName": "${productName}.${ext}",
-    "files": [
-      "dist/**/*",
-      "dist-electron/**/*",
-      "backend/dist/bundle.cjs",
-      "!node_modules/**/*",
-      "!backend/node_modules/**/*"
-    ],
-    "asarUnpack": [
-      "backend/dist/bundle.cjs"
-    ],
-    "win": {
-      "target": "nsis",
-      "icon": "public/yorumi-icon.png"
-    },
-    "nsis": {
-      "uninstallDisplayName": "Yorumi"
-    },
-    "mac": {
-      "target": [
-        {
-          "target": "dmg",
-          "arch": [
-            "universal"
-          ]
-        },
-        {
-          "target": "zip",
-          "arch": [
-            "universal"
-          ]
-        }
-      ],
-      "icon": "public/yorumi-icon.png",
-      "category": "public.app-category.entertainment",
-      "hardenedRuntime": false,
-      "gatekeeperAssess": false,
-      "darkModeSupport": true,
-      "minimumSystemVersion": "10.15.0"
-    },
-    "linux": {
-      "target": "AppImage",
-      "icon": "public/yorumi-icon.png"
-    }
   }
 }
