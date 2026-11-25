@@ -14,33 +14,63 @@ import { PersistentPlayerProvider } from './features/player/context/PersistentPl
 import { gentleTransition } from './utils/motion';
 import { tmdbService } from './services/tmdbService';
 import ScrollRestoration from './components/layout/ScrollRestoration';
-import OTAUpdateModal from './components/modals/OTAUpdateModal';
 import OfflineBanner from './components/shared/OfflineBanner';
+import MobilePullToRefresh from './components/shared/MobilePullToRefresh';
+import AppUpdateModal from './components/shared/AppUpdateModal';
 import discordRPCService from './services/discordRPCService';
-import { isNativeMobile } from './platform/runtime';
+import { isMobileShell, isNativeMobile, isTauri } from './platform/runtime';
+import DesktopTitleBar from './components/layout/DesktopTitleBar';
+import { candidatePoolService } from './features/explore/recommendation/candidatePoolService';
+import { lnService } from './services/lnService';
+import { mangaService } from './services/mangaService';
+import { cloudSyncService } from './services/cloudSyncService';
 
 function App() {
     const location = useLocation();
     const navigate = useNavigate();
     const { language } = useTitleLanguage();
     const [showScrollToTop, setShowScrollToTop] = useState(false);
+
+    useEffect(() => {
+        if (isMobileShell()) return;
+        document.documentElement.classList.add('has-desktop-titlebar');
+        return () => document.documentElement.classList.remove('has-desktop-titlebar');
+    }, []);
+
+    // Warm up Explore, Manga, and Light Novel home data in the background shortly after app startup so navigation is instant.
+    useEffect(() => {
+        const timer = window.setTimeout(() => {
+            void candidatePoolService.getCandidatePool().catch(() => undefined);
+            void mangaService.getHomeSections().catch(() => undefined);
+            void lnService.preloadHome().catch(() => undefined);
+        }, 1200);
+        return () => window.clearTimeout(timer);
+    }, []);
+
+    useEffect(() => {
+        cloudSyncService.start();
+        return () => cloudSyncService.stop();
+    }, []);
     const [tmdbSetupReady, setTmdbSetupReady] = useState(() => (
         tmdbService.hasToken() || tmdbService.hasCompletedSetup()
     ));
 
     const queryParams = new URLSearchParams(location.search);
+    const isExploreRoute = location.pathname === '/explore';
     const isImmersiveRoute =
         location.pathname.startsWith('/manga/read/') ||
         location.pathname.startsWith('/ln/read/') ||
         location.pathname.startsWith('/anime/details/') ||
         location.pathname.startsWith('/manga/details/') ||
-        location.pathname.startsWith('/ln/details/');
+        location.pathname.startsWith('/ln/details/') ||
+        location.pathname.startsWith('/explore');
     const hideScrollToTop =
         location.pathname.startsWith('/manga/details/') ||
         location.pathname.startsWith('/ln/details/') ||
         location.pathname.startsWith('/anime/details/') ||
         location.pathname.startsWith('/manga/read/') ||
-        location.pathname.startsWith('/ln/read/');
+        location.pathname.startsWith('/ln/read/') ||
+        location.pathname.startsWith('/explore');
     const activeTab = location.pathname.startsWith('/ln') || queryParams.get('type') === 'ln'
         ? 'ln'
         : location.pathname.startsWith('/manga')
@@ -60,99 +90,54 @@ function App() {
         if (!isNativeMobile()) return;
 
         let listener: PluginListenerHandle | undefined;
-        void CapacitorApp.addListener('backButton', () => {
+        let disposed = false;
+        const handleBack = () => {
             const rawHash = window.location.hash.replace(/^#/, '') || '/';
-            const [currentHash, rawSearch = ''] = rawHash.split('?');
-            const currentSearch = new URLSearchParams(rawSearch);
-
-            // 1. Home follows normal Android behavior without terminating the
-            // process, so returning to Yorumi preserves the current session.
-            if (currentHash === '/') {
-                void CapacitorApp.minimizeApp();
+            const [path, rawSearch = ''] = rawHash.split('?');
+            const search = new URLSearchParams(rawSearch);
+            if (path.startsWith('/anime/details/') && search.has('ep')) {
+                search.delete('ep');
+                const query = search.toString();
+                navigate({ pathname: path, search: query ? `?${query}` : '' }, { replace: true });
                 return;
             }
-
-            // 2. If inside reader screens, navigate back to their details page
-            if (currentHash.startsWith('/manga/read/')) {
-                const parts = currentHash.split('/');
-                if (parts[4]) {
-                    navigate(`/manga/details/${parts[4]}`);
-                    return;
-                }
-                navigate('/manga');
-                return;
-            }
-
-            if (currentHash.startsWith('/ln/read/')) {
-                const parts = currentHash.split('/');
-                if (parts[4]) {
-                    navigate(`/ln/details/${parts[4]}`);
-                    return;
-                }
-                navigate('/ln');
-                return;
-            }
-
-            // 3. The anime player is query-driven. Back closes playback first,
-            // revealing the same details page; a second Back returns Home.
-            if (currentHash.startsWith('/anime/details/')) {
-                if (currentSearch.has('ep')) {
-                    currentSearch.delete('ep');
-                    const search = currentSearch.toString();
-                    navigate({ pathname: currentHash, search: search ? `?${search}` : '' }, { replace: true });
-                    return;
-                }
+            if (path.startsWith('/anime/details/')) {
                 navigate('/', { replace: true });
                 return;
             }
-
-            if (currentHash.startsWith('/manga/details/')) {
-                navigate('/manga', { replace: true });
+            if (path.startsWith('/manga/read/')) {
+                const parts = path.split('/').filter(Boolean);
+                navigate(parts[3] ? `/manga/details/${parts[3]}` : '/manga', { replace: true });
                 return;
             }
-
-            if (currentHash.startsWith('/ln/details/')) {
-                navigate('/ln', { replace: true });
+            if (path.startsWith('/ln/read/')) {
+                const parts = path.split('/').filter(Boolean);
+                navigate(parts[3] ? `/ln/details/${parts[3]}` : '/ln', { replace: true });
                 return;
             }
-
-            // 4. Secondary roots always return to Anime Home, regardless of
-            // unrelated browser history accumulated during the session.
-            if (currentHash === '/manga' || currentHash === '/ln' || currentHash === '/library' || currentHash === '/profile') {
-                navigate('/');
-                return;
-            }
-
-            // 5. If there is history depth in this session, navigate back
-            const historyIdx = (window.history.state as { idx?: number })?.idx ?? 0;
+            const historyIdx = (window.history.state as { idx?: number } | null)?.idx ?? 0;
             if (historyIdx > 0) {
                 navigate(-1);
                 return;
             }
-
-            // 6. Fallbacks when history stack has no prior entry:
-            if (currentHash.startsWith('/manga/genre/') || currentHash.startsWith('/manga/')) {
-                navigate('/manga');
+            if (path === '/') {
+                if (!isTauri()) void CapacitorApp.minimizeApp();
                 return;
             }
+            navigate(path.startsWith('/manga') ? '/manga' : path.startsWith('/ln') ? '/ln' : '/', { replace: true });
+        };
 
-            if (currentHash.startsWith('/ln/')) {
-                navigate('/ln');
-                return;
-            }
-
-            if (currentHash.startsWith('/genre/') || currentHash.startsWith('/anime/')) {
-                navigate('/');
-                return;
-            }
-
-            // Default fallback
-            navigate('/');
-        }).then((handle) => {
-            listener = handle;
-        });
-
+        if (isTauri()) {
+            window.addEventListener('yorumi-native-back', handleBack);
+        } else {
+            void CapacitorApp.addListener('backButton', handleBack).then((handle) => {
+                if (disposed) void handle.remove();
+                else listener = handle;
+            });
+        }
         return () => {
+            disposed = true;
+            window.removeEventListener('yorumi-native-back', handleBack);
             void listener?.remove();
         };
     }, [navigate]);
@@ -172,7 +157,7 @@ function App() {
         else if (path.startsWith('/ln') && !path.startsWith('/read-ln')) pageLabel = 'Light Novels';
         else if (path.startsWith('/profile')) pageLabel = 'Profile';
         else if (path.startsWith('/genre')) pageLabel = 'Genres';
-        else if (path.startsWith('/yumi')) pageLabel = 'Yumi AI';
+        else if (path.startsWith('/explore')) pageLabel = 'Explore';
         else if (path.startsWith('/search')) pageLabel = 'Search';
 
         if (!path.startsWith('/watch') && !path.startsWith('/read-ln')) {
@@ -195,29 +180,30 @@ function App() {
 
 
     if (!tmdbSetupReady) {
-        return <TmdbSetupScreen onReady={() => setTmdbSetupReady(true)} />;
+        return (
+            <div className={!isMobileShell() ? 'pt-8' : undefined}>
+                {!isMobileShell() && <DesktopTitleBar title="Set Up TMDB" />}
+                <TmdbSetupScreen onReady={() => setTmdbSetupReady(true)} />
+            </div>
+        );
     }
 
     return (
         <LazyMotion features={domAnimation}>
-            <MotionConfig reducedMotion="user" transition={gentleTransition}>
-                <div className={`min-h-screen bg-yorumi-bg text-white font-sans ${activeTab === 'ln' ? 'selection:bg-yorumi-ln selection:text-black' : activeTab === 'manga' ? 'selection:bg-yorumi-manga selection:text-white' : 'selection:bg-yorumi-accent selection:text-white'} overflow-x-clip`}>
-                    {/* Electron drag region - desktop only */}
-                    {!isNativeMobile() && (
-                        <div 
-                            className="fixed top-0 left-0 right-[150px] h-8 z-[9999] md:left-[70px]"
-                            style={{ WebkitAppRegion: 'drag' } as React.CSSProperties} 
-                        />
-                    )}
+            <MotionConfig reducedMotion={isMobileShell() ? 'always' : 'user'} transition={gentleTransition}>
+                <div className={`min-h-screen bg-yorumi-bg text-white font-sans ${activeTab === 'ln' ? 'selection:bg-yorumi-ln selection:text-black' : activeTab === 'manga' ? 'selection:bg-yorumi-manga selection:text-white' : 'selection:bg-yorumi-accent selection:text-white'} overflow-x-clip ${!isMobileShell() ? 'pt-8' : ''}`}>
+                    {/* Custom Discord-style desktop title bar */}
+                    {!isMobileShell() && <DesktopTitleBar />}
                     
-                    <div className="fixed inset-0 pointer-events-none z-0">
+                    <div className="fixed inset-0 pointer-events-none z-0 hidden md:block">
                         <div className={`absolute top-[-10%] left-[-10%] w-[40%] h-[40%] ${activeTab === 'ln' ? 'bg-yorumi-ln/5' : activeTab === 'manga' ? 'bg-yorumi-manga/5' : 'bg-yorumi-accent/5'} rounded-full blur-[120px]`} />
                         <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-yorumi-main/5 rounded-full blur-[120px]" />
                     </div>
 
                     <Sidebar />
+                    <MobilePullToRefresh />
 
-                    <div className={`relative flex min-h-screen w-full flex-1 flex-col md:ml-[70px] md:w-[calc(100%-70px)] md:pb-0 ${isImmersiveRoute ? 'pb-0' : 'pb-[calc(5.5rem+env(safe-area-inset-bottom))]'}`}>
+                    <div className={`relative flex ${isExploreRoute && !isMobileShell() ? 'min-h-[calc(100vh-2rem)]' : 'min-h-screen'} w-full flex-1 flex-col ${!isMobileShell() ? 'md:ml-[70px] md:w-[calc(100%-70px)]' : ''} md:pb-0 ${isImmersiveRoute ? 'pb-0' : 'pb-[calc(4rem+env(safe-area-inset-bottom))]'}`}>
                         <PersistentPlayerProvider>
                             <ScrollRestoration />
                             <AppRoutes />
@@ -231,8 +217,8 @@ function App() {
                         )}
                     </div>
                     
-                    <OTAUpdateModal />
                     <OfflineBanner />
+                    <AppUpdateModal />
                 </div>
             </MotionConfig>
         </LazyMotion>
