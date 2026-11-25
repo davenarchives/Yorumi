@@ -228,6 +228,8 @@ export default function HomePage() {
     return (
         <div className={`min-h-screen pb-20 ${isCatalogFilterView ? 'pt-24' : ''}`}>
             <AnimeDashboard
+                continueWatchingList={anime.continueWatchingList}
+                onRemoveHistory={anime.removeFromHistory}
                 spotlightAnime={anime.spotlightAnime}
                 spotlightLoading={anime.spotlightLoading}
                 latestUpdates={anime.latestUpdates}
@@ -242,6 +244,10 @@ export default function HomePage() {
                 topTenLoading={anime.topTenLoading}
                 topAnime={filteredTopAnime}
                 topAnimeLoading={anime.loading}
+                topRatedAnime={anime.topRatedAnime}
+                animeMovies={anime.animeMovies}
+                upcomingAnime={anime.upcomingAnime}
+                airingAnime={anime.airingAnime}
                 allTimeTitle={allTimeTitle}
                 compactCatalogMode={isCatalogFilterView}
 
