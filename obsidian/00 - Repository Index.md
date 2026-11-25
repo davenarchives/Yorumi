@@ -6,7 +6,7 @@ last_verified: 2026-10-16
 
 # Repository Index
 
-Yorumi is a React application delivered as a browser app, an Electron desktop app, and a standalone Capacitor Android app. A TypeScript/Express service supplies scraping, proxying, mapping, and enrichment to browser and desktop clients; native mobile uses local TypeScript source adapters for core browsing and playback.
+Yorumi is a React application delivered as a browser app, a Tauri desktop app, and a standalone Capacitor Android app. A TypeScript/Express service supplies scraping, proxying, mapping, and enrichment to browser and desktop clients; native mobile uses local TypeScript source adapters for core browsing and playback.
 
 ## Start Here
 
@@ -34,7 +34,6 @@ Yorumi is a React application delivered as a browser app, an Electron desktop ap
 
 ## Platforms and Data
 
-- [[platforms/Electron]]
 - [[platforms/Android and Mobile]]
 - [[data/Storage Caches and Persistence]]
 - [[data/External Services and Environment]]
