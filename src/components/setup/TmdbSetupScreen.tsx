@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Browser } from '@capacitor/browser';
 import { Play, ExternalLink, KeyRound } from 'lucide-react';
-import { isNativeMobile } from '../../platform/runtime';
+import { isNativeMobile, isTauri } from '../../platform/runtime';
 import { tmdbService } from '../../services/tmdbService';
 
 type SetupError = {
@@ -40,6 +40,11 @@ const getErrorMessage = (reason: string, status?: number): SetupError => {
 };
 
 const openExternal = async (url: string) => {
+    if (isTauri()) {
+        const { openUrl } = await import('@tauri-apps/plugin-opener');
+        await openUrl(url);
+        return;
+    }
     if (isNativeMobile()) {
         await Browser.open({ url });
         return;
@@ -52,6 +57,15 @@ export default function TmdbSetupScreen({ onReady }: { onReady: () => void }) {
     const [checking, setChecking] = useState(false);
     const [error, setError] = useState<SetupError | null>(null);
     const inputRef = useRef<HTMLInputElement | null>(null);
+
+    const handleOpenExternal = async (url: string) => {
+        try {
+            await openExternal(url);
+        } catch (err) {
+            console.error('Failed to open setup link:', err);
+            setError({ title: 'Could not open browser', body: `Open this address in your browser: ${url}` });
+        }
+    };
 
     useEffect(() => {
         const timeout = window.setTimeout(() => inputRef.current?.focus(), 50);
@@ -78,7 +92,7 @@ export default function TmdbSetupScreen({ onReady }: { onReady: () => void }) {
 
 
     return (
-        <div className="relative flex min-h-[100dvh] items-start justify-center overflow-x-hidden overflow-y-auto bg-[#07090d] px-4 pb-[calc(env(safe-area-inset-bottom,0px)+1.5rem)] pt-[calc(env(safe-area-inset-top,0px)+1.5rem)] text-white sm:items-center sm:px-6 sm:py-8">
+        <div className={`relative flex ${isNativeMobile() ? 'min-h-[100dvh]' : 'min-h-[calc(100dvh-2rem)]'} items-start justify-center overflow-x-hidden overflow-y-auto bg-[#07090d] px-4 pb-[calc(env(safe-area-inset-bottom,0px)+1.5rem)] pt-[calc(env(safe-area-inset-top,0px)+1.5rem)] text-white sm:items-center sm:px-6 sm:py-8`}>
             <div className="absolute inset-0 pointer-events-none overflow-hidden">
                 <div className="absolute -top-32 -left-24 h-96 w-96 rounded-full bg-yorumi-accent/15 blur-[120px]" />
                 <div className="absolute -bottom-36 -right-28 h-[28rem] w-[28rem] rounded-full bg-yorumi-main/10 blur-[140px]" />
@@ -104,7 +118,7 @@ export default function TmdbSetupScreen({ onReady }: { onReady: () => void }) {
                     <div className="grid gap-2.5 sm:grid-cols-2 sm:gap-3">
                         <button
                             type="button"
-                            onClick={() => void openExternal('https://www.themoviedb.org/settings/api')}
+                            onClick={() => void handleOpenExternal('https://www.themoviedb.org/settings/api')}
                             className="flex min-h-11 w-full items-center justify-between gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-left text-sm font-bold text-white transition-colors active:bg-white/10 sm:justify-center sm:rounded-full sm:hover:border-yorumi-accent/60 sm:hover:text-yorumi-accent"
                         >
                             TMDB API Settings
@@ -112,7 +126,7 @@ export default function TmdbSetupScreen({ onReady }: { onReady: () => void }) {
                         </button>
                         <button
                             type="button"
-                            onClick={() => void openExternal('https://yorumi.vercel.app/#docs-tmdb')}
+                            onClick={() => void handleOpenExternal('https://yorumi.vercel.app/#docs-tmdb')}
                             className="flex min-h-11 w-full items-center justify-between gap-2 rounded-xl border border-yorumi-accent/25 bg-yorumi-accent/10 px-4 py-2.5 text-left text-sm font-bold text-yorumi-accent transition-colors active:bg-yorumi-accent/20 sm:justify-center sm:rounded-full sm:hover:border-yorumi-accent/60"
                         >
                             Step-by-step guide
