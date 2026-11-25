@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, X } from 'lucide-react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useTitleLanguage } from '../context/TitleLanguageContext';
 import { getAnimeSearchSeed, searchApi, type SearchPreviewItem } from '../features/search/api';
+import { suggestSearchCorrection } from '../utils/searchIntelligence';
 import AnimeCard from '../features/anime/components/AnimeCard';
 import MangaCard from '../features/manga/components/MangaCard';
 import LNCard from '../features/ln/components/LNCard';
@@ -21,6 +22,10 @@ export default function SearchResultsPage() {
     const group: SearchGroup = type === 'manga' || type === 'ln' ? type : 'anime';
     const [results, setResults] = useState<SearchPreviewItem[]>([]);
     const [loading, setLoading] = useState(true);
+    const suggestion = useMemo(
+        () => suggestSearchCorrection(query, results.map((r) => r.title)),
+        [query, results]
+    );
 
     useEffect(() => {
         let current = true;
@@ -61,7 +66,7 @@ export default function SearchResultsPage() {
 
     return (
         <div className="min-h-[100dvh] bg-[#0b0b0d] text-white">
-            <header className="sticky top-0 z-30 border-b border-white/10 bg-[#111114]/95 backdrop-blur-xl" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
+            <header className="sticky top-0 md:top-8 z-30 border-b border-white/10 bg-[#111114]/95 backdrop-blur-xl" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
                 <div className="flex h-16 items-center gap-4 px-3 md:mx-auto md:max-w-6xl">
                     <button onClick={() => navigate(-1)} className="grid h-10 w-10 place-items-center" aria-label="Back"><ArrowLeft className="h-6 w-6" /></button>
                     <h1 className="min-w-0 flex-1 truncate text-lg font-medium">{query}</h1>
@@ -70,6 +75,19 @@ export default function SearchResultsPage() {
             </header>
 
             <main className="mx-auto max-w-6xl px-3 py-4">
+                {suggestion && (
+                    <div className="mb-4 flex flex-wrap items-center gap-1.5 text-sm text-white/70">
+                        <span>{suggestion.isAlias ? 'Showing results for' : 'Did you mean'}</span>
+                        <button
+                            type="button"
+                            onClick={() => navigate(`/search/${group}?q=${encodeURIComponent(suggestion.correctedQuery)}`, { replace: true })}
+                            className="font-bold text-yorumi-accent hover:underline cursor-pointer"
+                        >
+                            {suggestion.correctedQuery}
+                        </button>
+                        {!suggestion.isAlias && <span>?</span>}
+                    </div>
+                )}
                 {loading ? (
                     <div className="grid grid-cols-2 gap-x-3 gap-y-5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
                         {Array.from({ length: 8 }).map((_, index) => <div key={index} className="aspect-[2/3] animate-pulse rounded-lg bg-white/5" />)}
