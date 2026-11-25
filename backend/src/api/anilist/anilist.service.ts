@@ -1416,15 +1416,16 @@ export const anilistService = {
 
     async getAnimeSeasonChain(search: string, id?: number) {
         const normalizedSearch = String(search || '').replace(/\s+/g, ' ').trim();
+        const franchiseSearch = normalizedSearch.replace(/\s+(?:(?:the\s+)?final\s+season|season\s+\d+|\d+(?:st|nd|rd|th)\s+season|cour\s+\d+|part\s+\d+|\d+)\b.*$/i, '').trim() || normalizedSearch;
         const anilistId = Number(id || 0);
         if (!normalizedSearch) return null;
 
-        const cacheKey = getCacheKey('anime_season_chain_v7', anilistId || normalizedSearch.toLowerCase());
+        const cacheKey = getCacheKey('anime_season_chain_v8', anilistId || normalizedSearch.toLowerCase());
         const cached = getFromCache(cacheKey);
         if (cached) return cached;
 
         const query = `
-            query ($id: Int, $hasId: Boolean!, $search: String!, $perPage: Int!) {
+            query ($id: Int, $hasId: Boolean!, $search: String!, $franchiseSearch: String!, $perPage: Int!) {
                 rootById: Media(id: $id, type: ANIME) @include(if: $hasId) {
                     ${MEDIA_FIELDS}
                     relations {
@@ -1444,7 +1445,7 @@ export const anilistService = {
                     }
                 }
                 candidates: Page(page: 1, perPage: $perPage) {
-                    media(search: $search, type: ANIME, sort: SEARCH_MATCH) {
+                    media(search: $franchiseSearch, type: ANIME, sort: SEARCH_MATCH) {
                         ${ANIME_SEASON_CHAIN_NODE_FIELDS}
                         relations {
                             edges {
@@ -1462,6 +1463,7 @@ export const anilistService = {
                 id: anilistId > 0 ? anilistId : undefined,
                 hasId: anilistId > 0,
                 search: normalizedSearch,
+                franchiseSearch,
                 perPage: 50,
             }, { cacheTtlSeconds: 86400 });
             const root = response.data?.rootById || response.data?.rootBySearch || null;
