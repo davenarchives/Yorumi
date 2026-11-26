@@ -15,6 +15,29 @@ const getResolvedChapters = (manga: unknown): MangaChapter[] => {
     return Array.isArray(chapters) ? chapters : [];
 };
 
+export const collectMangaHistoryKeys = (
+    manga?: Partial<Manga> | null,
+    extraIds: Array<string | number | undefined | null> = []
+): string[] => {
+    const raw = [
+        manga?.mal_id,
+        manga?.id,
+        manga?.scraper_id,
+        ...extraIds,
+    ];
+    const keys = new Set<string>();
+    for (const candidate of raw) {
+        const trimmed = String(candidate ?? '').trim();
+        if (!trimmed || trimmed === '0' || trimmed === 'undefined' || trimmed === 'null') continue;
+        keys.add(trimmed);
+        const stripped = trimmed.replace(/^mk:/i, '');
+        if (stripped && stripped !== trimmed) {
+            keys.add(stripped);
+        }
+    }
+    return Array.from(keys);
+};
+
 export function useManga() {
     const [topManga, setTopManga] = useState<Manga[]>([]);
     const [selectedManga, setSelectedManga] = useState<Manga | null>(null);
@@ -94,15 +117,41 @@ export function useManga() {
         fetchManga();
     }, [mangaPage]);
 
-    // Load Read History
+    // Load Read History (across all known IDs for this manga, and refresh on storage updates)
     useEffect(() => {
-        if (selectedManga) {
-            const history = storage.getReadChapters(String(selectedManga.mal_id));
+        const refreshReadHistory = () => {
+            if (!selectedManga) {
+                setReadChapters(new Set());
+                return;
+            }
+            const keys = collectMangaHistoryKeys(selectedManga);
+            const history = storage.getReadChapters(keys);
             setReadChapters(new Set(history));
-        } else {
-            setReadChapters(new Set());
-        }
+        };
+
+        refreshReadHistory();
+        window.addEventListener('yorumi-storage-updated', refreshReadHistory);
+        window.addEventListener('yorumi-offline-history-restored', refreshReadHistory);
+        return () => {
+            window.removeEventListener('yorumi-storage-updated', refreshReadHistory);
+            window.removeEventListener('yorumi-offline-history-restored', refreshReadHistory);
+        };
     }, [selectedManga]);
+
+    // Ensure the active chapter is always marked as read once selectedManga resolves
+    // (fixes mount race where loadMangaChapter(routeChapter) fires before selectedManga commits)
+    useEffect(() => {
+        if (!selectedManga || !currentMangaChapter?.id) return;
+        const keys = collectMangaHistoryKeys(selectedManga);
+        if (keys.length === 0) return;
+        storage.markChapterAsRead(keys, currentMangaChapter.id);
+        setReadChapters((prev) => {
+            if (prev.has(currentMangaChapter.id)) return prev;
+            const next = new Set(prev);
+            next.add(currentMangaChapter.id);
+            return next;
+        });
+    }, [selectedManga, currentMangaChapter?.id]);
 
     // View All fetch function
     const fetchViewAll = useCallback(async (type: MangaViewMode, page: number) => {
@@ -503,10 +552,13 @@ export function useManga() {
         setCurrentMangaChapter(chapter);
         setMangaPagesLoading(true);
 
-        // Mark Chapter as Read
+        // Mark Chapter as Read across all known manga IDs
         if (selectedManga) {
-            storage.markChapterAsRead(String(selectedManga.mal_id), chapter.id);
-            setReadChapters(prev => new Set(prev).add(chapter.id));
+            const keys = collectMangaHistoryKeys(selectedManga);
+            if (keys.length > 0) {
+                storage.markChapterAsRead(keys, chapter.id);
+                setReadChapters(prev => new Set(prev).add(chapter.id));
+            }
         }
 
         // Clear previous pages immediately to show loading state for the new chapter
@@ -515,9 +567,15 @@ export function useManga() {
         try {
             let pages: MangaPage[] = [];
 
-            // Always check offline downloaded chapter FIRST (even before selectedManga hydrates)
+            // Always check offline downloaded chapter FIRST (strictly scoped to this manga)
             const mangaKey = selectedManga?.id || selectedManga?.mal_id || '';
-            const downloaded = await mangaDownloadService.getChapter(mangaKey, chapter.id, chapter.url);
+            const downloaded = await mangaDownloadService.getChapter(
+                mangaKey,
+                chapter.id,
+                chapter.url,
+                selectedManga?.title,
+                [selectedManga?.mal_id, selectedManga?.scraper_id]
+            );
             const loadedFromDownload = Boolean(downloaded && downloaded.pages && downloaded.pages.length > 0);
             if (loadedFromDownload && downloaded) {
                 pages = downloaded.pages.map((p) => ({
@@ -833,6 +891,66 @@ export function useManga() {
         }
     }, [handleMangaClick]); // Depend on handleMangaClick
 
+    // Fetch chapter pages cleanly without resetting current reader state (used for seamless continuous scroll)
+    const fetchChapterPagesDirect = useCallback(async (chapter: MangaChapter): Promise<MangaPage[]> => {
+        try {
+            const mangaKey = selectedManga?.id || selectedManga?.mal_id || '';
+            const downloaded = await mangaDownloadService.getChapter(
+                mangaKey,
+                chapter.id,
+                chapter.url,
+                selectedManga?.title,
+                [selectedManga?.mal_id, selectedManga?.scraper_id]
+            );
+            if (downloaded && downloaded.pages && downloaded.pages.length > 0) {
+                return downloaded.pages.map((p) => ({
+                    pageNumber: p.pageNumber,
+                    imageUrl: p.imageUrl,
+                }));
+            }
+
+            if (chapterPagesCache.current.has(chapter.url)) {
+                const cached = await chapterPagesCache.current.get(chapter.url)!;
+                if (cached && cached.length > 0) {
+                    return cached;
+                }
+                chapterPagesCache.current.delete(chapter.url);
+            }
+
+            const data = await mangaService.getChapterPages(chapter.url);
+            const pages = data?.pages || [];
+            if (pages.length > 0) {
+                chapterPagesCache.current.set(chapter.url, Promise.resolve(pages));
+                prefetchPageImages(pages.slice(0, 6));
+                return pages;
+            }
+            return [];
+        } catch (err) {
+            console.error('Failed to fetch chapter pages directly', err);
+            return [];
+        }
+    }, [selectedManga]);
+
+    // Update active chapter metadata/progress without wiping pages or scrolling (used when scrolling across chapters)
+    const setActiveChapterSilent = useCallback((chapter: MangaChapter) => {
+        setCurrentMangaChapter((prev) => (prev?.url === chapter.url ? prev : chapter));
+        if (selectedManga) {
+            const keys = collectMangaHistoryKeys(selectedManga);
+            if (keys.length > 0) {
+                storage.markChapterAsRead(keys, chapter.id);
+                setReadChapters((prev) => {
+                    if (prev.has(chapter.id)) return prev;
+                    const next = new Set(prev);
+                    next.add(chapter.id);
+                    return next;
+                });
+            }
+        }
+        if (typeof navigator === 'undefined' || navigator.onLine) {
+            prefetchNextChapters(chapter, 2);
+        }
+    }, [selectedManga, mangaChapters]);
+
     const changeMangaPage = (page: number) => {
         setMangaLoading(true);
         setMangaPage(page);
@@ -867,6 +985,8 @@ export function useManga() {
         fetchMangaDetails, // New action
         startReading,
         loadMangaChapter: loadMangaChapterWithHistory,
+        fetchChapterPagesDirect,
+        setActiveChapterSilent,
         prefetchChapter,
         closeMangaReader,
         closeAllModals,

@@ -203,10 +203,9 @@ const LNChapterList = ({
                             <div
                                 key={`${ch.id}-${index}`}
                                 onClick={() => onChapterClick(ch)}
-                                className={`flex items-center justify-between gap-2.5 py-2.5 px-0 sm:px-3 transition-all duration-150 text-left group
-                                    ${isRead ? 'opacity-50' : ''} hover:bg-white/[0.03] active:bg-white/[0.06] rounded-xl cursor-pointer`}
+                                className="flex items-center justify-between gap-2.5 py-2.5 px-0 sm:px-3 transition-all duration-150 text-left group hover:bg-white/[0.03] active:bg-white/[0.06] rounded-xl cursor-pointer"
                             >
-                                <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                <div className={`flex items-center gap-2.5 min-w-0 flex-1 ${isRead ? 'opacity-50' : ''}`}>
                                     <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isRead ? 'bg-zinc-600' : 'bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.5)]'}`} />
                                     <div className="flex flex-col min-w-0">
                                         <span className={`font-medium text-[14px] sm:text-[15px] leading-snug ${isRead ? 'text-zinc-400' : 'text-zinc-100 group-hover:text-amber-400'} transition-colors line-clamp-1`}>

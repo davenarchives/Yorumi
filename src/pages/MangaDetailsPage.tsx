@@ -3,7 +3,8 @@ import { getPrimaryMangaAuthor } from '../utils/mangaAuthor';
 import { useCallback, useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { Play, Download, FolderOpen, ArrowLeft, ArrowUpDown, Grid2X2, List } from 'lucide-react';
-import { useManga } from '../hooks/useManga';
+import { useManga, collectMangaHistoryKeys } from '../hooks/useManga';
+import { storage } from '../utils/storage';
 import { useReadList } from '../hooks/useReadList';
 import { useFavoriteManga } from '../hooks/useFavoriteManga';
 import { useContinueReading } from '../hooks/useContinueReading';
@@ -21,6 +22,7 @@ import DownloadActionButton from '../components/ui/DownloadActionButton';
 import ReadingDetailsHero from '../features/reading/components/ReadingDetailsHero';
 import MoreLikeReading from '../features/reading/components/MoreLikeReading';
 import { offlineLibraryCache } from '../services/offlineLibraryCache';
+import { mangaService } from '../services/mangaService';
 import BatchDownloadMenu, { selectItemsForBatchDownload, type BatchDownloadMode } from '../components/shared/BatchDownloadMenu';
 
 const normalizeMangaRouteId = (value: unknown) =>
@@ -205,10 +207,9 @@ const ChapterList = ({
                             <div
                                 key={`${ch.id}-${index}`}
                                 onClick={() => onChapterClick(ch)}
-                                className={`flex items-center justify-between gap-2.5 py-2.5 px-0 sm:px-3 transition-all duration-150 text-left group
-                                    ${isRead ? 'opacity-50' : ''} hover:bg-white/[0.03] active:bg-white/[0.06] rounded-xl cursor-pointer`}
+                                className="flex items-center justify-between gap-2.5 py-2.5 px-0 sm:px-3 transition-all duration-150 text-left group hover:bg-white/[0.03] active:bg-white/[0.06] rounded-xl cursor-pointer"
                             >
-                                <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                <div className={`flex items-center gap-2.5 min-w-0 flex-1 ${isRead ? 'opacity-50' : ''}`}>
                                     <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isRead ? 'bg-zinc-600' : 'bg-yorumi-manga shadow-[0_0_8px_rgba(229,57,69,0.5)]'}`} />
                                     <div className="flex flex-col min-w-0">
                                         <span className={`font-medium text-[14px] sm:text-[15px] leading-snug ${isRead ? 'text-zinc-400' : 'text-zinc-100 group-hover:text-yorumi-manga'} transition-colors line-clamp-1`}>
@@ -392,6 +393,32 @@ export default function MangaDetailsPage() {
             ? cachedOfflineChapters
             : downloadedChapters;
 
+    const [storageReadVersion, setStorageReadVersion] = useState(0);
+    useEffect(() => {
+        const bump = () => setStorageReadVersion((v) => v + 1);
+        window.addEventListener('yorumi-storage-updated', bump);
+        window.addEventListener('yorumi-offline-history-restored', bump);
+        return () => {
+            window.removeEventListener('yorumi-storage-updated', bump);
+            window.removeEventListener('yorumi-offline-history-restored', bump);
+        };
+    }, []);
+
+    const effectiveReadChapters = useMemo(() => {
+        void storageReadVersion;
+        const keys = collectMangaHistoryKeys(displayManga, [
+            id,
+            routeManga?.mal_id,
+            routeManga?.id,
+            routeManga?.scraper_id,
+        ]);
+        const merged = new Set<string>(readChapters);
+        for (const chId of storage.getReadChapters(keys)) {
+            merged.add(chId);
+        }
+        return merged;
+    }, [readChapters, displayManga, id, routeManga, storageReadVersion]);
+
     useEffect(() => {
         if (displayManga?.title) {
             document.title = `${displayManga.title} • Yorumi`;
@@ -407,7 +434,7 @@ export default function MangaDetailsPage() {
         const downloadedIds = new Set(matchingMangaDownloads.map((d) => d.chapterId));
         // Effective chapters are newest-first; reverse to ascending order so "Next X chapters" grabs the next unread ones
         const ascending = [...effectiveChapters].reverse();
-        const unreadUndownloaded = ascending.filter((ch) => !readChapters.has(ch.id) && !downloadedIds.has(ch.id));
+        const unreadUndownloaded = ascending.filter((ch) => !effectiveReadChapters.has(ch.id) && !downloadedIds.has(ch.id));
         const selected = selectItemsForBatchDownload(unreadUndownloaded, mode);
         if (selected.length === 0) return;
         downloadAllManga(
@@ -418,7 +445,7 @@ export default function MangaDetailsPage() {
             },
             selected
         );
-    }, [displayManga, id, matchingMangaDownloads, effectiveChapters, readChapters, downloadAllManga]);
+    }, [displayManga, id, matchingMangaDownloads, effectiveChapters, effectiveReadChapters, downloadAllManga]);
 
     const currentProgress = useMemo(() => {
         const targetId = normalizeMangaRouteId(id);
@@ -433,6 +460,11 @@ export default function MangaDetailsPage() {
     // Navigate to reader page with path-based URL
     const handleChapterClick = useCallback((chapter: MangaChapter) => {
         if (!displayManga) return;
+
+        // Warm chapter pages immediately so the fetch is already in-flight before reader mounts
+        if (chapter.url && (typeof navigator === 'undefined' || navigator.onLine)) {
+            void mangaService.getChapterPages(chapter.url).catch(() => undefined);
+        }
 
         const title = slugify(displayManga.title || 'manga');
         const chapterMatch = chapter.title.match(/Chapter\s+(\d+[.]?\d*)/i);
@@ -677,7 +709,7 @@ export default function MangaDetailsPage() {
                             {displayManga.readingProvider === 'mangadex' && <p className="mb-3 text-sm text-white/70">Showing available English chapters from MangaDex; some chapters may be unavailable.</p>}
                             <ChapterList
                                 chapters={effectiveChapters}
-                                readChapters={readChapters}
+                                readChapters={effectiveReadChapters}
                                 onChapterClick={handleChapterClick}
                                 viewMode={viewMode}
                                 onViewModeChange={setViewMode}

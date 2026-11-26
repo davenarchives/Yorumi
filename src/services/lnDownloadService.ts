@@ -100,7 +100,11 @@ export const lnDownloadService = {
         }
     },
 
-    async getChapter(novelId: string | number, chapterId: string | number): Promise<DownloadedLNChapter | undefined> {
+    async getChapter(
+        novelId: string | number,
+        chapterId: string | number,
+        novelTitle?: string
+    ): Promise<DownloadedLNChapter | undefined> {
         try {
             const db = await getDB();
             const key = this.getChapterKey(novelId, chapterId);
@@ -112,11 +116,25 @@ export const lnDownloadService = {
                 req.onerror = () => reject(req.error);
             });
 
-            // Fallback: search by chapterId across all downloads if direct key didn't match
+            // Safe fallback: ONLY match by globally unique chapterId (full URL/slug path)
+            // OR by matching BOTH novel identity (novelId/title) AND chapterId.
+            // Never match bare chapterId (e.g. "1" or "chapter-1") across different novels!
             if (!chapter) {
                 const all = await this.getDownloads();
-                const strChId = String(chapterId).trim();
-                chapter = all.find((c) => String(c.chapterId).trim() === strChId || c.id.endsWith(`_ch_${strChId}`));
+                const strChId = String(chapterId || '').trim();
+                const strNovelId = String(novelId || '').trim().toLowerCase();
+                const isGloballyUniqueChId = /^https?:\/\//i.test(strChId) || (strChId.includes('/') && strChId.length > 12);
+                const normTitle = (v?: string) => String(v || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+                const targetTitle = normTitle(novelTitle);
+
+                chapter = all.find((c) => {
+                    const chMatches = strChId && (String(c.chapterId).trim() === strChId || c.id.endsWith(`_ch_${strChId}`));
+                    if (!chMatches) return false;
+                    if (isGloballyUniqueChId) return true;
+                    const idMatches = Boolean(strNovelId && String(c.novelId || '').trim().toLowerCase() === strNovelId);
+                    const titleMatches = Boolean(targetTitle && normTitle(c.novelTitle) === targetTitle);
+                    return idMatches || titleMatches;
+                });
             }
 
             return chapter;

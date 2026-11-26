@@ -1,15 +1,36 @@
 import { useState, useEffect, useRef } from 'react';
+import { X, ZoomIn, ZoomOut } from 'lucide-react';
 import { useContinueReading } from '../../../../hooks/useContinueReading';
 import type { Manga, MangaChapter, MangaPage } from '../../../../types/manga';
 import ReaderHeader from './ReaderHeader';
 import ReaderFooter from './ReaderFooter';
-import PageViewer from './PageViewer';
+import PageViewer, { type MangaReadingMode } from './PageViewer';
 import MangaInfoSidebar from './MangaInfoSidebar';
 import { useTitleLanguage } from '../../../../context/TitleLanguageContext';
 import { getDisplayTitle } from '../../../../utils/titleLanguage';
 import discordRPCService from '../../../../services/discordRPCService';
 import { isNativeMobile } from '../../../../platform/runtime';
 import { enterImmersiveMode, exitImmersiveMode } from '../../../../platform/immersiveMode';
+
+const READING_MODE_KEY = 'yorumi_manga_reading_mode_v1';
+const READING_MODE_OPTIONS: Array<{ id: MangaReadingMode; label: string }> = [
+    { id: 'default', label: 'Default' },
+    { id: 'paged-ltr', label: 'Paged (left to right)' },
+    { id: 'paged-rtl', label: 'Paged (right to left)' },
+    { id: 'paged-vertical', label: 'Paged (vertical)' },
+    { id: 'longstrip', label: 'Long strip' },
+    { id: 'longstrip-gaps', label: 'Long strip with gaps' },
+];
+
+const readSavedReadingMode = (): MangaReadingMode => {
+    try {
+        const raw = localStorage.getItem(READING_MODE_KEY) as MangaReadingMode | null;
+        if (raw && READING_MODE_OPTIONS.some((opt) => opt.id === raw)) return raw;
+    } catch {
+        // Ignore storage errors
+    }
+    return 'default';
+};
 
 type FullscreenElement = HTMLDivElement & {
     webkitRequestFullscreen?: () => Promise<void> | void;
@@ -28,6 +49,8 @@ interface MangaReaderModalProps {
     onClose: () => void;
     onChapterSearchChange: (query: string) => void;
     onLoadChapter: (chapter: MangaChapter) => void;
+    onActiveChapterChange?: (chapter: MangaChapter) => void;
+    onFetchChapterPages?: (chapter: MangaChapter) => Promise<MangaPage[]>;
     onPrefetchChapter: (chapter: MangaChapter) => void;
     onZoomIn: () => void;
     onZoomOut: () => void;
@@ -47,6 +70,8 @@ export default function MangaReaderModal({
     onClose,
     onChapterSearchChange,
     onLoadChapter,
+    onActiveChapterChange,
+    onFetchChapterPages,
     onPrefetchChapter,
     onZoomIn,
     onZoomOut,
@@ -54,12 +79,21 @@ export default function MangaReaderModal({
 }: MangaReaderModalProps) {
     const { language } = useTitleLanguage();
     // UI State
-    const [viewMode, setViewMode] = useState<'list' | 'grid'>('grid');
     const [showDetails, setShowDetails] = useState(false);
     const [showChapters, setShowChapters] = useState(false);
-    const [readingMode, setReadingMode] = useState<'longstrip' | 'page'>('longstrip');
+    const [showSettings, setShowSettings] = useState(false);
+    const [readingMode, setReadingMode] = useState<MangaReadingMode>(readSavedReadingMode);
     const [pageIndex, setPageIndex] = useState(0);
     const [isHeaderVisible, setIsHeaderVisible] = useState(false);
+
+    const handleSelectReadingMode = (mode: MangaReadingMode) => {
+        setReadingMode(mode);
+        try {
+            localStorage.setItem(READING_MODE_KEY, mode);
+        } catch {
+            // Ignore storage errors
+        }
+    };
 
     // Sync system bars visibility with reader UI on mobile
     useEffect(() => {
@@ -117,9 +151,9 @@ export default function MangaReaderModal({
         setPageIndex(0);
     }, [currentChapter?.url]);
 
-    // Preload adjacent pages
+    // Preload adjacent pages in paged modes
     useEffect(() => {
-        if (readingMode !== 'page' || pages.length === 0) return;
+        if (!readingMode.startsWith('paged') || pages.length === 0) return;
         [1, 2, 3].forEach(offset => {
             const idx = pageIndex + offset;
             if (idx < pages.length && pages[idx]?.imageUrl) {
@@ -210,6 +244,7 @@ export default function MangaReaderModal({
     const closeSidebars = () => {
         setShowChapters(false);
         setShowDetails(false);
+        setShowSettings(false);
     };
 
     return (
@@ -226,10 +261,91 @@ export default function MangaReaderModal({
                     currentChapter={currentChapter}
                     zoomLevel={zoomLevel}
                     isVisible={isHeaderVisible}
+                    isSettingsOpen={showSettings}
                     onZoomIn={onZoomIn}
                     onZoomOut={onZoomOut}
+                    onToggleSettings={() => {
+                        setShowChapters(false);
+                        setShowSettings((prev) => !prev);
+                    }}
                     onClose={onClose}
                 />
+
+                {/* Mihon-style Reading Settings Sheet */}
+                {showSettings && (
+                    <div
+                        className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-xs"
+                        onClick={() => setShowSettings(false)}
+                    >
+                        <div
+                            className="w-full sm:max-w-md rounded-t-3xl sm:rounded-2xl border-t sm:border border-white/10 bg-[#141417] px-5 pt-5 pb-7 sm:p-6 text-white shadow-2xl"
+                            style={{ paddingBottom: 'calc(1.75rem + env(safe-area-inset-bottom, 0px))' }}
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <div className="flex items-center justify-between mb-5">
+                                <h2 className="text-base font-bold text-white">Reading settings</h2>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowSettings(false)}
+                                    aria-label="Close reading settings"
+                                    className="grid h-8 w-8 place-items-center rounded-full text-zinc-400 hover:bg-white/10 hover:text-white cursor-pointer"
+                                >
+                                    <X className="h-4 w-4" />
+                                </button>
+                            </div>
+
+                            <div className="space-y-5">
+                                <div>
+                                    <p className="text-sm font-semibold text-zinc-300 mb-3">Reading mode</p>
+                                    <div className="flex flex-wrap gap-2">
+                                        {READING_MODE_OPTIONS.map((opt) => {
+                                            const active = readingMode === opt.id;
+                                            return (
+                                                <button
+                                                    key={opt.id}
+                                                    type="button"
+                                                    onClick={() => handleSelectReadingMode(opt.id)}
+                                                    className={`rounded-xl px-3.5 py-2 text-[13px] font-semibold transition-colors cursor-pointer ${
+                                                        active
+                                                            ? 'bg-yorumi-manga/25 text-white border border-yorumi-manga/70'
+                                                            : 'bg-white/[0.04] text-zinc-300 border border-white/15 hover:bg-white/[0.08] hover:text-white'
+                                                    }`}
+                                                >
+                                                    {opt.label}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+
+                                <div className="sm:hidden pt-1 border-t border-white/10">
+                                    <div className="flex items-center justify-between pt-4">
+                                        <span className="text-sm font-semibold text-zinc-300">Zoom</span>
+                                        <div className="flex items-center gap-1 bg-white/5 rounded-full p-1 border border-white/10">
+                                            <button
+                                                type="button"
+                                                onClick={onZoomOut}
+                                                className="p-1.5 hover:bg-white/10 rounded-full text-gray-300 hover:text-white transition-colors"
+                                                aria-label="Zoom out"
+                                            >
+                                                <ZoomOut className="w-4 h-4" />
+                                            </button>
+                                            <span className="text-xs font-mono font-bold w-12 text-center text-gray-200">{zoomLevel}%</span>
+                                            <button
+                                                type="button"
+                                                onClick={onZoomIn}
+                                                className="p-1.5 hover:bg-white/10 rounded-full text-gray-300 hover:text-white transition-colors"
+                                                aria-label="Zoom in"
+                                            >
+                                                <ZoomIn className="w-4 h-4" />
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 {/* Main Layout */}
                 <div className="flex-1 flex min-h-0 relative overflow-hidden">
@@ -246,6 +362,7 @@ export default function MangaReaderModal({
                     {/* Page Viewer */}
                     <PageViewer
                         pages={pages}
+                        chapters={chapters}
                         currentChapter={currentChapter}
                         prevChapter={prevChapter}
                         nextChapter={nextChapter}
@@ -257,6 +374,8 @@ export default function MangaReaderModal({
                         onScroll={handleScroll}
                         onContentClick={handleContentClick}
                         onLoadChapter={onLoadChapter}
+                        onActiveChapterChange={onActiveChapterChange}
+                        onFetchChapterPages={onFetchChapterPages}
                         onPageChange={setPageIndex}
                     />
 

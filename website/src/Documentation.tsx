@@ -95,6 +95,7 @@ const DOC_SECTIONS: DocSection[] = [
     title: 'Changelogs',
     lede: 'Track Yorumi releases, new features, and fixes across desktop and Android.',
     subsections: [
+      { id: 'release-v5-0-6', label: 'v5.0.6' },
       { id: 'release-v5-0-5', label: 'v5.0.5' },
       { id: 'release-v5-0-0', label: 'v5.0.0' },
       { id: 'release-v4-3-0', label: 'v4.3.0' },
@@ -106,6 +107,18 @@ const DOC_SECTIONS: DocSection[] = [
 ];
 
 const CHANGELOG_ENTRIES = [
+  {
+    id: 'release-v5-0-6',
+    version: 'v5.0.6',
+    date: 'November 26, 2026',
+    summary: 'Mihon-style seamless multi-chapter manga scrolling, 60fps interactive paged swiping, reading mode settings, reliable read-state tracking, and offline chapter collision fixes.',
+    highlights: [
+      { title: 'Seamless Multi-Chapter Manga Reader', body: 'Long-strip reading now flows continuously from chapter to chapter with Mihon-style Finished / Next transition dividers — scroll forward or back up seamlessly without reloads or jumps.' },
+      { title: 'Reading Mode Settings & 60fps Free Swiping', body: 'Added a top-right Reading Settings sheet with 6 reading modes (Default, Paged LTR, Paged RTL, Paged Vertical, Long strip, Long strip with gaps) and native 60fps scroll-snap finger swiping.' },
+      { title: 'Dynamic Page Indicator & Faster Preloading', body: 'Added an outlined bottom-center page counter (current / total) that hides when reader bars open, plus immediate tap-time chapter warming and a 4-worker rolling page preloader.' },
+      { title: 'Reliable Read State & Offline Download Isolation', body: 'Fixed manga chapters failing to mark as read on initial open or across different IDs, kept download icons crisp on read chapters, and prevented offline chapter collisions across different series.' },
+    ],
+  },
   {
     id: 'release-v5-0-5',
     version: 'v5.0.5',

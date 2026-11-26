@@ -22,7 +22,7 @@ import { motion } from 'framer-motion';
 import type { Variants } from 'framer-motion';
 import { DocumentationGuide, type DocTabId } from './Documentation';
 
-const RELEASE_VERSION = '5.0.5';
+const RELEASE_VERSION = '5.0.6';
 const RELEASE_TAG = `v${RELEASE_VERSION}`;
 const RELEASES_URL = 'https://github.com/davenarchives/Yorumi/releases';
 const RELEASE_URL = `${RELEASES_URL}/tag/${RELEASE_TAG}`;

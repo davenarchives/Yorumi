@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [5.0.6] - 2026-11-26
+
+- Added Mihon-style seamless multi-chapter long-strip streaming (`PageViewer.tsx`, `MangaReaderModal/index.tsx`, `MangaReaderPage.tsx`, `useManga.ts`): chapters flow continuously back-to-back with `Finished / Next` transition banners so readers can scroll forward or back up across chapters without reloads or jumps, paired with immediate tap-time chapter warming (`MangaDetailsPage.tsx`) and a 4-worker rolling page preloader.
+- Added Manga Reading Settings & 60fps interactive scroll-snap Paged modes (`ReaderHeader.tsx`, `MangaReaderModal/index.tsx`, `PageViewer.tsx`): added a top-right Settings sheet with 6 reading modes (`Default`, `Paged (left to right)`, `Paged (right to left)`, `Paged (vertical)`, `Long strip`, `Long strip with gaps`), native finger-drag scroll-snap swiping in all Paged modes, mobile zoom controls, and a dynamic outlined bottom-center `current / total` page indicator that hides when reader bars are visible.
+- Fixed manga chapter read-state tracking (`storage.ts`, `useManga.ts`, `MangaReaderPage.tsx`, `MangaDetailsPage.tsx`): resolved the initial mount race where opening a chapter via `routeChapter` skipped marking it as read, unified read history across all manga IDs (`mal_id`, `id`, `scraper_id`, stripped `mk:` slugs), and synced details/reader read sets on storage and offline-history restore events.
+- Fixed cross-manga and cross-LN offline download collisions (`mangaDownloadService.ts`, `lnDownloadService.ts`, `useManga.ts`): removed unsafe bare `chapterId` fallbacks so downloaded chapters are strictly scoped to their series identity, and eliminated multi-second blob-URL stalls when opening undownloaded chapters.
+- Kept download/downloaded icons at full brightness on read Manga and Light Novel chapters (`MangaDetailsPage.tsx`, `LNDetailsPage.tsx`), and updated the marketing website (`website/`) to `v5.0.6` with changelogs and release links.
+
 ## [5.0.5] - 2026-11-26
 
 - Added durable offline History persistence (`src/services/offlineHistoryStore.ts`, `storage.ts`, `useContinueWatching.ts`, `useContinueReading.ts`, `useContinueLNReading.ts`, `useActivityHistory.ts`, `MenuPages.tsx`, `main.tsx`): mirrored all watch/read/LN/activity/search history keys into IndexedDB (`yorumi_offline_history_v1`) with automatic boot hydration, increased retention from 20 to 200 items, and cached history posters locally.

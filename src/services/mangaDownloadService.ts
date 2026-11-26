@@ -143,14 +143,24 @@ export const mangaDownloadService = {
     async getChapter(
         mangaId: string | number | undefined,
         chapterId: string | number,
-        chapterUrl?: string
+        chapterUrl?: string,
+        mangaTitle?: string,
+        alternateMangaIds?: Array<string | number | undefined | null>
     ): Promise<DownloadedMangaChapter | undefined> {
         try {
             const db = await getDB();
             let chapter: DownloadedMangaChapter | undefined;
 
-            if (mangaId !== undefined && String(mangaId).trim() !== '') {
-                const key = this.getChapterKey(mangaId, chapterId);
+            const candidateMangaIds = Array.from(
+                new Set(
+                    [mangaId, ...(alternateMangaIds || [])]
+                        .map((v) => String(v ?? '').trim())
+                        .filter((v) => v !== '' && v !== '0' && v !== 'undefined' && v !== 'null')
+                )
+            );
+
+            for (const candidateId of candidateMangaIds) {
+                const key = this.getChapterKey(candidateId, chapterId);
                 chapter = await new Promise<DownloadedMangaChapter | undefined>((resolve, reject) => {
                     const tx = db.transaction(STORE_NAME, 'readonly');
                     const store = tx.objectStore(STORE_NAME);
@@ -158,17 +168,41 @@ export const mangaDownloadService = {
                     req.onsuccess = () => resolve(req.result as DownloadedMangaChapter | undefined);
                     req.onerror = () => reject(req.error);
                 });
+                if (chapter) break;
             }
 
-            // Fallback: search by chapterId or chapterUrl across all downloads if direct key didn't match
+            // Safe fallback: scan raw IndexedDB records WITHOUT creating ObjectURLs or
+            // hydrating posters for unrelated chapters (keeps undownloaded lookups < 5ms).
+            // ONLY match by full unique chapterUrl OR BOTH series identity AND chapterId.
             if (!chapter) {
-                const all = await this.getDownloads();
+                const all = await new Promise<DownloadedMangaChapter[]>((resolve, reject) => {
+                    const tx = db.transaction(STORE_NAME, 'readonly');
+                    const store = tx.objectStore(STORE_NAME);
+                    const req = store.getAll();
+                    req.onsuccess = () => resolve((req.result as DownloadedMangaChapter[]) || []);
+                    req.onerror = () => reject(req.error);
+                });
                 const strChId = String(chapterId || '').trim();
                 const strChUrl = String(chapterUrl || '').trim();
-                chapter = all.find((c) =>
-                    (strChId && (String(c.chapterId).trim() === strChId || c.id.endsWith(`_ch_${strChId}`))) ||
-                    (strChUrl && String(c.chapterUrl || '').trim() === strChUrl)
-                );
+                const isUniqueUrl = /^https?:\/\//i.test(strChUrl) || (strChUrl.includes('/') && strChUrl.length > 12);
+                const normTitle = (v?: string) => String(v || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+                const targetTitle = normTitle(mangaTitle);
+                const idSet = new Set(candidateMangaIds.map((id) => id.toLowerCase()));
+
+                chapter = all.find((c) => {
+                    const savedUrl = String(c.chapterUrl || '').trim();
+                    if (isUniqueUrl && savedUrl && savedUrl === strChUrl) {
+                        return true;
+                    }
+                    if (!strChId) return false;
+                    const chMatches = String(c.chapterId).trim() === strChId || c.id.endsWith(`_ch_${strChId}`);
+                    if (!chMatches) return false;
+
+                    const savedMangaId = String(c.mangaId || '').trim().toLowerCase();
+                    const idMatches = Boolean(savedMangaId && idSet.has(savedMangaId));
+                    const titleMatches = Boolean(targetTitle && normTitle(c.mangaTitle) === targetTitle);
+                    return idMatches || titleMatches;
+                });
             }
 
             if (chapter && chapter.pages && chapter.pages.length > 0) {

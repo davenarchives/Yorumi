@@ -879,13 +879,29 @@ export const storage = {
     },
 
     // Chapter History (Read Chapters)
-    markChapterAsRead: (mangaId: string, chapterId: string) => {
+    markChapterAsRead: (mangaId: string | string[], chapterId: string) => {
         if (isIncognitoMode()) return;
+        const normalizedChapterId = String(chapterId || '').trim();
+        if (!normalizedChapterId) return;
         try {
+            const rawIds = Array.isArray(mangaId) ? mangaId : [mangaId];
+            const keys = Array.from(new Set(
+                rawIds
+                    .map((value) => String(value ?? '').trim())
+                    .filter((value) => Boolean(value) && value !== '0' && value !== 'undefined' && value !== 'null')
+            ));
+            if (keys.length === 0) return;
+
             const history = storage.getChapterHistory();
-            if (!history[mangaId]) history[mangaId] = [];
-            if (!history[mangaId].includes(chapterId)) {
-                history[mangaId].push(chapterId);
+            let changed = false;
+            for (const key of keys) {
+                if (!Array.isArray(history[key])) history[key] = [];
+                if (!history[key].includes(normalizedChapterId)) {
+                    history[key].push(normalizedChapterId);
+                    changed = true;
+                }
+            }
+            if (changed) {
                 setScopedItem(STORAGE_KEYS.CHAPTER_HISTORY, JSON.stringify(history));
                 emitStorageUpdated();
             }
@@ -912,9 +928,25 @@ export const storage = {
         }
     },
 
-    getReadChapters: (mangaId: string): string[] => {
+    getReadChapters: (mangaId: string | string[]): string[] => {
         const history = storage.getChapterHistory();
-        return history[mangaId] || [];
+        const rawIds = Array.isArray(mangaId) ? mangaId : [mangaId];
+        const keys = Array.from(new Set(
+            rawIds
+                .map((value) => String(value ?? '').trim())
+                .filter((value) => Boolean(value) && value !== '0' && value !== 'undefined' && value !== 'null')
+        ));
+        if (keys.length === 0) return [];
+        const merged = new Set<string>();
+        for (const key of keys) {
+            const entries = history[key];
+            if (Array.isArray(entries)) {
+                for (const entry of entries) {
+                    if (entry) merged.add(entry);
+                }
+            }
+        }
+        return Array.from(merged);
     },
 
     invalidateMemoryCache: (keys?: readonly string[]) => {

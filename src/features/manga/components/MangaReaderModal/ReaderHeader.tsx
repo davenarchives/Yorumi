@@ -1,4 +1,4 @@
-import { ArrowLeft, ZoomIn, ZoomOut } from 'lucide-react';
+import { ArrowLeft, Settings, ZoomIn, ZoomOut } from 'lucide-react';
 import type { MangaChapter } from '../../../../types/manga';
 
 interface ReaderHeaderProps {
@@ -7,8 +7,10 @@ interface ReaderHeaderProps {
     currentChapter: MangaChapter | null;
     zoomLevel: number;
     isVisible: boolean;
+    isSettingsOpen?: boolean;
     onZoomIn: () => void;
     onZoomOut: () => void;
+    onToggleSettings?: () => void;
     onClose?: () => void;
 }
 
@@ -18,8 +20,10 @@ export default function ReaderHeader({
     currentChapter,
     zoomLevel,
     isVisible,
+    isSettingsOpen = false,
     onZoomIn,
     onZoomOut,
+    onToggleSettings,
     onClose,
 }: ReaderHeaderProps) {
     return (
@@ -77,8 +81,21 @@ export default function ReaderHeader({
                     </div>
                 </div>
 
-                {/* RIGHT: Controls (Removed per user request) */}
-                <div className="hidden sm:flex items-center justify-end gap-2 flex-1 shrink-0">
+                {/* RIGHT: Reader Settings */}
+                <div className="flex items-center justify-end gap-2 sm:flex-1 shrink-0">
+                    {onToggleSettings && (
+                        <button
+                            type="button"
+                            onClick={onToggleSettings}
+                            className={`p-2 -mr-1 rounded-full transition-colors flex items-center justify-center shrink-0 active:scale-95 cursor-pointer ${
+                                isSettingsOpen ? 'text-yorumi-manga bg-white/10' : 'text-gray-300 hover:text-white hover:bg-white/10'
+                            }`}
+                            title="Reading settings"
+                            aria-label="Reading settings"
+                        >
+                            <Settings className="w-5 h-5" />
+                        </button>
+                    )}
                 </div>
             </div>
         </header>

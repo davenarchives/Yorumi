@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { useManga } from '../hooks/useManga';
+import { useManga, collectMangaHistoryKeys } from '../hooks/useManga';
+import { storage } from '../utils/storage';
 import { slugify } from '../utils/slugify';
 import MangaReaderModal from '../features/manga/components/MangaReaderModal';
 import type { MangaChapter } from '../types/manga';
@@ -35,6 +36,8 @@ export default function MangaReaderPage() {
         setChapterSearchQuery,
         fetchMangaDetails,
         loadMangaChapter,
+        fetchChapterPagesDirect,
+        setActiveChapterSilent,
         prefetchChapter,
         zoomIn,
         zoomOut,
@@ -75,6 +78,29 @@ export default function MangaReaderPage() {
     }, [mangaChapters, chapter, currentMangaChapter, loadMangaChapter, routeChapter]);
 
     const activeManga = selectedManga || routeManga;
+
+    // Always mark the active chapter as read under all known IDs (route ID + routeManga + selectedManga),
+    // even when opened offline or before selectedManga finishes hydrating on mount.
+    useEffect(() => {
+        if (!currentMangaChapter?.id) return;
+        const keys = collectMangaHistoryKeys(activeManga, [id, routeManga?.mal_id, routeManga?.id, routeManga?.scraper_id]);
+        if (keys.length > 0) {
+            storage.markChapterAsRead(keys, currentMangaChapter.id);
+        }
+    }, [currentMangaChapter?.id, activeManga, id, routeManga]);
+
+    const effectiveReadChapters = (() => {
+        const keys = collectMangaHistoryKeys(activeManga, [id, routeManga?.mal_id, routeManga?.id, routeManga?.scraper_id]);
+        const merged = new Set<string>(readChapters);
+        for (const chId of storage.getReadChapters(keys)) {
+            merged.add(chId);
+        }
+        if (currentMangaChapter?.id) {
+            merged.add(currentMangaChapter.id);
+        }
+        return merged;
+    })();
+
     const cachedOfflineChapters = offlineLibraryCache.getMangaChapters([
         id,
         activeManga?.id,
@@ -99,6 +125,20 @@ export default function MangaReaderPage() {
             navigate(`/manga/read/${title}/${id}/c${chapterNum}`, { replace: true, state: { manga: activeManga, chapter: ch } });
         }
         loadMangaChapter(ch);
+    };
+
+    // Silent chapter sync when seamlessly scrolling across chapters in longstrip mode
+    const handleActiveChapterChange = (ch: MangaChapter) => {
+        setActiveChapterSilent(ch);
+        if (activeManga) {
+            const title = slugify(activeManga.title || 'manga');
+            const chapterMatch = ch.title.match(/Chapter\s+(\d+[.]?\d*)/i);
+            const chapterNum = chapterMatch ? chapterMatch[1] : '1';
+            const nextPath = `/manga/read/${title}/${id}/c${chapterNum}`;
+            if (window.location.pathname !== nextPath) {
+                window.history.replaceState(window.history.state, '', nextPath);
+            }
+        }
     };
 
     // Handle close - go back to details
@@ -152,10 +192,12 @@ export default function MangaReaderPage() {
             zoomLevel={zoomLevel}
             onChapterSearchChange={setChapterSearchQuery}
             onLoadChapter={handleLoadChapter}
+            onActiveChapterChange={handleActiveChapterChange}
+            onFetchChapterPages={fetchChapterPagesDirect}
             onPrefetchChapter={prefetchChapter}
             onZoomIn={zoomIn}
             onZoomOut={zoomOut}
-            readChapters={readChapters}
+            readChapters={effectiveReadChapters}
         />
     );
 }
