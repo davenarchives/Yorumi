@@ -1,6 +1,12 @@
 
 
 import { setLocalStorageWithCleanup } from './localStorageQuota';
+import { isIncognitoMode } from './appPrefs';
+import {
+    isOfflineHistoryKey,
+    OFFLINE_HISTORY_RESTORED_EVENT,
+    persistOfflineHistoryKey,
+} from '../services/offlineHistoryStore';
 
 export interface WatchProgress {
     animeId: string;
@@ -130,6 +136,15 @@ const STORAGE_KEYS = {
 
 const storageMemoryCache = new Map<string, string>();
 
+if (typeof window !== 'undefined') {
+    window.addEventListener(OFFLINE_HISTORY_RESTORED_EVENT, (event) => {
+        const detail = (event as CustomEvent<{ key?: string; value?: string }>).detail;
+        if (detail?.key && typeof detail.value === 'string') {
+            storageMemoryCache.set(detail.key, detail.value);
+        }
+    });
+}
+
 const getScopedStorageKey = (key: string, uidOverride?: string | null) => {
     const uid = uidOverride;
     return uid ? `${key}_${uid}` : key;
@@ -172,12 +187,16 @@ const setScopedItemForUid = (key: string, value: string, uidOverride?: string | 
     const scopedKey = getScopedStorageKey(key, uidOverride);
     storageMemoryCache.set(scopedKey, value);
 
+    if (isOfflineHistoryKey(scopedKey)) {
+        persistOfflineHistoryKey(scopedKey, value);
+    }
+
     try {
         if (!setLocalStorageWithCleanup(scopedKey, value)) {
             throw new Error('localStorage quota cleanup did not free enough space');
         }
     } catch (error) {
-        console.warn(`Failed to persist ${scopedKey} to localStorage; keeping in memory only.`, error);
+        console.warn(`Failed to persist ${scopedKey} to localStorage; keeping in memory/IndexedDB.`, error);
     }
 };
 
@@ -357,6 +376,7 @@ const dedupeContinueReading = (items: ReadProgress[]): ReadProgress[] => {
 export const storage = {
     // Continue Watching
     saveProgress: (progress: Omit<WatchProgress, 'lastWatched'>) => {
+        if (isIncognitoMode()) return;
         const key = STORAGE_KEYS.CONTINUE_WATCHING;
         const delKey = STORAGE_KEYS.CONTINUE_WATCHING_PENDING_DELETES;
         try {
@@ -387,7 +407,7 @@ export const storage = {
             const updated = dedupeContinueWatching([
                 mergedEntry,
                 ...current.filter((item) => !isSameWatchProgress(item, mergedEntry)),
-            ]).slice(0, 20); // Keep last 20
+            ]).slice(0, 200); // Keep durable Mihon-style offline history
 
             setScopedItem(key, JSON.stringify(updated));
             emitStorageUpdated();
@@ -445,6 +465,7 @@ export const storage = {
 
     // Continue Reading
     saveReadingProgress: (progress: Omit<ReadProgress, 'lastRead'>) => {
+        if (isIncognitoMode()) return;
         const key = STORAGE_KEYS.CONTINUE_READING;
         const delKey = STORAGE_KEYS.CONTINUE_READING_PENDING_DELETES;
         try {
@@ -453,7 +474,7 @@ export const storage = {
             const updated = dedupeContinueReading([
                 { ...progress, lastRead: Date.now() },
                 ...current.filter((item) => !isSameReadProgress(item, progress)),
-            ]).slice(0, 20); // Keep last 20
+            ]).slice(0, 200); // Keep durable Mihon-style offline history
 
             setScopedItem(key, JSON.stringify(updated));
             emitStorageUpdated();
@@ -626,6 +647,7 @@ export const storage = {
 
     // Episode History (Watched Episodes)
     markEpisodeAsWatched: (animeId: string, episodeKey: number | string) => {
+        if (isIncognitoMode()) return;
         try {
             const normalizedKey = normalizeEpisodeHistoryKey(episodeKey);
             if (!normalizedKey) return;
@@ -858,6 +880,7 @@ export const storage = {
 
     // Chapter History (Read Chapters)
     markChapterAsRead: (mangaId: string, chapterId: string) => {
+        if (isIncognitoMode()) return;
         try {
             const history = storage.getChapterHistory();
             if (!history[mangaId]) history[mangaId] = [];

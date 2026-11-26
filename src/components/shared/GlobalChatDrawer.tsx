@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Send, X, Smile, Play, LogOut } from 'lucide-react';
+import { Send, X, Smile, Play, LogOut, ArrowLeft } from 'lucide-react';
 import { Browser } from '@capacitor/browser';
 import { isNativeMobile, isTauri } from '../../platform/runtime';
+import { useAppPrefs } from '../../utils/appPrefs';
 
 export interface NowWatchingRef {
     label: string;
@@ -33,6 +34,7 @@ interface DiscordChatSession {
 interface GlobalChatDrawerProps {
     isOpen: boolean;
     onClose: () => void;
+    asPage?: boolean;
 }
 
 const DEFAULT_BRIDGE_URL = 'https://yorumibot-1.onrender.com';
@@ -137,8 +139,10 @@ const getLiveNowWatching = (): NowWatchingRef | undefined => {
     return { label, route };
 };
 
-export default function GlobalChatDrawer({ isOpen, onClose }: GlobalChatDrawerProps) {
+export default function GlobalChatDrawer({ isOpen, onClose, asPage = false }: GlobalChatDrawerProps) {
     const navigate = useNavigate();
+    const { downloadedOnly } = useAppPrefs();
+    const hasTopBanner = downloadedOnly;
     const bridgeUrl = getBridgeUrl();
     const [session, setSession] = useState<DiscordChatSession | null>(readDiscordSession);
     const [signingIn, setSigningIn] = useState(false);
@@ -332,38 +336,75 @@ export default function GlobalChatDrawer({ isOpen, onClose }: GlobalChatDrawerPr
 
     if (!isOpen) return null;
 
+    const containerClass = asPage
+        ? 'flex h-[calc(100dvh-var(--yorumi-mode-banner-height,0px))] w-full flex-col bg-[#0a0a0a] text-white'
+        : 'fixed right-3 top-[calc(max(env(safe-area-inset-top,0px),16px)+3.5rem)] md:top-10 z-[2147483610] flex h-[56vh] md:h-[52vh] min-h-[340px] max-h-[520px] w-[360px] max-w-[calc(100vw-24px)] flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#0d0e12]/85 md:bg-[#0d0e12]/80 backdrop-blur-2xl shadow-2xl shadow-black/80';
+
     return (
         <div
             data-tauri-drag-region="false"
             style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-            className="fixed right-3 top-[calc(max(env(safe-area-inset-top,0px),16px)+3.5rem)] md:top-10 z-[2147483610] flex h-[56vh] md:h-[52vh] min-h-[340px] max-h-[520px] w-[360px] max-w-[calc(100vw-24px)] flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#0d0e12]/85 md:bg-[#0d0e12]/80 backdrop-blur-2xl shadow-2xl shadow-black/80"
+            className={containerClass}
         >
             {/* Header */}
-            <div className="flex items-center justify-between px-4 pt-3.5 pb-2">
-                <span className="text-[14px] font-bold text-white tracking-tight">
-                    Global Chat
-                </span>
-                <div className="flex items-center gap-1">
+            {asPage ? (
+                <div
+                    className="flex items-center gap-3 border-b border-white/[0.08] bg-[#0a0a0a] px-3 pb-3"
+                    style={{
+                        paddingTop: hasTopBanner
+                            ? '10px'
+                            : 'calc(max(env(safe-area-inset-top, 0px), 14px) + 6px)',
+                    }}
+                >
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        aria-label="Go back"
+                        className="flex h-10 w-10 items-center justify-center rounded-full text-white active:bg-white/10"
+                    >
+                        <ArrowLeft className="h-5 w-5" />
+                    </button>
+                    <span className="flex-1 text-[19px] font-bold tracking-tight text-white">
+                        Global chat
+                    </span>
                     {session && (
                         <button
                             type="button"
                             onClick={handleSignOut}
                             title={`Signed in as ${session.user.username} (Sign out)`}
-                            className="flex h-7 w-7 items-center justify-center rounded-full text-white/60 hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
+                            className="flex h-9 w-9 items-center justify-center rounded-full text-white/70 active:bg-white/10"
                         >
-                            <LogOut className="h-3.5 w-3.5" />
+                            <LogOut className="h-4 w-4" />
                         </button>
                     )}
-                    <button
-                        type="button"
-                        onClick={onClose}
-                        title="Close chat"
-                        className="flex h-7 w-7 items-center justify-center rounded-full text-white/75 hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
-                    >
-                        <X className="h-4 w-4" />
-                    </button>
                 </div>
-            </div>
+            ) : (
+                <div className="flex items-center justify-between px-4 pt-3.5 pb-2">
+                    <span className="text-[14px] font-bold text-white tracking-tight">
+                        Global Chat
+                    </span>
+                    <div className="flex items-center gap-1">
+                        {session && (
+                            <button
+                                type="button"
+                                onClick={handleSignOut}
+                                title={`Signed in as ${session.user.username} (Sign out)`}
+                                className="flex h-7 w-7 items-center justify-center rounded-full text-white/60 hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
+                            >
+                                <LogOut className="h-3.5 w-3.5" />
+                            </button>
+                        )}
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            title="Close chat"
+                            className="flex h-7 w-7 items-center justify-center rounded-full text-white/75 hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
+                        >
+                            <X className="h-4 w-4" />
+                        </button>
+                    </div>
+                </div>
+            )}
 
             {/* Messages with subtle top fade */}
             <div
@@ -466,7 +507,10 @@ export default function GlobalChatDrawer({ isOpen, onClose }: GlobalChatDrawerPr
 
             {/* Bottom Composer or Discord Sign In CTA */}
             {session ? (
-                <form onSubmit={handleSend} className="flex items-center gap-2 px-3 pb-3 pt-1.5">
+                <form
+                    onSubmit={handleSend}
+                    className={`flex items-center gap-2 px-3 pt-1.5 ${asPage ? 'border-t border-white/[0.08] pb-[max(env(safe-area-inset-bottom,0px),14px)] pt-2.5' : 'pb-3'}`}
+                >
                     <input
                         type="text"
                         value={input}
@@ -495,7 +539,7 @@ export default function GlobalChatDrawer({ isOpen, onClose }: GlobalChatDrawerPr
                     </button>
                 </form>
             ) : (
-                <div className="px-3 pb-3 pt-1.5">
+                <div className={`px-3 pt-1.5 ${asPage ? 'border-t border-white/[0.08] pb-[max(env(safe-area-inset-bottom,0px),14px)] pt-2.5' : 'pb-3'}`}>
                     <button
                         type="button"
                         disabled={signingIn}

@@ -1,6 +1,6 @@
-import { lazy, Suspense, useEffect, useState, useRef } from 'react';
+import { lazy, Suspense, startTransition, useEffect, useMemo, useState, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Compass, Search, Tv, BookOpen, BookText, Library, LogOut, MessageCircle, Bell, CheckCheck } from 'lucide-react';
+import { Compass, Search, Tv, BookOpen, BookText, Library, LogOut, Menu } from 'lucide-react';
 import { useContinueReading } from '../../hooks/useContinueReading';
 import { useContinueWatching } from '../../hooks/useContinueWatching';
 import { useWatchList } from '../../hooks/useWatchList';
@@ -16,7 +16,9 @@ const yorumiIcon = '/yorumi-icon.png';
 import { isMobileShell, isTauri } from '../../platform/runtime';
 import { candidatePoolService } from '../../features/explore/recommendation/candidatePoolService';
 import GlobalChatDrawer from '../shared/GlobalChatDrawer';
-import DiscordInviteModal, { DiscordBrandIcon } from '../shared/DiscordInviteModal';
+import DiscordInviteModal from '../shared/DiscordInviteModal';
+import MobileMenuDrawer from './MobileMenuDrawer';
+import { useAppPrefs } from '../../utils/appPrefs';
 
 const SearchModal = lazy(() => import('../shared/SearchModal'));
 
@@ -82,34 +84,11 @@ export default function Sidebar() {
     const [isExploreEpisodesOpen, setIsExploreEpisodesOpen] = useState(false);
     const [isMobileChatOpen, setIsMobileChatOpen] = useState(false);
     const [isMobileDiscordOpen, setIsMobileDiscordOpen] = useState(false);
-    const [isMobileNotifOpen, setIsMobileNotifOpen] = useState(false);
-    const mobileNotifRef = useRef<HTMLDivElement>(null);
+    const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
-    const {
-        notifications: mobileNotifications,
-        unreadCount: mobileUnreadCount,
-        loading: mobileNotifLoading,
-        markAsRead: markMobileNotifRead,
-        markAllRead: markAllMobileNotifsRead,
-    } = useWatchlistNotifications();
-
-    useEffect(() => {
-        if (!isMobileNotifOpen) return;
-        const onPointerDown = (e: PointerEvent) => {
-            if (!mobileNotifRef.current?.contains(e.target as Node)) {
-                setIsMobileNotifOpen(false);
-            }
-        };
-        const onKeyDown = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') setIsMobileNotifOpen(false);
-        };
-        document.addEventListener('pointerdown', onPointerDown);
-        document.addEventListener('keydown', onKeyDown);
-        return () => {
-            document.removeEventListener('pointerdown', onPointerDown);
-            document.removeEventListener('keydown', onKeyDown);
-        };
-    }, [isMobileNotifOpen]);
+    // Keep watchlist notifications polling active so Android posts native push notifications for new episodes
+    useWatchlistNotifications();
+    const { downloadedOnly, incognitoMode } = useAppPrefs();
 
     useEffect(() => {
         const handler = (event: Event) => {
@@ -125,7 +104,50 @@ export default function Sidebar() {
         location.pathname.startsWith('/ln/read/') ||
         location.pathname.startsWith('/anime/details/') ||
         location.pathname.startsWith('/manga/details/') ||
-        location.pathname.startsWith('/ln/details/');
+        location.pathname.startsWith('/ln/details/') ||
+        location.pathname.startsWith('/menu/');
+
+    // Right-edge swipe-left gesture to open the mobile hamburger drawer (skipped on Explore/immersive/search)
+    useEffect(() => {
+        if (isImmersiveRoute || isExploreRoute || location.pathname.startsWith('/search')) return;
+        let startX = 0;
+        let startY = 0;
+        let active = false;
+
+        const onTouchStart = (e: TouchEvent) => {
+            if (e.touches.length !== 1 || isMobileMenuOpen) return;
+            const t = e.touches[0];
+            if (t.clientX >= window.innerWidth - 32) {
+                startX = t.clientX;
+                startY = t.clientY;
+                active = true;
+            }
+        };
+        const onTouchMove = (e: TouchEvent) => {
+            if (!active || e.touches.length !== 1) return;
+            const t = e.touches[0];
+            const dx = t.clientX - startX;
+            const dy = t.clientY - startY;
+            if (dx < -45 && Math.abs(dx) > Math.abs(dy) * 1.3) {
+                active = false;
+                setIsMobileMenuOpen(true);
+            } else if (Math.abs(dy) > 30) {
+                active = false;
+            }
+        };
+        const onTouchEnd = () => {
+            active = false;
+        };
+
+        window.addEventListener('touchstart', onTouchStart, { passive: true });
+        window.addEventListener('touchmove', onTouchMove, { passive: true });
+        window.addEventListener('touchend', onTouchEnd, { passive: true });
+        return () => {
+            window.removeEventListener('touchstart', onTouchStart);
+            window.removeEventListener('touchmove', onTouchMove);
+            window.removeEventListener('touchend', onTouchEnd);
+        };
+    }, [isExploreRoute, isImmersiveRoute, isMobileMenuOpen, location.pathname]);
 
     const { watchList: normalWatchList } = useWatchList();
     const { readList: normalReadList } = useReadList();
@@ -159,15 +181,19 @@ export default function Sidebar() {
         }, 1500);
     };
 
-    const displaySavedItems: SavedSidebarItem[] = [
-        ...normalWatchList.map((item) => ({ ...item, isType: 'anime' as const })),
-        ...normalReadList.map((item) => ({ ...item, isType: 'manga' as const })),
-        ...lnReadList.map((item) => ({ ...item, isType: 'ln' as const })),
-    ]
-        .filter((item, index, self) =>
-            index === self.findIndex((t) => String(t.id) === String(item.id) && t.isType === item.isType)
-        )
-        .sort((a, b) => new Date(b.addedAt || 0).getTime() - new Date(a.addedAt || 0).getTime());
+    const mobileShell = isMobileShell();
+    const displaySavedItems: SavedSidebarItem[] = useMemo(() => {
+        if (mobileShell) return [];
+        return [
+            ...normalWatchList.map((item) => ({ ...item, isType: 'anime' as const })),
+            ...normalReadList.map((item) => ({ ...item, isType: 'manga' as const })),
+            ...lnReadList.map((item) => ({ ...item, isType: 'ln' as const })),
+        ]
+            .filter((item, index, self) =>
+                index === self.findIndex((t) => String(t.id) === String(item.id) && t.isType === item.isType)
+            )
+            .sort((a, b) => new Date(b.addedAt || 0).getTime() - new Date(a.addedAt || 0).getTime());
+    }, [mobileShell, normalWatchList, normalReadList, lnReadList]);
 
     const getMatchingWatchProgress = (item: WatchListItem) => {
         const ids = new Set([
@@ -313,14 +339,19 @@ export default function Sidebar() {
 
             {!isImmersiveRoute && !isExploreEpisodesOpen && (
                 <>
-                    {/* Mobile Top-Right Bare Floating Icons: Search, Chat, Notification (hidden on /search page) */}
+                    {/* Mobile Top-Right Decluttered Floating Icons: Search + Hamburger Menu (hidden on /search page) */}
                     {!location.pathname.startsWith('/search') && (
-                        <div className="fixed right-4 top-[calc(max(env(safe-area-inset-top,0px),16px)+0.5rem)] z-[150] flex items-center gap-2 md:hidden">
+                        <div
+                            className="yorumi-mobile-top-actions fixed right-4 z-[150] flex items-center gap-2 md:hidden"
+                            style={{
+                                top: 'calc(var(--yorumi-mode-banner-height, max(env(safe-area-inset-top, 0px), 16px)) + 0.5rem)',
+                            }}
+                        >
                             <button
                                 type="button"
                                 onClick={() => {
                                     setIsMobileChatOpen(false);
-                                    setIsMobileNotifOpen(false);
+                                    setIsMobileMenuOpen(false);
                                     navigate('/search');
                                 }}
                                 aria-label="Search"
@@ -333,118 +364,24 @@ export default function Sidebar() {
                                 type="button"
                                 onClick={() => {
                                     setIsMobileChatOpen(false);
-                                    setIsMobileNotifOpen(false);
-                                    setIsMobileDiscordOpen(true);
+                                    setIsMobileMenuOpen(true);
                                 }}
-                                aria-label="Join us on Discord"
-                                className="flex h-9 w-9 items-center justify-center text-white/95 drop-shadow-[0_2px_8px_rgba(0,0,0,0.85)] active:scale-90 transition-transform focus:outline-none"
+                                aria-label="Open menu"
+                                className="relative flex h-9 w-9 items-center justify-center text-white/95 drop-shadow-[0_2px_8px_rgba(0,0,0,0.85)] active:scale-90 transition-transform focus:outline-none"
                             >
-                                <DiscordBrandIcon className="h-5 w-5" />
-                            </button>
-
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    setIsMobileNotifOpen(false);
-                                    setIsMobileChatOpen((open) => !open);
-                                }}
-                                aria-label="Global Chat"
-                                className={`flex h-9 w-9 items-center justify-center drop-shadow-[0_2px_8px_rgba(0,0,0,0.85)] active:scale-90 transition-transform focus:outline-none ${isMobileChatOpen ? 'text-yorumi-accent' : 'text-white/95'
-                                    }`}
-                            >
-                                <MessageCircle className="h-5 w-5" />
-                            </button>
-
-                            <div ref={mobileNotifRef} className="relative">
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        setIsMobileChatOpen(false);
-                                        setIsMobileNotifOpen((open) => !open);
-                                    }}
-                                    aria-label="Watchlist Episode Updates"
-                                    className={`relative flex h-9 w-9 items-center justify-center drop-shadow-[0_2px_8px_rgba(0,0,0,0.85)] active:scale-90 transition-transform focus:outline-none ${isMobileNotifOpen ? 'text-yorumi-accent' : 'text-white/95'
-                                        }`}
-                                >
-                                    <Bell className="h-5 w-5" />
-                                    {mobileUnreadCount > 0 && (
-                                        <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-yorumi-accent" />
-                                    )}
-                                </button>
-
-                                {isMobileNotifOpen && (
-                                    <div className="fixed right-3 top-[calc(max(env(safe-area-inset-top,0px),16px)+3.5rem)] z-[2147483610] w-[340px] max-w-[calc(100vw-24px)] overflow-hidden rounded-2xl border border-white/10 bg-[#0d0e12]/90 backdrop-blur-2xl shadow-2xl shadow-black/80">
-                                        <div className="flex items-center justify-between px-4 pt-3.5 pb-2.5 border-b border-white/[0.06]">
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-[14px] font-bold text-white tracking-tight">
-                                                    Watchlist Updates
-                                                </span>
-                                                {mobileUnreadCount > 0 && (
-                                                    <span className="rounded-full bg-yorumi-accent/20 px-2 py-0.5 text-[11px] font-bold text-yorumi-accent">
-                                                        {mobileUnreadCount}
-                                                    </span>
-                                                )}
-                                            </div>
-                                            {mobileUnreadCount > 0 && (
-                                                <button
-                                                    type="button"
-                                                    onClick={markAllMobileNotifsRead}
-                                                    title="Mark all read"
-                                                    className="flex h-7 w-7 items-center justify-center rounded-full text-white/75 hover:bg-white/10 hover:text-white transition-colors"
-                                                >
-                                                    <CheckCheck className="h-4 w-4" />
-                                                </button>
-                                            )}
-                                        </div>
-
-                                        <div className="max-h-80 overflow-y-auto custom-scrollbar divide-y divide-white/[0.05]">
-                                            {mobileNotifications.length === 0 ? (
-                                                <div className="px-4 py-8 text-center text-xs text-white/50">
-                                                    {mobileNotifLoading
-                                                        ? 'Checking watchlist for new episodes…'
-                                                        : 'You’re all caught up on your watchlist!'}
-                                                </div>
-                                            ) : (
-                                                mobileNotifications.map((notif) => (
-                                                    <button
-                                                        key={notif.id}
-                                                        type="button"
-                                                        onClick={() => {
-                                                            markMobileNotifRead(notif.anilistId, notif.latestEpisode);
-                                                            setIsMobileNotifOpen(false);
-                                                            navigate(`/anime/details/al-${notif.anilistId}`);
-                                                        }}
-                                                        className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-white/[0.06] transition-colors"
-                                                    >
-                                                        <div className="h-12 w-9 shrink-0 overflow-hidden rounded-lg bg-white/5">
-                                                            {notif.image && (
-                                                                <img src={notif.image} alt={notif.title} className="h-full w-full object-cover" />
-                                                            )}
-                                                        </div>
-                                                        <div className="min-w-0 flex-1">
-                                                            <div className="flex items-center gap-1.5">
-                                                                {notif.unread && (
-                                                                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-yorumi-accent" />
-                                                                )}
-                                                                <p className="truncate text-[13px] font-bold text-white">
-                                                                    {notif.title}
-                                                                </p>
-                                                            </div>
-                                                            <p className="mt-0.5 text-[12px] font-medium text-yorumi-accent">
-                                                                Episode {notif.latestEpisode} is out
-                                                                {notif.watchedEpisode > 0 ? ` · Watched Ep ${notif.watchedEpisode}` : ''}
-                                                            </p>
-                                                        </div>
-                                                    </button>
-                                                ))
-                                            )}
-                                        </div>
-                                    </div>
+                                <Menu className="h-5 w-5" />
+                                {(downloadedOnly || incognitoMode) && (
+                                    <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-yorumi-accent" />
                                 )}
-                            </div>
+                            </button>
                         </div>
                     )}
 
+                    <MobileMenuDrawer
+                        isOpen={isMobileMenuOpen && !location.pathname.startsWith('/menu/')}
+                        onClose={() => setIsMobileMenuOpen(false)}
+                        onOpenDiscord={() => setIsMobileDiscordOpen(true)}
+                    />
                     <GlobalChatDrawer isOpen={isMobileChatOpen} onClose={() => setIsMobileChatOpen(false)} />
                     <DiscordInviteModal isOpen={isMobileDiscordOpen} onClose={() => setIsMobileDiscordOpen(false)} />
 
@@ -456,12 +393,12 @@ export default function Sidebar() {
                             <MobileNavItem icon={Compass} label="Explore" onClick={() => {
                                 void candidatePoolService.getCandidatePool();
                                 if (location.pathname === '/explore') window.dispatchEvent(new CustomEvent('yorumi-explore-refresh'));
-                                else navigate('/explore');
+                                else startTransition(() => navigate('/explore'));
                             }} isActive={location.pathname === '/explore'} />
-                            <MobileNavItem icon={Tv} label="Anime" onClick={() => navigate('/')} isActive={location.pathname === '/' || location.pathname.startsWith('/anime')} />
-                            <MobileNavItem icon={BookOpen} label="Manga" onClick={() => navigate('/manga')} isActive={location.pathname.startsWith('/manga')} />
-                            <MobileNavItem icon={BookText} label="LN" onClick={() => navigate('/ln')} isActive={location.pathname.startsWith('/ln')} />
-                            <MobileNavItem icon={Library} label="Library" onClick={() => navigate('/library')} isActive={location.pathname.startsWith('/library')} />
+                            <MobileNavItem icon={Tv} label="Anime" onClick={() => startTransition(() => navigate('/'))} isActive={location.pathname === '/' || location.pathname.startsWith('/anime')} />
+                            <MobileNavItem icon={BookOpen} label="Manga" onClick={() => startTransition(() => navigate('/manga'))} isActive={location.pathname.startsWith('/manga')} />
+                            <MobileNavItem icon={BookText} label="LN" onClick={() => startTransition(() => navigate('/ln'))} isActive={location.pathname.startsWith('/ln')} />
+                            <MobileNavItem icon={Library} label="Library" onClick={() => startTransition(() => navigate('/library'))} isActive={location.pathname.startsWith('/library')} />
                         </div>
                     </nav>
                 </>
@@ -503,7 +440,7 @@ function MobileNavItem({ icon: Icon, label, onClick, isActive = false }: MobileN
             onClick={onClick}
             aria-label={label}
             aria-current={isActive ? 'page' : undefined}
-            className={`relative flex h-full min-w-0 flex-1 flex-col items-center justify-center gap-0.5 ${isActive ? 'text-white' : 'text-white/60'
+            className={`relative flex h-full min-w-0 flex-1 flex-col items-center justify-center gap-0.5 touch-manipulation ${isActive ? 'text-white' : 'text-white/60'
                 }`}
         >
             <Icon className="h-5 w-5 shrink-0" strokeWidth={2} />

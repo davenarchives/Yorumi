@@ -5,6 +5,7 @@ import type { LNReadingProgress } from '../../../hooks/useContinueLNReading';
 import type { LNReadListItem } from '../../../types/ln';
 import type { Anime } from '../../../types/anime';
 import { getDisplayImageUrl } from '../../../utils/image';
+import { cacheImage, getCachedImage } from '../../../services/offlineImageCache';
 import { tmdbService } from '../../../services/tmdbService';
 import type { PublicUserProfile } from '../../../services/userService';
 
@@ -22,6 +23,7 @@ interface LibraryProfileOverviewProps {
     watchList: WatchListItem[];
     readList: ReadListItem[];
     lnReadList: LNReadListItem[];
+    favoriteAnime?: Array<{ id: string | number; title: string; image: string; addedAt?: number }>;
     publicProfileOverride?: PublicUserProfile;
 }
 
@@ -98,6 +100,7 @@ export default function LibraryProfileOverview({
     watchList,
     readList,
     lnReadList,
+    favoriteAnime = [],
     publicProfileOverride,
 }: LibraryProfileOverviewProps) {
     const { activityData: localActivityData } = useActivityHistory();
@@ -218,73 +221,94 @@ export default function LibraryProfileOverview({
         };
     }, [continueWatchingList, publicProfileOverride, watchList]);
 
-    // Fullscreen backdrop source based on most recently watched anime (matching DetailsHero TMDB resolution)
+    // Fullscreen backdrop source based on the single latest anime entry across watching, watchlist, and favorites
+    // (same concept on both phone and desktop; never falls back to manga/LN)
     const bannerSource = useMemo(() => {
+        const upgradeCoverQuality = (url?: string) => {
+            if (!url) return '';
+            return url.replace('/cover/medium/', '/cover/large/');
+        };
+
+        type BannerCandidate = {
+            ts: number;
+            key: string;
+            animeLookup: Anime;
+            poster: string;
+            fallbackBackdrop: string;
+            title: string;
+        };
+
+        const candidates: BannerCandidate[] = [];
+
         const recentAnime = [...continueWatchingList].sort(
             (a, b) => (b.lastWatched || b.timestamp || 0) - (a.lastWatched || a.timestamp || 0)
         )[0];
         if (recentAnime) {
-            const poster = recentAnime.animePoster || recentAnime.animeImage || recentAnime.episodeThumbnail || '';
-            const animeLookup: Partial<Anime> = {
-                id: recentAnime.anilistId || (Number.isFinite(Number(recentAnime.animeId)) ? Number(recentAnime.animeId) : 0),
-                mal_id: recentAnime.malId || 0,
-                title: recentAnime.animeTitle,
-                title_english: recentAnime.animeTitle,
-                anilist_banner_image: recentAnime.animeImage || undefined,
-                images: { jpg: { image_url: poster, large_image_url: poster } },
-            };
-            return {
-                key: `anime:${recentAnime.anilistId || recentAnime.animeId}:${recentAnime.animeTitle}`,
-                animeLookup: animeLookup as Anime,
-                poster,
-                fallbackBackdrop: recentAnime.animeImage || recentAnime.episodeThumbnail || poster,
-                title: recentAnime.animeTitle,
-            };
+            const poster = upgradeCoverQuality(recentAnime.animePoster || recentAnime.animeImage || '');
+            if (poster) {
+                const animeLookup: Partial<Anime> = {
+                    id: recentAnime.anilistId || (Number.isFinite(Number(recentAnime.animeId)) ? Number(recentAnime.animeId) : 0),
+                    mal_id: recentAnime.malId || 0,
+                    title: recentAnime.animeTitle,
+                    title_english: recentAnime.animeTitle,
+                    anilist_banner_image: upgradeCoverQuality(recentAnime.animeImage) || undefined,
+                    images: { jpg: { image_url: poster, large_image_url: poster } },
+                };
+                candidates.push({
+                    ts: recentAnime.lastWatched || recentAnime.timestamp || 0,
+                    key: `anime:${recentAnime.anilistId || recentAnime.animeId}:${recentAnime.animeTitle}`,
+                    animeLookup: animeLookup as Anime,
+                    poster,
+                    fallbackBackdrop: upgradeCoverQuality(recentAnime.animeImage) || poster,
+                    title: recentAnime.animeTitle,
+                });
+            }
         }
+
         const recentWatchlist = [...watchList].sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0))[0];
         if (recentWatchlist?.image) {
+            const poster = upgradeCoverQuality(recentWatchlist.image);
             const animeLookup: Partial<Anime> = {
                 id: Number(recentWatchlist.anilistId || recentWatchlist.id) || 0,
                 mal_id: Number(recentWatchlist.malId || 0),
                 title: recentWatchlist.title,
                 title_english: recentWatchlist.title,
-                images: { jpg: { image_url: recentWatchlist.image, large_image_url: recentWatchlist.image } },
+                images: { jpg: { image_url: poster, large_image_url: poster } },
             };
-            return {
+            candidates.push({
+                ts: recentWatchlist.addedAt || 0,
                 key: `watchlist:${recentWatchlist.anilistId || recentWatchlist.id}:${recentWatchlist.title}`,
                 animeLookup: animeLookup as Anime,
-                poster: recentWatchlist.image,
-                fallbackBackdrop: recentWatchlist.image,
+                poster,
+                fallbackBackdrop: poster,
                 title: recentWatchlist.title,
+            });
+        }
+
+        const recentFavoriteAnime = [...favoriteAnime].sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0))[0];
+        if (recentFavoriteAnime?.image) {
+            const poster = upgradeCoverQuality(recentFavoriteAnime.image);
+            const animeLookup: Partial<Anime> = {
+                id: Number(recentFavoriteAnime.id) || 0,
+                mal_id: 0,
+                title: recentFavoriteAnime.title,
+                title_english: recentFavoriteAnime.title,
+                images: { jpg: { image_url: poster, large_image_url: poster } },
             };
+            candidates.push({
+                ts: recentFavoriteAnime.addedAt || 0,
+                key: `fav:${recentFavoriteAnime.id}:${recentFavoriteAnime.title}`,
+                animeLookup: animeLookup as Anime,
+                poster,
+                fallbackBackdrop: poster,
+                title: recentFavoriteAnime.title,
+            });
         }
-        const recentManga = [...continueReadingList].sort(
-            (a, b) => (b.lastRead || b.timestamp || 0) - (a.lastRead || a.timestamp || 0)
-        )[0];
-        if (recentManga) {
-            const img = recentManga.mangaImage || recentManga.mangaPoster || '';
-            if (img) {
-                return {
-                    key: `manga:${recentManga.mangaId}`,
-                    animeLookup: null,
-                    poster: recentManga.mangaPoster || img,
-                    fallbackBackdrop: img,
-                    title: recentManga.mangaTitle,
-                };
-            }
-        }
-        const recentLN = continueLNList[0];
-        if (recentLN?.coverImage) {
-            return {
-                key: `ln:${recentLN.novelId}`,
-                animeLookup: null,
-                poster: recentLN.coverImage,
-                fallbackBackdrop: recentLN.coverImage,
-                title: recentLN.novelTitle,
-            };
-        }
-        return null;
-    }, [continueLNList, continueReadingList, continueWatchingList, watchList]);
+
+        if (candidates.length === 0) return null;
+        candidates.sort((a, b) => b.ts - a.ts);
+        return candidates[0];
+    }, [continueWatchingList, favoriteAnime, watchList]);
 
     const [resolvedTmdbBackdrop, setResolvedTmdbBackdrop] = useState<{ key: string; url: string | null }>({
         key: '',
@@ -311,10 +335,47 @@ export default function LibraryProfileOverview({
         ? tmdbService.getCachedBackdropForAnime(bannerSource.animeLookup, 'w780')
         : null;
     const tmdbBackdrop = (bannerSource && resolvedTmdbBackdrop.key === bannerSource.key ? resolvedTmdbBackdrop.url : null) || cachedOriginal;
-    const rawPrimaryBackdrop = tmdbBackdrop || bannerSource?.fallbackBackdrop || cachedPreview || bannerSource?.poster || '';
-    const primaryBackdrop = rawPrimaryBackdrop ? getDisplayImageUrl(rawPrimaryBackdrop) : '';
-    const previewBackdrop = cachedPreview ? getDisplayImageUrl(cachedPreview) : null;
-    const mobilePoster = bannerSource?.poster ? getDisplayImageUrl(bannerSource.poster) : '';
+    const rawPrimaryBackdrop = tmdbBackdrop || cachedPreview || bannerSource?.fallbackBackdrop || bannerSource?.poster || '';
+    const networkPrimaryBackdrop = rawPrimaryBackdrop ? getDisplayImageUrl(rawPrimaryBackdrop) : '';
+    const networkPreviewBackdrop = cachedPreview ? getDisplayImageUrl(cachedPreview) : null;
+    // Prefer high-res backdrop/poster on mobile too so it never stretches a low-res thumbnail
+    const rawMobileBackdrop = bannerSource?.poster || tmdbBackdrop || cachedPreview || '';
+    const networkMobilePoster = rawMobileBackdrop ? getDisplayImageUrl(rawMobileBackdrop) : '';
+
+    const [offlineImageMap, setOfflineImageMap] = useState<Record<string, string>>({});
+
+    useEffect(() => {
+        const urls = [networkPrimaryBackdrop, networkPreviewBackdrop, networkMobilePoster].filter((u): u is string => Boolean(u));
+        if (urls.length === 0) return;
+        let cancelled = false;
+        void Promise.all(
+            urls.map(async (url) => {
+                const cached = await getCachedImage(url);
+                if (cached) return [url, cached] as const;
+                if (typeof navigator !== 'undefined' && navigator.onLine) {
+                    const fetched = await cacheImage(url);
+                    if (fetched && fetched !== url) return [url, fetched] as const;
+                }
+                return null;
+            })
+        ).then((entries) => {
+            if (cancelled) return;
+            const updates: Record<string, string> = {};
+            for (const entry of entries) {
+                if (entry) updates[entry[0]] = entry[1];
+            }
+            if (Object.keys(updates).length > 0) {
+                setOfflineImageMap((prev) => ({ ...prev, ...updates }));
+            }
+        });
+        return () => {
+            cancelled = true;
+        };
+    }, [networkMobilePoster, networkPreviewBackdrop, networkPrimaryBackdrop]);
+
+    const primaryBackdrop = (networkPrimaryBackdrop && offlineImageMap[networkPrimaryBackdrop]) || networkPrimaryBackdrop;
+    const previewBackdrop = (networkPreviewBackdrop && offlineImageMap[networkPreviewBackdrop]) || networkPreviewBackdrop;
+    const mobilePoster = (networkMobilePoster && offlineImageMap[networkMobilePoster]) || networkMobilePoster;
 
     // Summary counts & joined date (watched anime, read manga, read LN)
     const { watchedAnimeCount, readMangaCount, readLNCount, watchlistCount, joinedLabel } = useMemo(() => {
@@ -710,7 +771,9 @@ export default function LibraryProfileOverview({
                         className="md:hidden absolute inset-0 bg-cover bg-top bg-no-repeat"
                         style={{ backgroundImage: `url(${mobilePoster})` }}
                     />
-                ) : null}
+                ) : (
+                    <div className="md:hidden absolute inset-0 bg-[#0a0a0a]" />
+                )}
 
                 {previewBackdrop && previewBackdrop !== primaryBackdrop && (
                     <div
@@ -725,7 +788,7 @@ export default function LibraryProfileOverview({
                         style={{ backgroundImage: `url(${primaryBackdrop})` }}
                     />
                 ) : (
-                    <div className="absolute inset-0 bg-gradient-to-b from-white/[0.06] via-[#0d0e12] to-[#0a0a0a]" />
+                    <div className="hidden md:block absolute inset-0 bg-[#0a0a0a]" />
                 )}
 
                 {/* Exact DetailsHero / SpotlightHero vignette overlays */}

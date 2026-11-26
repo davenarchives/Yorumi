@@ -31,6 +31,7 @@ html {
   scrollbar-gutter: stable;
   /* Overlay scrollbar for modern browsers */
   overflow-y: overlay;
+  overscroll-behavior-y: none;
 }
 
 html.explore-open {
@@ -43,6 +44,7 @@ body {
   min-width: 320px;
   min-height: 100vh;
   background-color: #0a0a0a;
+  overscroll-behavior-y: none;
   @apply text-white;
 }
 
@@ -363,6 +365,8 @@ body.yorumi-player-controls-hidden .mobile-player-header {
   background-color: #000;
 }
 body.yorumi-library-modal-open .yorumi-mobile-navbar,
+body.yorumi-library-selection-mode .yorumi-mobile-navbar,
+body.yorumi-library-selection-mode .yorumi-mobile-top-actions,
 body.yorumi-explore-fullscreen .yorumi-mobile-navbar,
 body.explore-episodes-open .yorumi-mobile-navbar,
 html.explore-episodes-open .yorumi-mobile-navbar {

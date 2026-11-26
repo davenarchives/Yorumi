@@ -50,6 +50,7 @@ public class NativeDownloadStoragePlugin extends Plugin {
     private static final long HLS_STORAGE_BUFFER_BYTES = 64L * 1024L * 1024L;
     private static final int SEGMENT_RETRIES = 3;
     private final Map<String, Boolean> pausedOperations = new ConcurrentHashMap<>();
+    private final Map<String, Boolean> cancelledOperations = new ConcurrentHashMap<>();
     private final Map<String, byte[]> hlsKeyCache = new ConcurrentHashMap<>();
     private final OkHttpClient client = new OkHttpClient.Builder()
         .connectTimeout(20, TimeUnit.SECONDS)
@@ -72,6 +73,7 @@ public class NativeDownloadStoragePlugin extends Plugin {
         }
 
         pausedOperations.put(operationId, false);
+        cancelledOperations.remove(operationId);
         new Thread(() -> {
             File temp = null;
             File transportTemp = null;
@@ -92,23 +94,47 @@ public class NativeDownloadStoragePlugin extends Plugin {
                     ? downloadHls(operationId, url, referer, transportTemp, maxHeight)
                     : downloadFile(operationId, url, referer, temp);
                 if (stats.bytes <= 0 || !transportTemp.exists()) throw new IOException("Downloaded file is empty");
+                boolean savedAsHlsTs = false;
+                File finalTarget = target;
+                File sourceToMove = temp;
                 if (hls) {
                     emitProgress(operationId, 99, stats.bytes, stats.bytes);
-                    transmuxToMp4(transportTemp, temp);
-                    if (!transportTemp.delete()) transportTemp.deleteOnExit();
+                    try {
+                        transmuxToMp4(transportTemp, temp);
+                        if (!transportTemp.delete()) transportTemp.deleteOnExit();
+                    } catch (IOException transmuxError) {
+                        // Fallback: keep raw MPEG-TS stream so offline hls.js playback succeeds instead of losing the download
+                        if (temp.exists()) temp.delete();
+                        savedAsHlsTs = true;
+                        sourceToMove = transportTemp;
+                        String targetPath = target.getAbsolutePath();
+                        finalTarget = new File(targetPath.replaceAll("(?i)\\.mp4$", ".ts"));
+                    }
                 }
-                if (!temp.exists() || temp.length() <= 0) throw new IOException("Final video file is empty");
-                if (target.exists() && !target.delete()) throw new IOException("Unable to replace existing download");
-                if (!temp.renameTo(target)) {
-                    Files.move(temp.toPath(), target.toPath());
+                if (!sourceToMove.exists() || sourceToMove.length() <= 0) throw new IOException("Final video file is empty");
+                if (finalTarget.exists() && !finalTarget.delete()) throw new IOException("Unable to replace existing download");
+                if (!sourceToMove.renameTo(finalTarget)) {
+                    Files.move(sourceToMove.toPath(), finalTarget.toPath());
+                }
+
+                JSArray segmentsJson = new JSArray();
+                if (savedAsHlsTs && stats.segments != null) {
+                    for (SegmentRange seg : stats.segments) {
+                        JSObject segObj = new JSObject();
+                        segObj.put("offset", seg.offset);
+                        segObj.put("size", seg.size);
+                        segObj.put("duration", seg.duration);
+                        segmentsJson.put(segObj);
+                    }
                 }
 
                 JSObject result = new JSObject();
-                result.put("filePath", target.getAbsolutePath());
-                result.put("fileUrl", LocalMediaProxyPlugin.getFileUrl(target));
-                result.put("fileSize", target.length());
+                result.put("filePath", finalTarget.getAbsolutePath());
+                result.put("fileUrl", LocalMediaProxyPlugin.getFileUrl(finalTarget));
+                result.put("fileSize", finalTarget.length());
                 result.put("duration", stats.duration);
-                result.put("hlsSegments", new JSArray());
+                result.put("isHls", savedAsHlsTs);
+                result.put("hlsSegments", segmentsJson);
                 call.resolve(result);
             } catch (Exception error) {
                 if (temp != null && temp.exists()) temp.delete();
@@ -116,6 +142,7 @@ public class NativeDownloadStoragePlugin extends Plugin {
                 call.reject(error.getMessage() != null ? error.getMessage() : "Native download failed", error);
             } finally {
                 pausedOperations.remove(operationId);
+                cancelledOperations.remove(operationId);
             }
         }, "yorumi-native-download").start();
     }
@@ -168,10 +195,25 @@ public class NativeDownloadStoragePlugin extends Plugin {
         call.resolve();
     }
 
+    @PluginMethod
+    public void cancel(PluginCall call) {
+        String operationId = call.getString("operationId", "");
+        if (!operationId.isEmpty()) {
+            cancelledOperations.put(operationId, true);
+            pausedOperations.put(operationId, false);
+        }
+        call.resolve();
+    }
+
+    private void checkCancelled(String operationId) throws IOException {
+        if (Boolean.TRUE.equals(cancelledOperations.get(operationId))) {
+            throw new IOException("Download cancelled");
+        }
+    }
+
     private DownloadStats downloadFile(String operationId, String url, String referer, File target) throws Exception {
         RequestTarget source = resolveRequestTarget(url, referer);
-        Request request = request(source.url, source.referer).build();
-        try (Response response = client.newCall(request).execute()) {
+        try (Response response = executeWithHeaderFallback(source.url, source.referer)) {
             if (!response.isSuccessful() || response.body() == null) throw new IOException("Download failed (HTTP " + response.code() + ")");
             long total = response.body().contentLength();
             try (BufferedInputStream input = new BufferedInputStream(response.body().byteStream());
@@ -206,7 +248,9 @@ public class NativeDownloadStoragePlugin extends Plugin {
             try (BufferedOutputStream output = new BufferedOutputStream(new FileOutputStream(target))) {
                 byte[] buffer = new byte[BUFFER_SIZE];
                 for (int index = 0; index < playlist.segments.size(); index++) {
+                    checkCancelled(operationId);
                     waitIfPaused(operationId);
+                    checkCancelled(operationId);
                     awaitHlsSegment(downloads.get(index));
                     File segmentFile = new File(segmentDirectory, String.format("%06d.part", index));
                     if (segmentFile.length() <= 0) {
@@ -354,9 +398,11 @@ public class NativeDownloadStoragePlugin extends Plugin {
     ) throws Exception {
         Exception lastError = null;
         for (int attempt = 1; attempt <= SEGMENT_RETRIES; attempt++) {
+            checkCancelled(operationId);
             waitIfPaused(operationId);
+            checkCancelled(operationId);
             RequestTarget source = resolveRequestTarget(segmentSource.url, referer);
-            try (Response response = client.newCall(request(source.url, source.referer).build()).execute()) {
+            try (Response response = executeWithHeaderFallback(source.url, source.referer)) {
                 if (!response.isSuccessful() || response.body() == null) {
                     throw new IOException("HTTP " + response.code());
                 }
@@ -398,7 +444,7 @@ public class NativeDownloadStoragePlugin extends Plugin {
         byte[] cached = hlsKeyCache.get(keyUrl);
         if (cached != null) return cached;
         RequestTarget source = resolveRequestTarget(keyUrl, referer);
-        try (Response response = client.newCall(request(source.url, source.referer).build()).execute()) {
+        try (Response response = executeWithHeaderFallback(source.url, source.referer)) {
             if (!response.isSuccessful() || response.body() == null) {
                 throw new IOException("Failed HLS encryption key (HTTP " + response.code() + ")");
             }
@@ -413,7 +459,7 @@ public class NativeDownloadStoragePlugin extends Plugin {
         if (depth > 5) throw new IOException("Too many HLS playlist redirects");
         RequestTarget source = resolveRequestTarget(url, referer);
         String text;
-        try (Response response = client.newCall(request(source.url, source.referer).build()).execute()) {
+        try (Response response = executeWithHeaderFallback(source.url, source.referer)) {
             if (!response.isSuccessful() || response.body() == null) throw new IOException("Failed HLS playlist (HTTP " + response.code() + ")");
             text = response.body().string();
         }
@@ -559,16 +605,38 @@ public class NativeDownloadStoragePlugin extends Plugin {
         notifyListeners("progress", event);
     }
 
-    private Request.Builder request(String url, String referer) {
+    private Response executeWithHeaderFallback(String url, String referer) throws IOException {
+        Response first = client.newCall(request(url, referer, true).build()).execute();
+        if (first.isSuccessful() || (first.code() != 403 && first.code() != 401)) {
+            return first;
+        }
+        first.close();
+
+        // Retry without Origin header (some CDNs reject Origin on HLS playlists/segments)
+        if (referer != null && !referer.isEmpty()) {
+            Response second = client.newCall(request(url, referer, false).build()).execute();
+            if (second.isSuccessful() || (second.code() != 403 && second.code() != 401)) {
+                return second;
+            }
+            second.close();
+        }
+
+        // Final retry with no Referer/Origin
+        return client.newCall(request(url, null, false).build()).execute();
+    }
+
+    private Request.Builder request(String url, String referer, boolean includeOrigin) {
         Request.Builder builder = new Request.Builder().url(url)
             .header("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/124 Mobile Safari/537.36")
             .header("Accept", "*/*");
         if (referer != null && !referer.isEmpty()) {
             builder.header("Referer", referer);
-            try {
-                URL refUrl = new URL(referer);
-                builder.header("Origin", refUrl.getProtocol() + "://" + refUrl.getAuthority());
-            } catch (Exception ignored) {}
+            if (includeOrigin) {
+                try {
+                    URL refUrl = new URL(referer);
+                    builder.header("Origin", refUrl.getProtocol() + "://" + refUrl.getAuthority());
+                } catch (Exception ignored) {}
+            }
         }
         return builder;
     }

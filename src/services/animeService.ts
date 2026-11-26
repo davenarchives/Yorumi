@@ -2094,6 +2094,12 @@ export const animeService = {
                 if (item.scraperId) anime.scraperId = item.scraperId;
                 return anime;
             });
+            if (processedSpotlight.length < 3) {
+                const trendingFallback = await this.getTrendingAnime(1, 8).catch(() => ({ data: [] as Anime[] }));
+                if (Array.isArray(trendingFallback?.data) && trendingFallback.data.length > processedSpotlight.length) {
+                    return { data: trendingFallback.data.slice(0, 8) };
+                }
+            }
             if (processedSpotlight.length === 0) {
                 throw new Error('Spotlight endpoint returned no items');
             }

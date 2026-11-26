@@ -16,6 +16,10 @@ export interface AnimeMetadataPayload {
     malId?: number;
     tmdbId?: number;
     tvdbId?: number;
+    logo?: string;
+    backdrop?: string;
+    banner?: string;
+    poster?: string;
     episodes: Map<number, EpisodeMeta>;
     absoluteEpisodes: Map<number, EpisodeMeta>;
     specialEpisodes?: Map<number, EpisodeMeta>;
@@ -27,12 +31,16 @@ interface SerializedMetadataPayload {
     malId?: number;
     tmdbId?: number;
     tvdbId?: number;
+    logo?: string;
+    backdrop?: string;
+    banner?: string;
+    poster?: string;
     episodes: Array<[number, EpisodeMeta]>;
     absoluteEpisodes: Array<[number, EpisodeMeta]>;
     specialEpisodes?: Array<[number, EpisodeMeta]>;
 }
 
-const CACHE_PREFIX = 'yorumi_anizip_ep_meta_v3';
+const CACHE_PREFIX = 'yorumi_anizip_ep_meta_v4';
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 // Purge any stale caches from previous versions
@@ -71,6 +79,10 @@ const readSessionCache = (key: string): AnimeMetadataPayload | null => {
             malId: parsed.malId,
             tmdbId: parsed.tmdbId,
             tvdbId: parsed.tvdbId,
+            logo: parsed.logo,
+            backdrop: parsed.backdrop,
+            banner: parsed.banner,
+            poster: parsed.poster,
             episodes: new Map(parsed.episodes || []),
             absoluteEpisodes: new Map(parsed.absoluteEpisodes || []),
             specialEpisodes: new Map(parsed.specialEpisodes || []),
@@ -91,6 +103,10 @@ const writeSessionCache = (key: string, payload: AnimeMetadataPayload) => {
             malId: payload.malId,
             tmdbId: payload.tmdbId,
             tvdbId: payload.tvdbId,
+            logo: payload.logo,
+            backdrop: payload.backdrop,
+            banner: payload.banner,
+            poster: payload.poster,
             episodes: Array.from(payload.episodes.entries()),
             absoluteEpisodes: Array.from(payload.absoluteEpisodes.entries()),
             specialEpisodes: payload.specialEpisodes ? Array.from(payload.specialEpisodes.entries()) : [],
@@ -161,13 +177,22 @@ export const episodeMetadataService = {
                 if (!res.ok) return null;
 
                 const data = await res.json();
+                const rawImages: Array<{ coverType?: string; url?: string }> = Array.isArray(data?.images) ? data.images : [];
+                const pickImage = (type: string) =>
+                    rawImages.find((img) => String(img?.coverType || '').toLowerCase() === type.toLowerCase() && typeof img?.url === 'string' && img.url.trim())?.url?.trim();
+                const logo = pickImage('Clearlogo');
+                const backdrop = pickImage('Fanart');
+                const banner = pickImage('Banner');
+                const poster = pickImage('Poster');
+
                 const rawEpisodes = data?.episodes;
-                if (!rawEpisodes || typeof rawEpisodes !== 'object') return null;
+                if ((!rawEpisodes || typeof rawEpisodes !== 'object') && !logo && !backdrop && !banner && !poster) return null;
 
                 const episodes = new Map<number, EpisodeMeta>();
                 const absoluteEpisodes = new Map<number, EpisodeMeta>();
                 const specialEpisodes = new Map<number, EpisodeMeta>();
 
+                if (rawEpisodes && typeof rawEpisodes === 'object') {
                 Object.entries(rawEpisodes).forEach(([key, rawVal]) => {
                     if (!rawVal || typeof rawVal !== 'object') return;
                     const ep = rawVal as Record<string, unknown>;
@@ -214,6 +239,7 @@ export const episodeMetadataService = {
                         }
                     }
                 });
+                }
 
                 // Fallback to special episodes only if no canon TV episodes were mapped at all (e.g. standalone OVA)
                 if (episodes.size === 0 && specialEpisodes.size > 0) {
@@ -230,6 +256,10 @@ export const episodeMetadataService = {
                     malId: Number(data?.mappings?.mal_id) || malId,
                     tmdbId: Number.isFinite(rawTmdbId) && rawTmdbId > 0 ? rawTmdbId : undefined,
                     tvdbId: Number.isFinite(rawTvdbId) && rawTvdbId > 0 ? rawTvdbId : undefined,
+                    logo,
+                    backdrop,
+                    banner,
+                    poster,
                     episodes,
                     absoluteEpisodes,
                     specialEpisodes,

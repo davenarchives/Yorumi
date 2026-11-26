@@ -6,6 +6,7 @@ import MangaReaderModal from '../features/manga/components/MangaReaderModal';
 import type { MangaChapter } from '../types/manga';
 import sleepingGif from '../assets/sleeping.gif';
 import { enterImmersiveMode, exitImmersiveMode } from '../platform/immersiveMode';
+import { offlineLibraryCache } from '../services/offlineLibraryCache';
 
 export default function MangaReaderPage() {
     const { id, chapter } = useParams<{ title: string; id: string; chapter: string }>();
@@ -73,19 +74,29 @@ export default function MangaReaderPage() {
         }
     }, [mangaChapters, chapter, currentMangaChapter, loadMangaChapter, routeChapter]);
 
+    const activeManga = selectedManga || routeManga;
+    const cachedOfflineChapters = offlineLibraryCache.getMangaChapters([
+        id,
+        activeManga?.id,
+        activeManga?.mal_id,
+        activeManga?.scraper_id,
+    ]);
+
     const effectiveChapters = mangaChapters.length > 0
         ? mangaChapters
-        : routeChapter
-            ? [routeChapter]
-            : [];
+        : cachedOfflineChapters.length > 0
+            ? cachedOfflineChapters
+            : routeChapter
+                ? [routeChapter]
+                : [];
 
     // Handle chapter navigation - update URL
     const handleLoadChapter = (ch: MangaChapter) => {
-        if (selectedManga) {
-            const title = slugify(selectedManga.title || 'manga');
+        if (activeManga) {
+            const title = slugify(activeManga.title || 'manga');
             const chapterMatch = ch.title.match(/Chapter\s+(\d+[.]?\d*)/i);
             const chapterNum = chapterMatch ? chapterMatch[1] : '1';
-            navigate(`/manga/read/${title}/${id}/c${chapterNum}`, { replace: true, state: { manga: selectedManga } });
+            navigate(`/manga/read/${title}/${id}/c${chapterNum}`, { replace: true, state: { manga: activeManga, chapter: ch } });
         }
         loadMangaChapter(ch);
     };
@@ -93,14 +104,14 @@ export default function MangaReaderPage() {
     // Handle close - go back to details
     const handleClose = () => {
         if (id) {
-            navigate(`/manga/details/${encodeURIComponent(id)}`, { replace: true, state: { manga: selectedManga } });
+            navigate(`/manga/details/${encodeURIComponent(id)}`, { replace: true, state: { manga: activeManga } });
         } else {
             navigate('/manga', { replace: true });
         }
     };
 
     // Show loading while manga, chapters, or chapter pages are loading
-    if ((mangaLoading && !routeManga) || (mangaChaptersLoading && !routeChapter) || !selectedManga || (!currentMangaChapter && effectiveChapters.length > 0)) {
+    if ((mangaLoading && !activeManga) || (mangaChaptersLoading && !routeChapter && cachedOfflineChapters.length === 0) || !activeManga || (!currentMangaChapter && effectiveChapters.length > 0)) {
         return (
             <div className="fixed inset-0 z-[130] md:z-[90] flex flex-col items-center justify-center gap-4 bg-black/95 backdrop-blur-md text-center">
                 <img src={sleepingGif} alt="Loading..." className="w-32 h-32 object-contain animate-bounce" />
@@ -111,7 +122,7 @@ export default function MangaReaderPage() {
 
     // Handle case where no chapters exist
     if (effectiveChapters.length === 0) {
-        const sourceName = selectedManga?.scraper_id?.toString().startsWith('vault:') ? 'Toonily' : 'MangaKatana';
+        const sourceName = activeManga?.scraper_id?.toString().startsWith('vault:') ? 'Toonily' : 'MangaKatana';
         return (
             <div className="min-h-screen flex flex-col items-center justify-center bg-[#0a0a0a] text-white gap-4">
                 <div className="text-6xl font-black text-white/10">!</div>
@@ -131,7 +142,7 @@ export default function MangaReaderPage() {
         <MangaReaderModal
             isOpen={true}
             onClose={handleClose}
-            manga={selectedManga}
+            manga={activeManga}
             chapters={effectiveChapters}
             currentChapter={currentMangaChapter}
             pages={chapterPages}

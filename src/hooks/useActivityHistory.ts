@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { persistOfflineHistoryKey } from '../services/offlineHistoryStore';
 
 export interface ActivityData {
     [dateString: string]: number;
@@ -18,7 +19,13 @@ const readJson = <T,>(key: string, fallback: T): T => {
 };
 
 const writeJson = (key: string, value: unknown) => {
-    localStorage.setItem(key, JSON.stringify(value));
+    const serialized = JSON.stringify(value);
+    persistOfflineHistoryKey(key, serialized);
+    try {
+        localStorage.setItem(key, serialized);
+    } catch {
+        // IndexedDB mirror retains offline copy
+    }
     window.dispatchEvent(new CustomEvent(STORAGE_EVENT));
 };
 

@@ -17,9 +17,11 @@ import { useTitleLanguage } from '../context/TitleLanguageContext';
 import { getDisplayTitle } from '../utils/titleLanguage';
 import type { ReadListItem } from '../utils/storage';
 import { useChapterViewMode, type ChapterViewMode } from '../components/ui/ChapterViewToggle';
-import DownloadStateIcon from '../components/ui/DownloadStateIcon';
+import DownloadActionButton from '../components/ui/DownloadActionButton';
 import ReadingDetailsHero from '../features/reading/components/ReadingDetailsHero';
 import MoreLikeReading from '../features/reading/components/MoreLikeReading';
+import { offlineLibraryCache } from '../services/offlineLibraryCache';
+import BatchDownloadMenu, { selectItemsForBatchDownload, type BatchDownloadMode } from '../components/shared/BatchDownloadMenu';
 
 const normalizeMangaRouteId = (value: unknown) =>
     String(value || '')
@@ -50,7 +52,7 @@ const ChapterList = ({
 }) => {
     const [searchQuery, setSearchQuery] = useState('');
     const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
-    const { isChapterDownloaded, getDownloadProgress, startDownload, deleteDownload } = useMangaDownloads();
+    const { isChapterDownloaded, getDownloadProgress, startDownload, cancelDownload, deleteDownload } = useMangaDownloads();
 
     const mangaId = manga?.id || manga?.mal_id || '';
     const mangaTitle = manga?.title || 'Manga';
@@ -164,20 +166,19 @@ const ChapterList = ({
                                         {subtitleStr}
                                     </span>
                                 )}
-                                <button
-                                    type="button"
-                                    className="absolute top-0.5 right-0.5 z-20 flex h-7 w-7 items-center justify-center rounded-full text-zinc-300 hover:bg-white/10 active:bg-white/15 cursor-pointer"
-                                    aria-label={isDownloaded ? 'Delete downloaded chapter' : 'Download chapter'}
-                                    disabled={isDownloading}
-                                    onClick={(event) => {
-                                        event.stopPropagation();
-                                        if (isDownloading) return;
-                                        if (isDownloaded) deleteDownload(mangaId, ch.id);
-                                        else startDownload({ mangaId, mangaTitle, mangaImage, chapter: ch });
-                                    }}
-                                >
-                                    <DownloadStateIcon state={isDownloading ? 'downloading' : isDownloaded ? 'downloaded' : 'available'} progress={progress?.progress || 0} className="h-4 w-4" />
-                                </button>
+                                <div className="absolute top-0.5 right-0.5 z-20">
+                                    <DownloadActionButton
+                                        state={isDownloading ? 'downloading' : isDownloaded ? 'downloaded' : 'available'}
+                                        progress={progress?.progress || 0}
+                                        disabled={isDownloading}
+                                        onDownload={() => startDownload({ mangaId, mangaTitle, mangaImage, chapter: ch })}
+                                        onCancel={() => cancelDownload(mangaId, ch.id)}
+                                        onDelete={() => deleteDownload(mangaId, ch.id)}
+                                        buttonClassName="flex h-8 w-8 items-center justify-center rounded-full text-zinc-300 hover:bg-white/10 active:bg-white/15 cursor-pointer touch-manipulation"
+                                        iconClassName="h-5 w-5"
+                                        ariaLabel={isDownloaded ? 'Delete downloaded chapter' : 'Download chapter'}
+                                    />
+                                </div>
                             </div>
                         );
                     })}
@@ -227,29 +228,21 @@ const ChapterList = ({
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
-                                    <button
-                                        type="button"
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            if (isDownloaded) {
-                                                deleteDownload(mangaId, ch.id);
-                                            } else if (!isDownloading) {
-                                                startDownload({
-                                                    mangaId,
-                                                    mangaTitle,
-                                                    mangaImage,
-                                                    chapter: ch,
-                                                });
-                                            }
-                                        }}
+                                    <DownloadActionButton
+                                        state={isDownloading ? 'downloading' : isDownloaded ? 'downloaded' : 'available'}
+                                        progress={progress?.progress || 0}
                                         disabled={isDownloading}
-                                        className={`grid h-8 w-8 place-items-center rounded-full transition-colors cursor-pointer ${
+                                        onDownload={() => startDownload({ mangaId, mangaTitle, mangaImage, chapter: ch })}
+                                        onCancel={() => cancelDownload(mangaId, ch.id)}
+                                        onDelete={() => deleteDownload(mangaId, ch.id)}
+                                        buttonClassName={`grid h-10 w-10 place-items-center rounded-full transition-colors cursor-pointer touch-manipulation ${
                                             isDownloaded
-                                                ? 'text-zinc-400 hover:bg-red-500/20 hover:text-red-400'
+                                                ? 'text-white hover:bg-white/10'
                                                 : isDownloading
-                                                ? 'text-zinc-400'
-                                                : 'text-zinc-400 hover:text-white hover:bg-white/10'
+                                                ? 'text-white'
+                                                : 'text-zinc-300 hover:text-white hover:bg-white/10'
                                         }`}
+                                        iconClassName="h-6 w-6"
                                         title={
                                             isDownloaded
                                                 ? 'Downloaded for offline (Click to delete)'
@@ -257,13 +250,7 @@ const ChapterList = ({
                                                 ? `Downloading ${progress?.progress || 0}%`
                                                 : 'Download chapter'
                                         }
-                                    >
-                                        <DownloadStateIcon
-                                            state={isDownloading ? 'downloading' : isDownloaded ? 'downloaded' : 'available'}
-                                            progress={progress?.progress || 0}
-                                            className="h-5 w-5"
-                                        />
-                                    </button>
+                                    />
                                 </div>
                             </div>
                         );
@@ -290,6 +277,7 @@ export default function MangaDetailsPage() {
         setActiveSectionTab('chapters');
     }, [id]);
     const [compactFab, setCompactFab] = useState(false);
+    const [mobileDownloadMenuOpen, setMobileDownloadMenuOpen] = useState(false);
 
     const {
         selectedManga,
@@ -324,11 +312,45 @@ export default function MangaDetailsPage() {
         routeManga?.mal_id
     ].some((candidate) => normalizeMangaRouteId(candidate) === currentRouteId);
 
-    const displayManga = selectedMatchesCurrentRoute
+    const rawDisplayManga = selectedMatchesCurrentRoute
         ? selectedManga
         : routeMatchesCurrentRoute
             ? routeManga
             : selectedManga || routeManga;
+
+    const cachedOfflineManga = useMemo(
+        () => offlineLibraryCache.getMangaMeta([id, rawDisplayManga?.id, rawDisplayManga?.mal_id, rawDisplayManga?.scraper_id]),
+        [id, rawDisplayManga?.id, rawDisplayManga?.mal_id, rawDisplayManga?.scraper_id]
+    );
+
+    const displayManga = useMemo<Manga | null>(() => {
+        if (!rawDisplayManga && !cachedOfflineManga) return null;
+        if (!rawDisplayManga) return cachedOfflineManga;
+        if (!cachedOfflineManga) return rawDisplayManga;
+        return {
+            ...cachedOfflineManga,
+            ...rawDisplayManga,
+            synopsis: rawDisplayManga.synopsis || cachedOfflineManga.synopsis,
+            genres: rawDisplayManga.genres?.length ? rawDisplayManga.genres : cachedOfflineManga.genres,
+            authors: rawDisplayManga.authors?.length ? rawDisplayManga.authors : cachedOfflineManga.authors,
+            score: rawDisplayManga.score || cachedOfflineManga.score,
+            chapters: rawDisplayManga.chapters || cachedOfflineManga.chapters,
+            bannerImage: rawDisplayManga.bannerImage || cachedOfflineManga.bannerImage,
+            images:
+                rawDisplayManga.images?.jpg?.large_image_url || rawDisplayManga.images?.jpg?.image_url
+                    ? rawDisplayManga.images
+                    : cachedOfflineManga.images,
+        };
+    }, [rawDisplayManga, cachedOfflineManga]);
+
+    useEffect(() => {
+        if (displayManga && (displayManga.synopsis || displayManga.genres?.length || displayManga.authors?.length || displayManga.score)) {
+            offlineLibraryCache.saveMangaMeta(
+                [id, displayManga.id, displayManga.mal_id, displayManga.scraper_id],
+                displayManga
+            );
+        }
+    }, [displayManga, id]);
 
     const matchingMangaDownloads = useMemo(() => {
         if (!id && !displayManga) return [];
@@ -350,7 +372,25 @@ export default function MangaDetailsPage() {
         }));
     }, [matchingMangaDownloads]);
 
-    const effectiveChapters = mangaChapters.length > 0 ? mangaChapters : downloadedChapters;
+    const cachedOfflineChapters = useMemo(
+        () => offlineLibraryCache.getMangaChapters([id, displayManga?.id, displayManga?.mal_id, displayManga?.scraper_id]),
+        [id, displayManga?.id, displayManga?.mal_id, displayManga?.scraper_id]
+    );
+
+    useEffect(() => {
+        if (mangaChapters.length > 0) {
+            offlineLibraryCache.saveMangaChapters(
+                [id, displayManga?.id, displayManga?.mal_id, displayManga?.scraper_id],
+                mangaChapters
+            );
+        }
+    }, [mangaChapters, id, displayManga?.id, displayManga?.mal_id, displayManga?.scraper_id]);
+
+    const effectiveChapters = mangaChapters.length > 0
+        ? mangaChapters
+        : cachedOfflineChapters.length > 0
+            ? cachedOfflineChapters
+            : downloadedChapters;
 
     useEffect(() => {
         if (displayManga?.title) {
@@ -361,18 +401,24 @@ export default function MangaDetailsPage() {
         };
     }, [displayManga?.title]);
 
-    const handleDownloadAllManga = useCallback(() => {
+    const handleDownloadMangaByMode = useCallback((mode: BatchDownloadMode) => {
         const mangaId = displayManga?.id || displayManga?.mal_id || id || '';
         if (!mangaId) return;
+        const downloadedIds = new Set(matchingMangaDownloads.map((d) => d.chapterId));
+        // Effective chapters are newest-first; reverse to ascending order so "Next X chapters" grabs the next unread ones
+        const ascending = [...effectiveChapters].reverse();
+        const unreadUndownloaded = ascending.filter((ch) => !readChapters.has(ch.id) && !downloadedIds.has(ch.id));
+        const selected = selectItemsForBatchDownload(unreadUndownloaded, mode);
+        if (selected.length === 0) return;
         downloadAllManga(
             {
                 id: mangaId,
                 title: displayManga?.title || 'Manga',
                 image: displayManga?.images?.jpg?.large_image_url || displayManga?.images?.jpg?.image_url || '',
             },
-            effectiveChapters
+            selected
         );
-    }, [displayManga, id, downloadAllManga, effectiveChapters]);
+    }, [displayManga, id, matchingMangaDownloads, effectiveChapters, readChapters, downloadAllManga]);
 
     const currentProgress = useMemo(() => {
         const targetId = normalizeMangaRouteId(id);
@@ -525,9 +571,23 @@ export default function MangaDetailsPage() {
                     <button type="button" onClick={() => window.dispatchEvent(new Event('yorumi:manga:toggle-view'))} className="grid h-10 w-10 shrink-0 place-items-center text-white/85 transition-colors active:text-white" aria-label="Toggle chapter view">
                         {viewMode === 'list' ? <Grid2X2 className="h-5 w-5" /> : <List className="h-5 w-5" />}
                     </button>
-                    <button type="button" onClick={handleDownloadAllManga} className="grid h-10 w-10 shrink-0 place-items-center text-white/85 transition-colors active:text-white" aria-label="Download chapters">
-                        <Download className="h-5 w-5" />
-                    </button>
+                    <div className="relative">
+                        <button
+                            type="button"
+                            onClick={() => setMobileDownloadMenuOpen((open) => !open)}
+                            className="grid h-10 w-10 shrink-0 place-items-center text-white/85 transition-colors active:text-white"
+                            aria-label="Download chapters"
+                        >
+                            <Download className="h-5 w-5" />
+                        </button>
+                        <BatchDownloadMenu
+                            isOpen={mobileDownloadMenuOpen}
+                            onClose={() => setMobileDownloadMenuOpen(false)}
+                            unit="chapter"
+                            placement="bottom-right"
+                            onSelect={handleDownloadMangaByMode}
+                        />
+                    </div>
                 </div>
             </div>
             <div className="mx-auto w-full max-w-[1440px] px-6 pt-24 sm:px-10 sm:pt-32 md:px-14 md:pt-40 lg:px-16 lg:pt-48">
@@ -626,7 +686,7 @@ export default function MangaDetailsPage() {
                                     <>
                                         <button
                                             type="button"
-                                            onClick={handleDownloadAllManga}
+                                            onClick={() => handleDownloadMangaByMode('unread')}
                                             className="flex h-10 w-10 items-center justify-center rounded-full bg-white/[0.10] text-white/80 transition-colors hover:bg-white/[0.15] hover:text-white border-0 outline-none focus:outline-none cursor-pointer"
                                             title="Download all chapters for offline reading"
                                             aria-label="Download all chapters"

@@ -5,6 +5,7 @@ import { useTitleLanguage } from '../context/TitleLanguageContext';
 import { getAnimeSearchSeed, searchApi, type SearchPreviewItem } from '../features/search/api';
 import { suggestSearchCorrection } from '../utils/searchIntelligence';
 import { useDebounce } from '../hooks/useDebounce';
+import { isIncognitoMode } from '../utils/appPrefs';
 import { getPersonalizedSearchSuggestions } from '../utils/searchRecommendations';
 import { userSearchService, type PublicUserProfile } from '../services/userService';
 import AnimeCard from '../features/anime/components/AnimeCard';
@@ -128,6 +129,7 @@ export default function SearchPage() {
     }, []);
 
     const saveRecentSearch = useCallback((term: string) => {
+        if (isIncognitoMode()) return;
         const trimmed = term.trim();
         if (trimmed.length < 2) return;
         setRecentSearches((prev) => {

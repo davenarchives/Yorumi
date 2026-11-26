@@ -29,6 +29,28 @@ import { isAnimeReleased } from '../utils/animeAiring';
 import ExploreEpisodesDrawer from '../features/explore/components/ExploreEpisodesDrawer';
 import { useExploreFeed } from '../features/explore/recommendation/useExploreFeed';
 import type { ExploreCandidate } from '../features/explore/recommendation/types';
+import AnimeDetailsPage from './AnimeDetailsPage';
+import { resetMobileShellShift, shiftMobileShell } from '../utils/screenShift';
+import type { Anime } from '../types/anime';
+
+const buildExploreDetailsAnime = (anime: ExploreCandidate): Partial<Anime> => ({
+    id: anime.id,
+    mal_id: anime.idMal,
+    title: anime.title,
+    title_english: anime.titleEnglish,
+    title_romaji: anime.titleRomaji,
+    images: { jpg: { large_image_url: anime.coverImage, image_url: anime.coverImage } },
+    anilist_cover_image: anime.coverImage,
+    anilist_banner_image: anime.bannerImage || anime.coverImage,
+    score: anime.averageScore ? anime.averageScore / 10 : 0,
+    status: anime.status || 'FINISHED',
+    type: 'TV',
+    episodes: anime.episodesCount,
+    year: anime.seasonYear,
+    genres: (anime.genres || []).map((name) => ({ mal_id: 0, name })),
+    studios: (anime.studios || []).map((name) => ({ mal_id: 0, name })),
+    synopsis: anime.synopsis,
+});
 
 export function isAnimeUpcomingOrUnreleased(anime: Partial<ExploreCandidate> | null | undefined): boolean {
     if (!anime) return true;
@@ -70,6 +92,8 @@ export default function ExplorePage() {
     const [trailerProgress, setTrailerProgress] = useState<{ current: number; duration: number }>({ current: 0, duration: 0 });
     const [isFastForwarding, setIsFastForwarding] = useState(false);
     const [heartBursts, setHeartBursts] = useState<Array<{ id: number; x: number; y: number; rotate: number }>>([]);
+    const [peekAnime, setPeekAnime] = useState<ExploreCandidate | null>(null);
+    const [isDetailsSheetOpen, setIsDetailsSheetOpen] = useState(false);
 
     const { isInWatchList, addToWatchList, removeFromWatchList } = useWatchList();
     const { isFavorite, addFavorite, removeFavorite } = useFavoriteAnime();
@@ -145,6 +169,12 @@ export default function ExplorePage() {
     const lastTapRef = useRef<{ time: number; animeId: number | null }>({ time: 0, animeId: null });
     const singleTapTimerRef = useRef<number | null>(null);
     const heartBurstIdRef = useRef(0);
+    const swipeLockRef = useRef<'none' | 'horizontal' | 'vertical'>('none');
+    const swipeStartTimeRef = useRef<number>(0);
+    const swipeOffsetRef = useRef<number>(0);
+    const swipeTargetAnimeRef = useRef<ExploreCandidate | null>(null);
+    const swipeCardElRef = useRef<HTMLElement | null>(null);
+    const peekPanelRef = useRef<HTMLDivElement | null>(null);
 
     useLayoutEffect(() => {
         document.documentElement.classList.add('explore-open');
@@ -359,16 +389,71 @@ export default function ExplorePage() {
         }, 720);
     }, []);
 
-    const handleSlidePointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    const applySwipeTransform = useCallback((offsetPx: number, dragging: boolean) => {
+        const peekEl = peekPanelRef.current;
+        const transition = dragging ? 'none' : 'transform 230ms cubic-bezier(0.22, 1, 0.36, 1)';
+        // Move the ENTIRE screen (Explore content + bottom navbar + top icons) together as one unified screen
+        shiftMobileShell(offsetPx, dragging, 230);
+        if (peekEl) {
+            const vw = typeof window !== 'undefined' ? window.innerWidth : 400;
+            peekEl.style.transition = transition;
+            peekEl.style.transform = `translateX(${vw + offsetPx}px)`;
+        }
+    }, []);
+
+    const closeDetailsSheet = useCallback(() => {
+        const vw = typeof window !== 'undefined' ? window.innerWidth : 400;
+        const peekEl = peekPanelRef.current;
+        shiftMobileShell(0, false, 230);
+        if (peekEl) {
+            peekEl.style.transition = 'transform 230ms cubic-bezier(0.22, 1, 0.36, 1)';
+            peekEl.style.transform = `translateX(${vw}px)`;
+        }
+        setIsDetailsSheetOpen(false);
+        const currentAnime = feed[activeIndex];
+        if (currentAnime && !isPausedRef.current) {
+            iframeRefs.current.get(currentAnime.id)?.contentWindow?.postMessage(
+                JSON.stringify({ event: 'command', func: 'playVideo', args: [] }),
+                '*'
+            );
+        }
+        window.setTimeout(() => {
+            resetMobileShellShift();
+            setPeekAnime(null);
+        }, 240);
+    }, [activeIndex, feed]);
+
+    useEffect(() => {
+        const win = window as Window & { __yorumiCloseExploreDetails?: (() => void) | null };
+        if (isDetailsSheetOpen) {
+            win.__yorumiCloseExploreDetails = closeDetailsSheet;
+        } else if (win.__yorumiCloseExploreDetails === closeDetailsSheet) {
+            win.__yorumiCloseExploreDetails = null;
+        }
+        return () => {
+            if (win.__yorumiCloseExploreDetails === closeDetailsSheet) {
+                win.__yorumiCloseExploreDetails = null;
+            }
+        };
+    }, [isDetailsSheetOpen, closeDetailsSheet]);
+
+    useEffect(() => () => resetMobileShellShift(), []);
+
+    const handleSlidePointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>, anime?: ExploreCandidate) => {
         if (e.pointerType === 'mouse' && e.button !== 0) return;
         clearHoldTimer();
         holdActivatedRef.current = false;
         pointerMovedRef.current = false;
         suppressClickRef.current = false;
         holdPointerStartRef.current = { x: e.clientX, y: e.clientY };
+        swipeLockRef.current = 'none';
+        swipeStartTimeRef.current = Date.now();
+        swipeOffsetRef.current = 0;
+        swipeTargetAnimeRef.current = anime || null;
+        swipeCardElRef.current = (e.currentTarget.closest('section') as HTMLElement | null) || null;
 
         holdTimerRef.current = window.setTimeout(() => {
-            if (pointerMovedRef.current || isPausedRef.current) return;
+            if (pointerMovedRef.current || isPausedRef.current || swipeLockRef.current !== 'none') return;
             if (singleTapTimerRef.current !== null) {
                 window.clearTimeout(singleTapTimerRef.current);
                 singleTapTimerRef.current = null;
@@ -382,19 +467,79 @@ export default function ExplorePage() {
     const handleSlidePointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
         const start = holdPointerStartRef.current;
         if (!start) return;
-        const dx = Math.abs(e.clientX - start.x);
-        const dy = Math.abs(e.clientY - start.y);
+        const rawDx = e.clientX - start.x;
+        const rawDy = e.clientY - start.y;
+        const dx = Math.abs(rawDx);
+        const dy = Math.abs(rawDy);
         if (dx > 10 || dy > 10) {
             pointerMovedRef.current = true;
             if (!holdActivatedRef.current) {
                 clearHoldTimer();
             }
         }
-    }, [clearHoldTimer]);
 
-    const handleSlidePointerEnd = useCallback(() => {
+        if (swipeLockRef.current === 'none' && (dx > 12 || dy > 12)) {
+            if (rawDx < -12 && dx > dy * 1.25 && !holdActivatedRef.current && swipeTargetAnimeRef.current) {
+                swipeLockRef.current = 'horizontal';
+                setPeekAnime(swipeTargetAnimeRef.current);
+            } else {
+                swipeLockRef.current = 'vertical';
+            }
+        }
+
+        if (swipeLockRef.current === 'horizontal') {
+            const maxSlide = typeof window !== 'undefined' ? window.innerWidth : 400;
+            const clamped = Math.min(0, Math.max(-maxSlide, rawDx));
+            swipeOffsetRef.current = clamped;
+            applySwipeTransform(clamped, true);
+        }
+    }, [applySwipeTransform, clearHoldTimer]);
+
+    const handleSlidePointerEnd = useCallback((_onSwipeToDetails?: (anime: ExploreCandidate) => void) => {
+        if (swipeLockRef.current === 'horizontal') {
+            const target = swipeTargetAnimeRef.current;
+            const offset = swipeOffsetRef.current;
+            const elapsed = Math.max(1, Date.now() - swipeStartTimeRef.current);
+            const velocity = Math.abs(offset) / elapsed;
+            swipeLockRef.current = 'none';
+            swipeTargetAnimeRef.current = null;
+            suppressClickRef.current = true;
+            holdPointerStartRef.current = null;
+            clearHoldTimer();
+
+            if (target && (Math.abs(offset) >= 85 || (Math.abs(offset) >= 40 && velocity > 0.45))) {
+                const maxSlide = typeof window !== 'undefined' ? window.innerWidth : 400;
+                swipeOffsetRef.current = -maxSlide;
+                applySwipeTransform(-maxSlide, false);
+                setIsDetailsSheetOpen(true);
+                // Pause active trailer while viewing its details page
+                iframeRefs.current.get(target.id)?.contentWindow?.postMessage(
+                    JSON.stringify({ event: 'command', func: 'pauseVideo', args: [] }),
+                    '*'
+                );
+                logInteraction({
+                    animeId: target.id,
+                    type: 'details_open',
+                    genres: target.genres,
+                    studios: target.studios,
+                    timestamp: Date.now(),
+                });
+                return;
+            }
+
+            swipeOffsetRef.current = 0;
+            applySwipeTransform(0, false);
+            window.setTimeout(() => {
+                resetMobileShellShift();
+                setPeekAnime(null);
+            }, 235);
+            return;
+        }
+
+        swipeLockRef.current = 'none';
+        swipeTargetAnimeRef.current = null;
         stopFastForward(true);
-    }, [stopFastForward]);
+    }, [applySwipeTransform, clearHoldTimer, logInteraction, stopFastForward]);
 
     const handleSlideTap = useCallback((e: React.MouseEvent<HTMLDivElement>, anime: ExploreCandidate, isFullscreenMode: boolean) => {
         e.stopPropagation();
@@ -728,7 +873,8 @@ export default function ExplorePage() {
                 >
                     {feed.map((anime, index) => {
                         const isActive = index === activeIndex;
-                        const preloadTrailer = index >= activeIndex - 1 && index <= activeIndex + 2 && anime.trailer && !failedTrailers.has(anime.id);
+                        // On mobile WebView, only mount the active YouTube iframe to prevent multi-iframe lag & OOM crashes
+                        const preloadTrailer = (isMobileShell() ? isActive : index >= activeIndex - 1 && index <= activeIndex + 2) && anime.trailer && !failedTrailers.has(anime.id);
                         const animeIdStr = String(anime.id);
                         const inWatchlist = isInWatchList(animeIdStr);
                         const favorited = isFavorite(animeIdStr);
@@ -769,7 +915,7 @@ export default function ExplorePage() {
                                 key={`${anime.id}-${index}`}
                                 ref={(el) => { cardRefs.current[index] = el; }}
                                 aria-label={anime.title}
-                                className="w-full h-full snap-start snap-always relative overflow-hidden bg-black flex items-center justify-center shrink-0 after:absolute after:inset-x-0 after:bottom-0 after:h-1 after:bg-black after:z-40 after:pointer-events-none"
+                                className="w-full h-full snap-start snap-always relative overflow-hidden bg-black flex items-center justify-center shrink-0 will-change-transform after:absolute after:inset-x-0 after:bottom-0 after:h-1 after:bg-black after:z-40 after:pointer-events-none"
                             >
                                 {preloadTrailer && (
                                     <div
@@ -825,10 +971,10 @@ export default function ExplorePage() {
                                             {isActive && isFullscreen && (
                                                 <>
                                                     <div
-                                                        onPointerDown={handleSlidePointerDown}
+                                                        onPointerDown={(e) => handleSlidePointerDown(e)}
                                                         onPointerMove={handleSlidePointerMove}
-                                                        onPointerUp={handleSlidePointerEnd}
-                                                        onPointerCancel={handleSlidePointerEnd}
+                                                        onPointerUp={() => handleSlidePointerEnd()}
+                                                        onPointerCancel={() => handleSlidePointerEnd()}
                                                         onContextMenu={(e) => e.preventDefault()}
                                                         onClick={(e) => handleSlideTap(e, anime, true)}
                                                         className="absolute inset-0 z-10 cursor-pointer select-none"
@@ -1014,15 +1160,15 @@ export default function ExplorePage() {
                                 )}
                                 {isActive && !isFullscreen && (
                                     <>
-                                        {/* Full-screen gesture surface (above, on, and below video): tap play/pause, double-tap like, hold 2x */}
+                                        {/* Full-screen gesture surface (above, on, and below video): tap play/pause, double-tap like, hold 2x, swipe left for details */}
                                         <div
-                                            onPointerDown={handleSlidePointerDown}
+                                            onPointerDown={(e) => handleSlidePointerDown(e, anime)}
                                             onPointerMove={handleSlidePointerMove}
-                                            onPointerUp={handleSlidePointerEnd}
-                                            onPointerCancel={handleSlidePointerEnd}
+                                            onPointerUp={() => handleSlidePointerEnd(navigateToAnime)}
+                                            onPointerCancel={() => handleSlidePointerEnd()}
                                             onPointerLeave={(e) => {
                                                 if (e.pointerType === 'mouse') {
-                                                    handleSlidePointerEnd();
+                                                    handleSlidePointerEnd(navigateToAnime);
                                                 }
                                             }}
                                             onContextMenu={(e) => e.preventDefault()}
@@ -1514,6 +1660,29 @@ export default function ExplorePage() {
                     </div>,
                     document.body
                 )}
+
+            {/* Real AnimeDetailsPage sliding seamlessly from the right while swiping left — preserves Explore session on Back */}
+            {peekAnime && createPortal(
+                <div
+                    ref={peekPanelRef}
+                    className={`fixed inset-0 z-[2147483610] bg-[#070707] text-white will-change-transform md:hidden ${
+                        isDetailsSheetOpen ? 'overflow-y-auto pointer-events-auto' : 'overflow-hidden pointer-events-none'
+                    }`}
+                    style={{
+                        transform: isDetailsSheetOpen
+                            ? 'translateX(0px)'
+                            : `translateX(${(typeof window !== 'undefined' ? window.innerWidth : 400) + swipeOffsetRef.current}px)`,
+                    }}
+                >
+                    <AnimeDetailsPage
+                        embeddedId={`al-${peekAnime.id}`}
+                        embeddedAnime={buildExploreDetailsAnime(peekAnime)}
+                        deferFetch={!isDetailsSheetOpen}
+                        onBack={closeDetailsSheet}
+                    />
+                </div>,
+                document.body
+            )}
         </div>
     );
 }

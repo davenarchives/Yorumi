@@ -5,6 +5,7 @@ import { getText } from '../platform/nativeHttp';
 import { convertSubtitleTextToVtt, normalizeSubtitleTracks } from '../utils/subtitles';
 import { cacheImage, getCachedImage, prefetchImages } from './offlineImageCache';
 import {
+    cancelNativeDownload,
     deleteNativeDownload,
     downloadToNativeStorage,
     isAndroidDownloadStorageAvailable,
@@ -40,7 +41,9 @@ export interface OfflineHlsSegment {
 
 export interface ActiveDownloadProgress {
     animeId: string;
+    animeTitle?: string;
     episodeNumber: number;
+    episodeTitle?: string;
     progress: number; // 0 to 100
     status: 'queued' | 'downloading' | 'paused' | 'completed' | 'error' | 'saving';
     receivedBytes: number;
@@ -970,6 +973,12 @@ export const downloadService = {
         }
     },
 
+    cancelDownload(animeId: string | number, episodeNumber: string | number): void {
+        const key = getControlKey(animeId, episodeNumber);
+        downloadControls.delete(key);
+        void cancelNativeDownload(key).catch(() => undefined);
+    },
+
     openDownloadsFolder(category: 'Anime' | 'Manga' | 'LightNovels' = 'Anime'): boolean {
         if (isTauri()) {
             tauriBridge.openDownloadsFolder(category);
@@ -1113,17 +1122,21 @@ export const downloadService = {
             try {
                 const isHls = params.isHls === true || nativeTarget.url.includes('.m3u8') || nativeTarget.url.includes('m3u8');
                 const extension = 'mp4';
+                const parsedHeight = Number(quality?.match(/(\d{3,4})p?/i)?.[1]) || 720;
                 const nativeResult = await downloadToNativeStorage({
                     operationId: key,
                     url: nativeTarget.url,
                     referer: nativeTarget.referer,
                     relativePath: `Anime/${animeId}/${animeTitle} - Episode ${episodeNumber}.${extension}`,
                     hls: isHls,
-                    maxHeight: Number(quality?.match(/(\d{3,4})p?/i)?.[1]) || 720,
+                    // Cap mobile downloads at 720p so episodes download quickly (~100-150MB) instead of stalling on 550MB+ 1080p streams
+                    maxHeight: Math.min(parsedHeight, 720),
                 }, (progress) => {
                     reportProgress({
                         animeId,
+                        animeTitle,
                         episodeNumber,
+                        episodeTitle,
                         progress: progress.progress,
                         status: 'downloading',
                         receivedBytes: progress.receivedBytes,
@@ -1133,7 +1146,9 @@ export const downloadService = {
 
                 reportProgress({
                     animeId,
+                    animeTitle,
                     episodeNumber,
+                    episodeTitle,
                     progress: 99,
                     status: 'saving',
                     receivedBytes: nativeResult.fileSize,
@@ -1152,11 +1167,14 @@ export const downloadService = {
                     downloadedAt: Date.now(),
                     filePath: nativeResult.filePath,
                     subtitles: offlineSubtitles,
-                    isHls: false,
+                    isHls: Boolean(nativeResult.isHls),
                     duration: nativeResult.duration,
                     hlsSegments: nativeResult.hlsSegments,
                 };
                 await this.saveDownload(downloadedItem);
+                if (typeof window !== 'undefined') {
+                    window.dispatchEvent(new CustomEvent('yorumi-downloads-updated'));
+                }
                 reportProgress({
                     animeId,
                     episodeNumber,

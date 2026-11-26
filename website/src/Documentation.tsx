@@ -95,6 +95,7 @@ const DOC_SECTIONS: DocSection[] = [
     title: 'Changelogs',
     lede: 'Track Yorumi releases, new features, and fixes across desktop and Android.',
     subsections: [
+      { id: 'release-v5-0-5', label: 'v5.0.5' },
       { id: 'release-v5-0-0', label: 'v5.0.0' },
       { id: 'release-v4-3-0', label: 'v4.3.0' },
       { id: 'release-v4-1-1', label: 'v4.1.1' },
@@ -105,6 +106,18 @@ const DOC_SECTIONS: DocSection[] = [
 ];
 
 const CHANGELOG_ENTRIES = [
+  {
+    id: 'release-v5-0-5',
+    version: 'v5.0.5',
+    date: 'November 26, 2026',
+    summary: 'Full offline Library & History persistence, TikTok-style mobile drawer & Explore swipe-to-details, Android episode update notifications, and rock-solid anime downloads on Desktop & Android.',
+    highlights: [
+      { title: 'Full Offline Library & Durable History', body: 'All Library posters, banners, synopsis/genres metadata, episode titles, and Manga/LN chapter lists now save locally across Desktop and Android — plus IndexedDB-backed offline History (up to 200 items with cached posters).' },
+      { title: 'Mobile Drawer, Incognito & Downloaded-Only Modes', body: 'Added a smooth zero-bounce TikTok-style mobile menu drawer with Downloaded only, Incognito mode, tabbed Download Queue (Anime / Manga / LN), date-grouped History, Statistics, Data & Storage with Discord Cloud Sync, and About.' },
+      { title: 'Smooth Explore Swipe-to-Details & Mobile Performance', body: 'Swiping left on Explore now slides in the real Anime Details page preloaded with metadata, moving the full shell smoothly at 60fps and returning straight to your Explore session on Back.' },
+      { title: 'Android & Desktop Anime Downloads Fixed', body: 'Fixed MAL-keyed anime downloads, added 403/401 header fallback and 720p mobile stream cap, real native download cancellation, and Android push notifications for airing watchlist episodes.' },
+    ],
+  },
   {
     id: 'release-v5-0-0',
     version: 'v5.0.0',

@@ -4,6 +4,10 @@ import './index.css'
 import App from './App.tsx'
 import { AppProviders } from './app/AppProviders.tsx';
 import { animeService } from './services/animeService';
+import { hydrateOfflineHistoryFromIdb } from './services/offlineHistoryStore';
+
+// Restore durable IndexedDB history backup if localStorage was evicted, or seed it on first boot
+void hydrateOfflineHistoryFromIdb();
 
 // Nuke ALL persisted stream cache on every boot — prevents stale wrong-episode streams
 // from carrying over across sessions. Stream caching is handled server-side.

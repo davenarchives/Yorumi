@@ -5956,7 +5956,7 @@ dependencies = [
 
 [[package]]
 name = "yorumi"
-version = "5.0.0"
+version = "5.0.5"
 dependencies = [
  "base64 0.22.1",
  "discord-rich-presence",
@@ -5977,7 +5977,7 @@ dependencies = [
 
 [[package]]
 name = "yorumi-core"
-version = "5.0.0"
+version = "5.0.5"
 dependencies = [
  "async-trait",
  "axum",

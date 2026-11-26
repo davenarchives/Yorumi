@@ -23,6 +23,7 @@ export interface DownloadedLNChapter {
 
 export interface ActiveLNDownloadProgress {
     novelId: string;
+    novelTitle?: string;
     chapterId: string;
     chapterTitle: string;
     progress: number; // 0 to 100

@@ -57,6 +57,9 @@ const getCurrentSeasonHeader = (): string => {
     return `Airing ${season} ${year}`;
 };
 
+let cachedDailyAnime: Anime[] = [];
+let cachedTmdbTrending: Anime[] = [];
+
 export default function AnimeDashboard({
     continueWatchingList,
     onRemoveHistory,
@@ -87,22 +90,28 @@ export default function AnimeDashboard({
         popular: { items: [], apiPage: 1, hasMore: true, loading: false },
         top_rated: { items: [], apiPage: 1, hasMore: true, loading: false },
     });
-    const [dailyAnime, setDailyAnime] = useState<Anime[]>([]);
-    const [dailyLoading, setDailyLoading] = useState(true);
-    const [tmdbTrending, setTmdbTrending] = useState<Anime[]>([]);
-    const [tmdbTrendingLoading, setTmdbTrendingLoading] = useState(true);
+    const [dailyAnime, setDailyAnime] = useState<Anime[]>(cachedDailyAnime);
+    const [dailyLoading, setDailyLoading] = useState(cachedDailyAnime.length === 0);
+    const [tmdbTrending, setTmdbTrending] = useState<Anime[]>(cachedTmdbTrending);
+    const [tmdbTrendingLoading, setTmdbTrendingLoading] = useState(cachedTmdbTrending.length === 0);
 
     useEffect(() => {
         let active = true;
         animeService.getDailyTrendingAnime().then((items) => {
-            if (active) setDailyAnime(items);
+            if (Array.isArray(items) && items.length > 0) {
+                cachedDailyAnime = items;
+                if (active) setDailyAnime(items);
+            }
         }).catch((error) => {
             console.warn('[AnimeDashboard] Daily trending anime unavailable', error);
         }).finally(() => {
             if (active) setDailyLoading(false);
         });
         animeService.getTmdbTrendingNow().then((items) => {
-            if (active) setTmdbTrending(items);
+            if (Array.isArray(items) && items.length > 0) {
+                cachedTmdbTrending = items;
+                if (active) setTmdbTrending(items);
+            }
         }).catch((error) => {
             console.warn('[AnimeDashboard] TMDB trending anime unavailable', error);
         }).finally(() => {

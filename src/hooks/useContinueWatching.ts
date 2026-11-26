@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { episodeMetadataService, type AnimeMetadataPayload } from '../services/episodeMetadataService';
+import { cacheImage } from '../services/offlineImageCache';
 import { storage, type WatchProgress } from '../utils/storage';
 import { useActivityHistory } from './useActivityHistory';
 import type { Anime, Episode } from '../types/anime';
@@ -15,6 +16,7 @@ export function useContinueWatching() {
     const [episodeMetadata, setEpisodeMetadata] = useState<Record<string, AnimeMetadataPayload>>({});
 
     useEffect(() => {
+        if (typeof navigator !== 'undefined' && !navigator.onLine) return;
         let active = true;
         for (const item of continueWatchingList) {
             const legacyMalId = !item.anilistId && !item.malId && /^\d+$/.test(item.animeId) ? Number(item.animeId) : undefined;
@@ -94,8 +96,16 @@ export function useContinueWatching() {
             durationSeconds: normalizedDuration
         };
 
-        // storage.saveProgress syncs to the cloud document field automatically
+        // storage.saveProgress persists to localStorage + IndexedDB offline mirror
         storage.saveProgress(progress);
+
+        // Cache poster locally so History & Continue Watching render offline
+        if (typeof navigator === 'undefined' || navigator.onLine) {
+            const posterToCache = poster || image;
+            if (posterToCache) {
+                void cacheImage(posterToCache).catch(() => undefined);
+            }
+        }
 
         const genreNames = (anime.genres || [])
             .map((g) => (typeof g === 'string' ? g : g?.name))

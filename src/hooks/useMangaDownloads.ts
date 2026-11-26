@@ -5,6 +5,12 @@ import {
     type ActiveMangaDownloadProgress,
 } from '../services/mangaDownloadService';
 import type { MangaChapter } from '../types/manga';
+import {
+    completeDownloadNotification,
+    failDownloadNotification,
+    showDownloadNotification,
+    updateDownloadNotification,
+} from '../platform/downloadNotification';
 
 const activeMangaDownloadsMap = new Map<string, ActiveMangaDownloadProgress>();
 const listeners = new Set<() => void>();
@@ -76,11 +82,13 @@ export function useMangaDownloads() {
             mangaTitle: string;
             mangaImage: string;
             chapter: MangaChapter;
+            silentNotification?: boolean;
         }) => {
             const key = mangaDownloadService.getChapterKey(params.mangaId, params.chapter.id);
 
             const initialProg: ActiveMangaDownloadProgress = {
                 mangaId: String(params.mangaId),
+                mangaTitle: params.mangaTitle,
                 chapterId: String(params.chapter.id),
                 chapterTitle: params.chapter.title,
                 progress: 0,
@@ -91,11 +99,29 @@ export function useMangaDownloads() {
             activeMangaDownloadsMap.set(key, initialProg);
             notifyListeners();
 
+            const notificationBase = {
+                mediaType: 'manga' as const,
+                animeId: String(params.mangaId),
+                episodeNumber: 0,
+                animeTitle: params.mangaTitle,
+                episodeTitle: params.chapter.title,
+            };
+            if (!params.silentNotification) {
+                void showDownloadNotification({ ...notificationBase, progress: 1 });
+            }
+
             try {
                 const downloaded = await mangaDownloadService.downloadChapter(params, (progress) => {
-                    activeMangaDownloadsMap.set(key, progress);
+                    activeMangaDownloadsMap.set(key, { ...progress, mangaTitle: params.mangaTitle });
                     notifyListeners();
+                    if (!params.silentNotification && progress.status === 'downloading') {
+                        void updateDownloadNotification({ ...notificationBase, progress: Math.max(1, progress.progress) });
+                    }
                 });
+
+                if (!params.silentNotification) {
+                    void completeDownloadNotification({ ...notificationBase, progress: 100 });
+                }
 
                 setTimeout(() => {
                     activeMangaDownloadsMap.delete(key);
@@ -105,6 +131,13 @@ export function useMangaDownloads() {
                 return downloaded;
             } catch (error) {
                 console.error(`Manga chapter download failed for ${params.chapter.title}:`, error);
+                if (!params.silentNotification) {
+                    void failDownloadNotification({
+                        ...notificationBase,
+                        progress: 0,
+                        message: error instanceof Error ? error.message : 'Download failed',
+                    });
+                }
                 setTimeout(() => {
                     activeMangaDownloadsMap.delete(key);
                     notifyListeners();
@@ -131,6 +164,7 @@ export function useMangaDownloads() {
                 const key = mangaDownloadService.getChapterKey(manga.id, ch.id);
                 activeMangaDownloadsMap.set(key, {
                     mangaId: String(manga.id),
+                    mangaTitle: manga.title,
                     chapterId: String(ch.id),
                     chapterTitle: ch.title,
                     progress: 2,
@@ -141,23 +175,68 @@ export function useMangaDownloads() {
             });
             notifyListeners();
 
+            const total = unDownloadedChapters.length;
+            let completed = 0;
+            const batchNotifBase = {
+                mediaType: 'manga' as const,
+                animeId: String(manga.id),
+                episodeNumber: 0,
+                animeTitle: manga.title,
+            };
+            void showDownloadNotification({
+                ...batchNotifBase,
+                episodeTitle: total === 1 ? unDownloadedChapters[0].title : `${unDownloadedChapters[0].title} (0/${total})`,
+                progress: 1,
+            });
+
             // Keep scraper/image traffic bounded so large series do not
             // overwhelm the source or the native loopback proxy.
             const concurrency = 2;
             for (let i = 0; i < unDownloadedChapters.length; i += concurrency) {
                 const batch = unDownloadedChapters.slice(i, i + concurrency);
                 await Promise.allSettled(
-                    batch.map((ch) => startDownload({
-                        mangaId: manga.id,
-                        mangaTitle: manga.title,
-                        mangaImage: manga.image || '',
-                        chapter: ch,
-                    }))
+                    batch.map(async (ch) => {
+                        await startDownload({
+                            mangaId: manga.id,
+                            mangaTitle: manga.title,
+                            mangaImage: manga.image || '',
+                            chapter: ch,
+                            silentNotification: true,
+                        });
+                        completed += 1;
+                        const pct = Math.min(99, Math.round((completed / total) * 100));
+                        void updateDownloadNotification({
+                            ...batchNotifBase,
+                            episodeTitle: total === 1 ? ch.title : `${ch.title} (${completed}/${total})`,
+                            progress: Math.max(1, pct),
+                        });
+                    })
                 );
+            }
+
+            if (completed > 0) {
+                void completeDownloadNotification({
+                    ...batchNotifBase,
+                    episodeTitle: completed === 1 ? unDownloadedChapters[0].title : `${completed} chapters`,
+                    progress: 100,
+                });
+            } else {
+                void failDownloadNotification({
+                    ...batchNotifBase,
+                    episodeTitle: total === 1 ? unDownloadedChapters[0].title : `${total} chapters`,
+                    progress: 0,
+                    message: 'Download failed',
+                });
             }
         },
         [isChapterDownloaded, getDownloadProgress, startDownload]
     );
+
+    const cancelDownload = useCallback((mangaId: string | number, chapterId: string | number) => {
+        const key = mangaDownloadService.getChapterKey(mangaId, chapterId);
+        activeMangaDownloadsMap.delete(key);
+        notifyListeners();
+    }, []);
 
     const deleteDownload = useCallback(async (mangaId: string | number, chapterId: string | number) => {
         try {
@@ -169,10 +248,12 @@ export function useMangaDownloads() {
 
     return {
         downloads,
+        activeDownloads,
         loading,
         isChapterDownloaded,
         getDownloadProgress,
         startDownload,
+        cancelDownload,
         downloadAll,
         deleteDownload,
         refreshDownloads: loadDownloads,

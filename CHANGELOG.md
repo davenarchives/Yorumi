@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [5.0.5] - 2026-11-26
+
+- Added durable offline History persistence (`src/services/offlineHistoryStore.ts`, `storage.ts`, `useContinueWatching.ts`, `useContinueReading.ts`, `useContinueLNReading.ts`, `useActivityHistory.ts`, `MenuPages.tsx`, `main.tsx`): mirrored all watch/read/LN/activity/search history keys into IndexedDB (`yorumi_offline_history_v1`) with automatic boot hydration, increased retention from 20 to 200 items, and cached history posters locally.
+- Added full offline Library persistence across Desktop and Android (`offlineImageCache.ts`, `offlineLibraryCache.ts`, `LibraryPage.tsx`, `ReadingDetailsHero.tsx`, `MangaDetailsPage.tsx`, `LNDetailsPage.tsx`): prefetched posters across all three tabs (`Anime`, `Manga`, `LN`), fixed CORS/hotlink-blocked MangaKatana/NovelFire image caching via Tauri `yorumi-media` referer forwarding, background-cached Manga & LN metadata + chapter lists while online, hydrated `ReadingDetailsHero` covers/backdrops from offline cache, and kept the full Library browsable offline.
+- Added TikTok-style mobile menu drawer & pages (`MobileMenuDrawer.tsx`, `ModeStatusBanner.tsx`, `MenuPages.tsx`, `Sidebar.tsx`, `AppRoutes.tsx`, `appPrefs.ts`): zero-bounce whole-screen + navbar slide, `Downloaded only` & `Incognito mode` toggles, tabbed `Download queue` (`Anime | Manga | LN`), date-grouped `History`, `Statistics`, `Data and storage` with Discord Cloud Sync, `Global chat`, `Settings`, and cleaned-up `About`.
+- Added native Android episode update push notifications (`DownloadNotificationService.java`, `DownloadNotificationPlugin.java`, `downloadNotification.ts`, `useWatchlistNotifications.ts`) with deep-linking to `/anime/details/al-<id>`.
+- Added smooth 60fps Explore swipe-left to real `AnimeDetailsPage` (`ExplorePage.tsx`, `AnimeDetailsPage.tsx`, `screenShift.ts`, `App.tsx`) with preloaded metadata, deferred episode loading, and single-active YouTube iframe optimization, plus static pull-to-refresh navbar (`MobilePullToRefresh.tsx`, `src/index.css`).
+- Fixed Android & Desktop anime downloads (`AnimeDetailsPage.tsx`, `DetailsEpisodeGrid.tsx`, `NativeDownloadStoragePlugin.java`, `nativeDownloadStorage.ts`, `downloadService.ts`, `useDownloads.ts`): passed `malId` + `altTitles` for stream resolution, added 720p mobile cap, `403`/`401` header fallback, and real native cancellation.
+- Updated marketing website (`website/src/App.tsx`, `website/src/Documentation.tsx`) with left-aligned mobile layout, single-row hero CTA buttons, jitter-free live download counter, and `v5.0.5` changelog & download links.
+
 ## [5.0.0] - 2026-11-25
 
 - Added TikTok-style mobile Explore gestures (`src/pages/ExplorePage.tsx`, `src/index.css`): full-screen tap to play/pause (including above and below the 16:9 trailer), double-tap anywhere to like with an animated rose heart burst, long-press for `2x` playback speed with the anime-player `2x` pill, and fixed paused mobile trailers blacking out instead of freezing on the current frame.

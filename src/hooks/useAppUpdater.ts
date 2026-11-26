@@ -36,7 +36,7 @@ export interface AppUpdateState {
 
 const RELEASES_API_URL = 'https://api.github.com/repos/davenarchives/Yorumi/releases/latest';
 const RELEASES_FALLBACK_URL = 'https://github.com/davenarchives/Yorumi/releases/latest';
-const FALLBACK_VERSION = '5.0.0';
+const FALLBACK_VERSION = '5.0.5';
 const CHECK_INTERVAL_MS = 30 * 60 * 1000;
 
 const parseSemver = (raw: string): [number, number, number] => {

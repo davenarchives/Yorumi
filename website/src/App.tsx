@@ -22,7 +22,7 @@ import { motion } from 'framer-motion';
 import type { Variants } from 'framer-motion';
 import { DocumentationGuide, type DocTabId } from './Documentation';
 
-const RELEASE_VERSION = '5.0.0';
+const RELEASE_VERSION = '5.0.5';
 const RELEASE_TAG = `v${RELEASE_VERSION}`;
 const RELEASES_URL = 'https://github.com/davenarchives/Yorumi/releases';
 const RELEASE_URL = `${RELEASES_URL}/tag/${RELEASE_TAG}`;
@@ -995,7 +995,7 @@ function App() {
 
   const displayedDownloadsRef = useRef(BASE_DOWNLOAD_COUNT);
 
-  // Animate download counter slowly from 500 upwards to live totalDownloads
+  // Animate download counter smoothly from 500 upwards to live totalDownloads
   useEffect(() => {
     const startVal = displayedDownloadsRef.current;
     const endVal = Math.max(BASE_DOWNLOAD_COUNT, totalDownloads);
@@ -1003,7 +1003,7 @@ function App() {
       return;
     }
 
-    const durationMs = startVal === BASE_DOWNLOAD_COUNT ? 3400 : 1200;
+    const durationMs = startVal === BASE_DOWNLOAD_COUNT ? 1400 : 800;
     const startTime = performance.now();
     let rafId = 0;
 
@@ -1011,8 +1011,10 @@ function App() {
       const progress = Math.min(1, (now - startTime) / durationMs);
       const eased = 1 - Math.pow(1 - progress, 3);
       const nextVal = Math.round(startVal + (endVal - startVal) * eased);
-      displayedDownloadsRef.current = nextVal;
-      setDisplayedDownloads(nextVal);
+      if (nextVal !== displayedDownloadsRef.current) {
+        displayedDownloadsRef.current = nextVal;
+        setDisplayedDownloads(nextVal);
+      }
       if (progress < 1) {
         rafId = requestAnimationFrame(tick);
       }
@@ -1254,12 +1256,12 @@ function App() {
                   </div>
                 </motion.div>
 
-                {/* Right Copy (centered on mobile, left-aligned on desktop) */}
+                {/* Right Copy (left-aligned on mobile and desktop) */}
                 <motion.div
                   variants={containerVariants}
                   initial="hidden"
                   animate="visible"
-                  className="lg:col-span-7 space-y-5 sm:space-y-6 lg:pl-6 text-center lg:text-left"
+                  className="lg:col-span-7 space-y-5 sm:space-y-6 lg:pl-6 text-left"
                 >
                   <motion.h1
                     variants={itemVariants}
@@ -1274,7 +1276,7 @@ function App() {
 
                   <motion.p
                     variants={itemVariants}
-                    className="text-[15px] sm:text-lg md:text-[19px] text-yorumi-muted leading-[1.9] font-medium max-w-xl mx-auto lg:mx-0"
+                    className="text-[15px] sm:text-lg md:text-[19px] text-yorumi-muted leading-[1.9] font-medium max-w-xl"
                   >
                     Watch{' '}
                     <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 mx-0.5 rounded-lg bg-yorumi-accent/15 text-yorumi-accent font-bold text-[0.9em] align-middle">
@@ -1300,29 +1302,29 @@ function App() {
                   </motion.p>
 
                   {/* Store / Platform CTA Buttons */}
-                  <motion.div variants={itemVariants} className="flex flex-wrap items-center justify-center lg:justify-start gap-3 pt-1">
+                  <motion.div variants={itemVariants} className="flex flex-nowrap items-center justify-start gap-2.5 sm:gap-3 pt-1">
                     <button
                       type="button"
                       onClick={() => navigateTo('get-started')}
-                      className="inline-flex items-center gap-2.5 px-6 py-3 rounded-2xl bg-yorumi-main hover:bg-yorumi-main/90 text-white font-bold text-sm sm:text-base transition-all hover:-translate-y-0.5 active:scale-[0.98] cursor-pointer"
+                      className="inline-flex items-center justify-center gap-2 px-4 sm:px-6 py-3 rounded-2xl bg-yorumi-main hover:bg-yorumi-main/90 text-white font-bold text-xs sm:text-base whitespace-nowrap transition-all hover:-translate-y-0.5 active:scale-[0.98] cursor-pointer"
                     >
-                      <Download className="w-4 h-4" />
+                      <Download className="w-4 h-4 shrink-0" />
                       <span>Download Free</span>
                     </button>
 
                     <a
                       href={releaseDownloadUrl('Yorumi.apk')}
-                      className="inline-flex items-center gap-2.5 px-5 py-3 rounded-2xl tarsi-card hover:opacity-90 text-yorumi-text font-bold text-sm sm:text-base transition-all hover:-translate-y-0.5 active:scale-[0.98]"
+                      className="inline-flex items-center justify-center gap-2 px-4 sm:px-5 py-3 rounded-2xl tarsi-card hover:opacity-90 text-yorumi-text font-bold text-xs sm:text-base whitespace-nowrap transition-all hover:-translate-y-0.5 active:scale-[0.98]"
                     >
-                      <Smartphone className="w-4 h-4 text-yorumi-main" />
+                      <Smartphone className="w-4 h-4 text-yorumi-main shrink-0" />
                       <span>Android APK</span>
                     </a>
                   </motion.div>
 
                   {/* Tarsi-style Overlapping Anime Avatars + Animated Downloads Counter */}
                   <motion.div variants={itemVariants} className="pt-2 space-y-2">
-                    <div className="flex items-center justify-center lg:justify-start gap-3 flex-wrap">
-                      <div className="flex items-center -space-x-2.5">
+                    <div className="flex items-center justify-start gap-3 flex-wrap">
+                      <div className="flex items-center -space-x-2.5 shrink-0">
                         {COMMUNITY_AVATARS.map((avatar) => (
                           <img
                             key={avatar.name}
@@ -1333,8 +1335,13 @@ function App() {
                         ))}
                       </div>
                       <p className="text-sm sm:text-[15px] font-medium text-yorumi-muted">
-                        <span className="font-extrabold text-yorumi-main tabular-nums">
-                          {displayedDownloads.toLocaleString()}+
+                        <span className="relative inline-grid align-baseline font-extrabold text-yorumi-main tabular-nums">
+                          <span className="invisible col-start-1 row-start-1" aria-hidden="true">
+                            {Math.max(BASE_DOWNLOAD_COUNT, totalDownloads).toLocaleString()}+
+                          </span>
+                          <span className="col-start-1 row-start-1">
+                            {displayedDownloads.toLocaleString()}+
+                          </span>
                         </span>{' '}
                         downloads &amp; anime fans already love Yorumi.
                       </p>
@@ -1411,14 +1418,14 @@ function App() {
                   </div>
                 </div>
 
-                <div className="lg:col-span-5 space-y-4 text-center lg:text-left">
+                <div className="lg:col-span-5 space-y-4 text-left">
                   <h2 className="text-3xl sm:text-4xl font-display font-extrabold leading-tight tracking-tight text-yorumi-text">
                     On your phone and computer — all in sync.
                   </h2>
                   <p className="text-sm sm:text-base text-yorumi-muted leading-relaxed">
                     Start an episode on Windows, Mac, or Linux, then pick up right where you left off on your Android phone. Sign in with Discord to keep your watchlist and reading progress backed up automatically.
                   </p>
-                  <div className="flex flex-nowrap items-center justify-center lg:justify-start gap-3 pt-2">
+                  <div className="flex flex-nowrap items-center justify-start gap-3 pt-2">
                     <button
                       type="button"
                       onClick={() => navigateTo('get-started')}
@@ -1448,14 +1455,14 @@ function App() {
             {/* 5 & 6. STACKED CLOSER CTA + COMMUNITY CARDS */}
             <section className="max-w-[1200px] mx-auto px-5 sm:px-8 space-y-6">
               {/* Closer CTA Card */}
-              <div className="tarsi-card rounded-[32px] px-6 py-14 sm:py-16 text-center">
+              <div className="tarsi-card rounded-[32px] px-6 py-14 sm:py-16 text-left sm:text-center">
                 <h2 className="text-3xl sm:text-5xl font-display font-extrabold tracking-tight text-yorumi-text">
                   Start watching today.
                 </h2>
-                <p className="mt-3 text-base sm:text-lg text-yorumi-muted max-w-lg mx-auto leading-relaxed">
+                <p className="mt-3 text-base sm:text-lg text-yorumi-muted max-w-lg sm:mx-auto leading-relaxed">
                   No sign-up needed, no ads, and completely free. Download Yorumi on your computer or Android phone in seconds.
                 </p>
-                <div className="mt-8 flex flex-nowrap items-center justify-center gap-2.5 sm:gap-3">
+                <div className="mt-8 flex flex-nowrap items-center justify-start sm:justify-center gap-2.5 sm:gap-3">
                   <button
                     type="button"
                     onClick={() => navigateTo('get-started')}
@@ -1477,7 +1484,7 @@ function App() {
               </div>
 
               {/* Community Card with Floating Anime Avatars */}
-              <div className="relative rounded-[32px] bg-[#EEF4FF] dark:bg-[#121622] px-6 py-14 sm:py-16 text-center overflow-hidden">
+              <div className="relative rounded-[32px] bg-[#EEF4FF] dark:bg-[#121622] px-6 py-14 sm:py-16 text-left sm:text-center overflow-hidden">
                 {/* Scattered floating circular avatars on desktop/tablet */}
                 {FLOATING_COMMUNITY_AVATARS.map((avatar) => (
                   <motion.img
@@ -1495,14 +1502,14 @@ function App() {
                   />
                 ))}
 
-                <div className="relative z-10 max-w-lg mx-auto">
+                <div className="relative z-10 max-w-lg sm:mx-auto">
                   <h2 className="text-2xl sm:text-4xl font-display font-extrabold tracking-tight text-yorumi-text">
                     Join the Yorumi community
                   </h2>
                   <p className="mt-3 text-sm sm:text-base text-yorumi-muted leading-relaxed">
                     Hang out with other anime fans, share your favorite lists, suggest new ideas, or support Yorumi on Ko-fi.
                   </p>
-                  <div className="mt-7 flex flex-nowrap items-center justify-center gap-2.5 sm:gap-3">
+                  <div className="mt-7 flex flex-nowrap items-center justify-start sm:justify-center gap-2.5 sm:gap-3">
                     <a
                       href="https://discord.gg/3xzCQvfanb"
                       target="_blank"

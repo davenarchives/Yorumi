@@ -7,6 +7,7 @@ import Top100LN from '../features/ln/components/Top100LN';
 import PopularKoreanNovels from '../features/ln/components/PopularKoreanNovels';
 import PopularChineseNovels from '../features/ln/components/PopularChineseNovels';
 import type { LightNovel } from '../types/ln';
+import { isMobileShell } from '../platform/runtime';
 
 export default function LNPage() {
     const navigate = useNavigate();
@@ -24,7 +25,7 @@ export default function LNPage() {
                 <div className="absolute inset-0 bg-[#070707]/65" />
             </div>}
             {/* Hero Spotlight Carousel */}
-            <LNSpotlight onBackdropChange={setBackdrop} onLNClick={handleLNClick} />
+            <LNSpotlight onBackdropChange={isMobileShell() ? undefined : setBackdrop} onLNClick={handleLNClick} />
 
             <div className="reading-home-sections relative z-10 mx-auto mt-3 md:-mt-6 w-full max-w-[1440px] px-4 sm:px-10 md:px-14 lg:px-16">
                 {/* Popular Korean Web Novels */}

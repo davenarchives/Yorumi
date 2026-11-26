@@ -24,9 +24,11 @@ interface LatestMangaUpdatesProps {
     onMangaClick?: (mangaId: string, autoRead?: boolean, manga?: Manga) => void;
 }
 
+let cachedHotUpdates: HotUpdate[] = [];
+
 export default function LatestMangaUpdates({ onMangaClick }: LatestMangaUpdatesProps) {
-    const [updates, setUpdates] = useState<HotUpdate[]>([]);
-    const [loading, setLoading] = useState(true);
+    const [updates, setUpdates] = useState<HotUpdate[]>(cachedHotUpdates);
+    const [loading, setLoading] = useState(cachedHotUpdates.length === 0);
     const [enhancedByTitle, setEnhancedByTitle] = useState<Record<string, EnhancedMangaPosterMeta>>({});
     const [emblaRef, emblaApi] = useEmblaCarousel({
         align: 'start',
@@ -35,12 +37,13 @@ export default function LatestMangaUpdates({ onMangaClick }: LatestMangaUpdatesP
     });
 
     const fetchUpdates = async () => {
-        setLoading(true);
+        if (cachedHotUpdates.length === 0) setLoading(true);
         try {
             const data = await mangaService.getHotUpdates();
             if (data && Array.isArray(data)) {
+                cachedHotUpdates = data;
                 setUpdates(data);
-            } else {
+            } else if (cachedHotUpdates.length === 0) {
                 setUpdates([]);
             }
         } catch (err) {

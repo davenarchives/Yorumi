@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ArrowLeft, BookOpen, Check, Heart, Plus } from 'lucide-react';
-import { getDisplayImageUrl, handleImageError } from '../../../utils/image';
+import { cacheImage, getCachedImage, getDisplayImageUrl, handleImageError } from '../../../utils/image';
+import { useOnlineStatus } from '../../../hooks/useOnlineStatus';
 
 interface ReadingDetailsHeroProps {
     title: string;
@@ -21,12 +22,44 @@ interface ReadingDetailsHeroProps {
 }
 
 export default function ReadingDetailsHero({ title, cover, banner, synopsis, details, genres = [], inList, inFavorites = false, loading, canRead, readLabel, onRead, onToggleList, onToggleFavorite, onBack }: ReadingDetailsHeroProps) {
+    const isOnline = useOnlineStatus();
     const [expanded, setExpanded] = useState(false);
+    const [cachedCover, setCachedCover] = useState<string | null>(null);
+    const [cachedBanner, setCachedBanner] = useState<string | null>(null);
+
+    useEffect(() => {
+        let cancelled = false;
+        const resolveUrl = async (rawUrl: string | undefined, setter: (v: string | null) => void) => {
+            if (!rawUrl) {
+                setter(null);
+                return;
+            }
+            const hit = await getCachedImage(rawUrl).catch(() => null);
+            if (cancelled) return;
+            if (hit) {
+                setter(hit);
+                return;
+            }
+            setter(null);
+            if (isOnline) {
+                const saved = await cacheImage(rawUrl).catch(() => rawUrl);
+                if (!cancelled && saved && saved !== rawUrl) {
+                    setter(saved);
+                }
+            }
+        };
+        void resolveUrl(cover, setCachedCover);
+        void resolveUrl(banner || cover, setCachedBanner);
+        return () => {
+            cancelled = true;
+        };
+    }, [cover, banner, isOnline]);
+
     const cleanSynopsis = (synopsis || 'No synopsis available.').replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
     const isLong = cleanSynopsis.length > 185;
     const displayed = !expanded && isLong ? `${cleanSynopsis.slice(0, 185).trimEnd()}...` : cleanSynopsis;
-    const image = getDisplayImageUrl(banner || cover);
-    const portrait = getDisplayImageUrl(cover);
+    const image = cachedBanner || getDisplayImageUrl(banner || cover);
+    const portrait = cachedCover || getDisplayImageUrl(cover);
     const mask = 'linear-gradient(to bottom, #000 0%, #000 35%, rgba(0,0,0,.75) 58%, rgba(0,0,0,.32) 74%, rgba(0,0,0,.08) 88%, transparent 100%)';
     return <>
         {image && <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden" aria-hidden="true">

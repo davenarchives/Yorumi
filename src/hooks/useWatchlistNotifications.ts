@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { postJson } from '../platform/nativeHttp';
+import { getRuntimePlatform } from '../platform/runtime';
+import { notifyEpisodeUpdate } from '../platform/downloadNotification';
 import { useWatchList } from './useWatchList';
 import { useContinueWatching } from './useContinueWatching';
 import { parseAnimeRouteId } from '../utils/animeNavigation';
@@ -30,9 +32,27 @@ type AniListAiringMedia = {
 };
 
 const READ_STORAGE_KEY = 'yorumi_notif_seen_v1';
+const PUSHED_STORAGE_KEY = 'yorumi_notif_pushed_v1';
 const CACHE_STORAGE_KEY = 'yorumi_notif_cache_v1';
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const POLL_INTERVAL_MS = 15 * 60 * 1000;
+
+const readPushedMap = (): Record<string, number> => {
+    try {
+        const parsed = JSON.parse(localStorage.getItem(PUSHED_STORAGE_KEY) || '{}');
+        return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch {
+        return {};
+    }
+};
+
+const writePushedMap = (map: Record<string, number>) => {
+    try {
+        localStorage.setItem(PUSHED_STORAGE_KEY, JSON.stringify(map));
+    } catch {
+        // Best effort
+    }
+};
 
 const readSeenMap = (): Record<string, number> => {
     try {
@@ -200,6 +220,41 @@ export function useWatchlistNotifications() {
         () => notifications.filter((n) => n.unread).length,
         [notifications]
     );
+
+    // Automatically push native Android notifications for newly detected unread episodes
+    useEffect(() => {
+        if (getRuntimePlatform() !== 'android') return;
+        const unreadItems = notifications.filter((n) => n.unread);
+        if (unreadItems.length === 0) return;
+
+        const pushed = readPushedMap();
+        const toPush = unreadItems.filter(
+            (item) => Number(pushed[String(item.anilistId)] || 0) < item.latestEpisode
+        );
+        if (toPush.length === 0) return;
+
+        const nextPushed = { ...pushed };
+        toPush.forEach((item) => {
+            nextPushed[String(item.anilistId)] = item.latestEpisode;
+        });
+        writePushedMap(nextPushed);
+
+        const summaryText =
+            toPush.length > 1
+                ? `${toPush.length} new episodes available`
+                : `${toPush[0].title} · Ep ${toPush[0].latestEpisode}`;
+
+        toPush.forEach((item) => {
+            void notifyEpisodeUpdate({
+                entryId: `al-${item.anilistId}`,
+                title: item.title,
+                episodeNumber: item.latestEpisode,
+                watchedEpisode: item.watchedEpisode,
+                unreadCount: toPush.length,
+                summaryText,
+            }).catch(() => undefined);
+        });
+    }, [notifications]);
 
     const markAsRead = useCallback((anilistId: number, episodeNumber: number) => {
         setSeenMap((prev) => {

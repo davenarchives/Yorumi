@@ -186,7 +186,9 @@ export function useDownloads() {
 
             const initialProg: ActiveDownloadProgress = {
                 animeId: params.animeId,
+                animeTitle: params.animeTitle,
                 episodeNumber: params.episodeNumber,
+                episodeTitle: params.episodeTitle,
                 progress: 0,
                 status: 'queued',
                 receivedBytes: 0,
@@ -197,6 +199,7 @@ export function useDownloads() {
             notifyListeners();
 
             const runDownload = async () => {
+                if (!activeDownloadsMap.has(key)) return undefined;
                 const startedProgress: ActiveDownloadProgress = { ...initialProg, status: 'downloading' };
                 activeDownloadsMap.set(key, startedProgress);
                 activeDownloadsMap.set(legacyKey, startedProgress);
@@ -212,13 +215,24 @@ export function useDownloads() {
 
                 try {
                     const downloaded = await downloadService.downloadStream(params, (progress) => {
-                    activeDownloadsMap.set(key, progress);
-                    activeDownloadsMap.set(legacyKey, progress);
-                    notifyListeners();
-                    if (progress.status === 'downloading' || progress.status === 'paused' || progress.status === 'saving') {
-                        void updateDownloadNotification({ ...notificationBase, progress: progress.progress });
-                    }
+                        if (!activeDownloadsMap.has(key)) return;
+                        const enriched: ActiveDownloadProgress = {
+                            ...progress,
+                            animeTitle: progress.animeTitle || params.animeTitle,
+                            episodeTitle: progress.episodeTitle || params.episodeTitle,
+                        };
+                        activeDownloadsMap.set(key, enriched);
+                        activeDownloadsMap.set(legacyKey, enriched);
+                        notifyListeners();
+                        if (progress.status === 'downloading' || progress.status === 'paused' || progress.status === 'saving') {
+                            void updateDownloadNotification({ ...notificationBase, progress: progress.progress });
+                        }
                     });
+
+                    if (!activeDownloadsMap.has(key)) {
+                        void downloadService.deleteDownload(params.animeId, params.episodeNumber).catch(() => {});
+                        return undefined;
+                    }
 
                     void completeDownloadNotification({ ...notificationBase, progress: 100 });
                     window.dispatchEvent(new CustomEvent('yorumi-downloads-updated'));
@@ -232,6 +246,7 @@ export function useDownloads() {
 
                     return downloaded;
                 } catch (error) {
+                    if (!activeDownloadsMap.has(key)) return undefined;
                     console.error('Download failed:', error);
                     const failedProgress: ActiveDownloadProgress = {
                         animeId: params.animeId,
@@ -262,6 +277,15 @@ export function useDownloads() {
         []
     );
 
+    const cancelDownload = useCallback((animeId: string, episodeNumber: number, animeTitle?: string) => {
+        const key = downloadService.getEpisodeKey(animeId, episodeNumber);
+        const legacyKey = animeTitle ? downloadService.getLegacyEpisodeKey(animeId, episodeNumber, animeTitle) : '';
+        activeDownloadsMap.delete(key);
+        if (legacyKey) activeDownloadsMap.delete(legacyKey);
+        downloadService.cancelDownload(animeId, episodeNumber);
+        notifyListeners();
+    }, []);
+
     const deleteDownload = useCallback(async (animeId: string, episodeNumber: number) => {
         try {
             await downloadService.deleteDownload(animeId, episodeNumber);
@@ -273,11 +297,13 @@ export function useDownloads() {
 
     return {
         downloads,
+        activeDownloads,
         loading,
         isEpisodeDownloaded,
         getEpisodeDownload,
         getDownloadProgress,
         startDownload,
+        cancelDownload,
         deleteDownload,
         refreshDownloads: loadDownloads,
     };

@@ -495,7 +495,7 @@ export default function DesktopTitleBar({ className = '', title }: DesktopTitleB
                             <div className="flex items-center justify-between px-4 pt-3.5 pb-2.5 border-b border-white/[0.06]">
                                 <div className="flex items-center gap-2">
                                     <span className="text-[14px] font-bold text-white tracking-tight">
-                                        Watchlist Updates
+                                        Updates
                                     </span>
                                     {unreadCount > 0 && (
                                         <span className="rounded-full bg-yorumi-accent/20 px-2 py-0.5 text-[11px] font-bold text-yorumi-accent">

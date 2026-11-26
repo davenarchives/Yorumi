@@ -43,6 +43,7 @@ export default function MobilePullToRefresh() {
         const onTouchStart = (e: TouchEvent) => {
             if (!isMobileViewport() || refreshingRef.current) return;
             if (e.touches.length !== 1) return;
+            if (document.querySelector('[role="dialog"]')) return;
             if (window.scrollY > 2 || hasScrolledAncestor(e.target)) return;
 
             startYRef.current = e.touches[0].clientY;
@@ -58,6 +59,9 @@ export default function MobilePullToRefresh() {
             const deltaX = Math.abs(e.touches[0].clientX - startXRef.current);
 
             if (!activePullRef.current) {
+                if (deltaY > 4 && deltaX <= deltaY * 0.45 && window.scrollY <= 1 && e.cancelable) {
+                    e.preventDefault();
+                }
                 if (deltaY < 14) return;
                 if (deltaX > deltaY * 0.45 || window.scrollY > 2) {
                     startYRef.current = null;

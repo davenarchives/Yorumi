@@ -1,16 +1,19 @@
 import { memo, useState, useCallback, useEffect, useMemo, useRef } from 'react';
-import { AlertCircle, ArrowUpDown, Check, ChevronDown, Download, FolderOpen, Play } from 'lucide-react';
+import { ArrowUpDown, Check, ChevronDown, Download, FolderOpen, Play } from 'lucide-react';
 import type { Episode, Anime } from '../../../../types/anime';
 import type { StreamLink } from '../../../../types/stream';
 import { getPreferredStreamServer, STREAM_SERVER_OPTIONS } from '../../../../hooks/useStreams';
 import { getDownloadEpisodeNumbers, getEpisodeWatchKey, getPlaybackEpisodeNumber } from '../../../../utils/episodeWatchKey';
 import { useDownloads } from '../../../../hooks/useDownloads';
+import { useOnlineStatus } from '../../../../hooks/useOnlineStatus';
 import { downloadService } from '../../../../services/downloadService';
-import { getCachedImage } from '../../../../services/offlineImageCache';
+import { cacheImage, getCachedImage, prefetchImages } from '../../../../services/offlineImageCache';
 import { getStreamData } from '../../../../utils/streamUtils';
+import { USES_LOCAL_SOURCES } from '../../../../config/api';
 import { filterReleasedEpisodes } from '../../../../utils/animeAiring';
 import type { AnimeEpisodeSegment } from '../../../../utils/animeEpisodeMapping';
-import DownloadStateIcon from '../../../../components/ui/DownloadStateIcon';
+import DownloadActionButton from '../../../../components/ui/DownloadActionButton';
+import { selectItemsForBatchDownload, type BatchDownloadMode } from '../../../../components/shared/BatchDownloadMenu';
 
 export type NormalizedEpisode = Episode & {
     title: string;
@@ -85,27 +88,72 @@ const formatEpisodeDuration = (epDuration?: string, animeDuration?: string, isMo
 };
 
 function EpisodeThumbnail({ src, fallback, priority = false }: { src?: string; fallback?: string; priority?: boolean }) {
+    const isOnline = useOnlineStatus();
     const [failed, setFailed] = useState(false);
     const [useFallback, setUseFallback] = useState(false);
     const [loaded, setLoaded] = useState(false);
-
     const [cachedSrc, setCachedSrc] = useState<string | null>(null);
-    const displaySrc = cachedSrc || (useFallback ? fallback : (src || fallback));
+    const [cachedFallback, setCachedFallback] = useState<string | null>(null);
 
+    // Hydrate from offline cache first; when online, persist thumbnail to offline cache automatically
     useEffect(() => {
+        let cancelled = false;
+        setFailed(false);
+        setUseFallback(false);
+        setLoaded(false);
         setCachedSrc(null);
-    }, [src, fallback]);
+
+        if (src) {
+            void getCachedImage(src).then(async (hit) => {
+                if (cancelled) return;
+                if (hit) {
+                    setCachedSrc(hit);
+                    setLoaded(true);
+                    return;
+                }
+                if (isOnline) {
+                    const saved = await cacheImage(src);
+                    if (!cancelled && saved && saved !== src) {
+                        setCachedSrc(saved);
+                    }
+                }
+            });
+        }
+
+        if (fallback) {
+            void getCachedImage(fallback).then(async (hit) => {
+                if (cancelled) return;
+                if (hit) {
+                    setCachedFallback(hit);
+                    return;
+                }
+                if (isOnline) {
+                    const saved = await cacheImage(fallback);
+                    if (!cancelled && saved && saved !== fallback) {
+                        setCachedFallback(saved);
+                    }
+                }
+            });
+        }
+
+        return () => {
+            cancelled = true;
+        };
+    }, [src, fallback, isOnline]);
+
+    const resolvedFallback = cachedFallback || fallback;
+    const displaySrc = cachedSrc || (useFallback ? resolvedFallback : (src || resolvedFallback));
 
     if (!displaySrc || failed) {
         return <div className="h-full w-full bg-[#0d0d0d]" />;
     }
 
-    const showSeparateFallback = Boolean(fallback && !cachedSrc && displaySrc !== fallback);
+    const showSeparateFallback = Boolean(resolvedFallback && !cachedSrc && displaySrc !== resolvedFallback);
 
     return (
         <div className="relative h-full w-full bg-[#0d0d0d]">
             {showSeparateFallback && (
-                <img src={fallback} alt="" className="absolute inset-0 h-full w-full object-cover" aria-hidden="true" />
+                <img src={resolvedFallback} alt="" className="absolute inset-0 h-full w-full object-cover" aria-hidden="true" />
             )}
             <img
                 src={displaySrc}
@@ -116,18 +164,14 @@ function EpisodeThumbnail({ src, fallback, priority = false }: { src?: string; f
                 decoding="async"
                 onLoad={() => setLoaded(true)}
                 onError={() => {
-                    if (!cachedSrc && displaySrc) {
-                        void getCachedImage(displaySrc).then(async (hit) => {
-                            if (hit && hit !== displaySrc) {
+                    if (!cachedSrc && src) {
+                        void getCachedImage(src).then(async (hit) => {
+                            if (hit && hit !== src) {
                                 setCachedSrc(hit);
+                                setLoaded(true);
                                 return;
                             }
-                            if (fallback && fallback !== displaySrc) {
-                                const fallbackHit = await getCachedImage(fallback);
-                                if (fallbackHit) {
-                                    setCachedSrc(fallbackHit);
-                                    return;
-                                }
+                            if (resolvedFallback && resolvedFallback !== displaySrc) {
                                 if (!useFallback) {
                                     setUseFallback(true);
                                     return;
@@ -135,7 +179,7 @@ function EpisodeThumbnail({ src, fallback, priority = false }: { src?: string; f
                             }
                             setFailed(true);
                         });
-                    } else if (!useFallback && fallback && displaySrc !== fallback) {
+                    } else if (!useFallback && resolvedFallback && displaySrc !== resolvedFallback) {
                         setUseFallback(true);
                     } else {
                         setFailed(true);
@@ -160,6 +204,8 @@ interface DetailsEpisodeGridProps {
     animeDuration?: string;
     scraperSession?: string;
     anilistId?: number;
+    malId?: number;
+    altTitles?: string[];
     onSeasonClick?: (season: SeasonChip) => void;
     onEpisodeClick: (ep: NormalizedEpisode) => void;
     isMovie?: boolean;
@@ -174,6 +220,7 @@ type EpisodeCardProps = {
     animeDuration?: string;
     onEpisodeClick: (ep: NormalizedEpisode) => void;
     onDownload: (ep: NormalizedEpisode) => void;
+    onCancelDownload: (epNum: number) => void;
     onDeleteDownload: (epNum: number) => void;
     isDownloaded: boolean;
     downloadProgress?: number;
@@ -194,6 +241,7 @@ const EpisodeCard = memo(function EpisodeCard({
     animeDuration,
     onEpisodeClick,
     onDownload,
+    onCancelDownload,
     onDeleteDownload,
     isDownloaded,
     downloadProgress = 0,
@@ -243,48 +291,36 @@ const EpisodeCard = memo(function EpisodeCard({
                     className="absolute top-2.5 right-2.5 z-10 flex items-center gap-1.5"
                     onClick={(e) => e.stopPropagation()}
                 >
-                    <button
-                        type="button"
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            if (isDownloaded) {
-                                onDeleteDownload(epNum);
-                            } else if (!isDownloading && !isResolvingDownload) {
-                                onDownload(episode);
+                    <div className="hidden sm:flex">
+                        <DownloadActionButton
+                            state={isResolvingDownload ? 'queued' : isDownloading ? 'downloading' : isDownloaded ? 'downloaded' : 'available'}
+                            progress={Math.max(1, downloadProgress)}
+                            error={downloadError}
+                            disabled={isDownloading || isResolvingDownload}
+                            onDownload={() => onDownload(episode)}
+                            onCancel={() => onCancelDownload(epNum)}
+                            onDelete={() => onDeleteDownload(epNum)}
+                            iconClassName="h-6 w-6"
+                            buttonClassName={`flex h-7 w-7 items-center justify-center bg-transparent transition-opacity border-0 outline-none focus:outline-none cursor-pointer ${
+                                downloadError
+                                    ? 'text-red-400 opacity-100'
+                                    : isDownloaded || isDownloading || isResolvingDownload
+                                    ? 'text-white opacity-100'
+                                    : 'text-white/90 opacity-0 group-hover:opacity-100 hover:text-white'
+                            }`}
+                            title={
+                                downloadError
+                                    ? downloadError
+                                    : isDownloaded
+                                    ? 'Downloaded (Click to delete)'
+                                    : isDownloading
+                                    ? `Downloading ${downloadProgress}%`
+                                    : isResolvingDownload
+                                    ? 'Resolving stream...'
+                                    : 'Download episode'
                             }
-                        }}
-                        disabled={isDownloading || isResolvingDownload}
-                        className={`hidden sm:flex h-6 w-6 items-center justify-center bg-transparent transition-opacity border-0 outline-none focus:outline-none cursor-pointer ${
-                            downloadError
-                                ? 'text-red-400 opacity-100'
-                                : isDownloaded || isDownloading || isResolvingDownload
-                                ? 'text-white opacity-100'
-                                : 'text-white/90 opacity-0 group-hover:opacity-100 hover:text-white'
-                        }`}
-                        title={
-                            downloadError
-                                ? downloadError
-                                : isDownloaded
-                                ? 'Downloaded for offline (Click to delete)'
-                                : isDownloading
-                                ? `Downloading ${downloadProgress}%`
-                                : isResolvingDownload
-                                ? 'Resolving stream...'
-                                : 'Download episode'
-                        }
-                    >
-                        {downloadError ? (
-                            <AlertCircle className="h-6 w-6 text-red-400" />
-                        ) : isResolvingDownload ? (
-                            <DownloadStateIcon state="downloading" progress={1} className="h-6 w-6" />
-                        ) : isDownloading ? (
-                            <DownloadStateIcon state="downloading" progress={Math.max(1, downloadProgress)} className="h-6 w-6" />
-                        ) : isDownloaded ? (
-                            <DownloadStateIcon state="downloaded" className="h-6 w-6" />
-                        ) : (
-                            <DownloadStateIcon state="available" className="h-6 w-6" />
-                        )}
-                    </button>
+                        />
+                    </div>
 
                     {/* Top-Right Watched Circle (shown on thumbnail for both mobile & desktop) */}
                     <div
@@ -332,48 +368,36 @@ const EpisodeCard = memo(function EpisodeCard({
                 </div>
             </div>
             {/* Mobile Right-Side Download Button */}
-            <button
-                type="button"
-                onClick={(e) => {
-                    e.stopPropagation();
-                    if (isDownloaded) {
-                        onDeleteDownload(epNum);
-                    } else if (!isDownloading && !isResolvingDownload) {
-                        onDownload(episode);
+            <div className="absolute right-0 top-0 z-10 sm:hidden">
+                <DownloadActionButton
+                    state={isResolvingDownload ? 'queued' : isDownloading ? 'downloading' : isDownloaded ? 'downloaded' : 'available'}
+                    progress={Math.max(1, downloadProgress)}
+                    error={downloadError}
+                    disabled={isDownloading || isResolvingDownload}
+                    onDownload={() => onDownload(episode)}
+                    onCancel={() => onCancelDownload(epNum)}
+                    onDelete={() => onDeleteDownload(epNum)}
+                    iconClassName="h-6 w-6"
+                    buttonClassName={`flex h-10 w-10 items-center justify-center rounded-full bg-transparent border-0 outline-none focus:outline-none active:scale-90 transition-transform touch-manipulation ${
+                        downloadError
+                            ? 'text-red-400'
+                            : isDownloaded || isDownloading || isResolvingDownload
+                            ? 'text-white'
+                            : 'text-white/85'
+                    }`}
+                    ariaLabel={
+                        downloadError
+                            ? downloadError
+                            : isDownloaded
+                            ? 'Downloaded for offline (Tap to delete)'
+                            : isDownloading
+                            ? `Downloading ${downloadProgress}%`
+                            : isResolvingDownload
+                            ? 'Resolving stream...'
+                            : 'Download episode'
                     }
-                }}
-                disabled={isDownloading || isResolvingDownload}
-                className={`absolute right-0 top-0 z-10 flex h-8 w-8 items-center justify-center rounded-full sm:hidden bg-transparent border-0 outline-none focus:outline-none active:scale-90 transition-transform ${
-                    downloadError
-                        ? 'text-red-400'
-                        : isDownloaded || isDownloading || isResolvingDownload
-                        ? 'text-white'
-                        : 'text-white/80'
-                }`}
-                aria-label={
-                    downloadError
-                        ? downloadError
-                        : isDownloaded
-                        ? 'Downloaded for offline (Tap to delete)'
-                        : isDownloading
-                        ? `Downloading ${downloadProgress}%`
-                        : isResolvingDownload
-                        ? 'Resolving stream...'
-                        : 'Download episode'
-                }
-            >
-                {downloadError ? (
-                    <AlertCircle className="h-5 w-5 text-red-400" />
-                ) : isResolvingDownload ? (
-                    <DownloadStateIcon state="downloading" progress={1} className="h-5 w-5" />
-                ) : isDownloading ? (
-                    <DownloadStateIcon state="downloading" progress={Math.max(1, downloadProgress)} className="h-5 w-5" />
-                ) : isDownloaded ? (
-                    <DownloadStateIcon state="downloaded" className="h-5 w-5" />
-                ) : (
-                    <DownloadStateIcon state="available" className="h-5 w-5" />
-                )}
-            </button>
+                />
+            </div>
         </div>
     );
 });
@@ -400,11 +424,13 @@ export default function DetailsEpisodeGrid({
     animeDuration,
     scraperSession = '',
     anilistId,
+    malId,
+    altTitles = [],
     onSeasonClick,
     onEpisodeClick,
     isMovie = false,
 }: DetailsEpisodeGridProps) {
-    const { isEpisodeDownloaded, getDownloadProgress, startDownload, deleteDownload } = useDownloads();
+    const { isEpisodeDownloaded, getDownloadProgress, startDownload, cancelDownload, deleteDownload } = useDownloads();
     const [resolvingEpisodes, setResolvingEpisodes] = useState<Set<number>>(new Set());
     const [downloadErrors, setDownloadErrors] = useState<Map<number, string>>(new Map());
     const [descending, setDescending] = useState(false);
@@ -438,78 +464,58 @@ export default function DetailsEpisodeGrid({
             setResolvingEpisodes((prev) => new Set(prev).add(epNum));
             try {
                 const preferredProvider = getPreferredStreamServer();
-                const providers = [
-                    preferredProvider,
-                    ...STREAM_SERVER_OPTIONS.map(({ key }) => key).filter((key) => key !== preferredProvider),
-                ];
+                // On Android (USES_LOCAL_SOURCES), all providers route through getLocalHiAnimeStreams,
+                // so query once with full malId + altTitles instead of hammering the local scraper 4x.
+                const providers = USES_LOCAL_SOURCES
+                    ? [preferredProvider]
+                    : [
+                        preferredProvider,
+                        ...STREAM_SERVER_OPTIONS.map(({ key }) => key).filter((key) => key !== preferredProvider),
+                    ];
 
-                const pickBestDownloadCandidate = (streams: StreamLink[]): StreamLink | undefined => {
+                const rankDownloadCandidates = (streams: StreamLink[]): StreamLink[] => {
                     const playable = streams.filter((s) => (s.directUrl || s.url) && !s.isEmbed);
                     const downloadable = playable.filter(
                         (s) => s.isHls || Boolean(s.url && (s.url.includes('.m3u8') || s.url.includes('.mp4') || s.url.includes('/api/scraper/proxy')))
                     );
-                    // Prefer the first downloadable stream with subtitles when available
-                    return (
-                        downloadable.find((s) => s.subtitles && s.subtitles.length > 0)
-                        || downloadable[0]
-                        || playable.find((s) => s.subtitles && s.subtitles.length > 0)
-                        || playable[0]
-                        || streams.find((s) => s.directUrl || s.url)
-                    );
+                    const withSubs = downloadable.filter((s) => s.subtitles && s.subtitles.length > 0);
+                    const withoutSubs = downloadable.filter((s) => !s.subtitles || s.subtitles.length === 0);
+                    const rest = playable.filter((s) => !downloadable.includes(s));
+                    return [...withSubs, ...withoutSubs, ...rest];
                 };
 
-                // Race all servers in parallel: immediately pick the first server that returns soft subtitles,
-                // or give sibling servers a short 2.5s window if the first responder has no subtitles.
-                const bestStream = await new Promise<StreamLink | undefined>((resolve) => {
-                    let settled = false;
-                    let remaining = providers.length;
-                    let fallbackCandidate: StreamLink | undefined;
-                    let subWaitTimer: number | null = null;
-                    const finish = (choice: StreamLink | undefined) => {
-                        if (settled) return;
-                        settled = true;
-                        if (subWaitTimer !== null) window.clearTimeout(subWaitTimer);
-                        resolve(choice);
-                    };
-                    if (remaining === 0) {
-                        finish(undefined);
-                        return;
-                    }
-                    providers.forEach((provider) => {
-                        void getStreamData(ep, scraperSession || animeTitle, {
+                const providerResults = await Promise.allSettled(
+                    providers.map((provider) =>
+                        getStreamData(ep, scraperSession || animeTitle, {
                             title: animeTitle,
+                            titles: altTitles,
                             anilistId,
+                            malId,
                             provider,
                         })
-                            .then((streams) => {
-                                const candidate = pickBestDownloadCandidate(streams || []);
-                                if (!settled && (candidate?.url || candidate?.directUrl)) {
-                                    if (candidate.subtitles && candidate.subtitles.length > 0) {
-                                        finish(candidate);
-                                        return;
-                                    }
-                                    if (!fallbackCandidate) {
-                                        fallbackCandidate = candidate;
-                                        subWaitTimer = window.setTimeout(() => {
-                                            finish(fallbackCandidate);
-                                        }, 2500);
-                                    }
-                                }
-                                remaining -= 1;
-                                if (!settled && remaining <= 0) {
-                                    finish(fallbackCandidate);
-                                }
-                            })
-                            .catch(() => {
-                                remaining -= 1;
-                                if (!settled && remaining <= 0) {
-                                    finish(fallbackCandidate);
-                                }
-                            });
-                    });
+                    )
+                );
+
+                const seenUrls = new Set<string>();
+                const candidates: StreamLink[] = [];
+                for (const result of providerResults) {
+                    if (result.status !== 'fulfilled' || !Array.isArray(result.value)) continue;
+                    for (const stream of rankDownloadCandidates(result.value)) {
+                        const primaryUrl = String(stream.directUrl || stream.url || '').trim();
+                        if (!primaryUrl || seenUrls.has(primaryUrl)) continue;
+                        seenUrls.add(primaryUrl);
+                        candidates.push(stream);
+                    }
+                }
+
+                // Prefer candidates with soft subtitles first, preserving provider priority order within each tier
+                candidates.sort((a, b) => {
+                    const aSub = a.subtitles && a.subtitles.length > 0 ? 1 : 0;
+                    const bSub = b.subtitles && b.subtitles.length > 0 ? 1 : 0;
+                    return bSub - aSub;
                 });
 
-                if (!bestStream?.url && !bestStream?.directUrl) {
+                if (candidates.length === 0) {
                     throw new Error('No downloadable stream source found for this episode');
                 }
 
@@ -521,21 +527,35 @@ export default function DetailsEpisodeGrid({
                     airDate: ep.airDate || undefined,
                 });
 
-                const streamDownloadUrl = String(bestStream.directUrl || bestStream.url || '');
+                let lastError: unknown = null;
+                let succeeded = false;
+                for (const candidate of candidates.slice(0, 4)) {
+                    const streamDownloadUrl = String(candidate.directUrl || candidate.url || '');
+                    try {
+                        await startDownload({
+                            animeId,
+                            animeTitle: animeTitle || 'Anime',
+                            animeImage: animeImage || fallbackCoverImage || '',
+                            episodeNumber: epNum,
+                            episodeTitle: ep.title,
+                            streamUrl: streamDownloadUrl,
+                            referer: candidate.referer,
+                            isHls: candidate.isHls,
+                            quality: candidate.quality,
+                            audio: (candidate.audio === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub',
+                            subtitles: candidate.subtitles,
+                        });
+                        succeeded = true;
+                        break;
+                    } catch (candidateErr) {
+                        lastError = candidateErr;
+                        console.warn(`[Download] Candidate failed for ep ${epNum}, trying next server:`, candidateErr);
+                    }
+                }
 
-                await startDownload({
-                    animeId,
-                    animeTitle: animeTitle || 'Anime',
-                    animeImage: animeImage || fallbackCoverImage || '',
-                    episodeNumber: epNum,
-                    episodeTitle: ep.title,
-                    streamUrl: streamDownloadUrl,
-                    referer: bestStream.referer,
-                    isHls: bestStream.isHls,
-                    quality: bestStream.quality,
-                    audio: (bestStream.audio === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub',
-                    subtitles: bestStream.subtitles,
-                });
+                if (!succeeded) {
+                    throw lastError instanceof Error ? lastError : new Error('All download servers failed for this episode');
+                }
             } catch (err) {
                 console.error(`Failed to download episode ${epNum}:`, err);
                 const message = err instanceof Error ? err.message : 'Download failed';
@@ -556,13 +576,24 @@ export default function DetailsEpisodeGrid({
                 });
             }
         },
-        [animeId, animeTitle, animeImage, fallbackCoverImage, scraperSession, anilistId, startDownload]
+        [animeId, animeTitle, animeImage, fallbackCoverImage, scraperSession, anilistId, malId, altTitles, startDownload]
     );
 
     const releasedEpisodes = useMemo(
         () => filterReleasedEpisodes(episodes),
         [episodes]
     );
+
+    // Prefetch all episode thumbnails into offline cache while online so offline viewing never falls back
+    useEffect(() => {
+        if (typeof navigator === 'undefined' || !navigator.onLine) return;
+        const thumbUrls = releasedEpisodes
+            .map((ep) => ep.thumbnail || ep.snapshot)
+            .filter((u): u is string => Boolean(u));
+        if (thumbUrls.length > 0) {
+            void prefetchImages(thumbUrls);
+        }
+    }, [releasedEpisodes]);
 
     const watchedCount = useMemo(() => {
         return releasedEpisodes.reduce((acc, ep) => {
@@ -571,8 +602,10 @@ export default function DetailsEpisodeGrid({
         }, 0);
     }, [releasedEpisodes, watchedEpisodes]);
 
-    const handleDownloadAll = useCallback(async () => {
-        const episodesToDownload = releasedEpisodes.filter((ep) => {
+    const handleDownloadByMode = useCallback(async (mode: BatchDownloadMode) => {
+        const unwatchedUndownloaded = releasedEpisodes.filter((ep) => {
+            const watchKey = getEpisodeWatchKey(ep);
+            if (watchedEpisodes.has(watchKey)) return false;
             const epNum = getPlaybackEpisodeNumber(ep) || Number(ep.episodeNumber || 1);
             const activeNumbers = getDownloadEpisodeNumbers(ep);
             const downloaded = isEpisodeDownloaded(animeId, epNum, animeTitle, anilistId, activeNumbers);
@@ -582,6 +615,7 @@ export default function DetailsEpisodeGrid({
             return !downloaded && !isDownloading && !isResolving;
         });
 
+        const episodesToDownload = selectItemsForBatchDownload(unwatchedUndownloaded, mode);
         if (episodesToDownload.length === 0) return;
 
         const epNums = episodesToDownload
@@ -602,6 +636,7 @@ export default function DetailsEpisodeGrid({
         }
     }, [
         releasedEpisodes,
+        watchedEpisodes,
         animeId,
         animeTitle,
         anilistId,
@@ -618,16 +653,22 @@ export default function DetailsEpisodeGrid({
     useEffect(() => {
         const toggleSort = () => setDescending((value) => !value);
         const toggleView = () => setMobileGrid((value) => !value);
-        const downloadAll = () => { void handleDownloadAll(); };
+        const downloadAll = () => { void handleDownloadByMode('unread'); };
+        const downloadByMode = (event: Event) => {
+            const mode = (event as CustomEvent<BatchDownloadMode>).detail || 'unread';
+            void handleDownloadByMode(mode);
+        };
         window.addEventListener('yorumi:anime:toggle-sort', toggleSort);
         window.addEventListener('yorumi:anime:toggle-view', toggleView);
         window.addEventListener('yorumi:anime:download-all', downloadAll);
+        window.addEventListener('yorumi:anime:download-mode', downloadByMode);
         return () => {
             window.removeEventListener('yorumi:anime:toggle-sort', toggleSort);
             window.removeEventListener('yorumi:anime:toggle-view', toggleView);
             window.removeEventListener('yorumi:anime:download-all', downloadAll);
+            window.removeEventListener('yorumi:anime:download-mode', downloadByMode);
         };
-    }, [handleDownloadAll]);
+    }, [handleDownloadByMode]);
 
     const displayedEpisodes = useMemo(() => {
         const ordered = descending ? [...releasedEpisodes].reverse() : releasedEpisodes;
@@ -725,7 +766,7 @@ export default function DetailsEpisodeGrid({
                             <div className="flex items-center gap-2">
                                 <button
                                     type="button"
-                                    onClick={handleDownloadAll}
+                                    onClick={() => { void handleDownloadByMode('unread'); }}
                                     className="flex h-10 w-10 items-center justify-center rounded-full bg-white/[0.10] text-white/80 transition-colors hover:bg-white/[0.15] hover:text-white border-0 outline-none focus:outline-none cursor-pointer"
                                     title="Download all released episodes"
                                     aria-label="Download all released episodes"
@@ -837,6 +878,14 @@ export default function DetailsEpisodeGrid({
                                     animeDuration={animeDuration}
                                     onEpisodeClick={onEpisodeClick}
                                     onDownload={handleDownloadEpisode}
+                                    onCancelDownload={(num) => {
+                                        setResolvingEpisodes((prev) => {
+                                            const next = new Set(prev);
+                                            next.delete(num);
+                                            return next;
+                                        });
+                                        cancelDownload(animeId, num, animeTitle);
+                                    }}
                                     onDeleteDownload={(num) => deleteDownload(animeId, num)}
                                     isDownloaded={isDownloaded}
                                     downloadProgress={progressInfo?.progress || 0}

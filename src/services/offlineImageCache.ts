@@ -1,4 +1,5 @@
 import { isTauri } from '../platform/runtime';
+import { API_BASE } from '../config/api';
 
 // Offline Image Cache using CacheStorage and IndexedDB fallback
 const CACHE_NAME = 'yorumi_images_cache_v1';
@@ -6,10 +7,23 @@ const IDB_NAME = 'yorumi_offline_image_store_v1';
 const IDB_STORE = 'images';
 const IDB_VERSION = 1;
 
-const buildTauriImageProxyUrl = (rawUrl: string): string => {
+const buildTauriImageProxyUrl = (rawUrl: string, referer?: string): string => {
     const isWindows = typeof navigator !== 'undefined' && /windows/i.test(navigator.userAgent);
     const origin = isWindows ? 'http://yorumi-media.localhost' : 'yorumi-media://localhost';
-    return `${origin}/stream?url=${encodeURIComponent(rawUrl)}`;
+    const refParam = referer ? `&referer=${encodeURIComponent(referer)}` : '';
+    return `${origin}/stream?url=${encodeURIComponent(rawUrl)}${refParam}`;
+};
+
+const inferImageReferer = (rawUrl: string): string | undefined => {
+    try {
+        const parsed = new URL(rawUrl);
+        if (/mkcdn|mangakatana/i.test(parsed.hostname)) return 'https://mangakatana.com/';
+        if (/novelfire/i.test(parsed.hostname)) return 'https://novelfire.net/';
+        if (/allnovelfull|novelbin/i.test(parsed.hostname)) return 'https://novelbin.com/';
+        return `${parsed.origin}/`;
+    } catch {
+        return undefined;
+    }
 };
 
 let idbPromise: Promise<IDBDatabase> | null = null;
@@ -55,7 +69,16 @@ export async function cacheImage(url: string): Promise<string> {
     try {
         let response = await fetch(rawUrl, { mode: 'cors' }).catch(() => null);
         if ((!response || !response.ok) && isTauri() && /^https?:\/\//i.test(rawUrl)) {
-            response = await fetch(buildTauriImageProxyUrl(rawUrl)).catch(() => null);
+            const referer = inferImageReferer(rawUrl);
+            if (referer) {
+                response = await fetch(buildTauriImageProxyUrl(rawUrl, referer)).catch(() => null);
+            }
+            if (!response || !response.ok) {
+                response = await fetch(buildTauriImageProxyUrl(rawUrl)).catch(() => null);
+            }
+        }
+        if ((!response || !response.ok) && !isTauri() && API_BASE && /^https?:\/\//i.test(rawUrl)) {
+            response = await fetch(`${API_BASE}/image/proxy?url=${encodeURIComponent(rawUrl)}`).catch(() => null);
         }
         if (!response || !response.ok) return rawUrl;
 
@@ -155,6 +178,37 @@ export async function prefetchImages(urls: (string | undefined | null)[]): Promi
     for (let i = 0; i < unvisited.length; i += BATCH_SIZE) {
         const batch = unvisited.slice(i, i + BATCH_SIZE);
         await Promise.all(batch.map((url) => cacheImage(url).catch(() => url)));
+    }
+}
+
+export async function clearOfflineImageCache(): Promise<void> {
+    for (const objectUrl of memoryBlobUrlMap.values()) {
+        try {
+            URL.revokeObjectURL(objectUrl);
+        } catch {
+            // Ignore revoke errors
+        }
+    }
+    memoryBlobUrlMap.clear();
+
+    if (typeof window !== 'undefined' && 'caches' in window) {
+        try {
+            await window.caches.delete(CACHE_NAME);
+        } catch {
+            // Best effort
+        }
+    }
+
+    try {
+        const db = await getIdb();
+        await new Promise<void>((resolve, reject) => {
+            const tx = db.transaction(IDB_STORE, 'readwrite');
+            const req = tx.objectStore(IDB_STORE).clear();
+            req.onsuccess = () => resolve();
+            req.onerror = () => reject(req.error);
+        });
+    } catch {
+        // Best effort
     }
 }
 

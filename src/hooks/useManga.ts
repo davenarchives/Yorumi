@@ -515,16 +515,15 @@ export function useManga() {
         try {
             let pages: MangaPage[] = [];
 
-            // Check if downloaded offline in IndexedDB
+            // Always check offline downloaded chapter FIRST (even before selectedManga hydrates)
             const mangaKey = selectedManga?.id || selectedManga?.mal_id || '';
-            if (mangaKey) {
-                const downloaded = await mangaDownloadService.getChapter(mangaKey, chapter.id);
-                if (downloaded && downloaded.pages && downloaded.pages.length > 0) {
-                    pages = downloaded.pages.map((p) => ({
-                        pageNumber: p.pageNumber,
-                        imageUrl: p.imageUrl,
-                    }));
-                }
+            const downloaded = await mangaDownloadService.getChapter(mangaKey, chapter.id, chapter.url);
+            const loadedFromDownload = Boolean(downloaded && downloaded.pages && downloaded.pages.length > 0);
+            if (loadedFromDownload && downloaded) {
+                pages = downloaded.pages.map((p) => ({
+                    pageNumber: p.pageNumber,
+                    imageUrl: p.imageUrl,
+                }));
             }
 
             if (pages.length === 0 && chapterPagesCache.current.has(chapter.url)) {
@@ -588,8 +587,10 @@ export function useManga() {
             if (latestChapterId.current === requestId) {
                 setMangaPagesLoading(false);
 
-                // Auto-prefetch next chapters for seamless reading
-                prefetchNextChapters(chapter, 3);
+                // Auto-prefetch next chapters only when online
+                if (typeof navigator === 'undefined' || navigator.onLine) {
+                    prefetchNextChapters(chapter, 3);
+                }
             }
         }
     };

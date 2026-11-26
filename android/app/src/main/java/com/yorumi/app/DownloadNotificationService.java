@@ -7,129 +7,281 @@ import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.ServiceInfo;
 import android.os.Build;
 import android.os.IBinder;
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
+import androidx.core.app.ServiceCompat;
 
 public class DownloadNotificationService extends Service {
-    public static final String CHANNEL_ID = "yorumi_downloads";
+    public static final String CHANNEL_PROGRESS_ID = "yorumi_downloads_progress";
+    public static final String CHANNEL_COMPLETE_ID = "yorumi_downloads_complete";
+    public static final String CHANNEL_UPDATES_ID = "yorumi_episode_updates";
+    public static final String UPDATES_GROUP_KEY = "com.yorumi.app.EPISODE_UPDATES";
     public static final String CONTROL_BROADCAST = "com.yorumi.app.DOWNLOAD_CONTROL";
     public static final String ACTION_SHOW = "com.yorumi.app.download.SHOW";
     public static final String ACTION_UPDATE = "com.yorumi.app.download.UPDATE";
     public static final String ACTION_TOGGLE_PAUSE = "com.yorumi.app.download.TOGGLE_PAUSE";
-    public static final String ACTION_COMPLETE = "com.yorumi.app.download.COMPLETE";
-    public static final String ACTION_FAIL = "com.yorumi.app.download.FAIL";
-    private static final int NOTIFICATION_ID = 4202;
+    public static final String ACTION_STOP = "com.yorumi.app.download.STOP";
 
-    private String animeId = "";
+    public static final int PROGRESS_NOTIFICATION_ID = 4202;
+    public static final int COMPLETE_NOTIFICATION_ID = 4203;
+    public static final int ERROR_NOTIFICATION_ID = 4204;
+    public static final int UPDATE_SUMMARY_NOTIFICATION_ID = 5200;
+    public static final int UPDATE_NOTIFICATION_ID = 5201;
+
+    private String mediaType = "anime";
+    private String entryId = "";
     private int episodeNumber = 0;
-    private String animeTitle = "Yorumi";
-    private String episodeTitle = "Episode";
+    private String entryTitle = "Yorumi";
+    private String itemTitle = "Episode";
     private int progress = 0;
     private boolean paused = false;
 
     @Override
     public void onCreate() {
         super.onCreate();
-        createChannel();
+        ensureChannels(this);
+    }
+
+    public static void ensureChannels(Context context) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationManager manager = context.getSystemService(NotificationManager.class);
+            if (manager == null) return;
+
+            NotificationChannel progressChannel = new NotificationChannel(
+                CHANNEL_PROGRESS_ID,
+                "Download progress",
+                NotificationManager.IMPORTANCE_LOW
+            );
+            progressChannel.setDescription("Ongoing anime, manga, and light novel downloads");
+            progressChannel.setShowBadge(false);
+            manager.createNotificationChannel(progressChannel);
+
+            NotificationChannel completeChannel = new NotificationChannel(
+                CHANNEL_COMPLETE_ID,
+                "Download alerts",
+                NotificationManager.IMPORTANCE_DEFAULT
+            );
+            completeChannel.setDescription("Completed and failed download notifications");
+            manager.createNotificationChannel(completeChannel);
+
+            NotificationChannel updatesChannel = new NotificationChannel(
+                CHANNEL_UPDATES_ID,
+                "Episode updates",
+                NotificationManager.IMPORTANCE_DEFAULT
+            );
+            updatesChannel.setDescription("New episode alerts for anime in your watchlist");
+            manager.createNotificationChannel(updatesChannel);
+        }
     }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent == null) return START_NOT_STICKY;
-        readDownload(intent);
         String action = intent.getAction();
+
+        if (ACTION_STOP.equals(action)) {
+            ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE);
+            stopSelf();
+            return START_NOT_STICKY;
+        }
+
+        readDownload(intent);
 
         if (ACTION_TOGGLE_PAUSE.equals(action)) {
             paused = !paused;
             Intent control = new Intent(CONTROL_BROADCAST);
             control.setPackage(getPackageName());
-            control.putExtra("animeId", animeId);
+            control.putExtra("animeId", entryId);
             control.putExtra("episodeNumber", episodeNumber);
             control.putExtra("paused", paused);
             sendBroadcast(control);
-            startForeground(NOTIFICATION_ID, buildNotification(false, null));
+            promoteForeground(buildProgressNotification(this, mediaType, entryId, episodeNumber, entryTitle, itemTitle, progress, paused));
             return START_NOT_STICKY;
         }
 
-        if (ACTION_COMPLETE.equals(action)) {
-            stopForeground(STOP_FOREGROUND_REMOVE);
-            getSystemService(NotificationManager.class).notify(NOTIFICATION_ID, buildNotification(true, null));
-            stopSelf();
-            return START_NOT_STICKY;
+        if (ACTION_SHOW.equals(action)) {
+            paused = false;
         }
 
-        if (ACTION_FAIL.equals(action)) {
-            stopForeground(STOP_FOREGROUND_REMOVE);
-            getSystemService(NotificationManager.class).notify(
-                NOTIFICATION_ID,
-                buildNotification(false, intent.getStringExtra("message"))
-            );
-            stopSelf();
-            return START_NOT_STICKY;
-        }
-
-        startForeground(NOTIFICATION_ID, buildNotification(false, null));
+        promoteForeground(buildProgressNotification(this, mediaType, entryId, episodeNumber, entryTitle, itemTitle, progress, paused));
         return START_NOT_STICKY;
     }
 
+    private void promoteForeground(Notification notification) {
+        int fgType = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
+            ? ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+            : 0;
+        ServiceCompat.startForeground(this, PROGRESS_NOTIFICATION_ID, notification, fgType);
+    }
+
     private void readDownload(Intent intent) {
-        animeId = intent.getStringExtra("animeId") != null ? intent.getStringExtra("animeId") : animeId;
+        String nextMedia = intent.getStringExtra("mediaType");
+        if (nextMedia != null && !nextMedia.isEmpty()) mediaType = nextMedia;
+        String nextId = intent.getStringExtra("animeId");
+        if (nextId != null) entryId = nextId;
         episodeNumber = intent.getIntExtra("episodeNumber", episodeNumber);
-        animeTitle = intent.getStringExtra("animeTitle") != null ? intent.getStringExtra("animeTitle") : animeTitle;
-        episodeTitle = intent.getStringExtra("episodeTitle") != null ? intent.getStringExtra("episodeTitle") : episodeTitle;
+        String nextTitle = intent.getStringExtra("animeTitle");
+        if (nextTitle != null && !nextTitle.isEmpty()) entryTitle = nextTitle;
+        String nextItem = intent.getStringExtra("episodeTitle");
+        if (nextItem != null && !nextItem.isEmpty()) itemTitle = nextItem;
         progress = Math.max(0, Math.min(100, intent.getIntExtra("progress", progress)));
     }
 
-    private Notification buildNotification(boolean complete, @Nullable String error) {
-        Intent openIntent = new Intent(this, MainActivity.class);
+    private static PendingIntent createOpenEntryIntent(Context context, String mediaType, String entryId, int requestCode) {
+        Intent openIntent = new Intent(context, MainActivity.class);
         openIntent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        openIntent.putExtra("downloadAnimeId", animeId);
-        PendingIntent openPendingIntent = PendingIntent.getActivity(
-            this, 51, openIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+        openIntent.putExtra("downloadMediaType", mediaType);
+        openIntent.putExtra("downloadEntryId", entryId);
+        openIntent.putExtra("downloadAnimeId", entryId);
+        return PendingIntent.getActivity(
+            context,
+            requestCode,
+            openIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
         );
+    }
 
-        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(complete ? R.drawable.ic_stat_download_done : R.drawable.ic_stat_download)
-            .setContentTitle(animeTitle)
+    public static Notification buildProgressNotification(
+        Context context,
+        String mediaType,
+        String entryId,
+        int episodeNumber,
+        String entryTitle,
+        String itemTitle,
+        int progress,
+        boolean paused
+    ) {
+        ensureChannels(context);
+        PendingIntent openPendingIntent = createOpenEntryIntent(context, mediaType, entryId, 51);
+        String label = "manga".equals(mediaType) ? "Manga" : "ln".equals(mediaType) ? "Light Novel" : "Anime";
+
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(context, CHANNEL_PROGRESS_ID)
+            .setSmallIcon(R.drawable.ic_stat_download)
+            .setContentTitle(entryTitle)
+            .setContentText(itemTitle)
+            .setSubText(paused ? "Paused" : label + " • " + progress + "%")
+            .setProgress(100, progress, progress <= 0)
             .setContentIntent(openPendingIntent)
             .setOnlyAlertOnce(true)
-            .setOngoing(!complete && error == null)
-            .setAutoCancel(complete || error != null)
+            .setOngoing(true)
+            .setAutoCancel(false)
+            .setSilent(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setCategory(NotificationCompat.CATEGORY_PROGRESS);
 
-        if (complete) {
-            builder.setContentText(episodeTitle + " downloaded").setProgress(0, 0, false);
-        } else if (error != null) {
-            builder.setContentText("Download failed: " + error).setProgress(0, 0, false);
-        } else {
-            builder.setContentText(episodeTitle)
-                .setSubText(paused ? "Paused" : "Downloading • " + progress + "%")
-                .setProgress(100, progress, progress == 0);
-
-            Intent pauseIntent = new Intent(this, DownloadNotificationService.class);
+        if ("anime".equals(mediaType)) {
+            Intent pauseIntent = new Intent(context, DownloadNotificationService.class);
             pauseIntent.setAction(ACTION_TOGGLE_PAUSE);
-            pauseIntent.putExtra("animeId", animeId);
+            pauseIntent.putExtra("mediaType", mediaType);
+            pauseIntent.putExtra("animeId", entryId);
             pauseIntent.putExtra("episodeNumber", episodeNumber);
             PendingIntent pausePendingIntent = PendingIntent.getService(
-                this, 52, pauseIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+                context,
+                52,
+                pauseIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
             );
             builder.addAction(0, paused ? "Resume" : "Pause", pausePendingIntent);
         }
+
         builder.addAction(0, "Show entry", openPendingIntent);
         return builder.build();
     }
 
-    private void createChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel channel = new NotificationChannel(
-                CHANNEL_ID, "Downloads", NotificationManager.IMPORTANCE_LOW
-            );
-            channel.setDescription("Anime download progress");
-            getSystemService(NotificationManager.class).createNotificationChannel(channel);
-        }
+    public static Notification buildCompleteNotification(
+        Context context,
+        String mediaType,
+        String entryId,
+        String entryTitle,
+        String itemTitle
+    ) {
+        ensureChannels(context);
+        PendingIntent openPendingIntent = createOpenEntryIntent(context, mediaType, entryId, 53);
+        return new NotificationCompat.Builder(context, CHANNEL_COMPLETE_ID)
+            .setSmallIcon(R.drawable.ic_stat_download_done)
+            .setContentTitle(entryTitle)
+            .setContentText(itemTitle + " downloaded")
+            .setContentIntent(openPendingIntent)
+            .setOngoing(false)
+            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setCategory(NotificationCompat.CATEGORY_STATUS)
+            .addAction(0, "Show entry", openPendingIntent)
+            .build();
+    }
+
+    public static Notification buildErrorNotification(
+        Context context,
+        String mediaType,
+        String entryId,
+        String entryTitle,
+        String itemTitle,
+        String errorMessage
+    ) {
+        ensureChannels(context);
+        PendingIntent openPendingIntent = createOpenEntryIntent(context, mediaType, entryId, 54);
+        String msg = (errorMessage != null && !errorMessage.isEmpty()) ? errorMessage : "Download failed";
+        return new NotificationCompat.Builder(context, CHANNEL_COMPLETE_ID)
+            .setSmallIcon(R.drawable.ic_stat_download)
+            .setContentTitle(entryTitle + " — Download failed")
+            .setContentText(itemTitle + ": " + msg)
+            .setStyle(new NotificationCompat.BigTextStyle().bigText(itemTitle + ": " + msg))
+            .setContentIntent(openPendingIntent)
+            .setOngoing(false)
+            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setCategory(NotificationCompat.CATEGORY_ERROR)
+            .addAction(0, "Show entry", openPendingIntent)
+            .build();
+    }
+
+    public static Notification buildUpdateNotification(
+        Context context,
+        String entryId,
+        String animeTitle,
+        int episodeNumber,
+        int watchedEpisode
+    ) {
+        ensureChannels(context);
+        int reqCode = 1000 + Math.abs((entryId + ":" + episodeNumber).hashCode() % 1000);
+        PendingIntent openPendingIntent = createOpenEntryIntent(context, "anime", entryId, reqCode);
+        String body = watchedEpisode > 0
+            ? "Episode " + episodeNumber + " is out • Watched Ep " + watchedEpisode
+            : "Episode " + episodeNumber + " is out";
+        return new NotificationCompat.Builder(context, CHANNEL_UPDATES_ID)
+            .setSmallIcon(R.drawable.ic_stat_download_done)
+            .setContentTitle(animeTitle)
+            .setContentText(body)
+            .setContentIntent(openPendingIntent)
+            .setGroup(UPDATES_GROUP_KEY)
+            .setOngoing(false)
+            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setCategory(NotificationCompat.CATEGORY_RECOMMENDATION)
+            .build();
+    }
+
+    public static Notification buildUpdateSummaryNotification(
+        Context context,
+        int count,
+        String summaryText
+    ) {
+        ensureChannels(context);
+        PendingIntent openPendingIntent = createOpenEntryIntent(context, "anime", "", 999);
+        return new NotificationCompat.Builder(context, CHANNEL_UPDATES_ID)
+            .setSmallIcon(R.drawable.ic_stat_download_done)
+            .setContentTitle("Yorumi Updates")
+            .setContentText(summaryText != null && !summaryText.isEmpty() ? summaryText : (count + " new episodes available"))
+            .setContentIntent(openPendingIntent)
+            .setGroup(UPDATES_GROUP_KEY)
+            .setGroupSummary(true)
+            .setNumber(count)
+            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .build();
     }
 
     @Nullable

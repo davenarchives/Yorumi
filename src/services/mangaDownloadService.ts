@@ -35,6 +35,7 @@ export interface DownloadedMangaChapter {
 
 export interface ActiveMangaDownloadProgress {
     mangaId: string;
+    mangaTitle?: string;
     chapterId: string;
     chapterTitle: string;
     progress: number; // 0 to 100
@@ -139,23 +140,35 @@ export const mangaDownloadService = {
         }
     },
 
-    async getChapter(mangaId: string | number, chapterId: string | number): Promise<DownloadedMangaChapter | undefined> {
+    async getChapter(
+        mangaId: string | number | undefined,
+        chapterId: string | number,
+        chapterUrl?: string
+    ): Promise<DownloadedMangaChapter | undefined> {
         try {
             const db = await getDB();
-            const key = this.getChapterKey(mangaId, chapterId);
-            let chapter = await new Promise<DownloadedMangaChapter | undefined>((resolve, reject) => {
-                const tx = db.transaction(STORE_NAME, 'readonly');
-                const store = tx.objectStore(STORE_NAME);
-                const req = store.get(key);
-                req.onsuccess = () => resolve(req.result as DownloadedMangaChapter | undefined);
-                req.onerror = () => reject(req.error);
-            });
+            let chapter: DownloadedMangaChapter | undefined;
 
-            // Fallback: search by chapterId across all downloads if direct key didn't match
+            if (mangaId !== undefined && String(mangaId).trim() !== '') {
+                const key = this.getChapterKey(mangaId, chapterId);
+                chapter = await new Promise<DownloadedMangaChapter | undefined>((resolve, reject) => {
+                    const tx = db.transaction(STORE_NAME, 'readonly');
+                    const store = tx.objectStore(STORE_NAME);
+                    const req = store.get(key);
+                    req.onsuccess = () => resolve(req.result as DownloadedMangaChapter | undefined);
+                    req.onerror = () => reject(req.error);
+                });
+            }
+
+            // Fallback: search by chapterId or chapterUrl across all downloads if direct key didn't match
             if (!chapter) {
                 const all = await this.getDownloads();
-                const strChId = String(chapterId).trim();
-                chapter = all.find((c) => String(c.chapterId).trim() === strChId || c.id.endsWith(`_ch_${strChId}`));
+                const strChId = String(chapterId || '').trim();
+                const strChUrl = String(chapterUrl || '').trim();
+                chapter = all.find((c) =>
+                    (strChId && (String(c.chapterId).trim() === strChId || c.id.endsWith(`_ch_${strChId}`))) ||
+                    (strChUrl && String(c.chapterUrl || '').trim() === strChUrl)
+                );
             }
 
             if (chapter && chapter.pages && chapter.pages.length > 0) {

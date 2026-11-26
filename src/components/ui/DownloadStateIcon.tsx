@@ -7,10 +7,8 @@ type DownloadStateIconProps = {
 export default function DownloadStateIcon({
     state,
     progress = 0,
-    className = 'h-5 w-5',
+    className = 'h-6 w-6',
 }: DownloadStateIconProps) {
-    // These paths are Mihon's Apache-2.0 custom Material Symbols Rounded
-    // DownloadCircle/DownloadArrow and Material Symbols Rounded CheckCircle.
     if (state === 'downloaded') {
         return (
             <svg className={className} viewBox="0 -960 960 960" aria-hidden="true">
@@ -29,34 +27,51 @@ export default function DownloadStateIcon({
         );
     }
 
-    const normalizedProgress = Math.max(1, Math.min(100, progress));
-    const waves = 9;
-    const points = Array.from({ length: 73 }, (_, index) => {
-        const angle = (index / 72) * Math.PI * 2;
-        const radius = 392 + (state === 'downloading' ? Math.sin(angle * waves) * 24 : 0);
-        return `${480 + Math.cos(angle) * radius},${-480 + Math.sin(angle) * radius}`;
-    });
-    const ringPath = `M${points.join(' L')} Z`;
+    // Clean circular progress ring matching the exact circle of the available download icon
+    const normalizedProgress = Math.max(2, Math.min(100, progress));
     const indeterminate = state === 'queued';
 
     return (
         <svg className={className} viewBox="0 -960 960 960" aria-hidden="true">
-            {!indeterminate && (
-                <path d={ringPath} fill="none" stroke="currentColor" strokeWidth="72" opacity="0.25" />
-            )}
-            <path
-                className={indeterminate ? 'origin-center animate-spin' : undefined}
-                d={indeterminate ? 'M480-872a392 392 0 1 1-277.19 114.81' : ringPath}
+            <circle
+                cx="480"
+                cy="-480"
+                r="365"
                 fill="none"
-                pathLength="100"
                 stroke="currentColor"
-                strokeDasharray={indeterminate ? '72 28' : '100'}
-                strokeDashoffset={indeterminate ? undefined : 100 - normalizedProgress}
-                strokeLinecap="round"
-                strokeWidth="72"
-                style={indeterminate ? undefined : { transition: 'stroke-dashoffset 350ms linear' }}
-                transform={indeterminate ? undefined : 'rotate(-90 480 -480)'}
+                strokeWidth="70"
+                opacity="0.25"
             />
+            {indeterminate ? (
+                <g className="animate-spin" style={{ transformOrigin: '480px -480px' }}>
+                    <circle
+                        cx="480"
+                        cy="-480"
+                        r="365"
+                        fill="none"
+                        pathLength="100"
+                        stroke="currentColor"
+                        strokeWidth="70"
+                        strokeLinecap="round"
+                        strokeDasharray="30 70"
+                    />
+                </g>
+            ) : (
+                <circle
+                    cx="480"
+                    cy="-480"
+                    r="365"
+                    fill="none"
+                    pathLength="100"
+                    stroke="currentColor"
+                    strokeWidth="70"
+                    strokeLinecap="round"
+                    strokeDasharray="100"
+                    strokeDashoffset={100 - normalizedProgress}
+                    style={{ transition: 'stroke-dashoffset 250ms linear' }}
+                    transform="rotate(-90 480 -480)"
+                />
+            )}
             <path d={arrowPath} fill="currentColor" />
         </svg>
     );

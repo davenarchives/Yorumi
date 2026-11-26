@@ -1,5 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useActivityHistory } from './useActivityHistory';
+import { isIncognitoMode } from '../utils/appPrefs';
+import { cacheImage } from '../services/offlineImageCache';
+import { persistOfflineHistoryKey } from '../services/offlineHistoryStore';
 
 export interface LNReadingProgress {
     novelId: string | number;
@@ -35,6 +38,7 @@ export function useContinueLNReading() {
     }, []);
 
     const saveLNProgress = (progress: Omit<LNReadingProgress, 'updatedAt'>) => {
+        if (isIncognitoMode()) return;
         try {
             const item: LNReadingProgress = {
                 ...progress,
@@ -42,11 +46,20 @@ export function useContinueLNReading() {
             };
             setContinueReadingList((prev) => {
                 const filtered = prev.filter((p) => String(p.novelId) !== String(progress.novelId));
-                const updated = [item, ...filtered];
-                localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+                const updated = [item, ...filtered].slice(0, 200);
+                const serialized = JSON.stringify(updated);
+                persistOfflineHistoryKey(STORAGE_KEY, serialized);
+                try {
+                    localStorage.setItem(STORAGE_KEY, serialized);
+                } catch {
+                    // IndexedDB mirror still holds durable copy
+                }
                 window.dispatchEvent(new CustomEvent(STORAGE_EVENT));
                 return updated;
             });
+            if ((typeof navigator === 'undefined' || navigator.onLine) && progress.coverImage) {
+                void cacheImage(progress.coverImage).catch(() => undefined);
+            }
             void recordActivity(`ln:${progress.novelId}:ch:${progress.chapterNumber}`).catch(() => undefined);
         } catch (e) {
             console.error('Failed to save LN reading progress:', e);
@@ -57,7 +70,13 @@ export function useContinueLNReading() {
         try {
             setContinueReadingList((prev) => {
                 const updated = prev.filter((p) => String(p.novelId) !== String(novelId));
-                localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+                const serialized = JSON.stringify(updated);
+                persistOfflineHistoryKey(STORAGE_KEY, serialized);
+                try {
+                    localStorage.setItem(STORAGE_KEY, serialized);
+                } catch {
+                    // Best effort
+                }
                 window.dispatchEvent(new CustomEvent(STORAGE_EVENT));
                 return updated;
             });

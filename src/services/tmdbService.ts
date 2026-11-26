@@ -1,5 +1,6 @@
 import type { Anime } from '../types/anime';
 import { setLocalStorageWithCleanup } from '../utils/localStorageQuota';
+import { episodeMetadataService } from './episodeMetadataService';
 
 const TMDB_BASE = 'https://api.themoviedb.org/3';
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p';
@@ -507,7 +508,11 @@ export const tmdbService = {
     },
 
     getCachedBackdropForAnime(anime: Partial<Anime> | null | undefined, size: 'w780' | 'w1280' | 'original' = 'original'): string | null {
-        if (!anime || !readToken()) return null;
+        if (!anime) return null;
+        if (!readToken()) {
+            const anizip = episodeMetadataService.getCachedEpisodeMetadata(anime.id, anime.mal_id);
+            return anizip?.backdrop || anizip?.banner || null;
+        }
         for (const key of [
             anime.id ? `al:${anime.id}` : '',
             anime.mal_id ? `mal:${anime.mal_id}` : '',
@@ -530,18 +535,26 @@ export const tmdbService = {
         if (cachedDetails?.backdrop_path) {
             return buildTmdbImageUrl(cachedDetails.backdrop_path, size);
         }
-        return null;
+        const anizip = episodeMetadataService.getCachedEpisodeMetadata(anime.id, anime.mal_id);
+        return anizip?.backdrop || anizip?.banner || null;
     },
 
     async getBackdropForAnime(anime: Anime, size: 'w780' | 'w1280' | 'original' = 'original'): Promise<string | null> {
-        if (!readToken()) return null;
         const cachedUrl = this.getCachedBackdropForAnime(anime, size);
         if (cachedUrl) return cachedUrl;
+
+        if (!readToken()) {
+            const anizip = await episodeMetadataService.getEpisodeMetadata(anime.id, anime.mal_id).catch(() => null);
+            return anizip?.backdrop || anizip?.banner || null;
+        }
 
         const isMovie = String(anime.type || '').toUpperCase() === 'MOVIE';
         const details = isMovie ? await resolveMovieDetails(anime) : await resolveTvDetails(anime);
         const mediaPath = isMovie ? 'movie' : 'tv';
-        if (!details?.id) return null;
+        if (!details?.id) {
+            const anizip = await episodeMetadataService.getEpisodeMetadata(anime.id, anime.mal_id).catch(() => null);
+            return anizip?.backdrop || anizip?.banner || null;
+        }
 
         let chosenPath: string | null = details.backdrop_path || null;
 
@@ -573,15 +586,22 @@ export const tmdbService = {
             return buildTmdbImageUrl(chosenPath, size);
         }
 
-        return null;
+        const anizip = await episodeMetadataService.getEpisodeMetadata(anime.id, anime.mal_id).catch(() => null);
+        return anizip?.backdrop || anizip?.banner || null;
     },
 
     async getLogoForAnime(anime: Anime): Promise<string | null> {
-        if (!readToken()) return null;
+        if (!readToken()) {
+            const anizip = await episodeMetadataService.getEpisodeMetadata(anime.id, anime.mal_id).catch(() => null);
+            return anizip?.logo || null;
+        }
         const isMovie = String(anime.type || '').toUpperCase() === 'MOVIE';
         const details = isMovie ? await resolveMovieDetails(anime) : await resolveTvDetails(anime);
         const mediaPath = isMovie ? 'movie' : 'tv';
-        if (!details?.id) return null;
+        if (!details?.id) {
+            const anizip = await episodeMetadataService.getEpisodeMetadata(anime.id, anime.mal_id).catch(() => null);
+            return anizip?.logo || null;
+        }
 
         const images = await tmdbFetch<{ logos?: TmdbLogo[] }>(
             `/${mediaPath}/${details.id}/images?include_image_language=en,ja,null`
@@ -594,7 +614,11 @@ export const tmdbService = {
             || Number(b.width || 0) - Number(a.width || 0)
         )[0];
 
-        return selected?.file_path ? buildTmdbImageUrl(selected.file_path, 'original') : null;
+        if (selected?.file_path) {
+            return buildTmdbImageUrl(selected.file_path, 'original');
+        }
+        const anizip = await episodeMetadataService.getEpisodeMetadata(anime.id, anime.mal_id).catch(() => null);
+        return anizip?.logo || null;
     },
 
     async getTvSeasonsForAnime(anime: Anime): Promise<TmdbSeason[]> {

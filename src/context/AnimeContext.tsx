@@ -561,7 +561,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
 
         const applyFastHomeData = (fast: any): boolean => {
             let applied = false;
-            if (Array.isArray(fast?.spotlightAnime) && fast.spotlightAnime.length > 0) {
+            if (Array.isArray(fast?.spotlightAnime) && fast.spotlightAnime.length >= 3) {
                 setSpotlightAnime(fast.spotlightAnime);
                 setSpotlightLoading(false);
                 writeHomeCache('spotlight', fast.spotlightAnime);
@@ -640,7 +640,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
 
         // Instant hydrate from local cache first (never block initial render).
         const cachedSpotlight = readHomeCache<Anime[]>('spotlight', HOME_TTL.spotlight);
-        if (cachedSpotlight?.length) {
+        if (cachedSpotlight && cachedSpotlight.length >= 3) {
             setSpotlightAnime(cachedSpotlight);
             setSpotlightLoading(false);
             preloadLogos(cachedSpotlight.map((a: Anime) => a.tmdbId || 0).filter(Boolean));
@@ -696,16 +696,17 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
         ]);
 
         const fetchSpotlight = async () => {
-            if (spotlightAnime.length > 0) {
+            if (spotlightAnime.length >= 3) {
                 setSpotlightLoading(false);
                 return;
             }
 
             const cached = readHomeCache<Anime[]>('spotlight', HOME_TTL.spotlight);
-            if (cached && cached.length > 0) {
+            if (cached && cached.length >= 3) {
                 setSpotlightAnime(cached);
                 setSpotlightLoading(false);
                 preloadLogos(cached.map((a: Anime) => a.tmdbId || 0).filter(Boolean));
+                return;
             } else {
                 setSpotlightLoading(true);
             }
@@ -714,7 +715,9 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
                 const { data } = await animeService.getSpotlightAnime();
                 if (data && data.length > 0) {
                     setSpotlightAnime(data);
-                    writeHomeCache('spotlight', data);
+                    if (data.length >= 3) {
+                        writeHomeCache('spotlight', data);
+                    }
                     preloadLogos(data.map((a: Anime) => a.tmdbId || 0).filter(Boolean));
                     return;
                 }

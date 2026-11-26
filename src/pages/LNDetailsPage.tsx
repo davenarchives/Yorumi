@@ -13,11 +13,13 @@ import { Play, Download, FolderOpen, ArrowLeft, ArrowUpDown, Grid2X2, List } fro
 import { useChapterViewMode, type ChapterViewMode } from '../components/ui/ChapterViewToggle';
 import { useLNDownloads } from '../hooks/useLNDownloads';
 import { downloadService } from '../services/downloadService';
-import DownloadStateIcon from '../components/ui/DownloadStateIcon';
+import DownloadActionButton from '../components/ui/DownloadActionButton';
 import ReadingDetailsHero from '../features/reading/components/ReadingDetailsHero';
 import MoreLikeReading from '../features/reading/components/MoreLikeReading';
 import DetailsCharacters from '../features/anime/components/details/DetailsCharacters';
 import type { Anime } from '../types/anime';
+import { offlineLibraryCache } from '../services/offlineLibraryCache';
+import BatchDownloadMenu, { selectItemsForBatchDownload, type BatchDownloadMode } from '../components/shared/BatchDownloadMenu';
 
 // Chapter Grid Component matching Manga details format
 const LNChapterList = ({
@@ -45,7 +47,7 @@ const LNChapterList = ({
 }) => {
     const [searchQuery, setSearchQuery] = useState('');
     const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
-    const { isChapterDownloaded, getDownloadProgress, startDownload, deleteDownload } = useLNDownloads();
+    const { isChapterDownloaded, getDownloadProgress, startDownload, cancelDownload, deleteDownload } = useLNDownloads();
 
     const filteredChapters = useMemo(() => {
         return chapters.filter((ch) =>
@@ -157,28 +159,24 @@ const LNChapterList = ({
                                         {subtitleStr}
                                     </span>
                                 )}
-                                <button
-                                    type="button"
-                                    className="absolute top-0.5 right-0.5 z-20 flex h-7 w-7 items-center justify-center rounded-full text-zinc-300 hover:bg-white/10 active:bg-white/15 cursor-pointer"
-                                    aria-label={isDownloaded ? 'Delete downloaded chapter' : 'Download chapter'}
-                                    disabled={isDownloading}
-                                    onClick={(event) => {
-                                        event.stopPropagation();
-                                        if (isDownloading) return;
-                                        if (isDownloaded) {
-                                            if (novelId) deleteDownload(novelId, ch.id);
-                                        } else {
-                                            startDownload({
-                                                novelId: novelId || '',
-                                                novelTitle: novelTitle || 'Novel',
-                                                novelImage: novelImage || '',
-                                                chapter: ch,
-                                            });
-                                        }
-                                    }}
-                                >
-                                    <DownloadStateIcon state={isDownloading ? 'downloading' : isDownloaded ? 'downloaded' : 'available'} progress={progress?.progress || 0} className="h-4 w-4" />
-                                </button>
+                                <div className="absolute top-0.5 right-0.5 z-20">
+                                    <DownloadActionButton
+                                        state={isDownloading ? 'downloading' : isDownloaded ? 'downloaded' : 'available'}
+                                        progress={progress?.progress || 0}
+                                        disabled={isDownloading}
+                                        onDownload={() => startDownload({
+                                            novelId: novelId || '',
+                                            novelTitle: novelTitle || 'Novel',
+                                            novelImage: novelImage || '',
+                                            chapter: ch,
+                                        })}
+                                        onCancel={() => { if (novelId) cancelDownload(novelId, ch.id); }}
+                                        onDelete={() => { if (novelId) deleteDownload(novelId, ch.id); }}
+                                        buttonClassName="flex h-8 w-8 items-center justify-center rounded-full text-zinc-300 hover:bg-white/10 active:bg-white/15 cursor-pointer touch-manipulation"
+                                        iconClassName="h-5 w-5"
+                                        ariaLabel={isDownloaded ? 'Delete downloaded chapter' : 'Download chapter'}
+                                    />
+                                </div>
                             </div>
                         );
                     })}
@@ -228,29 +226,26 @@ const LNChapterList = ({
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
-                                    <button
-                                        type="button"
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            if (isDownloaded) {
-                                                if (novelId) deleteDownload(novelId, ch.id);
-                                            } else if (!isDownloading) {
-                                                startDownload({
-                                                    novelId: novelId || '',
-                                                    novelTitle: novelTitle || 'Novel',
-                                                    novelImage: novelImage || '',
-                                                    chapter: ch,
-                                                });
-                                            }
-                                        }}
+                                    <DownloadActionButton
+                                        state={isDownloading ? 'downloading' : isDownloaded ? 'downloaded' : 'available'}
+                                        progress={progress?.progress || 0}
                                         disabled={isDownloading}
-                                        className={`grid h-8 w-8 place-items-center rounded-full transition-colors cursor-pointer ${
+                                        onDownload={() => startDownload({
+                                            novelId: novelId || '',
+                                            novelTitle: novelTitle || 'Novel',
+                                            novelImage: novelImage || '',
+                                            chapter: ch,
+                                        })}
+                                        onCancel={() => { if (novelId) cancelDownload(novelId, ch.id); }}
+                                        onDelete={() => { if (novelId) deleteDownload(novelId, ch.id); }}
+                                        buttonClassName={`grid h-10 w-10 place-items-center rounded-full transition-colors cursor-pointer touch-manipulation ${
                                             isDownloaded
-                                                ? 'text-zinc-400 hover:bg-red-500/20 hover:text-red-400'
+                                                ? 'text-white hover:bg-white/10'
                                                 : isDownloading
-                                                ? 'text-zinc-400'
-                                                : 'text-zinc-400 hover:text-white hover:bg-white/10'
+                                                ? 'text-white'
+                                                : 'text-zinc-300 hover:text-white hover:bg-white/10'
                                         }`}
+                                        iconClassName="h-6 w-6"
                                         title={
                                             isDownloaded
                                                 ? 'Downloaded for offline (Click to delete)'
@@ -258,13 +253,7 @@ const LNChapterList = ({
                                                 ? `Downloading ${progress?.progress || 0}%`
                                                 : 'Download chapter'
                                         }
-                                    >
-                                        <DownloadStateIcon
-                                            state={isDownloading ? 'downloading' : isDownloaded ? 'downloaded' : 'available'}
-                                            progress={progress?.progress || 0}
-                                            className="h-5 w-5"
-                                        />
-                                    </button>
+                                    />
                                 </div>
                             </div>
                         );
@@ -472,7 +461,37 @@ export default function LNDetailsPage() {
         return null;
     }, [matchingLNDownloads]);
 
-    const ln: LightNovel | null = serverLN || fallbackLN;
+    const cachedOfflineLN = useMemo(
+        () => offlineLibraryCache.getLNMeta([id, serverLN?.id, serverLN?.scraper_id, routeLN?.id, routeLN?.scraper_id]),
+        [id, serverLN?.id, serverLN?.scraper_id, routeLN?.id, routeLN?.scraper_id]
+    );
+
+    const ln = useMemo<LightNovel | null>(() => {
+        const primary = serverLN || fallbackLN;
+        if (!primary && !cachedOfflineLN) return null;
+        if (!primary) return cachedOfflineLN;
+        if (!cachedOfflineLN) return primary;
+        return {
+            ...cachedOfflineLN,
+            ...primary,
+            synopsis: primary.synopsis || cachedOfflineLN.synopsis,
+            genres: primary.genres?.length ? primary.genres : cachedOfflineLN.genres,
+            author: (primary.author && primary.author !== 'Unknown Author') ? primary.author : cachedOfflineLN.author || primary.author,
+            score: primary.score || cachedOfflineLN.score,
+            chapters: primary.chapters || cachedOfflineLN.chapters,
+            bannerImage: primary.bannerImage || cachedOfflineLN.bannerImage,
+            images:
+                primary.images?.jpg?.large_image_url || primary.images?.jpg?.image_url
+                    ? primary.images
+                    : cachedOfflineLN.images,
+        };
+    }, [serverLN, fallbackLN, cachedOfflineLN]);
+
+    useEffect(() => {
+        if (ln && (ln.synopsis || ln.genres?.length || (ln.author && ln.author !== 'Unknown Author') || ln.score)) {
+            offlineLibraryCache.saveLNMeta([id, ln.id, ln.scraper_id], ln);
+        }
+    }, [ln, id]);
     const displayTitle = ln ? getDisplayTitle(ln, language) : 'Light Novel';
     const cover = ln?.images?.jpg?.large_image_url || ln?.images?.jpg?.image_url || '';
     const lnId = String(ln?.id || id);
@@ -486,20 +505,41 @@ export default function LNDetailsPage() {
         }));
     }, [matchingLNDownloads]);
 
-    const effectiveChapters = chapters.length > 0 ? chapters : downloadedLNChapters;
+    const [mobileDownloadMenuOpen, setMobileDownloadMenuOpen] = useState(false);
 
-    const handleDownloadAllLN = useCallback(() => {
+    const cachedOfflineLNChapters = useMemo(
+        () => offlineLibraryCache.getLNChapters([id, ln?.id, ln?.scraper_id]),
+        [id, ln?.id, ln?.scraper_id]
+    );
+
+    useEffect(() => {
+        if (chapters.length > 0) {
+            offlineLibraryCache.saveLNChapters([id, ln?.id, ln?.scraper_id], chapters);
+        }
+    }, [chapters, id, ln?.id, ln?.scraper_id]);
+
+    const effectiveChapters = chapters.length > 0
+        ? chapters
+        : cachedOfflineLNChapters.length > 0
+            ? cachedOfflineLNChapters
+            : downloadedLNChapters;
+
+    const handleDownloadLNByMode = useCallback((mode: BatchDownloadMode) => {
         const novelId = lnId || id || '';
         if (!novelId) return;
+        const downloadedIds = new Set(matchingLNDownloads.map((d) => d.chapterId));
+        const unreadUndownloaded = effectiveChapters.filter((ch) => !readChapters.has(ch.id) && !downloadedIds.has(ch.id));
+        const selected = selectItemsForBatchDownload(unreadUndownloaded, mode);
+        if (selected.length === 0) return;
         downloadAllLN(
             {
                 id: novelId,
                 title: displayTitle || 'Novel',
                 image: cover || '',
             },
-            effectiveChapters
+            selected
         );
-    }, [lnId, id, displayTitle, cover, downloadAllLN, effectiveChapters]);
+    }, [lnId, id, displayTitle, cover, matchingLNDownloads, effectiveChapters, readChapters, downloadAllLN]);
 
     const handleChapterClick = useCallback((ch: LNChapter) => {
         navigate(`/ln/read/${slugify(displayTitle)}/${lnId}/${encodeURIComponent(ch.id)}`, {
@@ -584,9 +624,23 @@ export default function LNDetailsPage() {
                     <button type="button" onClick={() => window.dispatchEvent(new Event('yorumi:ln:toggle-view'))} className="grid h-10 w-10 shrink-0 place-items-center text-white/85 transition-colors active:text-white" aria-label="Toggle chapter view">
                         {viewMode === 'list' ? <Grid2X2 className="h-5 w-5" /> : <List className="h-5 w-5" />}
                     </button>
-                    <button type="button" onClick={handleDownloadAllLN} className="grid h-10 w-10 shrink-0 place-items-center text-white/85 transition-colors active:text-white" aria-label="Download chapters">
-                        <Download className="h-5 w-5" />
-                    </button>
+                    <div className="relative">
+                        <button
+                            type="button"
+                            onClick={() => setMobileDownloadMenuOpen((open) => !open)}
+                            className="grid h-10 w-10 shrink-0 place-items-center text-white/85 transition-colors active:text-white"
+                            aria-label="Download chapters"
+                        >
+                            <Download className="h-5 w-5" />
+                        </button>
+                        <BatchDownloadMenu
+                            isOpen={mobileDownloadMenuOpen}
+                            onClose={() => setMobileDownloadMenuOpen(false)}
+                            unit="chapter"
+                            placement="bottom-right"
+                            onSelect={handleDownloadLNByMode}
+                        />
+                    </div>
                 </div>
             </div>
             <div className="mx-auto w-full max-w-[1440px] px-6 pt-24 sm:px-10 sm:pt-32 md:px-14 md:pt-40 lg:px-16 lg:pt-48">
@@ -607,7 +661,7 @@ export default function LNDetailsPage() {
                         const startChapter = currentProgress ? effectiveChapters.find((chapter) => String(chapter.id) === String(currentProgress.chapterId)) || effectiveChapters[0] : effectiveChapters[0];
                         if (startChapter) handleChapterClick(startChapter);
                     }}
-                    onToggleList={() => toggleLNReadList({ id: ln.id, title: displayTitle, image: cover, score: ln.score, mediaStatus: ln.status, type: ln.type, synopsis: ln.synopsis, genres: ln.genres?.map((genre) => genre.name) })}
+                    onToggleList={() => toggleLNReadList({ id: ln.id, title: displayTitle, image: cover, score: ln.score, mediaStatus: ln.status, type: ln.type, synopsis: ln.synopsis, genres: ln.genres?.map((genre) => genre.name), totalCount: effectiveChapters.length || ln.chapters || undefined })}
                     onToggleFavorite={() => {
                         if (isFavoriteLN(lnId)) {
                             void removeFavoriteLN(lnId);
@@ -684,7 +738,7 @@ export default function LNDetailsPage() {
                                     <>
                                         <button
                                             type="button"
-                                            onClick={handleDownloadAllLN}
+                                            onClick={() => handleDownloadLNByMode('unread')}
                                             className="flex h-10 w-10 items-center justify-center rounded-full bg-white/[0.10] text-white/80 transition-colors hover:bg-white/[0.15] hover:text-white border-0 outline-none focus:outline-none cursor-pointer"
                                             title="Download all chapters for offline reading"
                                             aria-label="Download all chapters"

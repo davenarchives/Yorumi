@@ -13,6 +13,7 @@ type NativeDownloadResult = {
     fileUrl: string;
     fileSize: number;
     duration?: number;
+    isHls?: boolean;
     hlsSegments?: Array<{
         offset: number;
         size: number;
@@ -32,6 +33,7 @@ type NativeDownloadStoragePlugin = {
     writeText(options: { relativePath: string; content: string }): Promise<NativeDownloadResult>;
     delete(options: { filePath: string }): Promise<void>;
     setPaused(options: { operationId: string; paused: boolean }): Promise<void>;
+    cancel(options: { operationId: string }): Promise<void>;
     addListener(eventName: 'progress', listener: (event: NativeProgress) => void): Promise<PluginListenerHandle>;
 };
 
@@ -68,5 +70,11 @@ export const deleteNativeDownload = async (filePath?: string) => {
 export const setNativeDownloadPaused = async (operationId: string, paused: boolean) => {
     if (isAndroidDownloadStorageAvailable()) {
         await NativeDownloadStorage.setPaused({ operationId, paused });
+    }
+};
+
+export const cancelNativeDownload = async (operationId: string) => {
+    if (isAndroidDownloadStorageAvailable()) {
+        await NativeDownloadStorage.cancel({ operationId });
     }
 };

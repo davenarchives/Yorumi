@@ -1,11 +1,26 @@
-import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
-import { lazy, Suspense } from 'react';
+import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { lazy, Suspense, useEffect, useRef } from 'react';
 import HomePage from '../pages/HomePage';
 import MangaPage from '../pages/MangaPage';
 import LNPage from '../pages/LNPage';
+import LibraryPage from '../pages/LibraryPage';
 import AnimeDetailsPage from '../pages/AnimeDetailsPage';
+import MangaDetailsPage from '../pages/MangaDetailsPage';
+import LNDetailsPage from '../pages/LNDetailsPage';
+import {
+    AboutPage,
+    DataStoragePage,
+    DownloadQueuePage,
+    GlobalChatPage,
+    HistoryPage,
+    SettingsPage,
+    StatisticsPage,
+    UpdatesPage,
+} from '../pages/MenuPages';
 import SpotlightSkeleton from '../features/anime/components/SpotlightSkeleton';
 import ExploreSkeleton from '../features/explore/components/ExploreSkeleton';
+import OfflineEmptyState from '../components/shared/OfflineEmptyState';
+import { useOnlineStatus } from '../hooks/useOnlineStatus';
 
 const AnimeFormatPage = lazy(() => import('../pages/AnimeFormatPage'));
 const AnimeStudioPage = lazy(() => import('../pages/AnimeStudioPage'));
@@ -13,11 +28,8 @@ const ContinueWatchingPage = lazy(() => import('../pages/ContinueWatchingPage'))
 const FavoriteAnimePage = lazy(() => import('../pages/FavoriteAnimePage'));
 const FavoriteMangaPage = lazy(() => import('../pages/FavoriteMangaPage'));
 const GenrePage = lazy(() => import('../pages/GenrePage'));
-const LibraryPage = lazy(() => import('../pages/LibraryPage'));
-const LNDetailsPage = lazy(() => import('../pages/LNDetailsPage'));
 const LNReaderPage = lazy(() => import('../pages/LNReaderPage'));
 const MangaContinueReadingPage = lazy(() => import('../pages/MangaContinueReadingPage'));
-const MangaDetailsPage = lazy(() => import('../pages/MangaDetailsPage'));
 const MangaFormatPage = lazy(() => import('../pages/MangaFormatPage'));
 const MangaGenrePage = lazy(() => import('../pages/MangaGenrePage'));
 const MangaReaderPage = lazy(() => import('../pages/MangaReaderPage'));
@@ -96,8 +108,56 @@ function RouteFallback() {
     );
 }
 
+const isOfflineAllowedPath = (pathname: string): boolean => {
+    if (pathname === '/library' || pathname.startsWith('/library/')) return true;
+    if (pathname.startsWith('/menu/')) return true;
+    if (pathname.startsWith('/anime/details/')) return true;
+    if (pathname.startsWith('/manga/details/') || pathname.startsWith('/manga/read/')) return true;
+    if (pathname.startsWith('/ln/details/') || pathname.startsWith('/ln/read/')) return true;
+    if (
+        pathname === '/anime/continue-watching' ||
+        pathname === '/anime/watch-list' ||
+        pathname === '/anime/favorites' ||
+        pathname === '/manga/continue-reading' ||
+        pathname === '/manga/read-list' ||
+        pathname === '/manga/favorites'
+    ) {
+        return true;
+    }
+    return false;
+};
+
 export function AppRoutes() {
     const location = useLocation();
+    const navigate = useNavigate();
+    const isOnline = useOnlineStatus();
+    const prevOnlineRef = useRef(isOnline);
+    const didInitialRedirectRef = useRef(false);
+
+    useEffect(() => {
+        const wentOffline = prevOnlineRef.current && !isOnline;
+        prevOnlineRef.current = isOnline;
+
+        if (!isOnline && !isOfflineAllowedPath(location.pathname)) {
+            if (!didInitialRedirectRef.current || wentOffline) {
+                didInitialRedirectRef.current = true;
+                navigate('/library', { replace: true });
+            }
+        } else if (isOnline) {
+            didInitialRedirectRef.current = false;
+        }
+    }, [isOnline, location.pathname, navigate]);
+
+    if (!isOnline && !isOfflineAllowedPath(location.pathname)) {
+        if (!didInitialRedirectRef.current) {
+            return <Navigate to="/library" replace />;
+        }
+        return (
+            <main className="relative z-10">
+                <OfflineEmptyState />
+            </main>
+        );
+    }
 
     return (
         <main className="relative z-10">
@@ -114,7 +174,6 @@ export function AppRoutes() {
                     <Route path="/anime/specials" element={<AnimeFormatPage />} />
                     <Route path="/anime/details/:id" element={<AnimeDetailsPage />} />
                     <Route path="/anime/studio/:name" element={<AnimeStudioPage />} />
-
 
                     <Route path="/manga" element={<MangaPage />} />
                     <Route path="/manga/top-100" element={<Top100Page mediaType="manga" />} />
@@ -136,6 +195,15 @@ export function AppRoutes() {
                     <Route path="/manga/specials" element={<MangaFormatPage />} />
 
                     <Route path="/library" element={<LibraryPage />} />
+                    <Route path="/menu/updates" element={<UpdatesPage />} />
+                    <Route path="/menu/download-queue" element={<DownloadQueuePage />} />
+                    <Route path="/menu/history" element={<HistoryPage />} />
+                    <Route path="/menu/activity" element={<HistoryPage />} />
+                    <Route path="/menu/statistics" element={<StatisticsPage />} />
+                    <Route path="/menu/storage" element={<DataStoragePage />} />
+                    <Route path="/menu/chat" element={<GlobalChatPage />} />
+                    <Route path="/menu/settings" element={<SettingsPage />} />
+                    <Route path="/menu/about" element={<AboutPage />} />
                     <Route path="/explore" element={<ExplorePage />} />
                     <Route path="/search" element={<SearchPage />} />
                     <Route path="/search/:type" element={<SearchResultsPage />} />

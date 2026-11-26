@@ -31,6 +31,8 @@ import DetailsEpisodeGrid, { type NormalizedEpisode, type SeasonChip } from '../
 import DetailsVideoPlayer from '../features/anime/components/details/DetailsVideoPlayer';
 import { filterReleasedEpisodes, isAnimeAiring } from '../utils/animeAiring';
 import { ArrowLeft, ArrowUpDown, Grid2X2, Download } from 'lucide-react';
+import BatchDownloadMenu, { type BatchDownloadMode } from '../components/shared/BatchDownloadMenu';
+import { offlineLibraryCache } from '../services/offlineLibraryCache';
 
 const isMovieAnime = (anime: Partial<Anime> | null | undefined) =>
     String(anime?.type || '').toUpperCase() === 'MOVIE';
@@ -473,24 +475,57 @@ const doesAnimeMatchRouteRef = (anime: Partial<Anime> | null | undefined, ref: A
     return false;
 };
 
-export default function AnimeDetailsPage() {
-    const { id } = useParams<{ id: string }>();
+export interface AnimeDetailsPageProps {
+    embeddedId?: string;
+    embeddedAnime?: Partial<Anime>;
+    deferFetch?: boolean;
+    onBack?: () => void;
+}
+
+export default function AnimeDetailsPage({
+    embeddedId,
+    embeddedAnime,
+    deferFetch = false,
+    onBack,
+}: AnimeDetailsPageProps = {}) {
+    const { id: paramId } = useParams<{ id: string }>();
+    const resolvedId = embeddedId || paramId;
     // React Router reuses this route component when only :id changes. Key the
     // stateful details tree by title identity so season chips, artwork, mapping
     // state and metadata from the previous title are destroyed immediately.
-    return <AnimeDetailsPageContent key={id || 'unknown-anime'} />;
+    return (
+        <AnimeDetailsPageContent
+            key={resolvedId || 'unknown-anime'}
+            embeddedId={embeddedId}
+            embeddedAnime={embeddedAnime}
+            deferFetch={deferFetch}
+            onBack={onBack}
+        />
+    );
 }
 
-function AnimeDetailsPageContent() {
-    const { id } = useParams<{ id: string }>();
+function AnimeDetailsPageContent({
+    embeddedId,
+    embeddedAnime,
+    deferFetch = false,
+    onBack,
+}: AnimeDetailsPageProps) {
+    const { id: paramId } = useParams<{ id: string }>();
+    const id = embeddedId || paramId;
+    const isEmbedded = Boolean(embeddedId);
     const navigate = useNavigate();
     const [compactToolbar, setCompactToolbar] = useState(false);
+    const [mobileDownloadMenuOpen, setMobileDownloadMenuOpen] = useState(false);
 
     const handleBack = useCallback(() => {
+        if (onBack) {
+            onBack();
+            return;
+        }
         if (isNativeMobile()) navigate('/', { replace: true });
         else if (((window.history.state as { idx?: number } | null)?.idx ?? 0) > 0) navigate(-1);
         else navigate('/', { replace: true });
-    }, [navigate]);
+    }, [navigate, onBack]);
 
     const [searchParams, setSearchParams] = useSearchParams();
     const location = useLocation();
@@ -562,10 +597,11 @@ function AnimeDetailsPageContent() {
 
     // We need to sync the URL ID with the hook's selectedAnime
     useEffect(() => {
+        if (deferFetch) return;
         // Scroll to top on mount unless explicitly prevented (e.g. season navigation or expanding mini player)
-        if (!location.state?.preventScrollTop) {
+        if (!isEmbedded && !location.state?.preventScrollTop) {
             window.scrollTo({ top: 0, behavior: 'auto' });
-        } else if (searchParams.get('ep')) {
+        } else if (!isEmbedded && searchParams.get('ep')) {
             scrollToPlayer();
         }
 
@@ -574,9 +610,11 @@ function AnimeDetailsPageContent() {
         if (loadedDetailsRouteRef.current === id) return;
         loadedDetailsRouteRef.current = id;
 
-        const routeAnime = (location.state?.anime && typeof location.state.anime === 'object')
-            ? { ...(location.state.anime as Anime) }
-            : null;
+        const routeAnime = embeddedAnime
+            ? { ...(embeddedAnime as Anime) }
+            : (location.state?.anime && typeof location.state.anime === 'object')
+                ? { ...(location.state.anime as Anime) }
+                : null;
 
         const routeRef = parseAnimeRouteId(id);
         if (!routeRef) {
@@ -684,7 +722,7 @@ function AnimeDetailsPageContent() {
         } else {
             navigate('/', { replace: true });
         }
-    }, [id, location.state, navigate, searchParams]);
+    }, [deferFetch, embeddedAnime, id, isEmbedded, location.state, navigate, searchParams]);
 
     const { isInWatchList, addToWatchList, removeFromWatchList } = useWatchList();
     const { isFavorite, addFavorite, removeFavorite } = useFavoriteAnime();
@@ -705,7 +743,7 @@ function AnimeDetailsPageContent() {
     const hasMismatchedTmdbRoute = tmdbRouteId > 0 && !hasRequestedAniListSeason && selectedTmdbId !== tmdbRouteId;
 
     useEffect(() => {
-        if (!id || !selectedAnime?.id) return;
+        if (isEmbedded || !id || !selectedAnime?.id) return;
         const currentRef = parseAnimeRouteId(id);
         if (!currentRef || currentRef.source === 'anilist') return;
         // The details page stays mounted across routes, so selectedAnime can still
@@ -877,7 +915,7 @@ function AnimeDetailsPageContent() {
                 state: location.state,
             });
         }
-    }, [id, location.state, navigate, searchParams]);
+    }, [deferFetch, embeddedAnime, id, isEmbedded, location.state, navigate, searchParams]);
 
     const [tmdbEpisodesState, setTmdbEpisodesState] = useState<{ key: string; episodes: TmdbEpisode[]; loading: boolean }>({
         key: '',
@@ -1376,7 +1414,7 @@ function AnimeDetailsPageContent() {
     };
 
     const targetRouteStr = id ? String(id).trim() : '';
-    const stateAnime = location.state?.anime as Partial<Anime> | undefined;
+    const stateAnime = (embeddedAnime || location.state?.anime) as Partial<Anime> | undefined;
     const lookupTitle = (selectedAnime?.title || selectedAnime?.title_english || stateAnime?.title || location.state?.animeTitle || '').trim().toLowerCase();
 
     const matchingDownloads = useMemo(() => {
@@ -1895,10 +1933,30 @@ function AnimeDetailsPageContent() {
         || displayAnime.images?.jpg?.image_url
         || displayAnime.anilist_cover_image
         || '';
+    const offlineCacheKeys = [
+        id,
+        displayAnime.id && Number(displayAnime.id) > 0 ? displayAnime.id : undefined,
+        displayAnime.mal_id && Number(displayAnime.mal_id) > 0 ? displayAnime.mal_id : undefined,
+        displayAnime.scraperId,
+    ].filter((k): k is string | number => Boolean(k) && String(k) !== '0');
+    const cachedOfflineEpisodes = offlineLibraryCache.getAnimeEpisodes(offlineCacheKeys);
+    const cachedOfflineEpMap = new Map(
+        cachedOfflineEpisodes.map((ep) => [Number(ep.episodeNumber || ep.playbackEpisodeNumber || 0), ep])
+    );
+
+    if (visibleEpisodes.length === 0 && cachedOfflineEpisodes.length > 0) {
+        visibleEpisodes = cachedOfflineEpisodes.map((ep) => ({
+            ...ep,
+            episodeNumber: String(ep.episodeNumber),
+            session: `offline-ep-${ep.episodeNumber}`,
+        }));
+    }
+
     visibleEpisodes = visibleEpisodes.map((ep, idx) => {
         const epNum = Number(ep.episodeNumber) || (idx + 1);
         const absEpNum = ep.playbackEpisodeNumber || ep._tmdbAbsolute || epNum;
         const tmdbFallback = tmdbEpisodeFallbacks.get(epNum);
+        const cachedEp = cachedOfflineEpMap.get(epNum) || cachedOfflineEpMap.get(absEpNum);
         const isTmdbSeasonEpisode = usingTmdbEpisodes;
         const meta = isTmdbSeasonEpisode
             ? episodeMeta?.absoluteEpisodes.get(absEpNum)
@@ -1911,9 +1969,11 @@ function AnimeDetailsPageContent() {
             /^episode\s+\d+(?:\.\d+)?$/i.test(ep.title.trim()) ||
             ep.title.trim() === String(epNum);
 
-        const title = isGenericTitle && (meta?.title || tmdbFallback?.title)
-            ? (meta?.title || tmdbFallback?.title || `Episode ${ep.episodeNumber}`)
-            : (ep.title || meta?.title || `Episode ${ep.episodeNumber}`);
+        const cachedHasRealTitle = Boolean(cachedEp?.title && !/^episode\s+\d+(?:\.\d+)?$/i.test(cachedEp.title.trim()));
+
+        const title = isGenericTitle && (meta?.title || tmdbFallback?.title || cachedHasRealTitle)
+            ? (meta?.title || tmdbFallback?.title || cachedEp?.title || `Episode ${ep.episodeNumber}`)
+            : (ep.title || meta?.title || cachedEp?.title || `Episode ${ep.episodeNumber}`);
 
         // When AniZip metadata is available, prefer AniZip screencaps or anime poster.
         // Scraper snapshots are low-quality with burned-in subtitles — skip them.
@@ -1921,17 +1981,19 @@ function AnimeDetailsPageContent() {
         const isHighQualitySrc = ep.thumbnail && (
             ep.thumbnail.includes('image.tmdb.org') || ep.thumbnail.includes('artworks.thetvdb.com')
         );
+        const cachedThumb = cachedEp?.thumbnail && cachedEp.thumbnail !== fallbackCover ? cachedEp.thumbnail : null;
         const thumbnail = (isTmdbSeasonEpisode && isHighQualitySrc ? ep.thumbnail : null)
             || meta?.thumbnail
             || (isHighQualitySrc ? ep.thumbnail : null)
             || tmdbFallback?.thumbnail
             || tmdbFallback?.snapshot
+            || cachedThumb
             || ep.thumbnail
             || ep.snapshot
             || fallbackCover;
         const snapshot = thumbnail;
-        const overview = ep.overview || meta?.overview || tmdbFallback?.overview;
-        const airDate = ep.airDate || meta?.airDate || tmdbFallback?.airDate;
+        const overview = ep.overview || meta?.overview || tmdbFallback?.overview || cachedEp?.overview;
+        const airDate = ep.airDate || meta?.airDate || tmdbFallback?.airDate || cachedEp?.airDate;
 
         return {
             ...ep,
@@ -1948,6 +2010,43 @@ function AnimeDetailsPageContent() {
         latestEpisode: displayAnime.latestEpisode,
         nextAiringEpisodeNumber: displayAnime.nextAiringEpisode?.episode,
     });
+
+    const hasRichEpisodeMetadata = visibleEpisodes.some(
+        (ep) =>
+            Boolean(ep.overview) ||
+            Boolean(ep.thumbnail && ep.thumbnail !== fallbackCover) ||
+            Boolean(ep.title && !/^episode\s+\d+(?:\.\d+)?$/i.test(ep.title.trim()))
+    );
+    if (visibleEpisodes.length > 0 && hasRichEpisodeMetadata) {
+        offlineLibraryCache.saveAnimeEpisodes(
+            offlineCacheKeys,
+            visibleEpisodes.map((ep, idx) => ({
+                episodeNumber: Number(ep.episodeNumber) || idx + 1,
+                playbackEpisodeNumber: ep.playbackEpisodeNumber,
+                title: ep.title,
+                overview: ep.overview,
+                thumbnail: ep.thumbnail,
+                snapshot: ep.snapshot,
+                airDate: ep.airDate,
+                duration: ep.duration,
+                tmdbSeason: ep.tmdbSeason,
+                tmdbEpisode: ep.tmdbEpisode,
+            })),
+        );
+    }
+
+    const releasedCount = visibleEpisodes.length;
+    const knownEpisodeCount = releasedCount > 0
+        ? releasedCount
+        : displayAnime.nextAiringEpisode?.episode
+            ? Math.max(0, displayAnime.nextAiringEpisode.episode - 1)
+            : Number(displayAnime.latestEpisode || displayAnime.episodes || 0);
+    if (knownEpisodeCount > 0) {
+        offlineLibraryCache.saveAnimeEpisodeCount(
+            offlineCacheKeys,
+            knownEpisodeCount,
+        );
+    }
 
     // anime identifier and title for download checks handled above
 
@@ -2076,7 +2175,7 @@ function AnimeDetailsPageContent() {
                 </div>
             )}
             {!searchParams.get('ep') && <div
-                className={`fixed inset-x-0 top-0 z-40 md:hidden border-b transition-colors duration-300 ${compactToolbar ? 'border-purple-400/15 bg-[#24202b]/95 backdrop-blur-xl' : 'border-transparent bg-transparent'}`}
+                className={`${isEmbedded ? 'sticky top-0 -mb-[calc(max(env(safe-area-inset-top,0px),24px)+3.5rem)]' : 'fixed inset-x-0 top-0'} z-40 md:hidden border-b transition-colors duration-300 ${compactToolbar ? 'border-purple-400/15 bg-[#24202b]/95 backdrop-blur-xl' : 'border-transparent bg-transparent'}`}
                 style={{ paddingTop: 'max(env(safe-area-inset-top, 0px), 24px)' }}
             >
                 <div className="flex h-14 items-center gap-3 px-4">
@@ -2092,9 +2191,25 @@ function AnimeDetailsPageContent() {
                     <button type="button" onClick={() => window.dispatchEvent(new Event('yorumi:anime:toggle-view'))} className="grid h-10 w-10 shrink-0 place-items-center text-white/85" aria-label="Toggle episode view">
                         <Grid2X2 className="h-5 w-5" />
                     </button>
-                    <button type="button" onClick={() => window.dispatchEvent(new Event('yorumi:anime:download-all'))} className="grid h-10 w-10 shrink-0 place-items-center text-white/85" aria-label="Download episodes">
-                        <Download className="h-5 w-5" />
-                    </button>
+                    <div className="relative">
+                        <button
+                            type="button"
+                            onClick={() => setMobileDownloadMenuOpen((open) => !open)}
+                            className="grid h-10 w-10 shrink-0 place-items-center text-white/85"
+                            aria-label="Download episodes"
+                        >
+                            <Download className="h-5 w-5" />
+                        </button>
+                        <BatchDownloadMenu
+                            isOpen={mobileDownloadMenuOpen}
+                            onClose={() => setMobileDownloadMenuOpen(false)}
+                            unit="episode"
+                            placement="bottom-right"
+                            onSelect={(mode: BatchDownloadMode) => {
+                                window.dispatchEvent(new CustomEvent('yorumi:anime:download-mode', { detail: mode }));
+                            }}
+                        />
+                    </div>
                 </div>
             </div>}
             {/* Fullscreen Seamless Backdrop Section */}
@@ -2193,6 +2308,12 @@ function AnimeDetailsPageContent() {
                             animeDuration={displayAnime.duration}
                             scraperSession={displayAnime.title}
                             anilistId={displayAnime.id}
+                            malId={displayAnime.mal_id}
+                            altTitles={[
+                                displayAnime.title_english,
+                                displayAnime.title_romaji,
+                                displayAnime.title_japanese,
+                            ].filter((t): t is string => Boolean(t && t.trim()))}
                             isMovie={isMovie}
                             onSeasonClick={handleSeasonChipClick}
                             onEpisodeClick={(ep) => {

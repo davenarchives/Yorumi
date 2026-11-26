@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { cacheImage } from '../services/offlineImageCache';
 import { storage, type ReadProgress } from '../utils/storage';
 import { useActivityHistory } from './useActivityHistory';
 
@@ -54,6 +55,13 @@ export function useContinueReading() {
         };
 
         storage.saveReadingProgress(progress);
+
+        if (typeof navigator === 'undefined' || navigator.onLine) {
+            const posterToCache = progress.mangaPoster || progress.mangaImage;
+            if (posterToCache) {
+                void cacheImage(posterToCache).catch(() => undefined);
+            }
+        }
 
         try {
             await recordActivity(`manga:${mangaId}:ch:${progress.chapterNumber}`);

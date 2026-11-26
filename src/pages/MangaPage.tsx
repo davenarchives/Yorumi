@@ -9,6 +9,7 @@ import Top100Manga from '../features/manga/components/Top100Manga';
 import LatestMangaUpdates from '../features/manga/components/LatestMangaUpdates';
 import type { Manga } from '../types/manga';
 import { getMangaDetailsRouteId } from '../utils/mangaNavigation';
+import { isMobileShell } from '../platform/runtime';
 
 export default function MangaPage() {
     const navigate = useNavigate();
@@ -30,7 +31,7 @@ export default function MangaPage() {
                 <div className="absolute inset-0 bg-[#070707]/65" />
             </div>}
             {/* Spotlight Hero Section */}
-            <MangaSpotlight onBackdropChange={setBackdrop} onMangaClick={handleSpotlightClick} />
+            <MangaSpotlight onBackdropChange={isMobileShell() ? undefined : setBackdrop} onMangaClick={handleSpotlightClick} />
 
             <div className="reading-home-sections relative z-10 mx-auto mt-3 md:-mt-6 w-full max-w-[1440px] px-4 sm:px-10 md:px-14 lg:px-16">
 
