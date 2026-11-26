@@ -37,19 +37,22 @@ export function groupStudioAnime(items: Anime[]): Anime[] {
             if (edge.node.id) parents.set(find(edge.node.id), find(id));
         }
     }
+    const allowedFormats = new Set(['TV', 'MOVIE', 'ONA', 'OVA', 'TV_SHORT']);
     const groups = new Map<number, Anime[]>();
     for (const anime of unique) {
         const id = anime.anilistId || anime.id;
-        if (!id || !['TV', 'MOVIE'].includes(String(anime.type || '').toUpperCase())) continue;
+        const fmt = String(anime.type || '').toUpperCase();
+        if (!id || (fmt && !allowedFormats.has(fmt))) continue;
         const root = find(id);
         const group = groups.get(root) || [];
         group.push(anime);
         groups.set(root, group);
     }
     const emitted = new Set<number>();
-    return unique.flatMap((anime) => {
+    const grouped = unique.flatMap((anime) => {
         const id = anime.anilistId || anime.id;
-        if (!id || !['TV', 'MOVIE'].includes(String(anime.type || '').toUpperCase())) return [];
+        const fmt = String(anime.type || '').toUpperCase();
+        if (!id || (fmt && !allowedFormats.has(fmt))) return [];
         const root = find(id);
         if (emitted.has(root)) return [];
         emitted.add(root);
@@ -57,4 +60,5 @@ export function groupStudioAnime(items: Anime[]): Anime[] {
             return (a.year || Infinity) - (b.year || Infinity);
         })[0]];
     });
+    return grouped.length > 0 ? grouped : unique;
 }

@@ -75,7 +75,7 @@ let aniListQueue: Promise<void> = Promise.resolve();
 let lastAniListRequestAt = 0;
 const aniListInFlight = new Map<string, Promise<unknown>>();
 
-const waitForAniListSlot = async (minIntervalMs = 650) => {
+const waitForAniListSlot = async (minIntervalMs = 200) => {
     const previous = aniListQueue;
     let release!: () => void;
     aniListQueue = new Promise<void>((resolve) => {
@@ -103,7 +103,7 @@ const queryAniList = async <T>(query: string, variables: Record<string, unknown>
     const promise = (async () => {
         let lastError: unknown;
         for (let attempt = 0; attempt < 3; attempt += 1) {
-            await waitForAniListSlot(attempt === 0 ? 650 : 1800);
+            await waitForAniListSlot(attempt === 0 ? 200 : 1200);
             try {
                 const result = await postJson<GraphQLResponse<T>>(ANILIST_GRAPHQL_URL, { query, variables });
                 if (result.errors?.length) {
@@ -172,25 +172,101 @@ export type AnimeListOptions = {
 
 export type StudioSort = 'newest' | 'popular' | 'topRated';
 
+const STUDIO_MEDIA_FIELDS = `
+    id idMal
+    title { english romaji native userPreferred }
+    coverImage { large extraLarge }
+    bannerImage format episodes duration averageScore popularity isAdult status genres
+    season seasonYear
+    startDate { year month day }
+    countryOfOrigin
+    nextAiringEpisode { episode airingAt timeUntilAiring }
+`;
+
 export const getLocalAniListStudioPage = async (name: string, page = 1, sort: StudioSort = 'topRated') => {
-    const query = `
-        query StudioAnime($name: String!, $page: Int!, $sort: [MediaSort]) {
-            Studio(search: $name) {
-                name
-                media(page: $page, perPage: 24, sort: $sort) {
-                    pageInfo { currentPage lastPage hasNextPage total }
-                    nodes { ${MEDIA_FIELDS} relations { edges { relationType node { ${ANIME_SEASON_CHAIN_NODE_FIELDS} } } } }
+    const cleanName = String(name || '').trim();
+    const sortValues = sort === 'newest'
+        ? ['START_DATE_DESC', 'POPULARITY_DESC']
+        : sort === 'popular'
+            ? ['POPULARITY_DESC']
+            : ['SCORE_DESC', 'POPULARITY_DESC'];
+
+    const pageQuery = `
+        query StudioAnimeSearch($name: String!, $page: Int!, $sort: [MediaSort]) {
+            Page(page: 1, perPage: 5) {
+                studios(search: $name, sort: SEARCH_MATCH) {
+                    id
+                    name
+                    isAnimationStudio
+                    media(page: $page, perPage: 24, sort: $sort) {
+                        pageInfo { currentPage lastPage hasNextPage total }
+                        nodes { ${STUDIO_MEDIA_FIELDS} relations { edges { relationType node { ${ANIME_SEASON_CHAIN_NODE_FIELDS} } } } }
+                    }
                 }
             }
         }
     `;
-    const data = await queryAniList<{
-        Studio: { name: string; media: { pageInfo: AniListPageInfo; nodes: LocalAniListAnime[] } };
-    }>(query, { name, page, sort: sort === 'newest' ? ['START_DATE_DESC', 'POPULARITY_DESC'] : sort === 'popular' ? ['POPULARITY_DESC'] : ['SCORE_DESC', 'POPULARITY_DESC'] });
+
+    const pickBestStudio = (
+        studios: Array<{
+            id: number;
+            name: string;
+            isAnimationStudio?: boolean;
+            media?: { pageInfo: AniListPageInfo; nodes: LocalAniListAnime[] };
+        }>
+    ) => {
+        if (!Array.isArray(studios) || studios.length === 0) return null;
+        const lowerTarget = cleanName.toLowerCase();
+        const withMedia = studios.filter((s) => (s.media?.nodes?.length || 0) > 0);
+        const pool = withMedia.length > 0 ? withMedia : studios;
+        return (
+            pool.find((s) => s.name.toLowerCase() === lowerTarget && s.isAnimationStudio) ||
+            pool.find((s) => s.name.toLowerCase() === lowerTarget) ||
+            pool.find((s) => s.isAnimationStudio) ||
+            pool[0]
+        );
+    };
+
+    const runLookup = async (searchTerm: string) => {
+        const data = await queryAniList<{
+            Page?: {
+                studios?: Array<{
+                    id: number;
+                    name: string;
+                    isAnimationStudio?: boolean;
+                    media?: { pageInfo: AniListPageInfo; nodes: LocalAniListAnime[] };
+                }>;
+            };
+        }>(pageQuery, { name: searchTerm, page, sort: sortValues });
+        return pickBestStudio(data.Page?.studios || []);
+    };
+
+    let studio = await runLookup(cleanName);
+    if (!studio || (studio.media?.nodes?.length || 0) === 0) {
+        const simplified = cleanName
+            .replace(/\b(co\.?,?\s*ltd\.?|inc\.?|llc|corp\.?|corporation|studio|animation)\b/gi, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+        if (simplified && simplified.toLowerCase() !== cleanName.toLowerCase()) {
+            const fallbackStudio = await runLookup(simplified).catch(() => null);
+            if (fallbackStudio && (fallbackStudio.media?.nodes?.length || 0) > 0) {
+                studio = fallbackStudio;
+            }
+        }
+    }
+
+    if (!studio || !studio.media) {
+        return {
+            name: cleanName,
+            pageInfo: { currentPage: page, lastPage: page, hasNextPage: false, total: 0 },
+            media: [] as LocalAniListAnime[],
+        };
+    }
+
     return {
-        name: data.Studio.name,
-        pageInfo: data.Studio.media.pageInfo,
-        media: data.Studio.media.nodes.filter((item) => !item.isAdult),
+        name: studio.name,
+        pageInfo: studio.media.pageInfo,
+        media: (studio.media.nodes || []).filter((item) => !item.isAdult),
     };
 };
 

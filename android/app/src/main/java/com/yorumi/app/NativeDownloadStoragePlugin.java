@@ -1,7 +1,11 @@
 package com.yorumi.app;
 
+import android.content.Intent;
+import android.os.Build;
 import android.os.Environment;
 import android.net.Uri;
+import android.provider.Settings;
+import androidx.core.content.FileProvider;
 import android.media.MediaCodec;
 import android.media.MediaExtractor;
 import android.media.MediaFormat;
@@ -771,5 +775,116 @@ public class NativeDownloadStoragePlugin extends Plugin {
             long estimatedTotal = progress > 0 ? Math.max(receivedBytes, (receivedBytes * 100L) / progress) : receivedBytes;
             emitProgress(operationId, progress, receivedBytes, estimatedTotal);
         }
+    }
+
+    @PluginMethod
+    public void downloadAndInstallApk(PluginCall call) {
+        String rawUrl = call.getString("url", "").trim();
+        boolean allowed =
+            rawUrl.startsWith("https://github.com/davenarchives/Yorumi/") ||
+            rawUrl.startsWith("https://objects.githubusercontent.com/") ||
+            rawUrl.startsWith("https://release-assets.githubusercontent.com/");
+        if (!allowed) {
+            call.reject("Untrusted update download URL");
+            return;
+        }
+
+        // On Android 8+, ensure the app is permitted to launch package installs
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+            !getContext().getPackageManager().canRequestPackageInstalls()) {
+            try {
+                Intent permIntent = new Intent(
+                    Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                    Uri.parse("package:" + getContext().getPackageName())
+                );
+                permIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                getContext().startActivity(permIntent);
+            } catch (Exception ignored) {}
+            call.reject("Allow \"Install unknown apps\" for Yorumi, then tap Download again.");
+            return;
+        }
+
+        Executors.newSingleThreadExecutor().execute(() -> {
+            File updateDir = new File(getContext().getCacheDir(), "updates");
+            if (!updateDir.exists()) {
+                //noinspection ResultOfMethodCallIgnored
+                updateDir.mkdirs();
+            }
+            File apkFile = new File(updateDir, "Yorumi-update.apk");
+            File tempFile = new File(updateDir, "Yorumi-update.apk.part");
+
+            try {
+                Request request = new Request.Builder()
+                    .url(rawUrl)
+                    .header("User-Agent", "Yorumi-Android-Updater/1.0")
+                    .build();
+
+                try (Response response = client.newCall(request).execute()) {
+                    if (!response.isSuccessful() || response.body() == null) {
+                        call.reject("Update server returned HTTP " + response.code());
+                        return;
+                    }
+                    ResponseBody body = response.body();
+                    long total = body.contentLength();
+                    long downloaded = 0;
+                    int lastPercent = -1;
+
+                    try (InputStream in = new BufferedInputStream(body.byteStream(), BUFFER_SIZE);
+                         BufferedOutputStream out = new BufferedOutputStream(new FileOutputStream(tempFile), BUFFER_SIZE)) {
+                        byte[] buf = new byte[BUFFER_SIZE];
+                        int read;
+                        while ((read = in.read(buf)) != -1) {
+                            out.write(buf, 0, read);
+                            downloaded += read;
+                            int pct = total > 0 ? (int) Math.min(100L, (downloaded * 100L) / total) : 0;
+                            if (pct != lastPercent) {
+                                lastPercent = pct;
+                                JSObject evt = new JSObject();
+                                evt.put("percent", pct);
+                                evt.put("downloaded", downloaded);
+                                evt.put("total", total);
+                                notifyListeners("updateDownloadProgress", evt);
+                            }
+                        }
+                        out.flush();
+                    }
+                }
+
+                if (apkFile.exists()) {
+                    //noinspection ResultOfMethodCallIgnored
+                    apkFile.delete();
+                }
+                if (!tempFile.renameTo(apkFile)) {
+                    call.reject("Failed to finalize update APK");
+                    return;
+                }
+
+                JSObject doneEvt = new JSObject();
+                doneEvt.put("percent", 100);
+                doneEvt.put("downloaded", apkFile.length());
+                doneEvt.put("total", apkFile.length());
+                notifyListeners("updateDownloadProgress", doneEvt);
+
+                Uri apkUri = FileProvider.getUriForFile(
+                    getContext(),
+                    getContext().getPackageName() + ".fileprovider",
+                    apkFile
+                );
+                Intent installIntent = new Intent(Intent.ACTION_VIEW);
+                installIntent.setDataAndType(apkUri, "application/vnd.android.package-archive");
+                installIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
+                getContext().startActivity(installIntent);
+
+                JSObject res = new JSObject();
+                res.put("installed", true);
+                call.resolve(res);
+            } catch (Exception e) {
+                if (tempFile.exists()) {
+                    //noinspection ResultOfMethodCallIgnored
+                    tempFile.delete();
+                }
+                call.reject("Failed to download update: " + e.getMessage());
+            }
+        });
     }
 }

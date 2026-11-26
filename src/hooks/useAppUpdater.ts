@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { isNativeMobile, isTauri } from '../platform/runtime';
+import { downloadAndInstallAndroidApk } from '../platform/nativeDownloadStorage';
 
 interface GithubReleaseAsset {
     name: string;
@@ -197,7 +198,19 @@ export function useAppUpdater(): AppUpdateState {
     const installUpdate = useCallback(async () => {
         if (status === 'downloading' || status === 'installing') return;
         if (isNativeMobile() && downloadUrl) {
-            window.open(downloadUrl, '_blank', 'noopener,noreferrer');
+            setStatus('downloading');
+            setProgress(0);
+            setError(null);
+            try {
+                await downloadAndInstallAndroidApk(downloadUrl, (pct) => {
+                    setProgress(pct);
+                    if (pct >= 100) setStatus('installing');
+                });
+                setStatus('installing');
+            } catch (err) {
+                setStatus('error');
+                setError(err instanceof Error ? err.message : String(err));
+            }
             return;
         }
         if (!isTauri() || !downloadUrl || !assetName) {

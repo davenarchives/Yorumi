@@ -102,19 +102,62 @@ pub async fn install_desktop_update(
 
     #[cfg(target_os = "windows")]
     {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        const DETACHED_PROCESS: u32 = 0x00000008;
+
+        let current_exe = std::env::current_exe()
+            .ok()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_default();
+        let installer_str = target_path.to_string_lossy().to_string();
+        let esc = |s: &str| s.replace('\'', "''");
         let lower = safe_name.to_lowercase();
-        if lower.ends_with(".msi") {
-            std::process::Command::new("msiexec")
-                .args(["/i", &target_path.to_string_lossy(), "/passive"])
-                .spawn()
-                .map_err(|e| format!("Failed to launch MSI installer: {e}"))?;
+
+        // Wait briefly for Yorumi to exit, run silent installer to completion, then relaunch Yorumi
+        let install_cmd = if lower.ends_with(".msi") {
+            format!(
+                "Start-Process -FilePath 'msiexec.exe' -ArgumentList '/i','\"{}\"' ,'/passive' -Wait",
+                esc(&installer_str)
+            )
         } else {
-            // Tauri NSIS installer supports /S for silent in-place update & relaunch
-            std::process::Command::new(&target_path)
-                .arg("/S")
-                .spawn()
-                .map_err(|e| format!("Failed to launch installer: {e}"))?;
-        }
+            format!(
+                "Start-Process -FilePath '{}' -ArgumentList '/S' -Wait",
+                esc(&installer_str)
+            )
+        };
+
+        let relaunch_script = format!(
+            "Start-Sleep -Milliseconds 600; \
+             {install_cmd}; \
+             Start-Sleep -Milliseconds 500; \
+             $exe = '{exe}'; \
+             if (-not $exe -or -not (Test-Path $exe)) {{ \
+               $candidates = @( \
+                 (Join-Path $env:LOCALAPPDATA 'Yorumi\\Yorumi.exe'), \
+                 (Join-Path $env:LOCALAPPDATA 'Programs\\Yorumi\\Yorumi.exe'), \
+                 (Join-Path $env:ProgramFiles 'Yorumi\\Yorumi.exe') \
+               ); \
+               $exe = $candidates | Where-Object {{ Test-Path $_ }} | Select-Object -First 1; \
+             }}; \
+             if ($exe -and (Test-Path $exe)) {{ Start-Process -FilePath $exe }}",
+            install_cmd = install_cmd,
+            exe = esc(&current_exe),
+        );
+
+        std::process::Command::new("powershell")
+            .args([
+                "-NoProfile",
+                "-NonInteractive",
+                "-WindowStyle",
+                "Hidden",
+                "-Command",
+                &relaunch_script,
+            ])
+            .creation_flags(CREATE_NO_WINDOW | DETACHED_PROCESS)
+            .spawn()
+            .map_err(|e| format!("Failed to launch updater helper: {e}"))?;
+
         app.exit(0);
     }
 

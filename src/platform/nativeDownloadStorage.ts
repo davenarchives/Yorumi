@@ -34,7 +34,12 @@ type NativeDownloadStoragePlugin = {
     delete(options: { filePath: string }): Promise<void>;
     setPaused(options: { operationId: string; paused: boolean }): Promise<void>;
     cancel(options: { operationId: string }): Promise<void>;
+    downloadAndInstallApk(options: { url: string }): Promise<{ installed: boolean }>;
     addListener(eventName: 'progress', listener: (event: NativeProgress) => void): Promise<PluginListenerHandle>;
+    addListener(
+        eventName: 'updateDownloadProgress',
+        listener: (event: { percent?: number; downloaded?: number; total?: number }) => void
+    ): Promise<PluginListenerHandle>;
 };
 
 const NativeDownloadStorage = registerPlugin<NativeDownloadStoragePlugin>('NativeDownloadStorage');
@@ -76,5 +81,26 @@ export const setNativeDownloadPaused = async (operationId: string, paused: boole
 export const cancelNativeDownload = async (operationId: string) => {
     if (isAndroidDownloadStorageAvailable()) {
         await NativeDownloadStorage.cancel({ operationId });
+    }
+};
+
+export const downloadAndInstallAndroidApk = async (
+    url: string,
+    onProgress?: (percent: number) => void
+) => {
+    if (!isAndroidDownloadStorageAvailable()) {
+        throw new Error('Android native installer unavailable');
+    }
+    let listener: PluginListenerHandle | null = null;
+    if (onProgress) {
+        listener = await NativeDownloadStorage.addListener('updateDownloadProgress', (event) => {
+            const pct = Number(event?.percent ?? 0);
+            onProgress(Math.max(0, Math.min(100, pct)));
+        });
+    }
+    try {
+        return await NativeDownloadStorage.downloadAndInstallApk({ url });
+    } finally {
+        await listener?.remove();
     }
 };

@@ -2108,6 +2108,7 @@ function AnimeDetailsPageContent({
         activeChip?.source === 'mapping' ? mappedTmdbEpisodesLoading : tmdbEpisodesLoading
     ) && !hasEpisodes;
     const isActiveSeasonEpisodesResolving = Boolean(
+        !hasEpisodes &&
         expectedEpisodeOwnerKey &&
         !episodesBelongToActiveSeason &&
         (epLoading || detailsLoading || episodesBackgroundLoading || !episodesResolved)

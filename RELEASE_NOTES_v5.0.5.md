@@ -4,6 +4,7 @@ Yorumi **v5.0.5** focuses on true **offline-first Library & History persistence*
 - **TikTok-Style Mobile Menu Drawer & Pages**: Added a smooth zero-bounce slide-over drawer (`Updates`, `Download queue`, `History`, `Statistics`, `Data and storage`, `Join us`, `Global chat`, `Settings`, `About`) with right-edge swipe-left to open, whole-screen + navbar push, and no re-animation when returning from subpages.
 - **Downloaded Only & Incognito Mode**: Added persistent `Downloaded only` (with a sticky top status bar and automatic Library filtering) and `Incognito mode` (pausing anime, manga, LN, and search history writes).
 - **Android Episode Update Push Notifications**: Added a native Android `"Episode updates"` notification channel that alerts you when airing watchlist anime release new episodes and deep-links straight to the anime details page.
+- **In-App Android APK Updater & Desktop Auto-Relaunch**: Android updates now download directly inside Yorumi with live progress and open the native package installer in-place (no browser redownload), while Windows silent updates automatically relaunch the updated app and use the Yorumi logo on `Yorumi.exe` setup.
 - **Explore Swipe-Left to Real Details**: Swiping left on any Explore trailer now smoothly reveals the real `AnimeDetailsPage` preloaded with metadata (loading episodes once snapped open) and returns to your exact Explore session on Back.
 - **Tabbed Download Queue & Date-Grouped History**: Upgraded Download Queue with `Anime | Manga | LN` tabs showing full series title, episode/chapter label, progress, and cancel controls, plus a date-grouped vertical History view (`Today`, `Yesterday`, `M/D/YY`).
 
@@ -17,6 +18,7 @@ Yorumi **v5.0.5** focuses on true **offline-first Library & History persistence*
 - **Android & Desktop Anime Downloads**: Fixed MAL-keyed anime downloads failing by passing `malId` and `altTitles` to stream resolution, deduplicated local scraper queries, added `403`/`401` header fallback (`Referer+Origin` → `Referer` → no headers) and a `720p` mobile stream cap in `NativeDownloadStoragePlugin`, and wired real native download cancellation.
 - **Offline Manga & LN Posters & Details**: Fixed CORS/hotlink-blocked MangaKatana and NovelFire posters failing to cache on Tauri Desktop by sending inferred `Referer` headers through `yorumi-media`, and wired `ReadingDetailsHero` to render cached offline posters and backdrops.
 - **Drawer & Subpage Alignment**: Fixed `/menu/*` pages shifting left after drawer navigation, removed unnecessary bounce on drawer open/pull-to-refresh, and cleaned up About page icons and layout.
+- **Instant Mobile Episodes & Studios**: Fixed episodes waiting on slow background scrapers behind loading skeletons when metadata is already ready, reduced AniList client request spacing, and fixed empty Studio pages on mobile and desktop.
 
 ## Under the hood
 - **Offline Stores**: Added `src/services/offlineHistoryStore.ts` (IndexedDB backup + boot hydration) and extended `src/services/offlineLibraryCache.ts` with full Manga, LN, and Anime metadata caching.

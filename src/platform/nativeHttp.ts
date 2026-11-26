@@ -174,19 +174,25 @@ export const postJson = async <T>(url: string, data: unknown, headers: Record<st
     };
 
     if (isNativeMobile()) {
-        const response = await CapacitorHttp.post({
-            url,
-            data,
-            headers: requestHeaders,
-            connectTimeout: 15_000,
-            readTimeout: 20_000,
-            responseType: 'json',
-        });
+        try {
+            const response = await CapacitorHttp.post({
+                url,
+                data,
+                headers: requestHeaders,
+                connectTimeout: 15_000,
+                readTimeout: 20_000,
+                responseType: 'json',
+            });
 
-        if (response.status < 200 || response.status >= 300) {
-            throw new Error(`Native HTTP ${response.status} for ${url}`);
+            if (response.status < 200 || response.status >= 300) {
+                throw new Error(`Native HTTP ${response.status} for ${url}`);
+            }
+            return (typeof response.data === 'string' ? JSON.parse(response.data) : response.data) as T;
+        } catch (error) {
+            const msg = String(error || '');
+            if (msg.includes('HTTP 429')) throw error;
+            console.warn(`[Native HTTP] Capacitor POST failed for ${url}; falling back to fetch.`, error);
         }
-        return response.data as T;
     }
 
     if (isTauri()) {

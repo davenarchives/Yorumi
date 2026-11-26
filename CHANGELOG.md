@@ -11,6 +11,7 @@
 - Added smooth 60fps Explore swipe-left to real `AnimeDetailsPage` (`ExplorePage.tsx`, `AnimeDetailsPage.tsx`, `screenShift.ts`, `App.tsx`) with preloaded metadata, deferred episode loading, and single-active YouTube iframe optimization, plus static pull-to-refresh navbar (`MobilePullToRefresh.tsx`, `src/index.css`).
 - Fixed Android & Desktop anime downloads (`AnimeDetailsPage.tsx`, `DetailsEpisodeGrid.tsx`, `NativeDownloadStoragePlugin.java`, `nativeDownloadStorage.ts`, `downloadService.ts`, `useDownloads.ts`): passed `malId` + `altTitles` for stream resolution, added 720p mobile cap, `403`/`401` header fallback, and real native cancellation.
 - Updated marketing website (`website/src/App.tsx`, `website/src/Documentation.tsx`) with left-aligned mobile layout, single-row hero CTA buttons, jitter-free live download counter, and `v5.0.5` changelog & download links.
+- Fixed slow mobile episode rendering (`AnimeDetailsPage.tsx`, `anilistAnime.ts`) and empty Studio pages (`anilistAnime.ts`, `nativeHttp.ts`, `studioCatalogue.ts`); added Yorumi NSIS setup icon (`tauri.conf.json`), Windows silent update auto-relaunch (`updater.rs`), and Android in-app APK download + native package installer (`NativeDownloadStoragePlugin.java`, `nativeDownloadStorage.ts`, `useAppUpdater.ts`, `AndroidManifest.xml`).
 
 ## [5.0.0] - 2026-11-25
 
