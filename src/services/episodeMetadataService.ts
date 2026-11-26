@@ -16,6 +16,7 @@ export interface AnimeMetadataPayload {
     malId?: number;
     tmdbId?: number;
     tvdbId?: number;
+    imdbId?: string;
     logo?: string;
     backdrop?: string;
     banner?: string;
@@ -31,6 +32,7 @@ interface SerializedMetadataPayload {
     malId?: number;
     tmdbId?: number;
     tvdbId?: number;
+    imdbId?: string;
     logo?: string;
     backdrop?: string;
     banner?: string;
@@ -40,7 +42,7 @@ interface SerializedMetadataPayload {
     specialEpisodes?: Array<[number, EpisodeMeta]>;
 }
 
-const CACHE_PREFIX = 'yorumi_anizip_ep_meta_v4';
+const CACHE_PREFIX = 'yorumi_anizip_ep_meta_v5';
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 // Purge any stale caches from previous versions
@@ -79,6 +81,7 @@ const readSessionCache = (key: string): AnimeMetadataPayload | null => {
             malId: parsed.malId,
             tmdbId: parsed.tmdbId,
             tvdbId: parsed.tvdbId,
+            imdbId: parsed.imdbId,
             logo: parsed.logo,
             backdrop: parsed.backdrop,
             banner: parsed.banner,
@@ -103,6 +106,7 @@ const writeSessionCache = (key: string, payload: AnimeMetadataPayload) => {
             malId: payload.malId,
             tmdbId: payload.tmdbId,
             tvdbId: payload.tvdbId,
+            imdbId: payload.imdbId,
             logo: payload.logo,
             backdrop: payload.backdrop,
             banner: payload.banner,
@@ -166,21 +170,38 @@ export const episodeMetadataService = {
             const timeoutId = window.setTimeout(() => controller.abort(), 6000);
 
             try {
-                const queryParam = anilistId && anilistId > 0
-                    ? `anilist_id=${anilistId}`
-                    : `mal_id=${malId}`;
-                const res = await fetch(`https://api.ani.zip/mappings?${queryParam}`, {
-                    signal: controller.signal,
-                    headers: { Accept: 'application/json' },
-                });
+                const fetchAniZip = async (param: string) => {
+                    const res = await fetch(`https://api.ani.zip/mappings?${param}`, {
+                        signal: controller.signal,
+                        headers: { Accept: 'application/json' },
+                    });
+                    return res.ok ? await res.json() : null;
+                };
 
-                if (!res.ok) return null;
+                let data = await fetchAniZip(
+                    anilistId && anilistId > 0 ? `anilist_id=${anilistId}` : `mal_id=${malId}`
+                );
+                // If AniList mapping missed or lacked images, retry via MAL ID when available
+                const hasAnyImage = (d: { images?: unknown } | null) => Array.isArray(d?.images) && d.images.length > 0;
+                if ((!data || !hasAnyImage(data)) && anilistId && anilistId > 0 && malId && malId > 0) {
+                    const malData = await fetchAniZip(`mal_id=${malId}`).catch(() => null);
+                    if (malData && (!data || hasAnyImage(malData))) {
+                        data = malData;
+                    }
+                }
+                if (!data) return null;
 
-                const data = await res.json();
                 const rawImages: Array<{ coverType?: string; url?: string }> = Array.isArray(data?.images) ? data.images : [];
-                const pickImage = (type: string) =>
-                    rawImages.find((img) => String(img?.coverType || '').toLowerCase() === type.toLowerCase() && typeof img?.url === 'string' && img.url.trim())?.url?.trim();
-                const logo = pickImage('Clearlogo');
+                const pickImage = (...types: string[]) => {
+                    for (const type of types) {
+                        const match = rawImages.find(
+                            (img) => String(img?.coverType || '').toLowerCase() === type.toLowerCase() && typeof img?.url === 'string' && img.url.trim()
+                        )?.url?.trim();
+                        if (match) return match;
+                    }
+                    return undefined;
+                };
+                const logo = pickImage('Clearlogo', 'Logo');
                 const backdrop = pickImage('Fanart');
                 const banner = pickImage('Banner');
                 const poster = pickImage('Poster');
@@ -250,12 +271,16 @@ export const episodeMetadataService = {
 
                 const rawTmdbId = Number(data?.mappings?.themoviedb_id || data?.mappings?.tmdb_id || 0);
                 const rawTvdbId = Number(data?.mappings?.thetvdb_id || 0);
+                const rawImdbId = typeof data?.mappings?.imdb_id === 'string' && data.mappings.imdb_id.trim().startsWith('tt')
+                    ? data.mappings.imdb_id.trim()
+                    : undefined;
 
                 const payload: AnimeMetadataPayload = {
                     anilistId: Number(data?.mappings?.anilist_id) || anilistId,
                     malId: Number(data?.mappings?.mal_id) || malId,
                     tmdbId: Number.isFinite(rawTmdbId) && rawTmdbId > 0 ? rawTmdbId : undefined,
                     tvdbId: Number.isFinite(rawTvdbId) && rawTvdbId > 0 ? rawTvdbId : undefined,
+                    imdbId: rawImdbId,
                     logo,
                     backdrop,
                     banner,

@@ -7,10 +7,37 @@ pub use yorumi_core::{db, downloader, scrapers};
 use state::AppState;
 use tauri::{Emitter, Manager};
 
+const YT_HUD_CLEANER_SCRIPT: &str = r#"
+(function () {
+  try {
+    if (location.hostname !== 'www.youtube-nocookie.com' || !location.pathname.startsWith('/embed/')) return;
+    var css = '.ytp-bezel,.ytp-bezel-text-wrapper,.ytp-bezel-icon,.ytp-doubletap-ui-legacy,.ytp-chrome-top,.ytp-chrome-bottom,.ytp-gradient-top,.ytp-gradient-bottom,.ytp-pause-overlay,.ytp-pause-overlay-container,.ytp-cued-thumbnail-overlay,.ytp-large-play-button,.ytp-watermark,.ytp-title,.ytp-show-cards-title,.player-controls-content,.player-controls-middle,.player-controls-top,.player-controls-bottom,.player-controls-background,.player-controls-background-container,ytm-custom-control,.ytm-autonav-overlay,.c3-overlay,.icon-button.player-control-play-pause-icon{display:none!important;opacity:0!important;visibility:hidden!important;pointer-events:none!important;}';
+    var inject = function () {
+      if (document.getElementById('yorumi-yt-hud-hide')) return;
+      var root = document.head || document.documentElement;
+      if (!root) return;
+      var s = document.createElement('style');
+      s.id = 'yorumi-yt-hud-hide';
+      var nonceEl = document.querySelector('style[nonce],script[nonce]');
+      if (nonceEl && nonceEl.nonce) s.nonce = nonceEl.nonce;
+      s.textContent = css;
+      root.appendChild(s);
+    };
+    inject();
+    document.addEventListener('DOMContentLoaded', inject, { once: true });
+  } catch (_) {}
+})();
+"#;
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(
+            tauri::plugin::Builder::<tauri::Wry, ()>::new("youtube-hud-cleaner")
+                .js_init_script(YT_HUD_CLEANER_SCRIPT)
+                .build(),
+        )
         .setup(|app| {
             #[cfg(mobile)]
             let db_path = Some(app.path().app_data_dir()?.join("yorumi.db"));

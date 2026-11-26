@@ -3,6 +3,8 @@ import { setLocalStorageWithCleanup } from '../utils/localStorageQuota';
 import { episodeMetadataService } from './episodeMetadataService';
 
 const TMDB_BASE = 'https://api.themoviedb.org/3';
+const DEFAULT_TMDB_PROXY_BASE = 'https://yorumi-tmdb-proxy.sumagang-austhine.workers.dev/3';
+const TMDB_PROXY_BASE = ((import.meta.env.VITE_TMDB_PROXY_URL as string | undefined) || DEFAULT_TMDB_PROXY_BASE).trim().replace(/\/+$/, '');
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p';
 const TOKEN_KEY = 'yorumi_tmdb_read_access_token';
 const SETUP_COMPLETE_KEY = 'yorumi_tmdb_setup_complete';
@@ -213,6 +215,17 @@ const writeToken = (token: string) => {
     memoryCache.clear();
 };
 
+const clearToken = () => {
+    try {
+        localStorage.removeItem(TOKEN_KEY);
+    } catch {
+        // Ignore storage errors
+    }
+    memoryCache.clear();
+};
+
+const hasTmdbAccess = () => Boolean(readToken() || TMDB_PROXY_BASE);
+
 const buildSignal = (timeoutMs: number) => {
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
@@ -220,9 +233,12 @@ const buildSignal = (timeoutMs: number) => {
 };
 
 const tmdbFetch = async <T>(path: string, token = readToken(), cacheTtl = CACHE_TTL): Promise<T> => {
-    if (!token) throw new Error('TMDB token missing');
+    const useDirectToken = Boolean(token);
+    const useProxy = !useDirectToken && Boolean(TMDB_PROXY_BASE);
+    if (!useDirectToken && !useProxy) throw new Error('TMDB token missing');
 
-    const cacheKey = `${token}:${path}${cacheTtl === CACHE_TTL ? '' : `:ttl-${cacheTtl}`}`;
+    const cacheScope = useDirectToken ? token : `proxy:${TMDB_PROXY_BASE}`;
+    const cacheKey = `${cacheScope}:${path}${cacheTtl === CACHE_TTL ? '' : `:ttl-${cacheTtl}`}`;
     const cached = readCachedValue<T>(cacheKey);
     if (cached) return cached;
 
@@ -232,13 +248,12 @@ const tmdbFetch = async <T>(path: string, token = readToken(), cacheTtl = CACHE_
     const request = (async () => {
         const { signal, cleanup } = buildSignal(8000);
         try {
-            const res = await fetch(`${TMDB_BASE}${path}`, {
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                    Accept: 'application/json',
-                },
-                signal,
-            });
+            const url = useDirectToken ? `${TMDB_BASE}${path}` : `${TMDB_PROXY_BASE}${path}`;
+            const headers: Record<string, string> = { Accept: 'application/json' };
+            if (useDirectToken) {
+                headers.Authorization = `Bearer ${token}`;
+            }
+            const res = await fetch(url, { headers, signal });
 
             if (!res.ok) throw new Error(`TMDB ${res.status}`);
 
@@ -386,9 +401,57 @@ const resolveMovieDetails = async (anime: Anime): Promise<TmdbMovieDetails | nul
     return details;
 };
 
+const probeImageUrl = async (url: string): Promise<string | null> => {
+    const clean = String(url || '').trim();
+    if (!clean) return null;
+    const cacheKey = `probe:${clean}`;
+    const cached = readCachedValue<boolean>(cacheKey);
+    if (cached !== null) return cached ? clean : null;
+
+    const { signal, cleanup } = buildSignal(4000);
+    try {
+        const res = await fetch(clean, { method: 'HEAD', signal });
+        const contentType = res.headers.get('content-type') || '';
+        const ok = res.ok && (!contentType || contentType.toLowerCase().startsWith('image/'));
+        writeCachedValue(cacheKey, ok, ok ? CACHE_TTL : 60 * 60 * 1000);
+        return ok ? clean : null;
+    } catch {
+        return null;
+    } finally {
+        cleanup();
+    }
+};
+
+const resolveFallbackArtwork = async (anime: Anime, kind: 'backdrop' | 'logo'): Promise<string | null> => {
+    const anizip = await episodeMetadataService.getEpisodeMetadata(anime.id, anime.mal_id).catch(() => null);
+    if (anizip?.imdbId) {
+        const metahubUrl = kind === 'logo'
+            ? `https://images.metahub.space/logo/medium/${anizip.imdbId}/img`
+            : `https://images.metahub.space/background/medium/${anizip.imdbId}/img`;
+        const verified = await probeImageUrl(metahubUrl);
+        if (verified) return verified;
+    }
+
+    if (kind === 'logo') {
+        return anizip?.logo || null;
+    }
+
+    if (anizip?.backdrop) return anizip.backdrop;
+    if (anizip?.banner) return anizip.banner;
+
+    // For brand-new seasonal anime without TVDB/Metahub fanart yet, use HD 1280x720 YouTube trailer frame
+    // instead of stretching a vertical portrait poster across a widescreen monitor.
+    const ytId = anime.trailer?.site?.toLowerCase() === 'youtube' ? anime.trailer.id : undefined;
+    if (ytId) {
+        const ytHd = await probeImageUrl(`https://i.ytimg.com/vi/${ytId}/maxresdefault.jpg`);
+        if (ytHd) return ytHd;
+    }
+    return null;
+};
+
 export const tmdbService = {
     async getStudioLogo(name: string): Promise<string | null> {
-        if (!readToken() || !name.trim()) return null;
+        if (!hasTmdbAccess() || !name.trim()) return null;
         const cacheKey = `studio-logo-v1:${name.trim().toLowerCase()}`;
         const cached = readCachedValue<string>(cacheKey);
         if (cached) return cached;
@@ -420,6 +483,14 @@ export const tmdbService = {
 
     saveToken(token: string) {
         writeToken(token);
+    },
+
+    clearToken() {
+        clearToken();
+    },
+
+    hasProxy() {
+        return Boolean(TMDB_PROXY_BASE);
     },
 
     async validateToken(token: string): Promise<ValidateResult> {
@@ -509,7 +580,7 @@ export const tmdbService = {
 
     getCachedBackdropForAnime(anime: Partial<Anime> | null | undefined, size: 'w780' | 'w1280' | 'original' = 'original'): string | null {
         if (!anime) return null;
-        if (!readToken()) {
+        if (!hasTmdbAccess()) {
             const anizip = episodeMetadataService.getCachedEpisodeMetadata(anime.id, anime.mal_id);
             return anizip?.backdrop || anizip?.banner || null;
         }
@@ -536,6 +607,12 @@ export const tmdbService = {
             return buildTmdbImageUrl(cachedDetails.backdrop_path, size);
         }
         const anizip = episodeMetadataService.getCachedEpisodeMetadata(anime.id, anime.mal_id);
+        if (anizip?.imdbId) {
+            const metahubUrl = `https://images.metahub.space/background/medium/${anizip.imdbId}/img`;
+            if (readCachedValue<boolean>(`probe:${metahubUrl}`) === true) {
+                return metahubUrl;
+            }
+        }
         return anizip?.backdrop || anizip?.banner || null;
     },
 
@@ -543,17 +620,15 @@ export const tmdbService = {
         const cachedUrl = this.getCachedBackdropForAnime(anime, size);
         if (cachedUrl) return cachedUrl;
 
-        if (!readToken()) {
-            const anizip = await episodeMetadataService.getEpisodeMetadata(anime.id, anime.mal_id).catch(() => null);
-            return anizip?.backdrop || anizip?.banner || null;
+        if (!hasTmdbAccess()) {
+            return resolveFallbackArtwork(anime, 'backdrop');
         }
 
         const isMovie = String(anime.type || '').toUpperCase() === 'MOVIE';
         const details = isMovie ? await resolveMovieDetails(anime) : await resolveTvDetails(anime);
         const mediaPath = isMovie ? 'movie' : 'tv';
         if (!details?.id) {
-            const anizip = await episodeMetadataService.getEpisodeMetadata(anime.id, anime.mal_id).catch(() => null);
-            return anizip?.backdrop || anizip?.banner || null;
+            return resolveFallbackArtwork(anime, 'backdrop');
         }
 
         let chosenPath: string | null = details.backdrop_path || null;
@@ -586,21 +661,18 @@ export const tmdbService = {
             return buildTmdbImageUrl(chosenPath, size);
         }
 
-        const anizip = await episodeMetadataService.getEpisodeMetadata(anime.id, anime.mal_id).catch(() => null);
-        return anizip?.backdrop || anizip?.banner || null;
+        return resolveFallbackArtwork(anime, 'backdrop');
     },
 
     async getLogoForAnime(anime: Anime): Promise<string | null> {
-        if (!readToken()) {
-            const anizip = await episodeMetadataService.getEpisodeMetadata(anime.id, anime.mal_id).catch(() => null);
-            return anizip?.logo || null;
+        if (!hasTmdbAccess()) {
+            return resolveFallbackArtwork(anime, 'logo');
         }
         const isMovie = String(anime.type || '').toUpperCase() === 'MOVIE';
         const details = isMovie ? await resolveMovieDetails(anime) : await resolveTvDetails(anime);
         const mediaPath = isMovie ? 'movie' : 'tv';
         if (!details?.id) {
-            const anizip = await episodeMetadataService.getEpisodeMetadata(anime.id, anime.mal_id).catch(() => null);
-            return anizip?.logo || null;
+            return resolveFallbackArtwork(anime, 'logo');
         }
 
         const images = await tmdbFetch<{ logos?: TmdbLogo[] }>(
@@ -617,8 +689,7 @@ export const tmdbService = {
         if (selected?.file_path) {
             return buildTmdbImageUrl(selected.file_path, 'original');
         }
-        const anizip = await episodeMetadataService.getEpisodeMetadata(anime.id, anime.mal_id).catch(() => null);
-        return anizip?.logo || null;
+        return resolveFallbackArtwork(anime, 'logo');
     },
 
     async getTvSeasonsForAnime(anime: Anime): Promise<TmdbSeason[]> {
@@ -628,9 +699,10 @@ export const tmdbService = {
 
     getCachedTvSeasonEpisodes(tmdbId: string | number, seasonNumber: number): TmdbEpisode[] | null {
         const token = readToken();
-        if (!token || !tmdbId || !seasonNumber) return null;
+        const cacheScope = token || (TMDB_PROXY_BASE ? `proxy:${TMDB_PROXY_BASE}` : '');
+        if (!cacheScope || !tmdbId || !seasonNumber) return null;
         const path = `/tv/${tmdbId}/season/${seasonNumber}?language=en-US`;
-        const seasonData = readCachedValue<TmdbSeasonDetails>(`${token}:${path}`);
+        const seasonData = readCachedValue<TmdbSeasonDetails>(`${cacheScope}:${path}`);
         return seasonData?.episodes || null;
     },
 
@@ -694,7 +766,7 @@ export const tmdbService = {
     },
 
     async getDailyTrendingAnime(limit = 10): Promise<TmdbSearchResult[]> {
-        if (!readToken()) return [];
+        if (!hasTmdbAccess()) return [];
         const items: TmdbSearchResult[] = [];
         const seen = new Set<string>();
         // Trending includes all genres; inspect successive pages until we have

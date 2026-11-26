@@ -5,6 +5,32 @@ import { candidatePoolService } from './candidatePoolService';
 import { recommendationEngine } from './recommendationEngine';
 import { userProfileService } from './userProfileService';
 
+const BLOCKED_TRAILERS_KEY = 'yorumi_explore_blocked_trailers_v1';
+
+const readBlockedTrailers = (): Set<string> => {
+    try {
+        const raw = localStorage.getItem(BLOCKED_TRAILERS_KEY);
+        const parsed = raw ? JSON.parse(raw) : [];
+        return new Set(Array.isArray(parsed) ? parsed.map(String) : []);
+    } catch {
+        return new Set();
+    }
+};
+
+const persistBlockedTrailer = (trailerId: string) => {
+    const clean = String(trailerId || '').trim();
+    if (!clean) return;
+    if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+    try {
+        const current = Array.from(readBlockedTrailers());
+        if (current.includes(clean)) return;
+        const next = [clean, ...current].slice(0, 500);
+        localStorage.setItem(BLOCKED_TRAILERS_KEY, JSON.stringify(next));
+    } catch {
+        // Best effort persistence
+    }
+};
+
 export function useExploreFeed() {
     const location = useLocation();
     const [feed, setFeed] = useState<ExploreCandidate[]>([]);
@@ -27,9 +53,10 @@ export function useExploreFeed() {
         const requestId = ++sessionRequestIdRef.current;
 
         // Instant synchronous hydration from preloaded / cached pool so trailers start immediately
+        const blockedTrailers = readBlockedTrailers();
         const preloaded = candidatePoolService.peekCachedPool();
         if (preloaded.length > 0) {
-            const trailerPool = preloaded.filter((item) => item.trailer?.id);
+            const trailerPool = preloaded.filter((item) => item.trailer?.id && !blockedTrailers.has(item.trailer.id));
             const sessionPool = trailerPool.length > 0 ? trailerPool : preloaded;
             candidatePoolRef.current = sessionPool;
             const newSession = recommendationEngine.createSession();
@@ -51,8 +78,8 @@ export function useExploreFeed() {
             const pool = await candidatePoolService.getCandidatePool();
             if (requestId !== sessionRequestIdRef.current) return; // Stale request cancelled
 
-            // A video feed should start on an item that has a playable trailer.
-            const trailerPool = pool.filter((item) => item.trailer?.id);
+            // A video feed should start on an item that has a playable, non-blocked trailer.
+            const trailerPool = pool.filter((item) => item.trailer?.id && !blockedTrailers.has(item.trailer.id));
             const sessionPool = trailerPool.length > 0 ? trailerPool : pool;
             candidatePoolRef.current = sessionPool;
 
@@ -118,9 +145,12 @@ export function useExploreFeed() {
             );
 
             if (nextItems.length > 0) {
+                const blockedTrailers = readBlockedTrailers();
                 setFeed((prev) => {
                     const existingIds = new Set(prev.map((i) => i.id));
-                    const filtered = nextItems.filter((i) => !existingIds.has(i.id));
+                    const filtered = nextItems.filter(
+                        (i) => !existingIds.has(i.id) && (!i.trailer?.id || !blockedTrailers.has(i.trailer.id))
+                    );
                     return [...prev, ...filtered];
                 });
             }
@@ -191,6 +221,22 @@ export function useExploreFeed() {
         slideStartTimeRef.current = now;
     }, [feed, logInteraction]);
 
+    /**
+     * Permanently blacklist a region-blocked / embed-disabled / dead trailer on this device
+     * and remove it from the feed (without shifting scroll position if it's above activeIndex).
+     */
+    const excludeUnplayableTrailer = useCallback((animeId: number, trailerId?: string, removeFromFeed = true) => {
+        if (trailerId) {
+            persistBlockedTrailer(trailerId);
+        }
+        candidatePoolRef.current = candidatePoolRef.current.filter(
+            (item) => item.id !== animeId && (!trailerId || item.trailer?.id !== trailerId)
+        );
+        if (removeFromFeed) {
+            setFeed((prev) => prev.filter((item) => item.id !== animeId));
+        }
+    }, []);
+
     return {
         feed,
         sessionVersion,
@@ -201,6 +247,7 @@ export function useExploreFeed() {
         refreshFeed: initFreshSession,
         logInteraction,
         markNotInterested,
+        excludeUnplayableTrailer,
         handleSlideChange,
     };
 }

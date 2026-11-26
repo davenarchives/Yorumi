@@ -134,6 +134,27 @@ export function AppRoutes() {
     const prevOnlineRef = useRef(isOnline);
     const didInitialRedirectRef = useRef(false);
 
+    // Handle Android native notification deep-links (both cold launch and warm onNewIntent)
+    useEffect(() => {
+        const win = window as Window & { __YORUMI_PENDING_ROUTE__?: string | null };
+        const pending = win.__YORUMI_PENDING_ROUTE__;
+        if (pending && typeof pending === 'string') {
+            win.__YORUMI_PENDING_ROUTE__ = null;
+            navigate(pending);
+        }
+
+        const handleNativeNavigate = (event: Event) => {
+            const path = (event as CustomEvent<{ path?: string }>).detail?.path;
+            if (path && typeof path === 'string') {
+                win.__YORUMI_PENDING_ROUTE__ = null;
+                navigate(path);
+            }
+        };
+
+        window.addEventListener('yorumi-native-navigate', handleNativeNavigate);
+        return () => window.removeEventListener('yorumi-native-navigate', handleNativeNavigate);
+    }, [navigate]);
+
     useEffect(() => {
         const wentOffline = prevOnlineRef.current && !isOnline;
         prevOnlineRef.current = isOnline;

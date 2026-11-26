@@ -103,7 +103,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          body_path: RELEASE_NOTES_v5.0.6.md
+          body_path: RELEASE_NOTES_v5.0.7.md
           files: mobile-artifacts/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

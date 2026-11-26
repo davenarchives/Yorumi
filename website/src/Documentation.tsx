@@ -95,6 +95,7 @@ const DOC_SECTIONS: DocSection[] = [
     title: 'Changelogs',
     lede: 'Track Yorumi releases, new features, and fixes across desktop and Android.',
     subsections: [
+      { id: 'release-v5-0-7', label: 'v5.0.7' },
       { id: 'release-v5-0-6', label: 'v5.0.6' },
       { id: 'release-v5-0-5', label: 'v5.0.5' },
       { id: 'release-v5-0-0', label: 'v5.0.0' },
@@ -107,6 +108,18 @@ const DOC_SECTIONS: DocSection[] = [
 ];
 
 const CHANGELOG_ENTRIES = [
+  {
+    id: 'release-v5-0-7',
+    version: 'v5.0.7',
+    date: 'November 27, 2026',
+    summary: 'TikTok-smooth Explore feed with zero-delay preloading and clean trailer playback, built-in global TMDB artwork proxy, desktop slide-over menu drawer, and Android polish.',
+    highlights: [
+      { title: 'TikTok-Smooth Explore & Clean Trailers', body: 'Preloads the next trailer silently for instant 0:00 playback on scroll, hides YouTube play/pause overlays on both Android and Desktop, automatically skips region-blocked trailers, displays Main Character profile avatars, and pauses video cleanly when swiping left into the full Details view.' },
+      { title: 'Built-In Global TMDB Artwork Proxy', body: 'Widescreen backdrops, crisp official title logos, and episode stills now work out of the box across Desktop and Android via a 24-hour cached Cloudflare Worker edge proxy, with an optional personal TMDB API key override in Settings.' },
+      { title: 'Desktop Menu Drawer & Slide-Over Sub-Drawer', body: 'Added the hamburger menu drawer to Desktop with matching slide-over sub-drawers for Updates, Download Queue, History, Statistics, Data & Storage, Settings, and About.' },
+      { title: 'Android Download Queue Deep-Linking & Mobile Polish', body: 'Tapping active Anime, Manga, or Light Novel download notifications now jumps straight to the matching Download Queue tab; details headers sit cleanly below the Downloaded-only banner, and mobile scrollbars are hidden globally.' },
+    ],
+  },
   {
     id: 'release-v5-0-6',
     version: 'v5.0.6',
@@ -476,7 +489,7 @@ export const DocumentationGuide: React.FC<DocumentationGuideProps> = ({ activeTa
           <div id="why-tmdb" className="space-y-2">
             <h3 className="text-xl font-display font-bold text-yorumi-text">Why Add a Key</h3>
             <p className="text-sm sm:text-base text-yorumi-muted leading-relaxed">
-              A free TMDB API key enables high-resolution widescreen backdrops, official show logos, and crisp episode thumbnails. It&apos;s completely optional — without one, Yorumi falls back to standard AniList posters.
+              Yorumi now includes a built-in global TMDB edge proxy so widescreen backdrops, official show logos, and crisp episode thumbnails work out of the box. Adding your own free TMDB API key in Settings is completely optional if you prefer your own dedicated rate limit.
             </p>
           </div>
 

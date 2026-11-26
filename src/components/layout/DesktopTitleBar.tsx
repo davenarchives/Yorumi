@@ -1,12 +1,13 @@
 import { useEffect, useState, useMemo, useRef } from 'react';
 import { useLocation, useNavigate, useNavigationType } from 'react-router-dom';
-import { Bell, CheckCheck, MessageCircle, ArrowDownToLine } from 'lucide-react';
+import { Menu, MessageCircle, ArrowDownToLine } from 'lucide-react';
 import { isTauri } from '../../platform/runtime';
 const yorumiIcon = '/yorumi-icon.png';
 import { useWatchlistNotifications } from '../../hooks/useWatchlistNotifications';
 import { useAppUpdater } from '../../hooks/useAppUpdater';
 import GlobalChatDrawer from '../shared/GlobalChatDrawer';
 import DiscordInviteModal, { DiscordBrandIcon } from '../shared/DiscordInviteModal';
+import MobileMenuDrawer from './MobileMenuDrawer';
 
 interface DesktopTitleBarProps {
     className?: string;
@@ -18,11 +19,10 @@ export default function DesktopTitleBar({ className = '', title }: DesktopTitleB
     const location = useLocation();
     const navigationType = useNavigationType();
     const [isMaximized, setIsMaximized] = useState(false);
-    const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+    const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [isChatOpen, setIsChatOpen] = useState(false);
     const [isDiscordOpen, setIsDiscordOpen] = useState(false);
     const [isUpdateOpen, setIsUpdateOpen] = useState(false);
-    const notificationsRef = useRef<HTMLDivElement>(null);
     const updateRef = useRef<HTMLDivElement>(null);
 
     // Clean, loop-free in-app navigation stack (deduplicates consecutive URLs and replaces redirects in-place)
@@ -100,13 +100,7 @@ export default function DesktopTitleBar({ className = '', title }: DesktopTitleB
         syncNavBounds();
     }, [location.pathname, location.search, location.state, navigationType]);
     const updater = useAppUpdater();
-    const {
-        notifications,
-        unreadCount,
-        loading: notificationsLoading,
-        markAsRead,
-        markAllRead,
-    } = useWatchlistNotifications();
+    const { unreadCount } = useWatchlistNotifications();
 
     useEffect(() => {
         if (!isUpdateOpen) return;
@@ -125,24 +119,6 @@ export default function DesktopTitleBar({ className = '', title }: DesktopTitleB
             document.removeEventListener('keydown', onKeyDown);
         };
     }, [isUpdateOpen]);
-
-    useEffect(() => {
-        if (!isNotificationsOpen) return;
-        const onPointerDown = (e: PointerEvent) => {
-            if (!notificationsRef.current?.contains(e.target as Node)) {
-                setIsNotificationsOpen(false);
-            }
-        };
-        const onKeyDown = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') setIsNotificationsOpen(false);
-        };
-        document.addEventListener('pointerdown', onPointerDown);
-        document.addEventListener('keydown', onKeyDown);
-        return () => {
-            document.removeEventListener('pointerdown', onPointerDown);
-            document.removeEventListener('keydown', onKeyDown);
-        };
-    }, [isNotificationsOpen]);
     const [docTitle, setDocTitle] = useState(() => (typeof document !== 'undefined' ? document.title : ''));
 
     // Track document title updates so titlebar reflects current media title
@@ -260,6 +236,13 @@ export default function DesktopTitleBar({ className = '', title }: DesktopTitleB
         if (path.startsWith('/ln')) return 'Light Novels';
         if (path.startsWith('/anime/studio/')) return 'Studio Catalogue';
         if (path.startsWith('/genre/')) return 'Genre';
+        if (path === '/menu/updates') return 'Updates';
+        if (path === '/menu/download-queue') return 'Download Queue';
+        if (path === '/menu/history' || path === '/menu/activity') return 'History';
+        if (path === '/menu/statistics') return 'Statistics';
+        if (path === '/menu/storage') return 'Data & Storage';
+        if (path === '/menu/settings') return 'Settings';
+        if (path === '/menu/about') return 'About';
         return 'Yorumi';
     }, [location.pathname, location.state, docTitle]);
 
@@ -402,7 +385,7 @@ export default function DesktopTitleBar({ className = '', title }: DesktopTitleB
                             type="button"
                             onClick={() => {
                                 setIsChatOpen(false);
-                                setIsNotificationsOpen(false);
+                                setIsMenuOpen(false);
                                 setIsUpdateOpen(false);
                                 window.dispatchEvent(new Event('yorumi-open-update-modal'));
                             }}
@@ -423,7 +406,7 @@ export default function DesktopTitleBar({ className = '', title }: DesktopTitleB
                     type="button"
                     onClick={() => {
                         setIsUpdateOpen(false);
-                        setIsNotificationsOpen(false);
+                        setIsMenuOpen(false);
                         setIsChatOpen(false);
                         setIsDiscordOpen(true);
                     }}
@@ -445,7 +428,7 @@ export default function DesktopTitleBar({ className = '', title }: DesktopTitleB
                     type="button"
                     onClick={() => {
                         setIsUpdateOpen(false);
-                        setIsNotificationsOpen(false);
+                        setIsMenuOpen(false);
                         setIsChatOpen((open) => !open);
                     }}
                     title="Global Chat"
@@ -461,105 +444,29 @@ export default function DesktopTitleBar({ className = '', title }: DesktopTitleB
                     <MessageCircle className="w-3.5 h-3.5" />
                 </button>
 
-                {/* Watchlist Episode Notifications */}
-                <div ref={notificationsRef} className="relative flex items-center h-full">
-                    <button
-                        type="button"
-                        onClick={() => {
-                            setIsUpdateOpen(false);
-                            setIsChatOpen(false);
-                            setIsNotificationsOpen((open) => !open);
-                        }}
-                        title="Watchlist Episode Updates"
-                        aria-label="Watchlist Episode Updates"
-                        data-tauri-drag-region="false"
-                        style={noDragStyle}
-                        className={`relative w-8 h-6 flex items-center justify-center rounded transition-colors focus:outline-none cursor-pointer ${
-                            isNotificationsOpen
-                                ? 'text-white bg-white/15'
-                                : 'text-neutral-400 hover:text-white hover:bg-white/10'
-                        }`}
-                    >
-                        <Bell className="w-3.5 h-3.5" />
-                        {unreadCount > 0 && (
-                            <span className="absolute top-1 right-1.5 h-1.5 w-1.5 rounded-full bg-yorumi-accent" />
-                        )}
-                    </button>
-
-                    {isNotificationsOpen && (
-                        <div
-                            data-tauri-drag-region="false"
-                            style={noDragStyle}
-                            className="fixed right-3 top-10 z-[100000] w-[340px] max-w-[calc(100vw-24px)] overflow-hidden rounded-2xl border border-white/10 bg-[#0d0e12]/80 backdrop-blur-2xl shadow-2xl shadow-black/80"
-                        >
-                            <div className="flex items-center justify-between px-4 pt-3.5 pb-2.5 border-b border-white/[0.06]">
-                                <div className="flex items-center gap-2">
-                                    <span className="text-[14px] font-bold text-white tracking-tight">
-                                        Updates
-                                    </span>
-                                    {unreadCount > 0 && (
-                                        <span className="rounded-full bg-yorumi-accent/20 px-2 py-0.5 text-[11px] font-bold text-yorumi-accent">
-                                            {unreadCount}
-                                        </span>
-                                    )}
-                                </div>
-                                {unreadCount > 0 && (
-                                    <button
-                                        type="button"
-                                        onClick={markAllRead}
-                                        title="Mark all read"
-                                        className="flex h-7 w-7 items-center justify-center rounded-full text-white/75 hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
-                                    >
-                                        <CheckCheck className="h-4 w-4" />
-                                    </button>
-                                )}
-                            </div>
-
-                            <div className="max-h-80 overflow-y-auto custom-scrollbar divide-y divide-white/[0.05]">
-                                {notifications.length === 0 ? (
-                                    <div className="px-4 py-8 text-center text-xs text-white/50">
-                                        {notificationsLoading
-                                            ? 'Checking watchlist for new episodes…'
-                                            : 'You’re all caught up on your watchlist!'}
-                                    </div>
-                                ) : (
-                                    notifications.map((notif) => (
-                                        <button
-                                            key={notif.id}
-                                            type="button"
-                                            onClick={() => {
-                                                markAsRead(notif.anilistId, notif.latestEpisode);
-                                                setIsNotificationsOpen(false);
-                                                navigate(`/anime/details/al-${notif.anilistId}`);
-                                            }}
-                                            className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-white/[0.06] transition-colors cursor-pointer"
-                                        >
-                                            <div className="h-12 w-9 shrink-0 overflow-hidden rounded-lg bg-white/5">
-                                                {notif.image && (
-                                                    <img src={notif.image} alt={notif.title} className="h-full w-full object-cover" />
-                                                )}
-                                            </div>
-                                            <div className="min-w-0 flex-1">
-                                                <div className="flex items-center gap-1.5">
-                                                    {notif.unread && (
-                                                        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-yorumi-accent" />
-                                                    )}
-                                                    <p className="truncate text-[13px] font-bold text-white">
-                                                        {notif.title}
-                                                    </p>
-                                                </div>
-                                                <p className="mt-0.5 text-[12px] font-medium text-yorumi-accent">
-                                                    Episode {notif.latestEpisode} is out
-                                                    {notif.watchedEpisode > 0 ? ` · Watched Ep ${notif.watchedEpisode}` : ''}
-                                                </p>
-                                            </div>
-                                        </button>
-                                    ))
-                                )}
-                            </div>
-                        </div>
+                {/* Menu Drawer Button (replaces Notification Bell, matching Mobile) */}
+                <button
+                    type="button"
+                    onClick={() => {
+                        setIsUpdateOpen(false);
+                        setIsChatOpen(false);
+                        setIsMenuOpen((open) => !open);
+                    }}
+                    title="Menu"
+                    aria-label="Open menu"
+                    data-tauri-drag-region="false"
+                    style={noDragStyle}
+                    className={`relative w-8 h-6 flex items-center justify-center rounded transition-colors focus:outline-none cursor-pointer ${
+                        isMenuOpen
+                            ? 'text-white bg-white/15'
+                            : 'text-neutral-400 hover:text-white hover:bg-white/10'
+                    }`}
+                >
+                    <Menu className="w-3.5 h-3.5" />
+                    {unreadCount > 0 && (
+                        <span className="absolute top-1 right-1.5 h-1.5 w-1.5 rounded-full bg-yorumi-accent" />
                     )}
-                </div>
+                </button>
 
                 <div className="w-[1px] h-3.5 bg-white/10 mx-1 shrink-0" />
 
@@ -613,6 +520,11 @@ export default function DesktopTitleBar({ className = '', title }: DesktopTitleB
             </div>
             <GlobalChatDrawer isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} />
             <DiscordInviteModal isOpen={isDiscordOpen} onClose={() => setIsDiscordOpen(false)} />
+            <MobileMenuDrawer
+                isOpen={isMenuOpen}
+                onClose={() => setIsMenuOpen(false)}
+                onOpenDiscord={() => setIsDiscordOpen(true)}
+            />
         </header>
     );
 }

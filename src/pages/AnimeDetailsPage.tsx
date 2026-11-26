@@ -2176,8 +2176,8 @@ function AnimeDetailsPageContent({
                 </div>
             )}
             {!searchParams.get('ep') && <div
-                className={`${isEmbedded ? 'sticky top-0 -mb-[calc(max(env(safe-area-inset-top,0px),24px)+3.5rem)]' : 'fixed inset-x-0 top-0'} z-40 md:hidden border-b transition-colors duration-300 ${compactToolbar ? 'border-purple-400/15 bg-[#24202b]/95 backdrop-blur-xl' : 'border-transparent bg-transparent'}`}
-                style={{ paddingTop: 'max(env(safe-area-inset-top, 0px), 24px)' }}
+                className={`${isEmbedded ? 'sticky top-0 -mb-[calc(max(env(safe-area-inset-top,0px),24px)+3.5rem)]' : 'fixed inset-x-0 yorumi-mobile-details-header'} z-40 md:hidden border-b transition-colors duration-300 ${compactToolbar ? 'border-purple-400/15 bg-[#24202b]/95 backdrop-blur-xl' : 'border-transparent bg-transparent'}`}
+                style={isEmbedded ? { paddingTop: 'max(env(safe-area-inset-top, 0px), 24px)' } : undefined}
             >
                 <div className="flex h-14 items-center gap-3 px-4">
                     <button type="button" onClick={handleBack} className="grid h-10 w-10 shrink-0 place-items-center text-white/90" aria-label="Go back">

@@ -607,8 +607,7 @@ export default function LNDetailsPage() {
     return (
         <div className="relative min-h-screen overflow-x-hidden bg-[#070707] text-white pb-24 md:pb-16 fade-in animate-in duration-300" style={{ paddingBottom: 'calc(5rem + env(safe-area-inset-bottom, 0px))' }}>
             <div
-                className={`fixed inset-x-0 top-0 z-40 md:hidden border-b transition-colors duration-300 ${compactFab ? 'border-purple-400/15 bg-[#24202b]/95 backdrop-blur-xl' : 'border-transparent bg-transparent'}`}
-                style={{ paddingTop: 'max(env(safe-area-inset-top, 0px), 24px)' }}
+                className={`fixed inset-x-0 yorumi-mobile-details-header z-40 md:hidden border-b transition-colors duration-300 ${compactFab ? 'border-purple-400/15 bg-[#24202b]/95 backdrop-blur-xl' : 'border-transparent bg-transparent'}`}
             >
                 <div className="flex h-14 items-center gap-3 px-4">
                     <button type="button" onClick={handleBack} className="grid h-10 w-10 shrink-0 place-items-center text-white/90 transition-colors active:text-white" aria-label="Go back">

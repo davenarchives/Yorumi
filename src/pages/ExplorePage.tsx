@@ -77,6 +77,7 @@ export default function ExplorePage() {
         refreshFeed,
         logInteraction,
         markNotInterested,
+        excludeUnplayableTrailer,
         handleSlideChange,
     } = useExploreFeed();
 
@@ -157,6 +158,14 @@ export default function ExplorePage() {
     const cardRefs = useRef<(HTMLElement | null)[]>([]);
     const iframeRefs = useRef<Map<number, HTMLIFrameElement>>(new Map());
     const isPausedRef = useRef(false);
+    const isDetailsSheetOpenRef = useRef(false);
+    const isMutedRef = useRef(false);
+    const visualIndexRef = useRef(0);
+    const scrollSettleTimerRef = useRef<number | null>(null);
+    const prewarmedTrailersRef = useRef<Set<number>>(new Set());
+    const playingTrailersRef = useRef<Set<number>>(new Set());
+    const trailerWatchdogsRef = useRef<Map<number, number>>(new Map());
+    const lastResetVideoIdRef = useRef<number | null>(null);
     const lastLoopTimeRef = useRef<number>(0);
     const lastActiveIdRef = useRef<number | null>(null);
     const isScrubbingRef = useRef(false);
@@ -185,6 +194,9 @@ export default function ExplorePage() {
     useLayoutEffect(() => {
         if (!sessionVersion) return;
         containerRef.current?.scrollTo({ top: 0, behavior: 'instant' });
+        visualIndexRef.current = 0;
+        prewarmedTrailersRef.current.clear();
+        lastResetVideoIdRef.current = null;
         setActiveIndex(0);
         setIsPaused(false);
         isPausedRef.current = false;
@@ -196,6 +208,14 @@ export default function ExplorePage() {
     useEffect(() => {
         isPausedRef.current = isPaused;
     }, [isPaused]);
+
+    useEffect(() => {
+        isMutedRef.current = isMuted;
+    }, [isMuted]);
+
+    useEffect(() => {
+        playingTrailersRef.current = playingTrailers;
+    }, [playingTrailers]);
 
     useEffect(() => {
         const isFullscreen = fullscreenAnimeId !== null;
@@ -261,42 +281,200 @@ export default function ExplorePage() {
         return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
     };
 
+    const clearTrailerWatchdog = useCallback((animeId: number) => {
+        const timer = trailerWatchdogsRef.current.get(animeId);
+        if (timer !== undefined) {
+            window.clearTimeout(timer);
+            trailerWatchdogsRef.current.delete(animeId);
+        }
+    }, []);
+
+    const handleUnplayableTrailer = useCallback((animeId: number) => {
+        clearTrailerWatchdog(animeId);
+        prewarmedTrailersRef.current.delete(animeId);
+        setFailedTrailers((prev) => (prev.has(animeId) ? prev : new Set(prev).add(animeId)));
+        setPlayingTrailers((prev) => {
+            if (!prev.has(animeId)) return prev;
+            const next = new Set(prev);
+            next.delete(animeId);
+            return next;
+        });
+
+        const idx = feed.findIndex((item) => item.id === animeId);
+        const anime = idx !== -1 ? feed[idx] : undefined;
+        // Remove from feed when it's the active or upcoming preloaded slide (never shift scroll position for slides above activeIndex)
+        const shouldRemoveFromFeed = idx === -1 || idx >= activeIndex;
+        excludeUnplayableTrailer(animeId, anime?.trailer?.id, shouldRemoveFromFeed);
+
+        if (feed.length - 1 - activeIndex <= 4) {
+            void loadMore();
+        }
+    }, [activeIndex, clearTrailerWatchdog, excludeUnplayableTrailer, feed, loadMore]);
+
+    const armTrailerWatchdog = useCallback((animeId: number, delayMs: number) => {
+        clearTrailerWatchdog(animeId);
+        if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+        const timer = window.setTimeout(() => {
+            trailerWatchdogsRef.current.delete(animeId);
+            if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+            if (!iframeRefs.current.has(animeId)) return;
+            if (playingTrailersRef.current.has(animeId) || prewarmedTrailersRef.current.has(animeId)) return;
+            // Don't drop active slide if user manually paused it
+            if (feed[activeIndex]?.id === animeId && isPausedRef.current) return;
+            handleUnplayableTrailer(animeId);
+        }, delayMs);
+        trailerWatchdogsRef.current.set(animeId, timer);
+    }, [activeIndex, clearTrailerWatchdog, feed, handleUnplayableTrailer]);
+
+    useEffect(() => {
+        const watchdogs = trailerWatchdogsRef.current;
+        return () => {
+            watchdogs.forEach((timer) => window.clearTimeout(timer));
+            watchdogs.clear();
+        };
+    }, []);
+
+    // Immediately switch YouTube playback via refs (zero React re-render during touch scroll/snap)
+    const activateTrailerImmediate = useCallback((targetIndex: number) => {
+        const targetAnime = feed[targetIndex];
+        if (!targetAnime) return;
+        const targetId = targetAnime.id;
+        const nextId = feed[targetIndex + 1]?.id ?? null;
+
+        iframeRefs.current.forEach((frame, id) => {
+            const win = frame.contentWindow;
+            if (!win) return;
+            const send = (func: string, args: unknown[] = []) =>
+                win.postMessage(JSON.stringify({ event: 'command', func, args }), '*');
+
+            if (id === targetId) {
+                // Jump straight to 0:00 while already playing silently — starts from beginning with ZERO pause/play icon!
+                if (lastResetVideoIdRef.current !== id) {
+                    lastResetVideoIdRef.current = id;
+                    send('seekTo', [0, true]);
+                }
+                send(isMutedRef.current ? 'mute' : 'unMute');
+                send('setPlaybackRate', [1]);
+                // Only call playVideo if not already playing silently (avoids YouTube flashing its center play/pause icon)
+                if (!playingTrailersRef.current.has(id)) {
+                    send('playVideo');
+                }
+            } else if (id === nextId) {
+                // Keep the next slide playing silently so it slides in live with ZERO pause/play overlay icon
+                send('mute');
+            } else {
+                send('mute');
+                send('pauseVideo');
+                playingTrailersRef.current.delete(id);
+            }
+        });
+    }, [feed]);
+
     // Scroll to a specific slide index smoothly
     const scrollToIndex = useCallback((index: number) => {
         if (index < 0 || index >= feed.length) return;
         const container = containerRef.current;
         if (!container) return;
 
+        if (scrollSettleTimerRef.current !== null) {
+            window.clearTimeout(scrollSettleTimerRef.current);
+            scrollSettleTimerRef.current = null;
+        }
+        visualIndexRef.current = index;
         isPausedRef.current = false;
         setIsPaused(false);
+        activateTrailerImmediate(index);
         container.scrollTo({
             top: index * container.clientHeight,
             behavior: 'smooth',
         });
         handleSlideChange(index);
         setActiveIndex(index);
-    }, [feed.length, handleSlideChange]);
+    }, [activateTrailerImmediate, feed.length, handleSlideChange]);
 
-    // Handle scroll snap index detection
+    // Handle scroll snap index detection with zero-jank ref playback switching + settled state commit
     const handleScroll = useCallback(() => {
         const container = containerRef.current;
         if (!container) return;
 
         const containerHeight = container.clientHeight;
+        if (containerHeight <= 0) return;
         const scrollTop = container.scrollTop;
-        const newIndex = Math.round(scrollTop / containerHeight);
+        const newIndex = Math.max(0, Math.min(feed.length - 1, Math.round(scrollTop / containerHeight)));
 
-        if (newIndex !== activeIndex && newIndex >= 0 && newIndex < feed.length) {
+        // Switch video playback immediately the instant we cross 50% (pure postMessage, no re-render)
+        if (newIndex !== visualIndexRef.current) {
+            visualIndexRef.current = newIndex;
             isPausedRef.current = false;
-            setIsPaused(false);
-            handleSlideChange(newIndex);
-            setActiveIndex(newIndex);
+            activateTrailerImmediate(newIndex);
         }
 
-        if (newIndex >= feed.length - 3) {
-            void loadMore();
+        // Commit React state + mount next preloaded iframe once scroll snap settles
+        if (scrollSettleTimerRef.current !== null) {
+            window.clearTimeout(scrollSettleTimerRef.current);
         }
-    }, [activeIndex, feed.length, handleSlideChange, loadMore]);
+        scrollSettleTimerRef.current = window.setTimeout(() => {
+            scrollSettleTimerRef.current = null;
+            const settledIndex = Math.max(
+                0,
+                Math.min(feed.length - 1, Math.round((container.scrollTop || 0) / containerHeight))
+            );
+            visualIndexRef.current = settledIndex;
+            setActiveIndex((prev) => {
+                if (prev !== settledIndex) {
+                    isPausedRef.current = false;
+                    setIsPaused(false);
+                    handleSlideChange(settledIndex);
+                }
+                return settledIndex;
+            });
+            if (settledIndex >= feed.length - 3) {
+                void loadMore();
+            }
+        }, 120);
+    }, [activateTrailerImmediate, feed.length, handleSlideChange, loadMore]);
+
+    // Native scrollend listener for instant settle commit on modern Android WebView / Chromium
+    useEffect(() => {
+        const container = containerRef.current;
+        if (!container) return;
+        const onScrollEnd = () => {
+            if (scrollSettleTimerRef.current !== null) {
+                window.clearTimeout(scrollSettleTimerRef.current);
+                scrollSettleTimerRef.current = null;
+            }
+            const containerHeight = container.clientHeight;
+            if (containerHeight <= 0 || feed.length === 0) return;
+            const settledIndex = Math.max(
+                0,
+                Math.min(feed.length - 1, Math.round(container.scrollTop / containerHeight))
+            );
+            const exactTop = settledIndex * containerHeight;
+            if (Math.abs(container.scrollTop - exactTop) > 4) {
+                container.scrollTo({ top: exactTop, behavior: 'instant' });
+            }
+            visualIndexRef.current = settledIndex;
+            setActiveIndex((prev) => {
+                if (prev !== settledIndex) {
+                    isPausedRef.current = false;
+                    setIsPaused(false);
+                    handleSlideChange(settledIndex);
+                }
+                return settledIndex;
+            });
+            if (settledIndex >= feed.length - 3) {
+                void loadMore();
+            }
+        };
+        container.addEventListener('scrollend', onScrollEnd);
+        return () => {
+            container.removeEventListener('scrollend', onScrollEnd);
+            if (scrollSettleTimerRef.current !== null) {
+                window.clearTimeout(scrollSettleTimerRef.current);
+                scrollSettleTimerRef.current = null;
+            }
+        };
+    }, [feed.length, handleSlideChange, loadMore]);
 
     // Reset pause state synchronously when changing slides.
     useLayoutEffect(() => {
@@ -401,21 +579,32 @@ export default function ExplorePage() {
         }
     }, []);
 
+    useEffect(() => {
+        isDetailsSheetOpenRef.current = isDetailsSheetOpen;
+        if (isDetailsSheetOpen) {
+            iframeRefs.current.forEach((frame, id) => {
+                frame.contentWindow?.postMessage(JSON.stringify({ event: 'command', func: 'mute', args: [] }), '*');
+                frame.contentWindow?.postMessage(JSON.stringify({ event: 'command', func: 'pauseVideo', args: [] }), '*');
+                playingTrailersRef.current.delete(id);
+            });
+        }
+    }, [isDetailsSheetOpen]);
+
     const closeDetailsSheet = useCallback(() => {
         const vw = typeof window !== 'undefined' ? window.innerWidth : 400;
         const peekEl = peekPanelRef.current;
         shiftMobileShell(0, false, 230);
         if (peekEl) {
             peekEl.style.transition = 'transform 230ms cubic-bezier(0.22, 1, 0.36, 1)';
-            peekEl.style.transform = `translateX(${vw}px)`;
+            peekEl.style.transform = `translate3d(${vw}px, 0, 0)`;
         }
+        isDetailsSheetOpenRef.current = false;
         setIsDetailsSheetOpen(false);
-        const currentAnime = feed[activeIndex];
+        const currentAnime = feed[visualIndexRef.current] || feed[activeIndex];
         if (currentAnime && !isPausedRef.current) {
-            iframeRefs.current.get(currentAnime.id)?.contentWindow?.postMessage(
-                JSON.stringify({ event: 'command', func: 'playVideo', args: [] }),
-                '*'
-            );
+            const win = iframeRefs.current.get(currentAnime.id)?.contentWindow;
+            win?.postMessage(JSON.stringify({ event: 'command', func: isMutedRef.current ? 'mute' : 'unMute', args: [] }), '*');
+            win?.postMessage(JSON.stringify({ event: 'command', func: 'playVideo', args: [] }), '*');
         }
         window.setTimeout(() => {
             resetMobileShellShift();
@@ -478,8 +667,11 @@ export default function ExplorePage() {
             }
         }
 
-        if (swipeLockRef.current === 'none' && (dx > 12 || dy > 12)) {
-            if (rawDx < -12 && dx > dy * 1.25 && !holdActivatedRef.current && swipeTargetAnimeRef.current) {
+        // Touch horizontal drag is handled by the non-passive touchmove listener below for 1:1 zero-cancel dragging
+        if (e.pointerType === 'touch') return;
+
+        if (swipeLockRef.current === 'none' && (dx > 10 || dy > 10)) {
+            if (rawDx < -10 && dx > dy * 1.15 && !holdActivatedRef.current && swipeTargetAnimeRef.current) {
                 swipeLockRef.current = 'horizontal';
                 setPeekAnime(swipeTargetAnimeRef.current);
             } else {
@@ -511,12 +703,14 @@ export default function ExplorePage() {
                 const maxSlide = typeof window !== 'undefined' ? window.innerWidth : 400;
                 swipeOffsetRef.current = -maxSlide;
                 applySwipeTransform(-maxSlide, false);
+                isDetailsSheetOpenRef.current = true;
                 setIsDetailsSheetOpen(true);
-                // Pause active trailer while viewing its details page
-                iframeRefs.current.get(target.id)?.contentWindow?.postMessage(
-                    JSON.stringify({ event: 'command', func: 'pauseVideo', args: [] }),
-                    '*'
-                );
+                // Pause & mute ALL mounted trailers while viewing the details sheet
+                iframeRefs.current.forEach((frame, id) => {
+                    frame.contentWindow?.postMessage(JSON.stringify({ event: 'command', func: 'mute', args: [] }), '*');
+                    frame.contentWindow?.postMessage(JSON.stringify({ event: 'command', func: 'pauseVideo', args: [] }), '*');
+                    playingTrailersRef.current.delete(id);
+                });
                 logInteraction({
                     animeId: target.id,
                     type: 'details_open',
@@ -540,6 +734,79 @@ export default function ExplorePage() {
         swipeTargetAnimeRef.current = null;
         stopFastForward(true);
     }, [applySwipeTransform, clearHoldTimer, logInteraction, stopFastForward]);
+
+    // Non-passive touch listener on the feed container so horizontal swipe-to-details drags 1:1 with finger
+    // (holding in-between, dragging back/forth) without Android WebView cancelling the gesture.
+    useEffect(() => {
+        const el = containerRef.current;
+        if (!el || !isMobileShell()) return;
+
+        let touchStartX = 0;
+        let touchStartY = 0;
+        let tracking = false;
+
+        const onTouchStart = (e: TouchEvent) => {
+            if (e.touches.length !== 1 || fullscreenAnimeId !== null || isDetailsSheetOpen) {
+                tracking = false;
+                return;
+            }
+            const t = e.touches[0];
+            touchStartX = t.clientX;
+            touchStartY = t.clientY;
+            tracking = true;
+            swipeLockRef.current = 'none';
+            swipeStartTimeRef.current = Date.now();
+            swipeOffsetRef.current = 0;
+            const currentAnime = feed[visualIndexRef.current] || feed[activeIndex] || null;
+            swipeTargetAnimeRef.current = currentAnime;
+        };
+
+        const onTouchMove = (e: TouchEvent) => {
+            if (!tracking || e.touches.length !== 1) return;
+            const t = e.touches[0];
+            const rawDx = t.clientX - touchStartX;
+            const rawDy = t.clientY - touchStartY;
+            const dx = Math.abs(rawDx);
+            const dy = Math.abs(rawDy);
+
+            if (swipeLockRef.current === 'none' && (dx > 8 || dy > 8)) {
+                if (rawDx < -8 && dx > dy * 1.1 && !holdActivatedRef.current && swipeTargetAnimeRef.current) {
+                    swipeLockRef.current = 'horizontal';
+                    clearHoldTimer();
+                    setPeekAnime(swipeTargetAnimeRef.current);
+                } else {
+                    swipeLockRef.current = 'vertical';
+                }
+            }
+
+            if (swipeLockRef.current === 'horizontal') {
+                if (e.cancelable) e.preventDefault();
+                const maxSlide = window.innerWidth || 400;
+                const clamped = Math.min(0, Math.max(-maxSlide, rawDx));
+                swipeOffsetRef.current = clamped;
+                applySwipeTransform(clamped, true);
+            }
+        };
+
+        const onTouchEnd = () => {
+            if (!tracking) return;
+            tracking = false;
+            if (swipeLockRef.current === 'horizontal') {
+                handleSlidePointerEnd();
+            }
+        };
+
+        el.addEventListener('touchstart', onTouchStart, { passive: true });
+        el.addEventListener('touchmove', onTouchMove, { passive: false });
+        el.addEventListener('touchend', onTouchEnd, { passive: true });
+        el.addEventListener('touchcancel', onTouchEnd, { passive: true });
+        return () => {
+            el.removeEventListener('touchstart', onTouchStart);
+            el.removeEventListener('touchmove', onTouchMove);
+            el.removeEventListener('touchend', onTouchEnd);
+            el.removeEventListener('touchcancel', onTouchEnd);
+        };
+    }, [activeIndex, applySwipeTransform, clearHoldTimer, feed, fullscreenAnimeId, handleSlidePointerEnd, isDetailsSheetOpen]);
 
     const handleSlideTap = useCallback((e: React.MouseEvent<HTMLDivElement>, anime: ExploreCandidate, isFullscreenMode: boolean) => {
         e.stopPropagation();
@@ -603,9 +870,10 @@ export default function ExplorePage() {
         };
     }, [clearHoldTimer]);
 
-    // Keep adjacent players running silently so their frames are ready on scroll.
+    // Keep the next slide playing silently so it slides in live without YouTube's pause/play icon.
     useEffect(() => {
         const activeId = feed[activeIndex]?.id ?? null;
+        const nextId = feed[activeIndex + 1]?.id ?? null;
         const slideChanged = activeId !== null && activeId !== lastActiveIdRef.current;
         if (slideChanged) {
             lastActiveIdRef.current = activeId;
@@ -614,23 +882,29 @@ export default function ExplorePage() {
 
         iframeRefs.current.forEach((frame, id) => {
             const active = activeId === id;
+            const isNext = nextId === id;
             const send = (func: string, args: unknown[] = []) => frame.contentWindow?.postMessage(
                 JSON.stringify({ event: 'command', func, args }), '*'
             );
             send(active && !isMuted ? 'unMute' : 'mute');
             send('setPlaybackRate', [1]);
-            send('setPlaybackQuality', ['hd1080']);
-            send('setPlaybackQuality', ['highres']);
             if (active) {
-                if (slideChanged) {
+                prewarmedTrailersRef.current.delete(id);
+                if (slideChanged && lastResetVideoIdRef.current !== id) {
+                    lastResetVideoIdRef.current = id;
                     send('seekTo', [0, true]);
                 }
-                if (!isPausedRef.current) {
+                if (!isPausedRef.current && !playingTrailersRef.current.has(id)) {
+                    send('playVideo');
+                }
+            } else if (isNext) {
+                // Keep next slide playing silently (no pauseVideo -> no center || icon!)
+                if (!playingTrailersRef.current.has(id)) {
                     send('playVideo');
                 }
             } else {
                 send('pauseVideo');
-                send('seekTo', [0, true]);
+                playingTrailersRef.current.delete(id);
             }
         });
     }, [activeIndex, feed, isMuted]);
@@ -638,32 +912,43 @@ export default function ExplorePage() {
     useEffect(() => {
         const nearby = new Set(feed.slice(Math.max(0, activeIndex - 1), activeIndex + 3).map(item => item.id));
         setPlayingTrailers(prev => new Set([...prev].filter(id => nearby.has(id))));
+        for (const id of Array.from(prewarmedTrailersRef.current)) {
+            if (!nearby.has(id)) prewarmedTrailersRef.current.delete(id);
+        }
     }, [activeIndex, feed]);
 
-    // Continuous handshake with active YouTube player to maintain state telemetry
+    // Lightweight handshake with active YouTube player until playback starts
     useEffect(() => {
         const currentAnime = feed[activeIndex];
         if (!currentAnime) return;
 
         const pingPlayer = () => {
-            iframeRefs.current.forEach((frame) => {
-            if (frame?.contentWindow) {
-                frame.contentWindow.postMessage(JSON.stringify({ event: 'listening' }), '*');
-                frame.contentWindow.postMessage(
+            if (isDetailsSheetOpenRef.current) return;
+            const activeFrame = iframeRefs.current.get(currentAnime.id);
+            if (!activeFrame?.contentWindow) return;
+            activeFrame.contentWindow.postMessage(JSON.stringify({ event: 'listening' }), '*');
+            if (!playingTrailersRef.current.has(currentAnime.id) && !isPausedRef.current) {
+                activeFrame.contentWindow.postMessage(
                     JSON.stringify({ event: 'command', func: 'addEventListener', args: ['onStateChange'] }),
                     '*'
                 );
-                frame.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'addEventListener', args: ['onError'] }), '*');
-                if (frame === iframeRefs.current.get(currentAnime.id) && !isPausedRef.current) {
-                    frame.contentWindow.postMessage(JSON.stringify({ event: 'command', func: isMuted ? 'mute' : 'unMute', args: [] }), '*');
-                    frame.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'playVideo', args: [] }), '*');
-                }
+                activeFrame.contentWindow.postMessage(
+                    JSON.stringify({ event: 'command', func: 'addEventListener', args: ['onError'] }),
+                    '*'
+                );
+                activeFrame.contentWindow.postMessage(
+                    JSON.stringify({ event: 'command', func: isMuted ? 'mute' : 'unMute', args: [] }),
+                    '*'
+                );
+                activeFrame.contentWindow.postMessage(
+                    JSON.stringify({ event: 'command', func: 'playVideo', args: [] }),
+                    '*'
+                );
             }
-            });
         };
 
         pingPlayer();
-        const interval = setInterval(pingPlayer, 1200);
+        const interval = setInterval(pingPlayer, 1500);
         return () => clearInterval(interval);
     }, [activeIndex, feed, isMuted]);
 
@@ -680,35 +965,62 @@ export default function ExplorePage() {
                 if (!playerEntry) return;
                 const [playerId] = playerEntry;
                 const playerState = data?.event === 'onStateChange' ? (data.info ?? data.data) : data?.info?.playerState;
+                const activeVisualIndex = visualIndexRef.current;
+                const activeVisualId = feed[activeVisualIndex]?.id ?? feed[activeIndex]?.id;
+                const nextVisualId = feed[activeVisualIndex + 1]?.id ?? feed[activeIndex + 1]?.id;
                 if (data?.event === 'onReady') {
                     const frame = iframeRefs.current.get(playerId);
-                    frame?.contentWindow?.postMessage(JSON.stringify({ event: 'command', func: 'setPlaybackQuality', args: ['hd1080'] }), '*');
-                    frame?.contentWindow?.postMessage(JSON.stringify({ event: 'command', func: 'setPlaybackQuality', args: ['highres'] }), '*');
-                    if (playerId === feed[activeIndex]?.id) {
-                        frame?.contentWindow?.postMessage(JSON.stringify({ event: 'command', func: isMuted ? 'mute' : 'unMute', args: [] }), '*');
-                        if (!isPausedRef.current) frame?.contentWindow?.postMessage(JSON.stringify({ event: 'command', func: 'playVideo', args: [] }), '*');
+                    if (playerId === activeVisualId) {
+                        frame?.contentWindow?.postMessage(JSON.stringify({ event: 'command', func: isMutedRef.current ? 'mute' : 'unMute', args: [] }), '*');
+                        if (!isPausedRef.current && !playingTrailersRef.current.has(playerId)) {
+                            frame?.contentWindow?.postMessage(JSON.stringify({ event: 'command', func: 'playVideo', args: [] }), '*');
+                        }
+                    } else if (playerId === nextVisualId) {
+                        // Keep next slide muted & playing silently so YouTube never shows its center pause/play icon
+                        frame?.contentWindow?.postMessage(JSON.stringify({ event: 'command', func: 'mute', args: [] }), '*');
                     } else {
                         frame?.contentWindow?.postMessage(JSON.stringify({ event: 'command', func: 'mute', args: [] }), '*');
                         frame?.contentWindow?.postMessage(JSON.stringify({ event: 'command', func: 'pauseVideo', args: [] }), '*');
-                        frame?.contentWindow?.postMessage(JSON.stringify({ event: 'command', func: 'seekTo', args: [0, true] }), '*');
                     }
                 }
-                if (data?.event === 'onError') {
-                    setFailedTrailers(prev => new Set(prev).add(playerId));
-                    setPlayingTrailers(prev => { const next = new Set(prev); next.delete(playerId); return next; });
-                    if (playerId === feed[activeIndex]?.id && activeIndex + 1 < feed.length) {
-                        scrollToIndex(activeIndex + 1);
-                    }
+                if (data?.event === 'onError' || (data?.event === 'infoDelivery' && (data?.info?.errorCode || data?.info?.videoData?.errorCode))) {
+                    handleUnplayableTrailer(playerId);
                     return;
                 }
+                if (playerState === 3 || playerState === '3') {
+                    // Actively buffering on slow network: extend watchdog grace window once
+                    if (trailerWatchdogsRef.current.has(playerId)) {
+                        armTrailerWatchdog(playerId, 7500);
+                    }
+                }
+                if (playerState === 2 || playerState === '2') {
+                    playingTrailersRef.current.delete(playerId);
+                    setPlayingTrailers(prev => {
+                        if (!prev.has(playerId)) return prev;
+                        const next = new Set(prev);
+                        next.delete(playerId);
+                        return next;
+                    });
+                }
                 if (playerState === 1 || playerState === '1') {
+                    clearTrailerWatchdog(playerId);
+                    if (isDetailsSheetOpenRef.current) {
+                        const frame = iframeRefs.current.get(playerId);
+                        frame?.contentWindow?.postMessage(JSON.stringify({ event: 'command', func: 'mute', args: [] }), '*');
+                        frame?.contentWindow?.postMessage(JSON.stringify({ event: 'command', func: 'pauseVideo', args: [] }), '*');
+                        playingTrailersRef.current.delete(playerId);
+                        return;
+                    }
+                    playingTrailersRef.current.add(playerId);
                     setPlayingTrailers(prev => prev.has(playerId) ? prev : new Set(prev).add(playerId));
                     const frame = iframeRefs.current.get(playerId);
-                    frame?.contentWindow?.postMessage(JSON.stringify({ event: 'command', func: 'setPlaybackQuality', args: ['hd1080'] }), '*');
-                    frame?.contentWindow?.postMessage(JSON.stringify({ event: 'command', func: 'setPlaybackQuality', args: ['highres'] }), '*');
-                    if (playerId !== feed[activeIndex]?.id) {
+                    if (playerId === nextVisualId) {
+                        // Next slide is live & playing silently — keep muted, do NOT pause (prevents center || icon)
+                        prewarmedTrailersRef.current.add(playerId);
+                        frame?.contentWindow?.postMessage(JSON.stringify({ event: 'command', func: 'mute', args: [] }), '*');
+                    } else if (playerId !== activeVisualId) {
+                        frame?.contentWindow?.postMessage(JSON.stringify({ event: 'command', func: 'mute', args: [] }), '*');
                         frame?.contentWindow?.postMessage(JSON.stringify({ event: 'command', func: 'pauseVideo', args: [] }), '*');
-                        frame?.contentWindow?.postMessage(JSON.stringify({ event: 'command', func: 'seekTo', args: [0, true] }), '*');
                     }
                 }
                 const currentAnime = feed[activeIndex];
@@ -782,7 +1094,7 @@ export default function ExplorePage() {
 
         window.addEventListener('message', handleWindowMessage);
         return () => window.removeEventListener('message', handleWindowMessage);
-    }, [activeIndex, feed, isMuted, logInteraction, scrollToIndex]);
+    }, [activeIndex, armTrailerWatchdog, clearTrailerWatchdog, feed, handleUnplayableTrailer, isMuted, logInteraction, scrollToIndex]);
 
     // Keyboard navigation (ArrowUp, ArrowDown, Space, M, R)
     useEffect(() => {
@@ -864,17 +1176,17 @@ export default function ExplorePage() {
                         </div>
                     )
                 ) : (
-                /* Scroll Container */
+                /* Scroll Container — native 60fps snap physics without CSS scroll-smooth fighting touch flings */
                 <div
                     ref={containerRef}
                     onScroll={handleScroll}
-                    className="w-full h-full overflow-x-hidden overflow-y-scroll snap-y snap-mandatory scroll-smooth no-scrollbar"
-                    style={{ scrollSnapType: 'y mandatory' }}
+                    className="w-full h-full overflow-x-hidden overflow-y-scroll snap-y snap-mandatory overscroll-y-contain no-scrollbar"
+                    style={{ scrollSnapType: 'y mandatory', WebkitOverflowScrolling: 'touch' }}
                 >
                     {feed.map((anime, index) => {
                         const isActive = index === activeIndex;
-                        // On mobile WebView, only mount the active YouTube iframe to prevent multi-iframe lag & OOM crashes
-                        const preloadTrailer = (isMobileShell() ? isActive : index >= activeIndex - 1 && index <= activeIndex + 2) && anime.trailer && !failedTrailers.has(anime.id);
+                        // Keep adjacent trailers mounted & pre-buffered (prev, active, next on mobile; prev..+2 on desktop) for instant TikTok-style playback
+                        const preloadTrailer = (isMobileShell() ? index >= activeIndex - 1 && index <= activeIndex + 1 : index >= activeIndex - 1 && index <= activeIndex + 2) && anime.trailer && !failedTrailers.has(anime.id);
                         const animeIdStr = String(anime.id);
                         const inWatchlist = isInWatchList(animeIdStr);
                         const favorited = isFavorite(animeIdStr);
@@ -934,8 +1246,12 @@ export default function ExplorePage() {
                                         >
                                             <iframe
                                                 ref={(el) => {
-                                                    if (el) iframeRefs.current.set(anime.id, el);
-                                                    else iframeRefs.current.delete(anime.id);
+                                                    if (el) {
+                                                        iframeRefs.current.set(anime.id, el);
+                                                    } else {
+                                                        iframeRefs.current.delete(anime.id);
+                                                        clearTrailerWatchdog(anime.id);
+                                                    }
                                                 }}
                                                 onLoad={(e) => {
                                                     const win = e.currentTarget.contentWindow;
@@ -943,31 +1259,31 @@ export default function ExplorePage() {
                                                     for (const event of ['onReady', 'onStateChange', 'onError']) {
                                                         win?.postMessage(JSON.stringify({ event: 'command', func: 'addEventListener', args: [event] }), '*');
                                                     }
-                                                    win?.postMessage(JSON.stringify({ event: 'command', func: 'setPlaybackQuality', args: ['hd1080'] }), '*');
-                                                    win?.postMessage(JSON.stringify({ event: 'command', func: 'setPlaybackQuality', args: ['highres'] }), '*');
-                                                    if (isActive && !isPausedRef.current) {
-                                                        win?.postMessage(JSON.stringify({ event: 'command', func: isMuted ? 'mute' : 'unMute', args: [] }), '*');
-                                                        win?.postMessage(JSON.stringify({ event: 'command', func: 'seekTo', args: [0, true] }), '*');
-                                                        win?.postMessage(JSON.stringify({ event: 'command', func: 'playVideo', args: [] }), '*');
-                                                    } else if (!isActive) {
+                                                    const activeVisualIndex = visualIndexRef.current;
+                                                    const activeVisualId = feed[activeVisualIndex]?.id ?? feed[activeIndex]?.id;
+                                                    const nextVisualId = feed[activeVisualIndex + 1]?.id ?? feed[activeIndex + 1]?.id;
+                                                    const isVisualActive = anime.id === activeVisualId;
+                                                    if (isVisualActive && !isPausedRef.current) {
+                                                        win?.postMessage(JSON.stringify({ event: 'command', func: isMutedRef.current ? 'mute' : 'unMute', args: [] }), '*');
+                                                    } else if (anime.id === nextVisualId) {
+                                                        // Already autoplay=1&mute=1 — leave playing silently so YouTube never shows center || / ▶ bezel
+                                                        win?.postMessage(JSON.stringify({ event: 'command', func: 'mute', args: [] }), '*');
+                                                    } else {
                                                         win?.postMessage(JSON.stringify({ event: 'command', func: 'mute', args: [] }), '*');
                                                         win?.postMessage(JSON.stringify({ event: 'command', func: 'pauseVideo', args: [] }), '*');
-                                                        win?.postMessage(JSON.stringify({ event: 'command', func: 'seekTo', args: [0, true] }), '*');
                                                     }
+                                                    // Auto-remove region-blocked / dead trailers that never start playing
+                                                    armTrailerWatchdog(anime.id, isVisualActive ? 5500 : 7500);
                                                 }}
                                                 src={`https://www.youtube-nocookie.com/embed/${anime.trailer!.id}?autoplay=1&mute=1&controls=0&playsinline=1&rel=0&modestbranding=1&showinfo=0&disablekb=1&fs=0&iv_load_policy=3&cc_load_policy=0&enablejsapi=1&origin=${encodeURIComponent(window.location.origin)}&vq=hd1080`}
                                                 title={anime.title}
                                                 className={
                                                     isFullscreen
-                                                        ? `absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[152%] h-[176%] pointer-events-none select-none transition-opacity duration-200 ${playingTrailers.has(anime.id) ? 'opacity-100' : 'opacity-0 md:opacity-100'}`
-                                                        : `absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[152%] h-[176%] md:w-[120vw] md:h-[67.5vw] md:min-h-[120%] md:min-w-[213.4vh] object-cover pointer-events-none select-none transition-opacity duration-200 ${playingTrailers.has(anime.id) ? 'opacity-100' : 'opacity-0 md:opacity-100'}`
+                                                        ? 'absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[152%] h-[176%] pointer-events-none select-none opacity-100'
+                                                        : 'absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[152%] h-[176%] md:w-[120vw] md:h-[67.5vw] md:min-h-[120%] md:min-w-[213.4vh] object-cover pointer-events-none select-none opacity-100'
                                                 }
                                                 allow="autoplay; encrypted-media; picture-in-picture"
                                             />
-                                            {/* Keep artwork visible while a trailer is still starting (mobile only). */}
-                                            {!playingTrailers.has(anime.id) && (
-                                                <img src={`https://i.ytimg.com/vi/${anime.trailer!.id}/hqdefault.jpg`} alt="" className="md:hidden absolute inset-0 z-[6] h-full w-full object-cover pointer-events-none" />
-                                            )}
                                             {isActive && isFullscreen && (
                                                 <>
                                                     <div
@@ -1158,7 +1474,7 @@ export default function ExplorePage() {
                                         )}
                                     </div>
                                 )}
-                                {isActive && !isFullscreen && (
+                                {(isActive || index === activeIndex + 1 || index === activeIndex - 1) && !isFullscreen && (
                                     <>
                                         {/* Full-screen gesture surface (above, on, and below video): tap play/pause, double-tap like, hold 2x, swipe left for details */}
                                         <div
@@ -1178,7 +1494,7 @@ export default function ExplorePage() {
                                         />
 
                                         {/* 2x Speed Indicator Pill (matching anime player) */}
-                                        {isFastForwarding && (
+                                        {isActive && isFastForwarding && (
                                             <div className="pointer-events-none absolute left-1/2 top-[calc(max(env(safe-area-inset-top,0px),16px)+0.5rem)] md:top-5 z-[100] flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-white/10 bg-black/75 px-4 py-2 text-sm font-bold text-white shadow-xl backdrop-blur-sm">
                                                 <span>2x</span>
                                                 <FastForward className="h-4 w-4 fill-current" strokeWidth={2.5} />
@@ -1186,7 +1502,7 @@ export default function ExplorePage() {
                                         )}
 
                                         {/* Double-tap Heart Burst Animation */}
-                                        {heartBursts.map((burst) => (
+                                        {isActive && heartBursts.map((burst) => (
                                             <div
                                                 key={burst.id}
                                                 className="pointer-events-none absolute z-[95]"
@@ -1249,7 +1565,7 @@ export default function ExplorePage() {
                                             <img
                                                 src={anime.characterImage || anime.coverImage}
                                                 alt={anime.characterName || anime.title}
-                                                className="w-full h-full object-cover"
+                                                className="w-full h-full object-cover object-top"
                                             />
                                         </div>
 
@@ -1388,7 +1704,7 @@ export default function ExplorePage() {
                                             <img
                                                 src={anime.characterImage || anime.coverImage}
                                                 alt={anime.characterName || anime.title}
-                                                className="w-full h-full object-cover"
+                                                className="w-full h-full object-cover object-top"
                                             />
                                         </button>
 
@@ -1661,7 +1977,7 @@ export default function ExplorePage() {
                     document.body
                 )}
 
-            {/* Real AnimeDetailsPage sliding seamlessly from the right while swiping left — preserves Explore session on Back */}
+            {/* Real AnimeDetailsPage sliding seamlessly from the right while swiping left — identical UI even mid-drag */}
             {peekAnime && createPortal(
                 <div
                     ref={peekPanelRef}
@@ -1670,8 +1986,8 @@ export default function ExplorePage() {
                     }`}
                     style={{
                         transform: isDetailsSheetOpen
-                            ? 'translateX(0px)'
-                            : `translateX(${(typeof window !== 'undefined' ? window.innerWidth : 400) + swipeOffsetRef.current}px)`,
+                            ? 'translate3d(0px, 0, 0)'
+                            : `translate3d(${(typeof window !== 'undefined' ? window.innerWidth : 400) + swipeOffsetRef.current}px, 0, 0)`,
                     }}
                 >
                     <AnimeDetailsPage

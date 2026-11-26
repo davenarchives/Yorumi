@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
     BarChart3,
     Bell,
@@ -21,6 +21,25 @@ import { useLNDownloads } from '../../hooks/useLNDownloads';
 import { useWatchlistNotifications } from '../../hooks/useWatchlistNotifications';
 import { DiscordBrandIcon } from '../shared/DiscordInviteModal';
 import { resetMobileShellShift, shiftMobileShell } from '../../utils/screenShift';
+import {
+    AboutPage,
+    DataStoragePage,
+    DownloadQueuePage,
+    HistoryPage,
+    MenuDrawerEmbeddedContext,
+    SettingsPage,
+    StatisticsPage,
+    UpdatesPage,
+} from '../../pages/MenuPages';
+
+type DesktopSubpageId =
+    | 'updates'
+    | 'download-queue'
+    | 'history'
+    | 'statistics'
+    | 'storage'
+    | 'settings'
+    | 'about';
 
 interface MobileMenuDrawerProps {
     isOpen: boolean;
@@ -41,6 +60,7 @@ export default function MobileMenuDrawer({
     onOpenDiscord,
 }: MobileMenuDrawerProps) {
     const navigate = useNavigate();
+    const location = useLocation();
     const { downloadedOnly, setDownloadedOnly, incognitoMode, setIncognitoMode } = useAppPrefs();
     const { activeDownloads: activeAnimeDownloads } = useDownloads();
     const { activeDownloads: activeMangaDownloads } = useMangaDownloads();
@@ -54,6 +74,52 @@ export default function MobileMenuDrawer({
 
     const [rendered, setRendered] = useState(isOpen);
     const [visible, setVisible] = useState(() => isOpen && shouldSkipOpenAnimRef.current);
+    const [activeSubpage, setActiveSubpage] = useState<DesktopSubpageId | null>(null);
+    const [subpageVisible, setSubpageVisible] = useState(false);
+    const subpageCloseTimerRef = useRef<number | null>(null);
+    const prevPathRef = useRef(location.pathname);
+
+    // Close desktop drawer automatically if user clicks a media link inside Updates / History
+    useEffect(() => {
+        if (prevPathRef.current !== location.pathname) {
+            prevPathRef.current = location.pathname;
+            if (isOpen && typeof window !== 'undefined' && window.innerWidth >= 768) {
+                onClose();
+            }
+        }
+    }, [location.pathname, isOpen, onClose]);
+
+    // Clear subpage state when main drawer finishes closing
+    useEffect(() => {
+        if (!isOpen) {
+            setSubpageVisible(false);
+            const t = window.setTimeout(() => setActiveSubpage(null), DRAWER_TRANSITION_MS);
+            return () => window.clearTimeout(t);
+        }
+    }, [isOpen]);
+
+    const openDesktopSubpage = (subpage: DesktopSubpageId) => {
+        if (subpageCloseTimerRef.current !== null) {
+            window.clearTimeout(subpageCloseTimerRef.current);
+            subpageCloseTimerRef.current = null;
+        }
+        setActiveSubpage(subpage);
+        setSubpageVisible(false);
+        window.requestAnimationFrame(() => {
+            window.requestAnimationFrame(() => setSubpageVisible(true));
+        });
+    };
+
+    const closeDesktopSubpage = () => {
+        setSubpageVisible(false);
+        if (subpageCloseTimerRef.current !== null) {
+            window.clearTimeout(subpageCloseTimerRef.current);
+        }
+        subpageCloseTimerRef.current = window.setTimeout(() => {
+            subpageCloseTimerRef.current = null;
+            setActiveSubpage(null);
+        }, DRAWER_TRANSITION_MS);
+    };
 
     const scrimRef = useRef<HTMLDivElement>(null);
     const drawerRef = useRef<HTMLElement>(null);
@@ -96,8 +162,14 @@ export default function MobileMenuDrawer({
         return () => document.removeEventListener('keydown', onKeyDown);
     }, [isOpen, onClose]);
 
-    // TikTok-style unified push of whole screen + bottom navbar + top icons (no double-transition bounce)
+    const isDesktopViewport = typeof window !== 'undefined' && window.innerWidth >= 768;
+
+    // TikTok-style unified push of whole screen + bottom navbar + top icons on mobile (overlay on desktop)
     useEffect(() => {
+        if (typeof window !== 'undefined' && window.innerWidth >= 768) {
+            resetMobileShellShift();
+            return;
+        }
         if (!rendered) {
             resetMobileShellShift();
             return;
@@ -123,7 +195,16 @@ export default function MobileMenuDrawer({
 
     // Reset shift immediately before navigating so the target /menu/* page renders perfectly aligned,
     // and mark reopenWithoutAnimation so returning via Back shows the drawer still (no re-slide).
-    const goToPage = (path: string) => {
+    const goToPage = (path: string, desktopSubpage?: DesktopSubpageId) => {
+        if (isDesktopViewport && desktopSubpage) {
+            openDesktopSubpage(desktopSubpage);
+            return;
+        }
+        if (isDesktopViewport) {
+            onClose();
+            navigate(path);
+            return;
+        }
         reopenWithoutAnimation = true;
         resetMobileShellShift();
         navigate(path);
@@ -202,9 +283,11 @@ export default function MobileMenuDrawer({
     return createPortal(
         <div
             ref={scrimRef}
-            className="fixed inset-x-0 bottom-0 z-[2147483615] flex justify-end md:hidden"
+            className="fixed inset-x-0 bottom-0 z-[2147483615] flex justify-end"
             style={{
-                top: 'var(--yorumi-mode-banner-height, 0px)',
+                top: isDesktopViewport
+                    ? 'calc(2rem + var(--yorumi-mode-banner-height, 0px))'
+                    : 'var(--yorumi-mode-banner-height, 0px)',
                 backgroundColor: visible ? 'rgba(0, 0, 0, 0.6)' : 'rgba(0, 0, 0, 0)',
                 transition: shouldSkipOpenAnimRef.current ? 'none' : `background-color ${DRAWER_TRANSITION_MS}ms ease-out`,
             }}
@@ -263,28 +346,28 @@ export default function MobileMenuDrawer({
                             icon={Bell}
                             label="Updates"
                             subtitle={unreadCount > 0 ? `${unreadCount} new` : undefined}
-                            onClick={() => goToPage('/menu/updates')}
+                            onClick={() => goToPage('/menu/updates', 'updates')}
                         />
                         <MenuRow
                             icon={Download}
                             label="Download queue"
                             subtitle={activeQueueCount > 0 ? `${activeQueueCount} remaining` : undefined}
-                            onClick={() => goToPage('/menu/download-queue')}
+                            onClick={() => goToPage('/menu/download-queue', 'download-queue')}
                         />
                         <MenuRow
                             icon={Clock}
                             label="History"
-                            onClick={() => goToPage('/menu/history')}
+                            onClick={() => goToPage('/menu/history', 'history')}
                         />
                         <MenuRow
                             icon={BarChart3}
                             label="Statistics"
-                            onClick={() => goToPage('/menu/statistics')}
+                            onClick={() => goToPage('/menu/statistics', 'statistics')}
                         />
                         <MenuRow
                             icon={HardDrive}
                             label="Data and storage"
-                            onClick={() => goToPage('/menu/storage')}
+                            onClick={() => goToPage('/menu/storage', 'storage')}
                         />
                     </div>
 
@@ -292,32 +375,62 @@ export default function MobileMenuDrawer({
 
                     {/* Community & app Section */}
                     <div className="py-1.5">
-                        <MenuRow
-                            icon={DiscordBrandIcon}
-                            label="Join us"
-                            onClick={() => {
-                                onClose();
-                                onOpenDiscord();
-                            }}
-                        />
-                        <MenuRow
-                            icon={MessageCircle}
-                            label="Global chat"
-                            onClick={() => goToPage('/menu/chat')}
-                        />
+                        {!isDesktopViewport && (
+                            <>
+                                <MenuRow
+                                    icon={DiscordBrandIcon}
+                                    label="Join us"
+                                    onClick={() => {
+                                        onClose();
+                                        onOpenDiscord();
+                                    }}
+                                />
+                                <MenuRow
+                                    icon={MessageCircle}
+                                    label="Global chat"
+                                    onClick={() => goToPage('/menu/chat')}
+                                />
+                            </>
+                        )}
                         <MenuRow
                             icon={Settings}
                             label="Settings"
-                            onClick={() => goToPage('/menu/settings')}
+                            onClick={() => goToPage('/menu/settings', 'settings')}
                         />
                         <MenuRow
                             icon={Info}
                             label="About"
-                            onClick={() => goToPage('/menu/about')}
+                            onClick={() => goToPage('/menu/about', 'about')}
                         />
                     </div>
                 </div>
             </aside>
+
+            {/* Desktop Sub-Drawer: slides smoothly from the right with the exact same animation */}
+            {isDesktopViewport && activeSubpage && (
+                <section
+                    className="fixed right-0 bottom-0 z-[2147483616] flex w-[84vw] max-w-[340px] flex-col border-l border-white/10 bg-[#121212] text-white shadow-2xl shadow-black/80 will-change-transform"
+                    style={{
+                        top: 'calc(2rem + var(--yorumi-mode-banner-height, 0px))',
+                        transform: subpageVisible && visible ? 'translateX(0px)' : 'translateX(100%)',
+                        transition: `transform ${DRAWER_TRANSITION_MS}ms ${DRAWER_EASING}`,
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                    aria-label={activeSubpage}
+                >
+                    <MenuDrawerEmbeddedContext.Provider
+                        value={{ onBack: closeDesktopSubpage, onClose }}
+                    >
+                        {activeSubpage === 'updates' && <UpdatesPage />}
+                        {activeSubpage === 'download-queue' && <DownloadQueuePage />}
+                        {activeSubpage === 'history' && <HistoryPage />}
+                        {activeSubpage === 'statistics' && <StatisticsPage />}
+                        {activeSubpage === 'storage' && <DataStoragePage />}
+                        {activeSubpage === 'settings' && <SettingsPage />}
+                        {activeSubpage === 'about' && <AboutPage />}
+                    </MenuDrawerEmbeddedContext.Provider>
+                </section>
+            )}
         </div>,
         document.body
     );
@@ -338,7 +451,7 @@ function MenuRow({
         <button
             type="button"
             onClick={onClick}
-            className="flex w-full items-center gap-4 px-5 py-3.5 text-left active:bg-white/[0.06] transition-colors"
+            className="flex w-full items-center gap-4 px-5 py-3.5 text-left hover:bg-white/[0.06] active:bg-white/[0.08] transition-colors cursor-pointer"
         >
             <Icon className="h-[20px] w-[20px] shrink-0 text-white/90" />
             <div className="min-w-0 flex-1">
@@ -371,7 +484,7 @@ function ToggleRow({
             role="switch"
             aria-checked={checked}
             onClick={() => onChange(!checked)}
-            className="flex w-full items-center gap-4 px-5 py-3.5 text-left active:bg-white/[0.06] transition-colors"
+            className="flex w-full items-center gap-4 px-5 py-3.5 text-left hover:bg-white/[0.06] active:bg-white/[0.08] transition-colors cursor-pointer"
         >
             <Icon className={`h-[20px] w-[20px] shrink-0 ${checked ? 'text-yorumi-accent' : 'text-white/90'}`} />
             <div className="min-w-0 flex-1">

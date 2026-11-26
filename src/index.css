@@ -49,16 +49,45 @@ body {
 }
 
 @media (max-width: 767px) {
+  html {
+    scrollbar-gutter: auto;
+  }
+
   html,
   body {
     overscroll-behavior-y: none;
     -webkit-tap-highlight-color: transparent;
   }
 
+  *,
+  html,
+  body {
+    scrollbar-width: none !important;
+    -ms-overflow-style: none !important;
+  }
+
+  *::-webkit-scrollbar,
+  html::-webkit-scrollbar,
+  body::-webkit-scrollbar {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
+  }
+
   button,
   a,
   [role="button"] {
     touch-action: manipulation;
+  }
+
+  .yorumi-mobile-details-header {
+    top: 0;
+    padding-top: max(env(safe-area-inset-top, 0px), 24px);
+  }
+
+  html.has-mode-banner .yorumi-mobile-details-header {
+    top: var(--yorumi-mode-banner-height, 0px);
+    padding-top: 0px;
   }
 }
 

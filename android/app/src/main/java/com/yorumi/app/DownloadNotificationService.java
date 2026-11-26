@@ -132,10 +132,26 @@ public class DownloadNotificationService extends Service {
 
     private static PendingIntent createOpenEntryIntent(Context context, String mediaType, String entryId, int requestCode) {
         Intent openIntent = new Intent(context, MainActivity.class);
+        openIntent.setAction("com.yorumi.app.OPEN_ENTRY_" + requestCode);
         openIntent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         openIntent.putExtra("downloadMediaType", mediaType);
         openIntent.putExtra("downloadEntryId", entryId);
         openIntent.putExtra("downloadAnimeId", entryId);
+        return PendingIntent.getActivity(
+            context,
+            requestCode,
+            openIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+        );
+    }
+
+    private static PendingIntent createOpenDownloadQueueIntent(Context context, String mediaType, int requestCode) {
+        Intent openIntent = new Intent(context, MainActivity.class);
+        openIntent.setAction("com.yorumi.app.OPEN_DOWNLOAD_QUEUE_" + requestCode);
+        openIntent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        String safeTab = ("manga".equals(mediaType) || "ln".equals(mediaType)) ? mediaType : "anime";
+        openIntent.putExtra("openRoute", "/menu/download-queue?tab=" + safeTab);
+        openIntent.putExtra("downloadMediaType", safeTab);
         return PendingIntent.getActivity(
             context,
             requestCode,
@@ -155,7 +171,7 @@ public class DownloadNotificationService extends Service {
         boolean paused
     ) {
         ensureChannels(context);
-        PendingIntent openPendingIntent = createOpenEntryIntent(context, mediaType, entryId, 51);
+        PendingIntent openPendingIntent = createOpenDownloadQueueIntent(context, mediaType, 51);
         String label = "manga".equals(mediaType) ? "Manga" : "ln".equals(mediaType) ? "Light Novel" : "Anime";
 
         NotificationCompat.Builder builder = new NotificationCompat.Builder(context, CHANNEL_PROGRESS_ID)
@@ -199,7 +215,7 @@ public class DownloadNotificationService extends Service {
         String itemTitle
     ) {
         ensureChannels(context);
-        PendingIntent openPendingIntent = createOpenEntryIntent(context, mediaType, entryId, 53);
+        PendingIntent openPendingIntent = createOpenDownloadQueueIntent(context, mediaType, 53);
         return new NotificationCompat.Builder(context, CHANNEL_COMPLETE_ID)
             .setSmallIcon(R.drawable.ic_stat_download_done)
             .setContentTitle(entryTitle)
@@ -222,7 +238,7 @@ public class DownloadNotificationService extends Service {
         String errorMessage
     ) {
         ensureChannels(context);
-        PendingIntent openPendingIntent = createOpenEntryIntent(context, mediaType, entryId, 54);
+        PendingIntent openPendingIntent = createOpenDownloadQueueIntent(context, mediaType, 54);
         String msg = (errorMessage != null && !errorMessage.isEmpty()) ? errorMessage : "Download failed";
         return new NotificationCompat.Builder(context, CHANNEL_COMPLETE_ID)
             .setSmallIcon(R.drawable.ic_stat_download)

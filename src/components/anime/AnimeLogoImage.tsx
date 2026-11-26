@@ -18,8 +18,8 @@ interface AnimeLogoImageProps {
     hideFallbackText?: boolean;
 }
 
-// Namespace bump clears stale negative entries written while logo rendering was disabled.
-const LOGO_CACHE_KEY = 'yorumi_logo_cache_v4';
+// Namespace bump purges pre-proxy logos so crisp 4K TMDB logos load via Cloudflare edge proxy.
+const LOGO_CACHE_KEY = 'yorumi_logo_cache_v6';
 
 // Hydrate logo cache from localStorage on module load
 function loadCacheFromStorage(): Map<string, string | null> {
@@ -114,23 +114,37 @@ export async function preloadLogos(tmdbIds: number[]): Promise<void> {
     }
 }
 
+const getCanonicalLogoCacheKey = (anime?: Anime | null, fallbackId?: number | null, fallbackTitle?: string, fallbackYear?: number): string | null => {
+    const id = getPositiveId(fallbackId ?? anime?.id ?? anime?.mal_id);
+    if (id) return `anime:${id}`;
+    const title = anime?.title_english || anime?.title_romaji || anime?.title || fallbackTitle || '';
+    const year = fallbackYear ?? anime?.year ?? '';
+    return getTitleCacheKey(`${title}:${year}`);
+};
+
 export async function preloadSpotlightLogos(animes: Anime[]): Promise<void> {
-    const spotlightAnime = animes.slice(0, 8);
+    const spotlightAnime = animes.slice(0, 10);
     await preloadLogos(spotlightAnime.map((anime) => anime.tmdbId || 0).filter(Boolean));
 
     let cursor = 0;
-    const workers = Array.from({ length: Math.min(2, spotlightAnime.length) }, async () => {
+    const workers = Array.from({ length: Math.min(4, spotlightAnime.length) }, async () => {
         while (cursor < spotlightAnime.length) {
             const anime = spotlightAnime[cursor++];
-            const id = getPositiveId(anime.id || anime.mal_id);
-            const title = anime.title_english || anime.title_romaji || anime.title;
-            const cacheKey = USES_LOCAL_SOURCES
-                ? getTitleCacheKey(`${title}:${anime.year || ''}`)
-                : id ? `anime:${id}` : getTitleCacheKey(title);
-            if (!cacheKey || logoCache.has(cacheKey)) continue;
+            const cacheKey = getCanonicalLogoCacheKey(anime);
+            if (!cacheKey || logoCache.has(cacheKey) || pendingRequests.has(cacheKey)) continue;
 
-            const logo = await tmdbService.getLogoForAnime(anime).catch(() => null);
-            if (logo) logoCache.set(cacheKey, logo);
+            const req = tmdbService.getLogoForAnime(anime)
+                .then((logo) => {
+                    if (logo) logoCache.set(cacheKey, logo);
+                    return logo || null;
+                })
+                .catch(() => null)
+                .finally(() => {
+                    pendingRequests.delete(cacheKey);
+                });
+
+            pendingRequests.set(cacheKey, req);
+            await req;
         }
     });
 
@@ -152,9 +166,7 @@ export default function AnimeLogoImage({
     hideFallbackText = false,
 }: AnimeLogoImageProps) {
     const resolvedId = getPositiveId(tmdbId ?? anime?.id ?? anime?.mal_id);
-    const cacheKey = USES_LOCAL_SOURCES
-        ? getTitleCacheKey(`${title}:${year ?? anime?.year ?? ''}`)
-        : resolvedId ? `anime:${resolvedId}` : getTitleCacheKey(title);
+    const cacheKey = getCanonicalLogoCacheKey(anime, resolvedId, title, year);
     const initialCachedLogo = (preferLogo && cacheKey && logoCache.has(cacheKey))
         ? (logoCache.get(cacheKey) ?? null)
         : null;

@@ -347,7 +347,7 @@ const SpotlightHero: React.FC<SpotlightHeroProps> = ({
                 <div className="w-full flex items-end justify-between gap-8">
                     {/* Left Column: Logo, Metadata Row, Bigger Synopsis (pointer-events-none so swipes pass through to Embla), Interactive Buttons & Dots */}
                     <div className="w-full max-w-2xl md:max-w-[740px] lg:max-w-[820px] pointer-events-none">
-                        <div className="mb-3 md:mb-5 flex h-[104px] items-end justify-center md:h-[200px] md:w-full md:max-w-[500px] lg:max-w-[540px] md:justify-start">
+                        <div className="mb-3 md:mb-5 flex h-[132px] items-end justify-center md:h-[200px] md:w-full md:max-w-[500px] lg:max-w-[540px] md:justify-start">
                             <AnimeLogoImage
                                 key={activeKey}
                                 tmdbId={activeAnime.id || activeAnime.mal_id}
@@ -357,9 +357,9 @@ const SpotlightHero: React.FC<SpotlightHeroProps> = ({
                                 format={activeAnime.type}
                                 anime={activeAnime}
                                 preferLogo
-                                className="w-full max-w-[270px] md:max-w-none object-contain object-center md:object-left drop-shadow-[0_4px_20px_rgba(0,0,0,0.65)]"
+                                className="w-[82%] max-w-[320px] md:w-full md:max-w-none object-contain object-center md:object-left drop-shadow-[0_4px_20px_rgba(0,0,0,0.65)]"
                                 size="large"
-                                style={{ maxHeight: isDesktop ? '200px' : '104px' }}
+                                style={{ maxHeight: isDesktop ? '200px' : '132px' }}
                             />
                         </div>
                         <div className="flex h-[112px] flex-col items-center text-center md:h-auto md:items-start md:text-left">

@@ -4,7 +4,7 @@ import { exploreService } from '../../../services/exploreService';
 
 const ANILIST_GRAPHQL_URL = 'https://graphql.anilist.co';
 const POOL_TTL_MS = 15 * 60 * 1000; // 15 minutes cache TTL
-const STORAGE_POOL_KEY = 'yorumi_explore_pool_v2';
+const STORAGE_POOL_KEY = 'yorumi_explore_pool_v4';
 const STORAGE_POOL_TTL_MS = 30 * 60 * 1000;
 
 const DIVERSE_SPOTLIGHT_GENRES = [
@@ -155,6 +155,21 @@ fragment MediaFields on Media {
         episode
         timeUntilAiring
         airingAt
+    }
+    characters(sort: [ROLE, FAVOURITES_DESC, RELEVANCE], perPage: 1) {
+        edges {
+            role
+            node {
+                id
+                name {
+                    full
+                }
+                image {
+                    large
+                    medium
+                }
+            }
+        }
     }
     studios(isMain: true) {
         nodes {

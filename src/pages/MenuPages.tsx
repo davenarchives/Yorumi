@@ -1,17 +1,22 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
     ArrowLeft,
+    BarChart3,
     Bell,
     BookOpen,
     BookText,
     CheckCheck,
+    Clock,
     Code2,
     Download,
     ExternalLink,
     Globe,
+    HardDrive,
+    Info,
     RefreshCw,
     Search,
+    Settings,
     ShieldAlert,
     Tag,
     Trash2,
@@ -42,12 +47,13 @@ import {
 import { deleteOfflineHistoryKey, persistOfflineHistoryKey } from '../services/offlineHistoryStore';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { cloudSyncService } from '../services/cloudSyncService';
+import { tmdbService } from '../services/tmdbService';
 import { Browser } from '@capacitor/browser';
 import { isNativeMobile, isTauri } from '../platform/runtime';
 import GlobalChatDrawer from '../components/shared/GlobalChatDrawer';
 import { DiscordBrandIcon } from '../components/shared/DiscordInviteModal';
 
-const APP_VERSION = '5.0.5';
+const APP_VERSION = '5.0.7';
 const RECENT_SEARCHES_KEY = 'yorumi_recent_searches_global_v1';
 const DISCORD_SESSION_KEY = 'yorumi_discord_chat_session_v1';
 const DEFAULT_BRIDGE_URL = 'https://yorumibot-1.onrender.com';
@@ -157,6 +163,23 @@ const formatTimeShort = (timestampMs?: number): string => {
     }
 };
 
+export interface MenuDrawerEmbeddedContextValue {
+    onBack: () => void;
+    onClose: () => void;
+}
+
+export const MenuDrawerEmbeddedContext = createContext<MenuDrawerEmbeddedContextValue | null>(null);
+
+const DESKTOP_MENU_NAV = [
+    { path: '/menu/updates', label: 'Updates', icon: Bell },
+    { path: '/menu/download-queue', label: 'Download queue', icon: Download },
+    { path: '/menu/history', label: 'History', icon: Clock },
+    { path: '/menu/statistics', label: 'Statistics', icon: BarChart3 },
+    { path: '/menu/storage', label: 'Data and storage', icon: HardDrive },
+    { path: '/menu/settings', label: 'Settings', icon: Settings },
+    { path: '/menu/about', label: 'About', icon: Info },
+] as const;
+
 function MenuPageShell({
     title,
     badge,
@@ -169,13 +192,53 @@ function MenuPageShell({
     children: ReactNode;
 }) {
     const navigate = useNavigate();
+    const location = useLocation();
+    const embeddedCtx = useContext(MenuDrawerEmbeddedContext);
     const { downloadedOnly } = useAppPrefs();
     const hasTopBanner = downloadedOnly;
 
+    if (embeddedCtx) {
+        return (
+            <div className="flex h-full flex-col bg-[#121212] text-white">
+                <header className="shrink-0 flex items-center gap-2 border-b border-white/[0.08] bg-[#121212] px-3 py-3">
+                    <button
+                        type="button"
+                        onClick={embeddedCtx.onBack}
+                        aria-label="Back to menu"
+                        title="Back to menu"
+                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-zinc-300 hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
+                    >
+                        <ArrowLeft className="h-4 w-4" />
+                    </button>
+                    <div className="flex min-w-0 flex-1 items-center gap-2">
+                        <h2 className="truncate text-[15px] font-bold tracking-tight text-white">{title}</h2>
+                        {badge !== undefined && badge !== 0 && (
+                            <span className="rounded-full bg-white/15 px-2 py-0.5 text-[11px] font-semibold text-white">
+                                {badge}
+                            </span>
+                        )}
+                    </div>
+                    {rightAction}
+                    <button
+                        type="button"
+                        onClick={embeddedCtx.onClose}
+                        aria-label="Close menu"
+                        title="Close"
+                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-zinc-400 hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
+                    >
+                        <X className="h-4 w-4" />
+                    </button>
+                </header>
+                <div className="flex-1 overflow-y-auto custom-scrollbar pb-6">{children}</div>
+            </div>
+        );
+    }
+
     return (
-        <div className="min-h-screen bg-[#0a0a0a] text-white pb-10">
+        <div className="min-h-screen bg-[#0a0a0a] text-white pb-10 md:pb-16">
+            {/* Mobile Sticky Header (with < back button) */}
             <header
-                className="sticky z-30 flex items-center gap-3 border-b border-white/[0.08] bg-[#0a0a0a] px-3 pb-3"
+                className="sticky z-30 flex items-center gap-3 border-b border-white/[0.08] bg-[#0a0a0a] px-3 pb-3 md:hidden"
                 style={{
                     top: hasTopBanner ? 'var(--yorumi-mode-banner-height, 0px)' : '0px',
                     paddingTop: hasTopBanner ? '10px' : 'calc(max(env(safe-area-inset-top, 0px), 14px) + 6px)',
@@ -199,7 +262,61 @@ function MenuPageShell({
                 </div>
                 {rightAction}
             </header>
-            <div className="mx-auto w-full max-w-2xl">{children}</div>
+
+            {/* Responsive Content: Mobile single column, Desktop 2-column native workspace */}
+            <div className="mx-auto w-full max-w-2xl md:max-w-5xl lg:max-w-6xl md:px-10 md:pt-10">
+                <div className="md:flex md:items-start md:gap-10">
+                    {/* Desktop Left Section Rail */}
+                    <aside className="hidden md:block w-56 shrink-0 sticky top-16">
+                        <p className="px-3 pb-2.5 text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-500">
+                            Menu
+                        </p>
+                        <nav className="space-y-1">
+                            {DESKTOP_MENU_NAV.map((item) => {
+                                const Icon = item.icon;
+                                const active =
+                                    location.pathname === item.path ||
+                                    (item.path === '/menu/history' && location.pathname === '/menu/activity');
+                                return (
+                                    <button
+                                        key={item.path}
+                                        type="button"
+                                        onClick={() => navigate(item.path)}
+                                        className={`flex w-full items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium transition-colors cursor-pointer ${
+                                            active
+                                                ? 'bg-white/[0.10] text-white font-semibold'
+                                                : 'text-zinc-400 hover:bg-white/[0.05] hover:text-white'
+                                        }`}
+                                    >
+                                        <Icon className={`h-4 w-4 shrink-0 ${active ? 'text-yorumi-accent' : 'text-zinc-400'}`} />
+                                        <span className="truncate">{item.label}</span>
+                                    </button>
+                                );
+                            })}
+                        </nav>
+                    </aside>
+
+                    {/* Main Content Area */}
+                    <div className="min-w-0 flex-1">
+                        {/* Desktop Clean Header (no < back arrow) */}
+                        <div className="hidden md:flex items-center justify-between gap-4 border-b border-white/[0.08] pb-5 mb-2 px-4">
+                            <div className="flex min-w-0 items-center gap-3">
+                                <h1 className="truncate text-2xl lg:text-[28px] font-extrabold tracking-tight text-white">
+                                    {title}
+                                </h1>
+                                {badge !== undefined && badge !== 0 && (
+                                    <span className="rounded-full bg-white/12 px-2.5 py-0.5 text-xs font-bold text-white">
+                                        {badge}
+                                    </span>
+                                )}
+                            </div>
+                            {rightAction && <div className="shrink-0">{rightAction}</div>}
+                        </div>
+
+                        {children}
+                    </div>
+                </div>
+            </div>
         </div>
     );
 }
@@ -311,10 +428,21 @@ type QueueRowItem = {
 };
 
 export function DownloadQueuePage() {
+    const location = useLocation();
     const { activeDownloads: activeAnimeDownloads, cancelDownload: cancelAnimeDownload } = useDownloads();
     const { activeDownloads: activeMangaDownloads, cancelDownload: cancelMangaDownload } = useMangaDownloads();
     const { activeDownloads: activeLNDownloads, cancelDownload: cancelLNDownload } = useLNDownloads();
-    const [activeTab, setActiveTab] = useState<QueueTab>('anime');
+    const [activeTab, setActiveTab] = useState<QueueTab>(() => {
+        const param = new URLSearchParams(location.search).get('tab');
+        return param === 'manga' || param === 'ln' ? param : 'anime';
+    });
+
+    useEffect(() => {
+        const param = new URLSearchParams(location.search).get('tab');
+        if (param === 'anime' || param === 'manga' || param === 'ln') {
+            setActiveTab(param);
+        }
+    }, [location.search]);
 
     const { animeItems, mangaItems, lnItems } = useMemo(() => {
         const animeList: QueueRowItem[] = [];
@@ -1301,6 +1429,55 @@ export function SettingsPage() {
     const { downloadedOnly, setDownloadedOnly, incognitoMode, setIncognitoMode } = useAppPrefs();
     const { refresh: refreshUpdates } = useWatchlistNotifications();
     const [notice, setNotice] = useState<string | null>(null);
+    const [tmdbTokenInput, setTmdbTokenInput] = useState(() => tmdbService.getToken());
+    const [hasTmdbToken, setHasTmdbToken] = useState(() => tmdbService.hasToken());
+    const [tmdbSaving, setTmdbSaving] = useState(false);
+    const [tmdbError, setTmdbError] = useState<string | null>(null);
+
+    const handleSaveTmdbToken = async () => {
+        const trimmed = tmdbTokenInput.trim();
+        if (!trimmed) {
+            setTmdbError('Paste your TMDB API Read Access Token first.');
+            return;
+        }
+        setTmdbSaving(true);
+        setTmdbError(null);
+        const result = await tmdbService.validateToken(trimmed);
+        setTmdbSaving(false);
+        if (!result.ok) {
+            setTmdbError(
+                result.reason === 'invalid_token'
+                    ? 'Invalid TMDB Read Access Token (use the v4 Read Access Token, not the v3 API key).'
+                    : result.reason === 'timeout' || result.reason === 'unreachable'
+                        ? 'Could not reach TMDB right now. Check your connection and try again.'
+                        : 'TMDB rejected this token. Please check it and try again.'
+            );
+            return;
+        }
+        tmdbService.saveToken(trimmed);
+        try {
+            localStorage.removeItem('yorumi_logo_cache_v6');
+        } catch {
+            // Best effort
+        }
+        setHasTmdbToken(true);
+        setNotice('TMDB connected — 4K backdrops, crisp title logos & episode thumbnails enabled.');
+        window.setTimeout(() => setNotice(null), 4000);
+    };
+
+    const handleClearTmdbToken = () => {
+        tmdbService.clearToken();
+        try {
+            localStorage.removeItem('yorumi_logo_cache_v6');
+        } catch {
+            // Best effort
+        }
+        setTmdbTokenInput('');
+        setHasTmdbToken(false);
+        setTmdbError(null);
+        setNotice('Removed custom TMDB token — using default artwork sources.');
+        window.setTimeout(() => setNotice(null), 3500);
+    };
 
     return (
         <MenuPageShell title="Settings">
@@ -1361,6 +1538,56 @@ export function SettingsPage() {
                         </div>
                         <SwitchPill checked={incognitoMode} />
                     </button>
+                </div>
+
+                <div className="rounded-2xl border border-white/[0.08] bg-[#141414] p-4">
+                    <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-semibold text-white">TMDB API Key (Optional)</p>
+                        <span
+                            className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
+                                hasTmdbToken
+                                    ? 'bg-emerald-500/15 text-emerald-400'
+                                    : 'bg-white/[0.06] text-zinc-400'
+                            }`}
+                        >
+                            {hasTmdbToken ? 'Connected' : tmdbService.hasProxy() ? 'Using proxy' : 'Default'}
+                        </span>
+                    </div>
+                    <p className="mt-1 text-xs text-zinc-400">
+                        Override default artwork with your own free TMDB Read Access Token for 4K backdrops, title logos, and episode stills.
+                    </p>
+                    <input
+                        type="password"
+                        value={tmdbTokenInput}
+                        onChange={(e) => {
+                            setTmdbTokenInput(e.target.value);
+                            if (tmdbError) setTmdbError(null);
+                        }}
+                        placeholder="Paste TMDB Read Access Token (eyJ...)"
+                        className="mt-3 w-full rounded-xl border border-white/10 bg-black/40 px-3.5 py-2.5 text-xs text-white placeholder-zinc-500 outline-none focus:border-yorumi-accent"
+                    />
+                    {tmdbError && (
+                        <p className="mt-2 text-xs font-medium text-rose-400">{tmdbError}</p>
+                    )}
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                        <button
+                            type="button"
+                            disabled={tmdbSaving}
+                            onClick={() => void handleSaveTmdbToken()}
+                            className="rounded-xl bg-yorumi-accent px-4 py-2 text-xs font-semibold text-black transition-opacity disabled:opacity-50 cursor-pointer"
+                        >
+                            {tmdbSaving ? 'Verifying…' : 'Save & Verify'}
+                        </button>
+                        {hasTmdbToken && (
+                            <button
+                                type="button"
+                                onClick={handleClearTmdbToken}
+                                className="rounded-xl bg-white/10 px-3.5 py-2 text-xs font-semibold text-zinc-200 hover:bg-white/15 cursor-pointer"
+                            >
+                                Remove
+                            </button>
+                        )}
+                    </div>
                 </div>
 
                 <div className="rounded-2xl border border-white/[0.08] bg-[#141414] p-4">

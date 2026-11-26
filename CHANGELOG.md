@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [5.0.7] - 2026-11-27
+
+- Upgraded the Explore trailer feed (`ExplorePage.tsx`, `useExploreFeed.ts`, `candidatePoolService.ts`): preloaded the next slide silently for instant `0:00` playback on scroll with zero bounce, removed poster flashes, auto-skipped region-blocked or dead YouTube trailers (`yorumi_explore_blocked_trailers_v1`), displayed Main Character portraits (`characters(sort: [ROLE, FAVOURITES_DESC, RELEVANCE], perPage: 1)`) with `object-top` framing on both Android and Desktop, restored 1:1 interactive horizontal swipe-left directly into the real `AnimeDetailsPage`, and immediately muted & paused Explore trailers when Details opens.
+- Removed YouTube embed play/pause HUD overlays on both Android and Desktop (`android/app/src/main/java/com/yorumi/app/MainActivity.java`, `src-tauri/src/lib.rs`): injected CSP-nonce-aware CSS via Android `BridgeWebViewClient` and a Tauri `youtube-hud-cleaner` init script targeting `www.youtube-nocookie.com/embed/` frames.
+- Added a built-in global Cloudflare Worker TMDB edge proxy (`cloudflare/tmdb-proxy/`, `tmdbService.ts`, `episodeMetadataService.ts`, `AnimeLogoImage.tsx`, `SpotlightHero.tsx`, `MenuPages.tsx`): widescreen backdrops, official title logos (with larger mobile spotlight bounds and unified `anime:<id>` caching), and episode stills now work out of the box with 24-hour edge caching, Metahub/AniZip/HD YouTube fallbacks, and an optional personal TMDB API key override in Settings.
+- Added the Desktop Menu Drawer & Slide-Over Sub-Drawer (`DesktopTitleBar.tsx`, `MobileMenuDrawer.tsx`, `MenuPages.tsx`): replaced the desktop notification bell with a hamburger drawer button (keeping the unread indicator), hid duplicate `Join us` / `Global chat` items on desktop, and opened `Updates`, `Download queue`, `History`, `Statistics`, `Data and storage`, `Settings`, and `About` in a matching right-side slide-over sub-drawer.
+- Fixed Android download notification deep-linking and mobile UI polish (`DownloadNotificationService.java`, `MainActivity.java`, `AppRoutes.tsx`, `MenuPages.tsx`, `src/index.css`, `AnimeDetailsPage.tsx`, `MangaDetailsPage.tsx`, `LNDetailsPage.tsx`): tapping active Anime, Manga, or LN download notifications now navigates straight to `/menu/download-queue?tab=<type>` on cold and warm launches, mobile details headers offset cleanly below the `Downloaded only` banner, and mobile scrollbars are hidden globally.
+
 ## [5.0.6] - 2026-11-26
 
 - Added Mihon-style seamless multi-chapter long-strip streaming (`PageViewer.tsx`, `MangaReaderModal/index.tsx`, `MangaReaderPage.tsx`, `useManga.ts`): chapters flow continuously back-to-back with `Finished / Next` transition banners so readers can scroll forward or back up across chapters without reloads or jumps, paired with immediate tap-time chapter warming (`MangaDetailsPage.tsx`) and a 4-worker rolling page preloader.
