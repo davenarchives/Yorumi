@@ -9,7 +9,7 @@
 
   <br />
 
-  <a href="https://yorumi.vercel.app"><img src="https://img.shields.io/badge/WEBSITE-yorumi.vercel.app-0596FF?style=for-the-badge&logo=vercel&logoColor=white" alt="Website" /></a>
+  <a href="https://yorumi.cloud"><img src="https://img.shields.io/badge/WEBSITE-yorumi.cloud-0596FF?style=for-the-badge&logo=vercel&logoColor=white" alt="Website" /></a>
   <a href="https://github.com/davenarchives/Yorumi/releases"><img src="https://img.shields.io/github/v/release/davenarchives/Yorumi?style=for-the-badge&color=22C55E" alt="Latest Release" /></a>
   <a href="https://github.com/davenarchives/Yorumi/releases"><img src="https://img.shields.io/github/downloads/davenarchives/Yorumi/total?style=for-the-badge&color=0EA5E9" alt="Total Downloads" /></a>
   <a href="https://discord.gg/3xzCQvfanb"><img src="https://img.shields.io/badge/DISCORD-Join%20Community-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord" /></a>

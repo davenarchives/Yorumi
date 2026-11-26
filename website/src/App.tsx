@@ -895,6 +895,16 @@ function App() {
     }, 2000);
   };
 
+  const getPathForRoute = (page: 'home' | 'get-started' | 'docs', docTab?: DocTabId): string => {
+    if (page === 'get-started') return '/download';
+    if (page === 'docs') {
+      if (docTab === 'changelogs') return '/changelogs';
+      if (docTab && docTab !== 'intro') return `/docs/${docTab}`;
+      return '/docs';
+    }
+    return '/';
+  };
+
   const navigateTo = (page: 'home' | 'get-started' | 'docs', docTab?: DocTabId) => {
     setIsMobileMenuOpen(false);
     setCurrentPage(page);
@@ -902,7 +912,10 @@ function App() {
       setActiveDocTab(docTab);
       setDocScrollNonce((n) => n + 1);
     }
-    window.location.hash = page === 'home' ? '' : page === 'docs' && docTab ? `#docs-${docTab}` : `#${page}`;
+    const nextPath = getPathForRoute(page, docTab);
+    if (window.location.pathname !== nextPath || window.location.hash) {
+      window.history.pushState({}, '', nextPath);
+    }
     if (!(page === 'docs' && docTab && docTab !== 'intro')) {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
@@ -912,11 +925,24 @@ function App() {
     navigateTo('docs', tab);
   };
 
+  const handleSpaLinkClick = (
+    event: React.MouseEvent<HTMLAnchorElement>,
+    action: () => void
+  ) => {
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
+      return;
+    }
+    event.preventDefault();
+    action();
+  };
+
   const scrollToAnchor = (elementId: string) => {
     setIsMobileMenuOpen(false);
     if (currentPage !== 'home' && ['features', 'previews', 'everywhere'].includes(elementId)) {
       setCurrentPage('home');
-      window.location.hash = '';
+      if (window.location.pathname !== '/') {
+        window.history.pushState({}, '', `/#${elementId}`);
+      }
       setTimeout(() => {
         document.getElementById(elementId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }, 120);
@@ -926,30 +952,94 @@ function App() {
   };
 
   useEffect(() => {
+    const seoByRoute = () => {
+      if (currentPage === 'get-started') {
+        return {
+          title: 'Download Yorumi | Windows, macOS, Linux & Android APK',
+          description: `Download Yorumi ${RELEASE_TAG} free for Windows (.exe), macOS (.dmg), Linux (.AppImage), and Android (.apk) — watch anime, read manga & light novels offline.`,
+          canonical: 'https://yorumi.cloud/download',
+        };
+      }
+      if (currentPage === 'docs') {
+        if (activeDocTab === 'changelogs') {
+          return {
+            title: `Changelogs & Releases (${RELEASE_TAG}) | Yorumi`,
+            description: `Track Yorumi releases, new features, offline improvements, and fixes across Windows, macOS, Linux, and Android.`,
+            canonical: 'https://yorumi.cloud/changelogs',
+          };
+        }
+        if (activeDocTab === 'cli') {
+          return {
+            title: 'Yorumi CLI | Watch Anime from Your Terminal',
+            description: 'Install and use yorumi-cli to stream anime directly from your terminal on Windows, macOS, and Linux.',
+            canonical: 'https://yorumi.cloud/docs/cli',
+          };
+        }
+        return {
+          title: 'Docs & User Guide | Yorumi',
+          description: 'Learn how to install Yorumi, sync your library with Discord, configure offline downloads, and self-host.',
+          canonical: 'https://yorumi.cloud/docs',
+        };
+      }
+      return {
+        title: 'Yorumi | All-in-One Anime, Manga & Light Novel App',
+        description: 'Watch anime in HD, read manga & light novels, and download favorites to enjoy offline on Windows, macOS, Linux, and Android — free, open source, with no account needed.',
+        canonical: 'https://yorumi.cloud/',
+      };
+    };
+
+    const meta = seoByRoute();
+    document.title = meta.title;
+    const descEl = document.querySelector('meta[name="description"]');
+    if (descEl) descEl.setAttribute('content', meta.description);
+    const canonicalEl = document.querySelector('link[rel="canonical"]');
+    if (canonicalEl) canonicalEl.setAttribute('href', meta.canonical);
+  }, [currentPage, activeDocTab]);
+
+  useEffect(() => {
     document.documentElement.classList.add('dark');
 
     const handleBackToTopScroll = () => setShowBackToTop(window.scrollY > 400);
     window.addEventListener('scroll', handleBackToTopScroll, { passive: true });
     handleBackToTopScroll();
 
-    const handleHashChange = () => {
+    const syncRouteFromLocation = () => {
+      const pathname = window.location.pathname.replace(/\/+$/, '') || '/';
       const hash = window.location.hash;
-      if (hash === '#get-started') {
+
+      if (pathname === '/download' || pathname === '/get-started' || hash === '#get-started') {
         setCurrentPage('get-started');
         window.scrollTo({ top: 0, behavior: 'smooth' });
-      } else if (hash === '#docs' || hash.startsWith('#docs-')) {
+        return;
+      }
+      if (pathname === '/changelogs' || hash === '#docs-changelogs') {
         setCurrentPage('docs');
-        const requestedTab = hash.replace('#docs-', '') as DocTabId;
+        setActiveDocTab('changelogs');
+        setDocScrollNonce((n) => n + 1);
+        return;
+      }
+      if (pathname === '/docs' || pathname.startsWith('/docs/') || hash === '#docs' || hash.startsWith('#docs-')) {
+        setCurrentPage('docs');
+        const fromPath = pathname.startsWith('/docs/') ? pathname.replace('/docs/', '') : '';
+        const fromHash = hash.startsWith('#docs-') ? hash.replace('#docs-', '') : '';
+        const requestedTab = (fromPath || fromHash || 'intro') as DocTabId;
         if (['intro', 'setup', 'tmdb', 'scraper', 'cli', 'changelogs'].includes(requestedTab)) {
           setActiveDocTab(requestedTab);
           setDocScrollNonce((n) => n + 1);
         }
-      } else if (hash === '' || hash === '#home') {
-        setCurrentPage('home');
+        return;
+      }
+      setCurrentPage('home');
+      if (hash && ['#features', '#previews', '#everywhere'].includes(hash)) {
+        const targetId = hash.slice(1);
+        setTimeout(() => {
+          document.getElementById(targetId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 120);
       }
     };
-    window.addEventListener('hashchange', handleHashChange);
-    handleHashChange();
+    window.addEventListener('popstate', syncRouteFromLocation);
+    window.addEventListener('hashchange', syncRouteFromLocation);
+    syncRouteFromLocation();
 
     fetch('https://api.github.com/repos/davenarchives/Yorumi')
       .then((res) => res.json())
@@ -987,7 +1077,8 @@ function App() {
 
     return () => {
       window.removeEventListener('scroll', handleBackToTopScroll);
-      window.removeEventListener('hashchange', handleHashChange);
+      window.removeEventListener('popstate', syncRouteFromLocation);
+      window.removeEventListener('hashchange', syncRouteFromLocation);
       window.clearInterval(downloadRefreshInterval);
       document.removeEventListener('visibilitychange', handleVisibilityRefresh);
     };
@@ -1074,34 +1165,34 @@ function App() {
 
           <nav className="flex items-center gap-2 sm:gap-5">
             <div className="hidden md:flex items-center gap-6 text-sm font-semibold text-yorumi-muted">
-              <button
-                type="button"
-                onClick={() => scrollToAnchor('features')}
+              <a
+                href="/#features"
+                onClick={(e) => handleSpaLinkClick(e, () => scrollToAnchor('features'))}
                 className="hover:text-yorumi-text transition-colors cursor-pointer"
               >
                 Features
-              </button>
-              <button
-                type="button"
-                onClick={() => scrollToAnchor('previews')}
+              </a>
+              <a
+                href="/#previews"
+                onClick={(e) => handleSpaLinkClick(e, () => scrollToAnchor('previews'))}
                 className="hover:text-yorumi-text transition-colors cursor-pointer"
               >
                 Previews
-              </button>
-              <button
-                type="button"
-                onClick={() => handleOpenDoc('intro')}
+              </a>
+              <a
+                href="/docs"
+                onClick={(e) => handleSpaLinkClick(e, () => handleOpenDoc('intro'))}
                 className="hover:text-yorumi-text transition-colors cursor-pointer"
               >
                 Docs
-              </button>
-              <button
-                type="button"
-                onClick={() => handleOpenDoc('changelogs')}
+              </a>
+              <a
+                href="/changelogs"
+                onClick={(e) => handleSpaLinkClick(e, () => handleOpenDoc('changelogs'))}
                 className="hover:text-yorumi-text transition-colors cursor-pointer"
               >
                 Changelogs
-              </button>
+              </a>
               <a
                 href="https://github.com/davenarchives/Yorumi"
                 target="_blank"
@@ -1134,13 +1225,13 @@ function App() {
               {isDarkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </button>
 
-            <button
-              type="button"
-              onClick={() => navigateTo('get-started')}
+            <a
+              href="/download"
+              onClick={(e) => handleSpaLinkClick(e, () => navigateTo('get-started'))}
               className="hidden md:inline-flex px-5 py-2 rounded-full bg-yorumi-text text-yorumi-bg font-bold text-sm hover:opacity-90 active:scale-[0.98] transition-all cursor-pointer whitespace-nowrap"
             >
               Download Yorumi
-            </button>
+            </a>
 
             {/* Mobile Hamburger Menu Button (Tarsi-style clean square pill) */}
             <button
@@ -1886,9 +1977,10 @@ function App() {
           <div className="space-y-3">
             <h3 className="text-xs font-extrabold uppercase tracking-wider text-yorumi-text">Product</h3>
             <ul className="space-y-2 text-sm text-yorumi-muted">
-              <li><button type="button" onClick={() => scrollToAnchor('features')} className="hover:text-yorumi-text transition-colors cursor-pointer">Features</button></li>
-              <li><button type="button" onClick={() => scrollToAnchor('previews')} className="hover:text-yorumi-text transition-colors cursor-pointer">Previews</button></li>
-              <li><button type="button" onClick={() => navigateTo('get-started')} className="hover:text-yorumi-text transition-colors cursor-pointer">Download</button></li>
+              <li><a href="/#features" onClick={(e) => handleSpaLinkClick(e, () => scrollToAnchor('features'))} className="hover:text-yorumi-text transition-colors cursor-pointer">Features</a></li>
+              <li><a href="/#previews" onClick={(e) => handleSpaLinkClick(e, () => scrollToAnchor('previews'))} className="hover:text-yorumi-text transition-colors cursor-pointer">Previews</a></li>
+              <li><a href="/download" onClick={(e) => handleSpaLinkClick(e, () => navigateTo('get-started'))} className="hover:text-yorumi-text transition-colors cursor-pointer">Download</a></li>
+              <li><a href="/changelogs" onClick={(e) => handleSpaLinkClick(e, () => handleOpenDoc('changelogs'))} className="hover:text-yorumi-text transition-colors cursor-pointer">Changelogs</a></li>
               <li><a href={RELEASES_URL} target="_blank" rel="noreferrer" className="hover:text-yorumi-text transition-colors">Releases</a></li>
             </ul>
           </div>
@@ -1896,10 +1988,10 @@ function App() {
           <div className="space-y-3">
             <h3 className="text-xs font-extrabold uppercase tracking-wider text-yorumi-text">Learn</h3>
             <ul className="space-y-2 text-sm text-yorumi-muted">
-              <li><button type="button" onClick={() => handleOpenDoc('intro')} className="hover:text-yorumi-text transition-colors cursor-pointer">User Guide</button></li>
-              <li><button type="button" onClick={() => handleOpenDoc('setup')} className="hover:text-yorumi-text transition-colors cursor-pointer">Self-Host Setup</button></li>
-              <li><button type="button" onClick={() => handleOpenDoc('scraper')} className="hover:text-yorumi-text transition-colors cursor-pointer">Scraper API</button></li>
-              <li><button type="button" onClick={() => handleOpenDoc('tmdb')} className="hover:text-yorumi-text transition-colors cursor-pointer">TMDB Guide</button></li>
+              <li><a href="/docs" onClick={(e) => handleSpaLinkClick(e, () => handleOpenDoc('intro'))} className="hover:text-yorumi-text transition-colors cursor-pointer">User Guide</a></li>
+              <li><a href="/docs/setup" onClick={(e) => handleSpaLinkClick(e, () => handleOpenDoc('setup'))} className="hover:text-yorumi-text transition-colors cursor-pointer">Self-Host Setup</a></li>
+              <li><a href="/docs/scraper" onClick={(e) => handleSpaLinkClick(e, () => handleOpenDoc('scraper'))} className="hover:text-yorumi-text transition-colors cursor-pointer">Scraper API</a></li>
+              <li><a href="/docs/cli" onClick={(e) => handleSpaLinkClick(e, () => handleOpenDoc('cli'))} className="hover:text-yorumi-text transition-colors cursor-pointer">Yorumi CLI</a></li>
             </ul>
           </div>
 

@@ -1479,7 +1479,7 @@ export function AboutPage() {
                     </button>
 
                     <a
-                        href="https://yorumi.vercel.app"
+                        href="https://yorumi.cloud"
                         target="_blank"
                         rel="noopener noreferrer"
                         className="flex w-full items-center justify-between px-4 py-3.5 text-left active:bg-white/10"
@@ -1488,7 +1488,7 @@ export function AboutPage() {
                             <Globe className="h-[18px] w-[18px] shrink-0 text-zinc-400" />
                             <div>
                                 <p className="text-sm font-semibold text-white">Website</p>
-                                <p className="text-xs text-zinc-400">yorumi.vercel.app</p>
+                                <p className="text-xs text-zinc-400">yorumi.cloud</p>
                             </div>
                         </div>
                         <ExternalLink className="h-4 w-4 shrink-0 text-zinc-500" />

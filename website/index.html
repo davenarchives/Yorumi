@@ -2,15 +2,75 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/png" href="/yorumi-app-icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Yorumi - The Ultimate Anime & Manga App</title>
-    <meta name="description" content="Discover and watch anime, read manga, series, and more – easier than ever." />
-    
+    <title>Yorumi | All-in-One Anime, Manga &amp; Light Novel App</title>
+    <meta name="description" content="Watch anime in HD, read manga &amp; light novels, and download favorites to enjoy offline on Windows, macOS, Linux, and Android — free, open source, with no account needed." />
+    <meta name="theme-color" content="#0A0A0A" />
+    <link rel="canonical" href="https://yorumi.cloud/" />
+
+    <!-- Icons -->
+    <link rel="icon" type="image/png" sizes="192x192" href="/yorumi-app-icon.png" />
+    <link rel="apple-touch-icon" href="/yorumi-app-icon.png" />
+
+    <!-- Open Graph / Social -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Yorumi" />
+    <meta property="og:url" content="https://yorumi.cloud/" />
+    <meta property="og:title" content="Yorumi | All-in-One Anime, Manga &amp; Light Novel App" />
+    <meta property="og:description" content="Watch anime in HD, read manga &amp; light novels, and download favorites offline on Windows, macOS, Linux, and Android — free and ad-free." />
+    <meta property="og:image" content="https://yorumi.cloud/hero-screenshot.png" />
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Yorumi | All-in-One Anime, Manga &amp; Light Novel App" />
+    <meta name="twitter:description" content="Watch anime in HD, read manga &amp; light novels, and download favorites offline on desktop and Android." />
+    <meta name="twitter:image" content="https://yorumi.cloud/hero-screenshot.png" />
+
+    <!-- Structured Data for Google Site Name & Rich Results -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "WebSite",
+            "name": "Yorumi",
+            "alternateName": ["Yorumi App", "yorumi.cloud"],
+            "url": "https://yorumi.cloud/"
+          },
+          {
+            "@type": "SoftwareApplication",
+            "name": "Yorumi",
+            "url": "https://yorumi.cloud/",
+            "downloadUrl": "https://yorumi.cloud/download",
+            "image": "https://yorumi.cloud/yorumi-app-icon.png",
+            "screenshot": "https://yorumi.cloud/hero-screenshot.png",
+            "applicationCategory": "EntertainmentApplication",
+            "operatingSystem": "Windows, macOS, Linux, Android",
+            "softwareVersion": "5.0.5",
+            "description": "Free and open-source all-in-one companion for watching anime in HD, reading manga and light novels, and downloading favorites for offline playback on desktop and Android.",
+            "offers": {
+              "@type": "Offer",
+              "price": "0",
+              "priceCurrency": "USD"
+            },
+            "author": {
+              "@type": "Person",
+              "name": "davenarchives",
+              "url": "https://github.com/davenarchives"
+            },
+            "sameAs": [
+              "https://github.com/davenarchives/Yorumi",
+              "https://discord.gg/3xzCQvfanb"
+            ]
+          }
+        ]
+      }
+    </script>
+
     <!-- Google Fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700&family=Baloo+2:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700&family=Baloo+2:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
   </head>
   <body class="bg-yorumi-bg text-yorumi-text antialiased font-sans">
     <div id="root"></div>

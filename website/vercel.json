@@ -1,0 +1,19 @@
+{
+  "rewrites": [
+    {
+      "source": "/((?!assets/|shots/|previews/|tmdb/|robots\\.txt|sitemap\\.xml|.*\\..*).*)",
+      "destination": "/index.html"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/(robots\\.txt|sitemap\\.xml)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=3600"
+        }
+      ]
+    }
+  ]
+}
