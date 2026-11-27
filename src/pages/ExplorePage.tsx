@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 import { useWatchList } from '../hooks/useWatchList';
 import { useFavoriteAnime } from '../hooks/useFavoriteAnime';
-import { isMobileShell } from '../platform/runtime';
+import { getRuntimePlatform, isMobileShell } from '../platform/runtime';
 import { enterLandscapePlayerMode, exitLandscapePlayerMode } from '../platform/immersiveMode';
 import ExploreSkeleton from '../features/explore/components/ExploreSkeleton';
 import { isAnimeReleased } from '../utils/animeAiring';
@@ -964,7 +964,7 @@ export default function ExplorePage() {
     useEffect(() => {
         const handleWindowMessage = (event: MessageEvent) => {
             try {
-                if (event.origin && !event.origin.includes('youtube')) return;
+                if (event.origin && !event.origin.includes('youtube') && !event.origin.includes('yorumi.cloud')) return;
 
                 const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
                 if (!data) return;
@@ -1283,7 +1283,11 @@ export default function ExplorePage() {
                                                     // Auto-remove region-blocked / dead trailers that never start playing
                                                     armTrailerWatchdog(anime.id, isVisualActive ? 5500 : 7500);
                                                 }}
-                                                src={`https://www.youtube-nocookie.com/embed/${anime.trailer!.id}?autoplay=1&mute=1&controls=0&playsinline=1&rel=0&modestbranding=1&showinfo=0&disablekb=1&fs=0&iv_load_policy=3&cc_load_policy=0&enablejsapi=1${/^https?:\/\//i.test(window.location.origin) ? `&origin=${encodeURIComponent(window.location.origin)}` : ''}&vq=hd1080`}
+                                                src={
+                                                    getRuntimePlatform() === 'ios'
+                                                        ? `https://yorumi.cloud/embed.html?v=${encodeURIComponent(anime.trailer!.id)}`
+                                                        : `https://www.youtube-nocookie.com/embed/${anime.trailer!.id}?autoplay=1&mute=1&controls=0&playsinline=1&rel=0&modestbranding=1&showinfo=0&disablekb=1&fs=0&iv_load_policy=3&cc_load_policy=0&enablejsapi=1${/^https?:\/\//i.test(window.location.origin) ? `&origin=${encodeURIComponent(window.location.origin)}` : ''}&vq=hd1080`
+                                                }
                                                 title={anime.title}
                                                 className={
                                                     isFullscreen

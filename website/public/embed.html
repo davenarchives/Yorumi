@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="referrer" content="strict-origin-when-cross-origin" />
+  <title>Yorumi Trailer</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #000;
+    }
+    iframe {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      border: 0;
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <script>
+    (function () {
+      var params = new URLSearchParams(window.location.search);
+      var rawId = (params.get('v') || '').trim();
+      if (!/^[a-zA-Z0-9_-]{6,20}$/.test(rawId)) return;
+
+      var iframe = document.createElement('iframe');
+      iframe.allow = 'autoplay; encrypted-media; picture-in-picture';
+      iframe.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
+      iframe.src =
+        'https://www.youtube-nocookie.com/embed/' +
+        encodeURIComponent(rawId) +
+        '?autoplay=1&mute=1&controls=0&playsinline=1&rel=0&modestbranding=1&showinfo=0&disablekb=1&fs=0&iv_load_policy=3&cc_load_policy=0&enablejsapi=1&origin=' +
+        encodeURIComponent(window.location.origin) +
+        '&vq=hd1080';
+      document.body.appendChild(iframe);
+
+      // Bridge postMessage commands from parent (Yorumi iOS WebView) <-> YouTube iframe
+      window.addEventListener('message', function (event) {
+        if (!iframe.contentWindow) return;
+        if (event.source === iframe.contentWindow) {
+          if (window.parent && window.parent !== window) {
+            window.parent.postMessage(event.data, '*');
+          }
+        } else if (event.source === window.parent) {
+          iframe.contentWindow.postMessage(event.data, '*');
+        }
+      });
+
+      iframe.addEventListener('load', function () {
+        try {
+          iframe.contentWindow.postMessage(JSON.stringify({ event: 'listening' }), '*');
+          ['onReady', 'onStateChange', 'onError'].forEach(function (evt) {
+            iframe.contentWindow.postMessage(
+              JSON.stringify({ event: 'command', func: 'addEventListener', args: [evt] }),
+              '*'
+            );
+          });
+        } catch (e) {}
+      });
+    })();
+  </script>
+</body>
+</html>
