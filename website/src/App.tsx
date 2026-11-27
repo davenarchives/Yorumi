@@ -11,6 +11,8 @@ import {
   Check,
   Terminal,
   Smartphone,
+  Monitor,
+  ChevronDown,
   Tv,
   BookOpen,
   BookText,
@@ -886,6 +888,31 @@ function App() {
   const [showBackToTop, setShowBackToTop] = useState(false);
   const [copiedCommand, setCopiedCommand] = useState<string | null>(null);
   const [cliInstallTab, setCliInstallTab] = useState<'windows' | 'unix' | 'scoop'>('windows');
+  const [heroDropdown, setHeroDropdown] = useState<'desktop' | 'mobile' | null>(null);
+  const [mobileDownloadTab, setMobileDownloadTab] = useState<'mobile' | 'desktop'>(() =>
+    typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
+      ? 'mobile'
+      : 'mobile'
+  );
+  const heroDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!heroDropdown) return;
+    const onPointerDown = (event: MouseEvent) => {
+      if (heroDropdownRef.current && !heroDropdownRef.current.contains(event.target as Node)) {
+        setHeroDropdown(null);
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setHeroDropdown(null);
+    };
+    document.addEventListener('mousedown', onPointerDown);
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [heroDropdown]);
 
   const handleCopy = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
@@ -1392,24 +1419,118 @@ function App() {
                     on desktop, Android, and iOS — with no account needed.
                   </motion.p>
 
-                  {/* Store / Platform CTA Buttons */}
-                  <motion.div variants={itemVariants} className="flex flex-nowrap items-center justify-center lg:justify-start gap-2.5 sm:gap-3 pt-1">
-                    <button
-                      type="button"
-                      onClick={() => navigateTo('get-started')}
-                      className="inline-flex items-center justify-center gap-2 px-4 sm:px-6 py-3 rounded-2xl bg-yorumi-main hover:bg-yorumi-main/90 text-white font-bold text-xs sm:text-base whitespace-nowrap transition-all hover:-translate-y-0.5 active:scale-[0.98] cursor-pointer"
-                    >
-                      <Download className="w-4 h-4 shrink-0" />
-                      <span>Download Free</span>
-                    </button>
+                  {/* Store / Platform CTA Dropdowns: Desktop & Mobile */}
+                  <motion.div
+                    ref={heroDropdownRef}
+                    variants={itemVariants}
+                    className="relative z-40 flex flex-nowrap items-center justify-center lg:justify-start gap-2.5 sm:gap-3 pt-1"
+                  >
+                    {/* Desktop Dropdown */}
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => setHeroDropdown((prev) => (prev === 'desktop' ? null : 'desktop'))}
+                        aria-expanded={heroDropdown === 'desktop'}
+                        className="inline-flex items-center justify-center gap-2 px-4 sm:px-6 py-3 rounded-2xl bg-yorumi-main hover:bg-yorumi-main/90 text-white font-bold text-xs sm:text-base whitespace-nowrap transition-all hover:-translate-y-0.5 active:scale-[0.98] cursor-pointer"
+                      >
+                        <Monitor className="w-4 h-4 shrink-0" />
+                        <span>Desktop</span>
+                        <ChevronDown className={`w-4 h-4 shrink-0 transition-transform duration-200 ${heroDropdown === 'desktop' ? 'rotate-180' : ''}`} />
+                      </button>
 
-                    <a
-                      href={releaseDownloadUrl('Yorumi.apk')}
-                      className="inline-flex items-center justify-center gap-2 px-4 sm:px-5 py-3 rounded-2xl tarsi-card hover:opacity-90 text-yorumi-text font-bold text-xs sm:text-base whitespace-nowrap transition-all hover:-translate-y-0.5 active:scale-[0.98]"
-                    >
-                      <Smartphone className="w-4 h-4 text-yorumi-main shrink-0" />
-                      <span>Android APK</span>
-                    </a>
+                      {heroDropdown === 'desktop' && (
+                        <div className="absolute left-0 sm:left-0 mt-2.5 w-60 rounded-2xl border border-yorumi-text/10 bg-yorumi-card/95 backdrop-blur-2xl p-2 shadow-2xl text-left z-50">
+                          <a
+                            href={releaseDownloadUrl('Yorumi.exe')}
+                            onClick={() => setHeroDropdown(null)}
+                            className="flex items-center gap-3 rounded-xl px-3 py-2.5 hover:bg-yorumi-text/10 transition-colors"
+                          >
+                            <WindowsIcon className="w-4 h-4 text-yorumi-text shrink-0" />
+                            <div className="min-w-0 flex-1">
+                              <div className="text-sm font-bold text-yorumi-text">Windows</div>
+                              <div className="text-[11px] text-yorumi-muted">Yorumi.exe · Win 10/11</div>
+                            </div>
+                            <Download className="w-3.5 h-3.5 text-yorumi-muted shrink-0" />
+                          </a>
+                          <a
+                            href={releaseDownloadUrl('Yorumi.dmg')}
+                            onClick={() => setHeroDropdown(null)}
+                            className="flex items-center gap-3 rounded-xl px-3 py-2.5 hover:bg-yorumi-text/10 transition-colors"
+                          >
+                            <AppleIcon className="w-4 h-4 text-yorumi-text shrink-0" />
+                            <div className="min-w-0 flex-1">
+                              <div className="text-sm font-bold text-yorumi-text">macOS</div>
+                              <div className="text-[11px] text-yorumi-muted">Yorumi.dmg · Apple Silicon &amp; Intel</div>
+                            </div>
+                            <Download className="w-3.5 h-3.5 text-yorumi-muted shrink-0" />
+                          </a>
+                          <a
+                            href={releaseDownloadUrl('Yorumi.AppImage')}
+                            onClick={() => setHeroDropdown(null)}
+                            className="flex items-center gap-3 rounded-xl px-3 py-2.5 hover:bg-yorumi-text/10 transition-colors"
+                          >
+                            <LinuxIcon className="w-4 h-4 text-yorumi-text shrink-0" />
+                            <div className="min-w-0 flex-1">
+                              <div className="text-sm font-bold text-yorumi-text">Linux</div>
+                              <div className="text-[11px] text-yorumi-muted">Yorumi.AppImage</div>
+                            </div>
+                            <Download className="w-3.5 h-3.5 text-yorumi-muted shrink-0" />
+                          </a>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Mobile Dropdown */}
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => setHeroDropdown((prev) => (prev === 'mobile' ? null : 'mobile'))}
+                        aria-expanded={heroDropdown === 'mobile'}
+                        className="inline-flex items-center justify-center gap-2 px-4 sm:px-5 py-3 rounded-2xl tarsi-card hover:opacity-90 text-yorumi-text font-bold text-xs sm:text-base whitespace-nowrap transition-all hover:-translate-y-0.5 active:scale-[0.98] cursor-pointer"
+                      >
+                        <Smartphone className="w-4 h-4 text-yorumi-main shrink-0" />
+                        <span>Mobile</span>
+                        <ChevronDown className={`w-4 h-4 shrink-0 text-yorumi-muted transition-transform duration-200 ${heroDropdown === 'mobile' ? 'rotate-180' : ''}`} />
+                      </button>
+
+                      {heroDropdown === 'mobile' && (
+                        <div className="absolute right-0 lg:left-0 lg:right-auto mt-2.5 w-60 rounded-2xl border border-yorumi-text/10 bg-yorumi-card/95 backdrop-blur-2xl p-2 shadow-2xl text-left z-50">
+                          <a
+                            href={releaseDownloadUrl('Yorumi.apk')}
+                            onClick={() => setHeroDropdown(null)}
+                            className="flex items-center gap-3 rounded-xl px-3 py-2.5 hover:bg-yorumi-text/10 transition-colors"
+                          >
+                            <Smartphone className="w-4 h-4 text-yorumi-main shrink-0" />
+                            <div className="min-w-0 flex-1">
+                              <div className="text-sm font-bold text-yorumi-text">Android</div>
+                              <div className="text-[11px] text-yorumi-muted">Yorumi.apk · Phones &amp; Tablets</div>
+                            </div>
+                            <Download className="w-3.5 h-3.5 text-yorumi-muted shrink-0" />
+                          </a>
+                          <a
+                            href={releaseDownloadUrl('Yorumi.ipa')}
+                            onClick={() => setHeroDropdown(null)}
+                            className="flex items-center gap-3 rounded-xl px-3 py-2.5 hover:bg-yorumi-text/10 transition-colors"
+                          >
+                            <AppleIcon className="w-4 h-4 text-yorumi-main shrink-0" />
+                            <div className="min-w-0 flex-1">
+                              <div className="text-sm font-bold text-yorumi-text">iOS (Beta)</div>
+                              <div className="text-[11px] text-yorumi-muted">Yorumi.ipa · Unsigned IPA</div>
+                            </div>
+                            <Download className="w-3.5 h-3.5 text-yorumi-muted shrink-0" />
+                          </a>
+                          <div className="my-1 border-t border-yorumi-text/10" />
+                          <a
+                            href="sidestore://source?url=https://yorumi.cloud/source.json"
+                            onClick={() => setHeroDropdown(null)}
+                            className="flex items-center justify-between rounded-xl px-3 py-2 text-xs font-bold text-yorumi-main hover:bg-yorumi-main/10 transition-colors"
+                          >
+                            <span>Add to SideStore / AltStore</span>
+                            <ExternalLink className="w-3.5 h-3.5 shrink-0" />
+                          </a>
+                        </div>
+                      )}
+                    </div>
                   </motion.div>
 
                   {/* Tarsi-style Overlapping Anime Avatars + Animated Downloads Counter */}
@@ -1629,13 +1750,13 @@ function App() {
         {/* DOWNLOADS / GET STARTED PAGE */}
         {currentPage === 'get-started' && (
           <div id="start-using" className="max-w-[1140px] mx-auto space-y-12 sm:space-y-14">
-            {/* Clean Header */}
+            {/* Clean Header (centered on phone, split on desktop) */}
             <motion.div
               initial={{ opacity: 0, y: 14 }}
               animate={{ opacity: 1, y: 0 }}
-              className="flex flex-col md:flex-row md:items-end justify-between gap-6"
+              className="flex flex-col md:flex-row md:items-end justify-between gap-6 text-center md:text-left"
             >
-              <div className="space-y-2.5 max-w-xl">
+              <div className="space-y-2.5 max-w-xl mx-auto md:mx-0">
                 <h1 className="text-4xl sm:text-5xl font-display font-extrabold tracking-tight text-yorumi-text">
                   Download Yorumi
                 </h1>
@@ -1644,7 +1765,7 @@ function App() {
                 </p>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+              <div className="flex flex-wrap items-center justify-center md:justify-end gap-2.5 shrink-0">
                 <button
                   type="button"
                   onClick={() => handleOpenDoc('changelogs')}
@@ -1665,11 +1786,42 @@ function App() {
               </div>
             </motion.div>
 
+            {/* Mobile-only Segmented Platform Switcher (shows Android & iOS immediately at top on phones) */}
+            <div className="flex justify-center sm:hidden -mt-4">
+              <div className="inline-flex items-center rounded-2xl tarsi-card p-1 gap-1">
+                <button
+                  type="button"
+                  onClick={() => setMobileDownloadTab('mobile')}
+                  className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    mobileDownloadTab === 'mobile'
+                      ? 'bg-yorumi-main text-white shadow'
+                      : 'text-yorumi-muted hover:text-yorumi-text'
+                  }`}
+                >
+                  <Smartphone className="w-3.5 h-3.5" />
+                  <span>Mobile</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMobileDownloadTab('desktop')}
+                  className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    mobileDownloadTab === 'desktop'
+                      ? 'bg-yorumi-main text-white shadow'
+                      : 'text-yorumi-muted hover:text-yorumi-text'
+                  }`}
+                >
+                  <Monitor className="w-3.5 h-3.5" />
+                  <span>Desktop</span>
+                </button>
+              </div>
+            </div>
+
             {/* Platform Download Cards */}
             <div id="yorumi-desktop" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
               {[
                 {
                   id: 'windows',
+                  group: 'desktop' as const,
                   name: 'Windows',
                   subtitle: 'Windows 10 & 11 (64-bit)',
                   icon: <WindowsIcon className="w-6 h-6" />,
@@ -1679,6 +1831,7 @@ function App() {
                 },
                 {
                   id: 'macos',
+                  group: 'desktop' as const,
                   name: 'macOS',
                   subtitle: 'Apple Silicon & Intel (10.15+)',
                   icon: <AppleIcon className="w-6 h-6" />,
@@ -1688,6 +1841,7 @@ function App() {
                 },
                 {
                   id: 'linux',
+                  group: 'desktop' as const,
                   name: 'Linux',
                   subtitle: 'Ubuntu, Fedora, Arch & more',
                   icon: <LinuxIcon className="w-6 h-6" />,
@@ -1697,6 +1851,7 @@ function App() {
                 },
                 {
                   id: 'android',
+                  group: 'mobile' as const,
                   name: 'Android',
                   subtitle: 'Android 7.0+ phones & tablets',
                   icon: <Smartphone className="w-6 h-6 text-yorumi-main" />,
@@ -1708,6 +1863,7 @@ function App() {
                 },
                 {
                   id: 'ios',
+                  group: 'mobile' as const,
                   name: 'iOS (Beta)',
                   subtitle: 'Unsigned .ipa for SideStore, AltStore & Sideloadly',
                   icon: <AppleIcon className="w-6 h-6 text-yorumi-main" />,
@@ -1721,7 +1877,9 @@ function App() {
                 <div
                   key={platform.id}
                   id={platform.id === 'android' ? 'yorumi-android' : platform.id === 'ios' ? 'yorumi-ios' : undefined}
-                  className="tarsi-card rounded-[28px] p-5 flex flex-col justify-between gap-7 hover:-translate-y-1 transition-transform duration-300"
+                  className={`${
+                    platform.group === mobileDownloadTab ? 'flex' : 'hidden sm:flex'
+                  } tarsi-card rounded-[28px] p-5 flex-col justify-between gap-7 hover:-translate-y-1 transition-transform duration-300`}
                 >
                   <div className="space-y-3">
                     <div className="text-yorumi-text">
