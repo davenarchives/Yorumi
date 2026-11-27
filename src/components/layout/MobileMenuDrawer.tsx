@@ -33,7 +33,7 @@ import {
     UpdatesPage,
 } from '../../pages/MenuPages';
 
-type DesktopSubpageId =
+export type DesktopSubpageId =
     | 'updates'
     | 'download-queue'
     | 'history'
@@ -42,10 +42,18 @@ type DesktopSubpageId =
     | 'settings'
     | 'about';
 
+export interface PendingMenuSubpage {
+    subpage: DesktopSubpageId;
+    tab?: string;
+    nonce: number;
+}
+
 interface MobileMenuDrawerProps {
     isOpen: boolean;
     onClose: () => void;
     onOpenDiscord: () => void;
+    onOpenChat?: () => void;
+    pendingSubpage?: PendingMenuSubpage | null;
 }
 
 const DRAWER_TRANSITION_MS = 220;
@@ -59,6 +67,8 @@ export default function MobileMenuDrawer({
     isOpen,
     onClose,
     onOpenDiscord,
+    onOpenChat,
+    pendingSubpage,
 }: MobileMenuDrawerProps) {
     const navigate = useNavigate();
     const location = useLocation();
@@ -98,6 +108,22 @@ export default function MobileMenuDrawer({
             return () => window.clearTimeout(t);
         }
     }, [isOpen]);
+
+    // Open a specific subpage directly when requested (e.g. "Show entry" notification on tablet)
+    useEffect(() => {
+        if (!isOpen || !pendingSubpage) return;
+        if (typeof window !== 'undefined' && window.innerWidth >= 768) {
+            if (subpageCloseTimerRef.current !== null) {
+                window.clearTimeout(subpageCloseTimerRef.current);
+                subpageCloseTimerRef.current = null;
+            }
+            setActiveSubpage(pendingSubpage.subpage);
+            setSubpageVisible(false);
+            window.requestAnimationFrame(() => {
+                window.requestAnimationFrame(() => setSubpageVisible(true));
+            });
+        }
+    }, [isOpen, pendingSubpage]);
 
     const openDesktopSubpage = (subpage: DesktopSubpageId) => {
         if (subpageCloseTimerRef.current !== null) {
@@ -378,7 +404,7 @@ export default function MobileMenuDrawer({
 
                     {/* Community & app Section */}
                     <div className="py-1.5">
-                        {!isDesktopViewport && (
+                        {(!isDesktopViewport || isMobileShell()) && (
                             <>
                                 <MenuRow
                                     icon={DiscordBrandIcon}
@@ -391,7 +417,14 @@ export default function MobileMenuDrawer({
                                 <MenuRow
                                     icon={MessageCircle}
                                     label="Global chat"
-                                    onClick={() => goToPage('/menu/chat')}
+                                    onClick={() => {
+                                        if (isDesktopViewport && onOpenChat) {
+                                            onClose();
+                                            onOpenChat();
+                                        } else {
+                                            goToPage('/menu/chat');
+                                        }
+                                    }}
                                 />
                             </>
                         )}
@@ -424,7 +457,14 @@ export default function MobileMenuDrawer({
                     aria-label={activeSubpage}
                 >
                     <MenuDrawerEmbeddedContext.Provider
-                        value={{ onBack: closeDesktopSubpage, onClose }}
+                        value={{
+                            onBack: closeDesktopSubpage,
+                            onClose,
+                            initialTab:
+                                pendingSubpage && pendingSubpage.subpage === activeSubpage
+                                    ? pendingSubpage.tab
+                                    : undefined,
+                        }}
                     >
                         {activeSubpage === 'updates' && <UpdatesPage />}
                         {activeSubpage === 'download-queue' && <DownloadQueuePage />}

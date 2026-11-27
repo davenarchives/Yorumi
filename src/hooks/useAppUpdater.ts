@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { isNativeMobile, isTauri } from '../platform/runtime';
-import { downloadAndInstallAndroidApk } from '../platform/nativeDownloadStorage';
+import { downloadAndInstallAndroidApk, isAndroidDownloadStorageAvailable } from '../platform/nativeDownloadStorage';
 
 interface GithubReleaseAsset {
     name: string;
@@ -37,7 +37,7 @@ export interface AppUpdateState {
 
 const RELEASES_API_URL = 'https://api.github.com/repos/davenarchives/Yorumi/releases/latest';
 const RELEASES_FALLBACK_URL = 'https://github.com/davenarchives/Yorumi/releases/latest';
-const FALLBACK_VERSION = '5.0.5';
+const FALLBACK_VERSION = '5.0.8';
 const CHECK_INTERVAL_MS = 30 * 60 * 1000;
 
 const parseSemver = (raw: string): [number, number, number] => {
@@ -58,11 +58,15 @@ const pickPlatformAsset = (assets: GithubReleaseAsset[]): GithubReleaseAsset | n
     if (!assets.length) return null;
     const ua = typeof navigator !== 'undefined' ? navigator.userAgent.toLowerCase() : '';
     const isAndroid = ua.includes('android');
-    const isMac = ua.includes('mac');
+    const isIos = /iphone|ipad|ipod/.test(ua);
+    const isMac = ua.includes('mac') && !isIos;
     const isLinux = ua.includes('linux') && !isAndroid;
 
     if (isAndroid) {
         return assets.find((a) => /\.apk$/i.test(a.name)) || null;
+    }
+    if (isIos) {
+        return assets.find((a) => /\.ipa$/i.test(a.name)) || null;
     }
     if (isMac) {
         return assets.find((a) => /\.dmg$/i.test(a.name)) || null;
@@ -197,7 +201,7 @@ export function useAppUpdater(): AppUpdateState {
 
     const installUpdate = useCallback(async () => {
         if (status === 'downloading' || status === 'installing') return;
-        if (isNativeMobile() && downloadUrl) {
+        if (isAndroidDownloadStorageAvailable() && downloadUrl) {
             setStatus('downloading');
             setProgress(0);
             setError(null);
@@ -207,6 +211,11 @@ export function useAppUpdater(): AppUpdateState {
                     if (pct >= 100) setStatus('installing');
                 });
                 setStatus('installing');
+                // Reset after Android hands off to the system installer so cancelling
+                // the Android install sheet doesn't leave the modal stuck on "Installing…"
+                window.setTimeout(() => {
+                    setStatus((prev) => (prev === 'installing' ? 'idle' : prev));
+                }, 1500);
             } catch (err) {
                 setStatus('error');
                 setError(err instanceof Error ? err.message : String(err));

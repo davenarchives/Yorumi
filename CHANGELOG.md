@@ -4,6 +4,9 @@
 
 ## [5.0.8] - 2026-11-27
 
+- Hardened desktop, Android, and iOS app updates (`updater.rs`, `useAppUpdater.ts`, `NativeDownloadStoragePlugin.java`): Windows updates now verify download completeness, wait for Yorumi's exact PID to exit before running the installer, and automatically fall back to the interactive setup wizard if silent `/S` fails; Android verifies APK completeness and resets modal state if the system installer is dismissed; iOS detects `.ipa` assets properly.
+- Fixed tablet menu & notification routing (`MobileMenuDrawer.tsx`, `Sidebar.tsx`, `AppRoutes.tsx`, `MenuPages.tsx`): restored desktop-style **Join us** modal and **Global chat** overlay in the tablet menu, allowed opening Menu on Anime/Manga/LN Details pages, routed Android **"Show entry"** notifications into the slide-over Download Queue sub-drawer on tablets, and removed the legacy dedicated full-page `/menu/*` workspace on wide viewports.
+
 - Added the batch download selector (`BatchDownloadMenu`: Next 1/5/10/25, Unread/Unwatched, All, Custom) to Desktop and Tablet download buttons across Anime, Manga, and Light Novel details (`DetailsEpisodeGrid.tsx`, `MangaDetailsPage.tsx`, `LNDetailsPage.tsx`).
 
 - Adjusted video player caption sizing (`CustomVideoControls.tsx`) so subtitles stay compact on phones (`11px` portrait, `clamp(13px, 3.4vh, 22px)` fullscreen) and balanced on desktop (`15px` inline, `clamp(16px, 2.5vh, 21px)` fullscreen) while preserving tablet sizing.

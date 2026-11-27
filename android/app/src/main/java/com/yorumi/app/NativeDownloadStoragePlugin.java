@@ -848,6 +848,15 @@ public class NativeDownloadStoragePlugin extends Plugin {
                         }
                         out.flush();
                     }
+
+                    if (downloaded <= 0 || (total > 0 && downloaded < total)) {
+                        if (tempFile.exists()) {
+                            //noinspection ResultOfMethodCallIgnored
+                            tempFile.delete();
+                        }
+                        call.reject("Downloaded update APK is incomplete. Please try again.");
+                        return;
+                    }
                 }
 
                 if (apkFile.exists()) {

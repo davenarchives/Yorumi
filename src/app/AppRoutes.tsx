@@ -21,6 +21,7 @@ import SpotlightSkeleton from '../features/anime/components/SpotlightSkeleton';
 import ExploreSkeleton from '../features/explore/components/ExploreSkeleton';
 import OfflineEmptyState from '../components/shared/OfflineEmptyState';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
+import type { DesktopSubpageId } from '../components/layout/MobileMenuDrawer';
 
 const AnimeFormatPage = lazy(() => import('../pages/AnimeFormatPage'));
 const AnimeStudioPage = lazy(() => import('../pages/AnimeStudioPage'));
@@ -127,6 +128,54 @@ const isOfflineAllowedPath = (pathname: string): boolean => {
     return false;
 };
 
+const parseMenuSubpageRoute = (rawPath: string): { subpage: DesktopSubpageId; tab?: string } | null => {
+    const [pathname, rawSearch = ''] = rawPath.split('?');
+    const tab = new URLSearchParams(rawSearch).get('tab') || undefined;
+    switch (pathname) {
+        case '/menu/updates':
+            return { subpage: 'updates', tab };
+        case '/menu/download-queue':
+            return { subpage: 'download-queue', tab };
+        case '/menu/history':
+        case '/menu/activity':
+            return { subpage: 'history', tab };
+        case '/menu/statistics':
+            return { subpage: 'statistics', tab };
+        case '/menu/storage':
+            return { subpage: 'storage', tab };
+        case '/menu/settings':
+            return { subpage: 'settings', tab };
+        case '/menu/about':
+            return { subpage: 'about', tab };
+        default:
+            return null;
+    }
+};
+
+function MenuRouteOrSidebar({
+    subpage,
+    children,
+}: {
+    subpage: DesktopSubpageId;
+    children: React.ReactElement;
+}) {
+    const navigate = useNavigate();
+    const location = useLocation();
+    const isWideViewport = typeof window !== 'undefined' && window.innerWidth >= 768;
+
+    useEffect(() => {
+        if (!isWideViewport) return;
+        const tab = new URLSearchParams(location.search).get('tab') || undefined;
+        navigate('/', { replace: true });
+        window.setTimeout(() => {
+            window.dispatchEvent(new CustomEvent('yorumi-open-menu-subpage', { detail: { subpage, tab } }));
+        }, 0);
+    }, [isWideViewport, location.search, navigate, subpage]);
+
+    if (isWideViewport) return null;
+    return children;
+}
+
 export function AppRoutes() {
     const location = useLocation();
     const navigate = useNavigate();
@@ -136,18 +185,27 @@ export function AppRoutes() {
 
     // Handle Android native notification deep-links (both cold launch and warm onNewIntent)
     useEffect(() => {
+        const dispatchRoute = (targetPath: string) => {
+            const menuTarget = parseMenuSubpageRoute(targetPath);
+            if (menuTarget && typeof window !== 'undefined' && window.innerWidth >= 768) {
+                window.dispatchEvent(new CustomEvent('yorumi-open-menu-subpage', { detail: menuTarget }));
+                return;
+            }
+            navigate(targetPath);
+        };
+
         const win = window as Window & { __YORUMI_PENDING_ROUTE__?: string | null };
         const pending = win.__YORUMI_PENDING_ROUTE__;
         if (pending && typeof pending === 'string') {
             win.__YORUMI_PENDING_ROUTE__ = null;
-            navigate(pending);
+            dispatchRoute(pending);
         }
 
         const handleNativeNavigate = (event: Event) => {
             const path = (event as CustomEvent<{ path?: string }>).detail?.path;
             if (path && typeof path === 'string') {
                 win.__YORUMI_PENDING_ROUTE__ = null;
-                navigate(path);
+                dispatchRoute(path);
             }
         };
 
@@ -216,15 +274,15 @@ export function AppRoutes() {
                     <Route path="/manga/specials" element={<MangaFormatPage />} />
 
                     <Route path="/library" element={<LibraryPage />} />
-                    <Route path="/menu/updates" element={<UpdatesPage />} />
-                    <Route path="/menu/download-queue" element={<DownloadQueuePage />} />
-                    <Route path="/menu/history" element={<HistoryPage />} />
-                    <Route path="/menu/activity" element={<HistoryPage />} />
-                    <Route path="/menu/statistics" element={<StatisticsPage />} />
-                    <Route path="/menu/storage" element={<DataStoragePage />} />
+                    <Route path="/menu/updates" element={<MenuRouteOrSidebar subpage="updates"><UpdatesPage /></MenuRouteOrSidebar>} />
+                    <Route path="/menu/download-queue" element={<MenuRouteOrSidebar subpage="download-queue"><DownloadQueuePage /></MenuRouteOrSidebar>} />
+                    <Route path="/menu/history" element={<MenuRouteOrSidebar subpage="history"><HistoryPage /></MenuRouteOrSidebar>} />
+                    <Route path="/menu/activity" element={<MenuRouteOrSidebar subpage="history"><HistoryPage /></MenuRouteOrSidebar>} />
+                    <Route path="/menu/statistics" element={<MenuRouteOrSidebar subpage="statistics"><StatisticsPage /></MenuRouteOrSidebar>} />
+                    <Route path="/menu/storage" element={<MenuRouteOrSidebar subpage="storage"><DataStoragePage /></MenuRouteOrSidebar>} />
                     <Route path="/menu/chat" element={<GlobalChatPage />} />
-                    <Route path="/menu/settings" element={<SettingsPage />} />
-                    <Route path="/menu/about" element={<AboutPage />} />
+                    <Route path="/menu/settings" element={<MenuRouteOrSidebar subpage="settings"><SettingsPage /></MenuRouteOrSidebar>} />
+                    <Route path="/menu/about" element={<MenuRouteOrSidebar subpage="about"><AboutPage /></MenuRouteOrSidebar>} />
                     <Route path="/explore" element={<ExplorePage />} />
                     <Route path="/search" element={<SearchPage />} />
                     <Route path="/search/:type" element={<SearchResultsPage />} />

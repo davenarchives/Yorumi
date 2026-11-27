@@ -166,19 +166,10 @@ const formatTimeShort = (timestampMs?: number): string => {
 export interface MenuDrawerEmbeddedContextValue {
     onBack: () => void;
     onClose: () => void;
+    initialTab?: string;
 }
 
 export const MenuDrawerEmbeddedContext = createContext<MenuDrawerEmbeddedContextValue | null>(null);
-
-const DESKTOP_MENU_NAV = [
-    { path: '/menu/updates', label: 'Updates', icon: Bell },
-    { path: '/menu/download-queue', label: 'Download queue', icon: Download },
-    { path: '/menu/history', label: 'History', icon: Clock },
-    { path: '/menu/statistics', label: 'Statistics', icon: BarChart3 },
-    { path: '/menu/storage', label: 'Data and storage', icon: HardDrive },
-    { path: '/menu/settings', label: 'Settings', icon: Settings },
-    { path: '/menu/about', label: 'About', icon: Info },
-] as const;
 
 function MenuPageShell({
     title,
@@ -192,7 +183,6 @@ function MenuPageShell({
     children: ReactNode;
 }) {
     const navigate = useNavigate();
-    const location = useLocation();
     const embeddedCtx = useContext(MenuDrawerEmbeddedContext);
     const { downloadedOnly } = useAppPrefs();
     const hasTopBanner = downloadedOnly;
@@ -242,10 +232,10 @@ function MenuPageShell({
     }
 
     return (
-        <div className="min-h-screen bg-[#0a0a0a] text-white pb-10 md:pb-16">
+        <div className="min-h-screen bg-[#0a0a0a] text-white pb-10">
             {/* Mobile Sticky Header (with < back button) */}
             <header
-                className="sticky z-30 flex items-center gap-3 border-b border-white/[0.08] bg-[#0a0a0a] px-3 pb-3 md:hidden"
+                className="sticky z-30 flex items-center gap-3 border-b border-white/[0.08] bg-[#0a0a0a] px-3 pb-3"
                 style={{
                     top: hasTopBanner ? 'var(--yorumi-mode-banner-height, 0px)' : '0px',
                     paddingTop: hasTopBanner ? '10px' : 'calc(max(env(safe-area-inset-top, 0px), 14px) + 6px)',
@@ -270,60 +260,7 @@ function MenuPageShell({
                 {rightAction}
             </header>
 
-            {/* Responsive Content: Mobile single column, Desktop 2-column native workspace */}
-            <div className="mx-auto w-full max-w-2xl md:max-w-5xl lg:max-w-6xl md:px-10 md:pt-10">
-                <div className="md:flex md:items-start md:gap-10">
-                    {/* Desktop Left Section Rail */}
-                    <aside className="hidden md:block w-56 shrink-0 sticky top-16">
-                        <p className="px-3 pb-2.5 text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-500">
-                            Menu
-                        </p>
-                        <nav className="space-y-1">
-                            {DESKTOP_MENU_NAV.map((item) => {
-                                const Icon = item.icon;
-                                const active =
-                                    location.pathname === item.path ||
-                                    (item.path === '/menu/history' && location.pathname === '/menu/activity');
-                                return (
-                                    <button
-                                        key={item.path}
-                                        type="button"
-                                        onClick={() => navigate(item.path)}
-                                        className={`flex w-full items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium transition-colors cursor-pointer ${
-                                            active
-                                                ? 'bg-white/[0.10] text-white font-semibold'
-                                                : 'text-zinc-400 hover:bg-white/[0.05] hover:text-white'
-                                        }`}
-                                    >
-                                        <Icon className={`h-4 w-4 shrink-0 ${active ? 'text-yorumi-accent' : 'text-zinc-400'}`} />
-                                        <span className="truncate">{item.label}</span>
-                                    </button>
-                                );
-                            })}
-                        </nav>
-                    </aside>
-
-                    {/* Main Content Area */}
-                    <div className="min-w-0 flex-1">
-                        {/* Desktop Clean Header (no < back arrow) */}
-                        <div className="hidden md:flex items-center justify-between gap-4 border-b border-white/[0.08] pb-5 mb-2 px-4">
-                            <div className="flex min-w-0 items-center gap-3">
-                                <h1 className="truncate text-2xl lg:text-[28px] font-extrabold tracking-tight text-white">
-                                    {title}
-                                </h1>
-                                {badge !== undefined && badge !== 0 && (
-                                    <span className="rounded-full bg-white/12 px-2.5 py-0.5 text-xs font-bold text-white">
-                                        {badge}
-                                    </span>
-                                )}
-                            </div>
-                            {rightAction && <div className="shrink-0">{rightAction}</div>}
-                        </div>
-
-                        {children}
-                    </div>
-                </div>
-            </div>
+            <div className="mx-auto w-full max-w-2xl">{children}</div>
         </div>
     );
 }
@@ -443,20 +380,21 @@ type QueueRowItem = {
 
 export function DownloadQueuePage() {
     const location = useLocation();
+    const embeddedCtx = useContext(MenuDrawerEmbeddedContext);
     const { activeDownloads: activeAnimeDownloads, cancelDownload: cancelAnimeDownload } = useDownloads();
     const { activeDownloads: activeMangaDownloads, cancelDownload: cancelMangaDownload } = useMangaDownloads();
     const { activeDownloads: activeLNDownloads, cancelDownload: cancelLNDownload } = useLNDownloads();
     const [activeTab, setActiveTab] = useState<QueueTab>(() => {
-        const param = new URLSearchParams(location.search).get('tab');
+        const param = embeddedCtx?.initialTab || new URLSearchParams(location.search).get('tab');
         return param === 'manga' || param === 'ln' ? param : 'anime';
     });
 
     useEffect(() => {
-        const param = new URLSearchParams(location.search).get('tab');
+        const param = embeddedCtx?.initialTab || new URLSearchParams(location.search).get('tab');
         if (param === 'anime' || param === 'manga' || param === 'ln') {
             setActiveTab(param);
         }
-    }, [location.search]);
+    }, [embeddedCtx?.initialTab, location.search]);
 
     const { animeItems, mangaItems, lnItems } = useMemo(() => {
         const animeList: QueueRowItem[] = [];

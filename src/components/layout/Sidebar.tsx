@@ -17,7 +17,7 @@ import { isMobileShell, isTauri } from '../../platform/runtime';
 import { candidatePoolService } from '../../features/explore/recommendation/candidatePoolService';
 import GlobalChatDrawer from '../shared/GlobalChatDrawer';
 import DiscordInviteModal from '../shared/DiscordInviteModal';
-import MobileMenuDrawer from './MobileMenuDrawer';
+import MobileMenuDrawer, { type DesktopSubpageId, type PendingMenuSubpage } from './MobileMenuDrawer';
 import { useAppPrefs } from '../../utils/appPrefs';
 
 const SearchModal = lazy(() => import('../shared/SearchModal'));
@@ -85,7 +85,24 @@ export default function Sidebar() {
     const [isMobileChatOpen, setIsMobileChatOpen] = useState(false);
     const [isMobileDiscordOpen, setIsMobileDiscordOpen] = useState(false);
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+    const [pendingMenuSubpage, setPendingMenuSubpage] = useState<PendingMenuSubpage | null>(null);
     const [isTabletSidebarHidden, setIsTabletSidebarHidden] = useState(false);
+
+    useEffect(() => {
+        const handleOpenSubpage = (event: Event) => {
+            const detail = (event as CustomEvent<{ subpage?: DesktopSubpageId; tab?: string }>).detail;
+            if (!detail?.subpage) return;
+            setIsMobileChatOpen(false);
+            setPendingMenuSubpage({
+                subpage: detail.subpage,
+                tab: detail.tab,
+                nonce: Date.now(),
+            });
+            setIsMobileMenuOpen(true);
+        };
+        window.addEventListener('yorumi-open-menu-subpage', handleOpenSubpage);
+        return () => window.removeEventListener('yorumi-open-menu-subpage', handleOpenSubpage);
+    }, []);
 
     const toggleTabletSidebar = (nextHidden: boolean) => {
         setIsTabletSidebarHidden(nextHidden);
@@ -438,6 +455,7 @@ export default function Sidebar() {
                                 activeColorClass="text-white"
                                 onClick={() => {
                                     setIsMobileChatOpen(false);
+                                    setPendingMenuSubpage(null);
                                     setIsMobileMenuOpen(true);
                                 }}
                             />
@@ -506,14 +524,6 @@ export default function Sidebar() {
                         </div>
                     )}
 
-                    <MobileMenuDrawer
-                        isOpen={isMobileMenuOpen && !location.pathname.startsWith('/menu/')}
-                        onClose={() => setIsMobileMenuOpen(false)}
-                        onOpenDiscord={() => setIsMobileDiscordOpen(true)}
-                    />
-                    <GlobalChatDrawer isOpen={isMobileChatOpen} onClose={() => setIsMobileChatOpen(false)} />
-                    <DiscordInviteModal isOpen={isMobileDiscordOpen} onClose={() => setIsMobileDiscordOpen(false)} />
-
                     <nav
                         className="yorumi-mobile-navbar fixed z-[2147483600] md:hidden inset-x-0 bottom-0 border-t border-white/15 bg-black pb-[env(safe-area-inset-bottom,0px)]"
                         aria-label="Primary navigation"
@@ -532,6 +542,20 @@ export default function Sidebar() {
                     </nav>
                 </>
             )}
+
+            {/* Always mounted so Tablet Navigation Rail Menu, Global Chat & Join Us work on Details tabs too */}
+            <MobileMenuDrawer
+                isOpen={isMobileMenuOpen && !location.pathname.startsWith('/menu/')}
+                onClose={() => {
+                    setIsMobileMenuOpen(false);
+                    setPendingMenuSubpage(null);
+                }}
+                onOpenDiscord={() => setIsMobileDiscordOpen(true)}
+                onOpenChat={() => setIsMobileChatOpen(true)}
+                pendingSubpage={pendingMenuSubpage}
+            />
+            <GlobalChatDrawer isOpen={isMobileChatOpen} onClose={() => setIsMobileChatOpen(false)} />
+            <DiscordInviteModal isOpen={isMobileDiscordOpen} onClose={() => setIsMobileDiscordOpen(false)} />
 
             {isSearchOpen && (
                 <Suspense fallback={null}>
