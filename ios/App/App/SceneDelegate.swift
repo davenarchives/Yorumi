@@ -30,6 +30,14 @@ final class YorumiBridgeViewController: CAPBridgeViewController {
     override var preferredStatusBarStyle: UIStatusBarStyle { .lightContent }
     override var preferredStatusBarUpdateAnimation: UIStatusBarAnimation { .fade }
 
+    override func webViewConfiguration(for instanceConfiguration: InstanceConfiguration) -> WKWebViewConfiguration {
+        let config = super.webViewConfiguration(for: instanceConfiguration)
+        config.allowsInlineMediaPlayback = true
+        config.mediaTypesRequiringUserActionForPlayback = []
+        config.allowsPictureInPictureMediaPlayback = true
+        return config
+    }
+
     override func capacitorDidLoad() {
         bridge?.registerPluginInstance(ImmersiveModePlugin())
         bridge?.registerPluginInstance(LocalMediaProxyPlugin())
