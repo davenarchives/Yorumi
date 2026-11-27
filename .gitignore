@@ -60,8 +60,10 @@ obsidian/
 *.jks
 key.properties
 
-# iOS is not part of the v4.2.0 mobile release target
-/ios/
+# iOS build artifacts
+/ios/App/App/public/
+/ios/App/build/
+/ios/build/
 
 . a g e n t s /  
  
