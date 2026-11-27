@@ -1869,11 +1869,11 @@ function App() {
                   id: 'ios',
                   group: 'mobile' as const,
                   name: 'iOS (Beta)',
-                  subtitle: 'Unsigned .ipa for SideStore, AltStore & Sideloadly',
+                  subtitle: 'iPhone & iPad via SideStore',
                   icon: <AppleIcon className="w-6 h-6 text-yorumi-main" />,
                   cta: 'Download .ipa',
                   href: releaseDownloadUrl('Yorumi.ipa'),
-                  secondaryLabel: 'How to install on iOS',
+                  secondaryLabel: 'How to install',
                   onSecondaryClick: () => setIsIosInstallModalOpen(true),
                   primary: false,
                 },
@@ -2143,10 +2143,10 @@ function App() {
         </div>
       )}
 
-      {/* iOS Sideloading Install Guide Modal */}
+      {/* iOS SideStore Install Modal */}
       {isIosInstallModalOpen && (
         <div
-          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm"
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm select-none"
           onClick={() => setIsIosInstallModalOpen(false)}
         >
           <div
@@ -2154,134 +2154,112 @@ function App() {
             aria-modal="true"
             aria-labelledby="website-ios-install-title"
             onClick={(e) => e.stopPropagation()}
-            className="w-[460px] max-w-[calc(100vw-24px)] max-h-[88vh] overflow-y-auto rounded-[28px] border border-white/10 bg-[#141417] text-white shadow-2xl p-6 space-y-5"
+            className="w-[380px] max-w-[calc(100vw-32px)] rounded-[24px] bg-[#141417] border border-white/[0.08] text-white shadow-2xl p-6"
           >
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-yorumi-main/15 text-yorumi-main flex items-center justify-center shrink-0">
-                  <AppleIcon className="w-5 h-5" />
-                </div>
-                <div>
-                  <h2
-                    id="website-ios-install-title"
-                    className="font-display text-lg sm:text-xl font-extrabold tracking-tight text-white"
-                  >
-                    How to install on iOS
-                  </h2>
-                  <p className="text-xs text-white/60">
-                    iPhone &amp; iPad · Unsigned .ipa (Beta)
-                  </p>
-                </div>
+            <div className="flex items-center justify-between">
+              <div className="w-10 h-10 rounded-2xl bg-white/[0.07] text-white flex items-center justify-center">
+                <AppleIcon className="w-5 h-5" />
               </div>
               <button
                 type="button"
                 onClick={() => setIsIosInstallModalOpen(false)}
-                aria-label="Close iOS install guide"
-                className="w-8 h-8 rounded-full bg-white/[0.08] hover:bg-white/[0.15] flex items-center justify-center text-white/75 hover:text-white transition-colors cursor-pointer shrink-0"
+                aria-label="Close"
+                className="w-8 h-8 rounded-full text-white/50 hover:text-white hover:bg-white/[0.08] flex items-center justify-center transition-colors cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <p className="text-[13px] leading-relaxed text-white/70">
-              Apple doesn&apos;t allow installing <code className="px-1.5 py-0.5 rounded bg-white/10 text-white text-xs">.ipa</code> files directly from Safari. Use any free sideloader below — no jailbreak needed.
+            <h2
+              id="website-ios-install-title"
+              className="mt-4 font-display text-[22px] font-extrabold tracking-tight text-white"
+            >
+              Install with SideStore
+            </h2>
+            <p className="mt-1.5 text-[13.5px] leading-relaxed text-white/60">
+              Install Yorumi on iPhone &amp; iPad and get automatic updates using{' '}
+              <a
+                href="https://sidestore.io"
+                target="_blank"
+                rel="noreferrer"
+                className="text-white hover:underline font-semibold"
+              >
+                SideStore
+              </a>
+              .
             </p>
 
-            {/* Option 1: SideStore / AltStore */}
-            <div className="rounded-2xl bg-white/[0.05] border border-white/10 p-4 space-y-3">
-              <div className="flex items-center justify-between gap-2">
-                <div className="text-sm font-bold text-white">1. SideStore / AltStore</div>
-                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-yorumi-main/20 text-yorumi-main">
-                  Recommended
+            <ol className="mt-5 space-y-2.5 text-[13px] text-white/75">
+              <li className="flex items-start gap-2.5">
+                <span className="w-5 h-5 rounded-full bg-white/[0.08] text-white/90 text-[11px] font-bold flex items-center justify-center shrink-0 mt-0.5">
+                  1
                 </span>
-              </div>
-              <p className="text-xs leading-relaxed text-white/65">
-                Already have{' '}
-                <a
-                  href="https://sidestore.io"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-yorumi-main hover:underline font-semibold"
-                >
-                  SideStore
-                </a>{' '}
-                or AltStore? Add Yorumi&apos;s source to install and get automatic updates:
-              </p>
-
-              <div className="flex items-center gap-2 rounded-xl bg-black/40 border border-white/10 px-3 py-2">
-                <code className="text-[11px] text-white/85 truncate flex-1 select-all">
-                  https://yorumi.cloud/source.json
-                </code>
-                <button
-                  type="button"
-                  onClick={() => handleCopy('https://yorumi.cloud/source.json', 'ios-source')}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-[11px] font-bold text-white transition-colors shrink-0 cursor-pointer"
-                >
-                  {copiedCommand === 'ios-source' ? (
-                    <>
-                      <Check className="w-3 h-3 text-emerald-400" />
-                      <span>Copied</span>
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="w-3 h-3" />
-                      <span>Copy</span>
-                    </>
-                  )}
-                </button>
-              </div>
-
-              <a
-                href="sidestore://source?url=https://yorumi.cloud/source.json"
-                className="w-full h-9 rounded-xl bg-yorumi-main/20 hover:bg-yorumi-main/30 text-yorumi-main text-xs font-bold inline-flex items-center justify-center gap-1.5 transition-colors"
-              >
-                <span>Open directly in SideStore</span>
-                <ExternalLink className="w-3.5 h-3.5" />
-              </a>
-            </div>
-
-            {/* Option 2: Sideloadly */}
-            <div className="rounded-2xl bg-white/[0.05] border border-white/10 p-4 space-y-2">
-              <div className="text-sm font-bold text-white">2. Sideloadly (PC or Mac + USB)</div>
-              <ol className="text-xs leading-relaxed text-white/65 space-y-1 list-decimal list-inside">
-                <li>Download <strong className="text-white/90">Yorumi.ipa</strong> below.</li>
-                <li>
-                  Install{' '}
+                <span>
+                  Set up{' '}
                   <a
-                    href="https://sideloadly.io"
+                    href="https://sidestore.io"
                     target="_blank"
                     rel="noreferrer"
-                    className="text-yorumi-main hover:underline font-semibold"
+                    className="text-white underline underline-offset-2 hover:opacity-80"
                   >
-                    Sideloadly
+                    SideStore
                   </a>{' '}
-                  on your computer and plug in your iPhone.
-                </li>
-                <li>Drag <code className="text-white/90">Yorumi.ipa</code> into Sideloadly, sign in with your Apple ID, and click <strong className="text-white/90">Start</strong>.</li>
-              </ol>
-            </div>
+                  on your iPhone.
+                </span>
+              </li>
+              <li className="flex items-start gap-2.5">
+                <span className="w-5 h-5 rounded-full bg-white/[0.08] text-white/90 text-[11px] font-bold flex items-center justify-center shrink-0 mt-0.5">
+                  2
+                </span>
+                <span>Tap <strong className="text-white font-semibold">Open in SideStore</strong> below, or paste the source URL.</span>
+              </li>
+              <li className="flex items-start gap-2.5">
+                <span className="w-5 h-5 rounded-full bg-white/[0.08] text-white/90 text-[11px] font-bold flex items-center justify-center shrink-0 mt-0.5">
+                  3
+                </span>
+                <span>Tap <strong className="text-white font-semibold">Get</strong> to install Yorumi.</span>
+              </li>
+            </ol>
 
-            {/* Trust step */}
-            <div className="rounded-xl bg-amber-400/10 border border-amber-400/20 px-3.5 py-2.5 text-[11.5px] leading-relaxed text-amber-200/90">
-              <strong className="text-amber-200">First launch:</strong> Go to{' '}
-              <span className="text-white/95 font-medium">Settings → General → VPN &amp; Device Management</span> → tap your Apple ID → <strong className="text-white">Trust</strong> (and enable Developer Mode if prompted).
-            </div>
-
-            <div className="grid grid-cols-2 gap-3 pt-1">
+            <div className="mt-5 flex items-center gap-2 rounded-xl bg-white/[0.05] border border-white/[0.08] px-3 py-2">
+              <code className="text-[11.5px] text-white/75 truncate flex-1 select-all">
+                https://yorumi.cloud/source.json
+              </code>
               <button
                 type="button"
-                onClick={() => setIsIosInstallModalOpen(false)}
-                className="h-11 rounded-full bg-white/[0.10] hover:bg-white/[0.16] active:scale-[0.98] text-white text-sm font-bold transition-all cursor-pointer"
+                onClick={() => handleCopy('https://yorumi.cloud/source.json', 'ios-source')}
+                aria-label="Copy source URL"
+                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-white/[0.08] text-[11.5px] font-semibold text-white/80 hover:text-white transition-colors shrink-0 cursor-pointer"
               >
-                Close
+                {copiedCommand === 'ios-source' ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                    <span className="text-emerald-400">Copied</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3.5 h-3.5" />
+                    <span>Copy</span>
+                  </>
+                )}
               </button>
+            </div>
+
+            <div className="mt-5 grid grid-cols-2 gap-2.5">
               <a
                 href={releaseDownloadUrl('Yorumi.ipa')}
                 onClick={() => setIsIosInstallModalOpen(false)}
-                className="h-11 rounded-full bg-white hover:bg-white/90 active:scale-[0.98] text-neutral-950 text-sm font-bold inline-flex items-center justify-center gap-2 transition-all"
+                className="h-11 rounded-full bg-white/[0.10] hover:bg-white/[0.16] active:scale-[0.98] text-white text-sm font-bold inline-flex items-center justify-center gap-1.5 transition-all"
               >
                 <Download className="w-4 h-4" />
-                <span>Download .ipa</span>
+                <span>.ipa</span>
+              </a>
+              <a
+                href="sidestore://source?url=https://yorumi.cloud/source.json"
+                className="h-11 rounded-full bg-white hover:bg-white/90 active:scale-[0.98] text-neutral-950 text-sm font-bold inline-flex items-center justify-center gap-1.5 transition-all"
+              >
+                <span>Open SideStore</span>
+                <ExternalLink className="w-3.5 h-3.5" />
               </a>
             </div>
           </div>
