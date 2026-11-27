@@ -160,7 +160,14 @@ export const searchApi = {
         }
 
         try {
-            const { data } = await animeService.searchAnime(query, 1, limit);
+            let { data } = await animeService.searchAnime(query, 1, limit);
+            if ((!data || data.length === 0)) {
+                const typo = suggestSearchCorrection(rawQuery);
+                if (typo && typo.correctedQuery.toLowerCase() !== query.toLowerCase()) {
+                    const retry = await animeService.searchAnime(typo.correctedQuery, 1, limit);
+                    data = retry.data;
+                }
+            }
             if (data && data.length > 0) {
                 return (data as PreviewAnime[]).flatMap((item): SearchPreviewItem[] => {
                     const routeId = getAnimeDetailsRouteId(item);
@@ -271,7 +278,7 @@ export const searchApi = {
         if (USES_LOCAL_SOURCES && data.length < 3) {
             const scraperResult = await withTimeout(
                 mangaService.searchMangaScraper(query, 1, limit).catch(() => ({ data: [] as Manga[] })),
-                3500,
+                2200,
                 { data: [] as Manga[] },
             );
             const seen = new Set<string>(

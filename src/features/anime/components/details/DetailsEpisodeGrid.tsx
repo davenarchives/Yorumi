@@ -13,7 +13,7 @@ import { USES_LOCAL_SOURCES } from '../../../../config/api';
 import { filterReleasedEpisodes } from '../../../../utils/animeAiring';
 import type { AnimeEpisodeSegment } from '../../../../utils/animeEpisodeMapping';
 import DownloadActionButton from '../../../../components/ui/DownloadActionButton';
-import { selectItemsForBatchDownload, type BatchDownloadMode } from '../../../../components/shared/BatchDownloadMenu';
+import BatchDownloadMenu, { selectItemsForBatchDownload, type BatchDownloadMode } from '../../../../components/shared/BatchDownloadMenu';
 
 export type NormalizedEpisode = Episode & {
     title: string;
@@ -434,6 +434,7 @@ export default function DetailsEpisodeGrid({
     const [resolvingEpisodes, setResolvingEpisodes] = useState<Set<number>>(new Set());
     const [downloadErrors, setDownloadErrors] = useState<Map<number, string>>(new Map());
     const [descending, setDescending] = useState(false);
+    const [toolbarDownloadMenuOpen, setToolbarDownloadMenuOpen] = useState(false);
     const [mobileGrid, setMobileGrid] = useState(false);
     const [episodeSearch, setEpisodeSearch] = useState('');
     const [seasonMenuOpen, setSeasonMenuOpen] = useState(false);
@@ -761,18 +762,27 @@ export default function DetailsEpisodeGrid({
                             <span>{descending ? 'Newest' : 'Oldest'}</span>
                         </button>
 
-                        {/* Download All & Desktop Folder Actions */}
+                        {/* Batch Download & Desktop Folder Actions */}
                         {releasedEpisodes.length > 0 && (
                             <div className="flex items-center gap-2">
-                                <button
-                                    type="button"
-                                    onClick={() => { void handleDownloadByMode('unread'); }}
-                                    className="flex h-10 w-10 items-center justify-center rounded-full bg-white/[0.10] text-white/80 transition-colors hover:bg-white/[0.15] hover:text-white border-0 outline-none focus:outline-none cursor-pointer"
-                                    title="Download all released episodes"
-                                    aria-label="Download all released episodes"
-                                >
-                                    <Download className="h-4 w-4" />
-                                </button>
+                                <div className="relative">
+                                    <button
+                                        type="button"
+                                        onClick={() => setToolbarDownloadMenuOpen((open) => !open)}
+                                        className="flex h-10 w-10 items-center justify-center rounded-full bg-white/[0.10] text-white/80 transition-colors hover:bg-white/[0.15] hover:text-white border-0 outline-none focus:outline-none cursor-pointer"
+                                        title="Download episodes"
+                                        aria-label="Download episodes"
+                                    >
+                                        <Download className="h-4 w-4" />
+                                    </button>
+                                    <BatchDownloadMenu
+                                        isOpen={toolbarDownloadMenuOpen}
+                                        onClose={() => setToolbarDownloadMenuOpen(false)}
+                                        unit="episode"
+                                        placement="bottom-right"
+                                        onSelect={(mode) => { void handleDownloadByMode(mode); }}
+                                    />
+                                </div>
                                 {isDesktopApp && (
                                     <button
                                         type="button"

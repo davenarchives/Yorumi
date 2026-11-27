@@ -450,7 +450,7 @@ export const lnService = {
             return String(curatedHit.scraper_id);
         }
 
-        const key = `ln_v6_resolve_${latinTitles.join('_')}`;
+        const key = `ln_v7_resolve_${expectedEdition}_${latinTitles.join('_')}`;
         const memCached = cacheMap.get(key);
         if (memCached && Date.now() - memCached.timestamp < CACHE_TTL && memCached.data) {
             return memCached.data as string;
@@ -458,8 +458,8 @@ export const lnService = {
 
         return fetchWithOfflineFallback(key, async () => {
             if (USES_LOCAL_SOURCES) {
-                // 1. Fast slug probe directly against AllNovelFull + NovelFire
-                const probedId = await novelBinSource.probeByTitles(latinTitles);
+                // 1. Fast slug probe directly against AllNovelFull + NovelFire (prefers -ln / -light-novel for JP LNs)
+                const probedId = await novelBinSource.probeByTitles(latinTitles, expectedEdition);
                 if (probedId) {
                     cacheMap.set(key, { data: probedId, timestamp: Date.now() });
                     return probedId;
@@ -485,15 +485,37 @@ export const lnService = {
                     if (colonBase.length >= 4 && colonBase !== title) addQuery(colonBase);
                 }
 
+                let webNovelFallback: string | null = null;
                 for (const query of searchQueries.slice(0, 4)) {
                     const results = await novelBinSource.search(query);
-                    const match = results.find((candidate) => isConfirmedNovelMatch(latinTitles, candidate.title, expectedEdition))
-                        || results.find((candidate) => isConfirmedNovelMatch(latinTitles, candidate.title, 'unknown'))
-                        || results.find((candidate) => latinTitles.some((title) => normalizeNovelTitle(title) === normalizeNovelTitle(candidate.title)));
+                    const confirmedLightNovel = results.find(
+                        (candidate) =>
+                            isConfirmedNovelMatch(latinTitles, candidate.title, expectedEdition) &&
+                            detectNovelEdition(candidate.title) !== 'web-novel'
+                    );
+                    const neutralMatch = results.find(
+                        (candidate) =>
+                            isConfirmedNovelMatch(latinTitles, candidate.title, 'unknown') &&
+                            detectNovelEdition(candidate.title) !== 'web-novel'
+                    );
+                    const exactMatch = results.find(
+                        (candidate) =>
+                            latinTitles.some((title) => normalizeNovelTitle(title) === normalizeNovelTitle(candidate.title)) &&
+                            (expectedEdition !== 'light-novel' || detectNovelEdition(candidate.title) !== 'web-novel')
+                    );
+                    const match = confirmedLightNovel || neutralMatch || exactMatch;
                     if (match?.id) {
                         cacheMap.set(key, { data: match.id, timestamp: Date.now() });
                         return match.id;
                     }
+                    if (!webNovelFallback) {
+                        const wnCandidate = results.find((candidate) => isConfirmedNovelMatch(latinTitles, candidate.title, 'unknown'));
+                        if (wnCandidate?.id) webNovelFallback = wnCandidate.id;
+                    }
+                }
+                if (webNovelFallback) {
+                    cacheMap.set(key, { data: webNovelFallback, timestamp: Date.now() });
+                    return webNovelFallback;
                 }
                 return null;
             }
@@ -635,6 +657,7 @@ export const lnService = {
                             id
                             idMal
                             title { english romaji native }
+                            synonyms
                             coverImage { extraLarge large }
                             description
                             averageScore
@@ -649,12 +672,26 @@ export const lnService = {
                 }
             `;
 
-            // Run AniList search, backend scraper search, and local curated list match in parallel
+            // Bound slow HTML scraping so fast AniList + curated results return immediately
+            const withQuickTimeout = <T,>(promise: Promise<T>, ms: number, fallback: T): Promise<T> =>
+                new Promise((resolve) => {
+                    const timer = setTimeout(() => resolve(fallback), ms);
+                    promise.then(
+                        (v) => { clearTimeout(timer); resolve(v); },
+                        () => { clearTimeout(timer); resolve(fallback); }
+                    );
+                });
+
+            // Run AniList search, bounded scraper search, and local curated list match in parallel
             const [aniListRes, scraperRes] = await Promise.allSettled([
-                fetchAniList(gqlQuery, { search: trimmed }),
-                USES_LOCAL_SOURCES
-                    ? novelBinSource.search(trimmed)
-                    : apiClient.get(`/ln/search?q=${encodeURIComponent(trimmed)}`).then((r) => r.data?.data || []).catch(() => []),
+                withQuickTimeout(fetchAniList(gqlQuery, { search: trimmed }), 4500, null),
+                withQuickTimeout(
+                    USES_LOCAL_SOURCES
+                        ? novelBinSource.search(trimmed)
+                        : apiClient.get(`/ln/search?q=${encodeURIComponent(trimmed)}`).then((r) => r.data?.data || []).catch(() => []),
+                    2200,
+                    []
+                ),
             ]);
 
             const anilistList = (aniListRes.status === 'fulfilled' && aniListRes.value?.Page?.media)

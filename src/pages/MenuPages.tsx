@@ -53,7 +53,7 @@ import { isNativeMobile, isTauri } from '../platform/runtime';
 import GlobalChatDrawer from '../components/shared/GlobalChatDrawer';
 import { DiscordBrandIcon } from '../components/shared/DiscordInviteModal';
 
-const APP_VERSION = '5.0.7';
+const APP_VERSION = '5.0.8';
 const RECENT_SEARCHES_KEY = 'yorumi_recent_searches_global_v1';
 const DISCORD_SESSION_KEY = 'yorumi_discord_chat_session_v1';
 const DEFAULT_BRIDGE_URL = 'https://yorumibot-1.onrender.com';
@@ -199,8 +199,15 @@ function MenuPageShell({
 
     if (embeddedCtx) {
         return (
-            <div className="flex h-full flex-col bg-[#121212] text-white">
-                <header className="shrink-0 flex items-center gap-2 border-b border-white/[0.08] bg-[#121212] px-3 py-3">
+            <div className="flex h-full flex-col bg-transparent text-white">
+                <header
+                    className="shrink-0 flex items-center gap-2 border-b border-white/[0.08] bg-transparent px-3 py-3"
+                    style={
+                        isNativeMobile() && !hasTopBanner
+                            ? { paddingTop: 'calc(max(env(safe-area-inset-top, 0px), 16px) + 0.35rem)' }
+                            : undefined
+                    }
+                >
                     <button
                         type="button"
                         onClick={embeddedCtx.onBack}
@@ -365,18 +372,21 @@ export function UpdatesPage() {
             {notifications.length === 0 ? (
                 <EmptyPageState
                     icon={Bell}
-                    title={loading ? 'Checking for new episodes…' : 'You’re all caught up'}
-                    subtitle="New episodes from airing anime in your watchlist will show up here."
+                    title={loading ? 'Checking for new updates…' : 'You’re all caught up'}
+                    subtitle="New episodes and chapters from your library will show up here."
                 />
             ) : (
                 <div className="divide-y divide-white/[0.06] px-4 py-2">
-                    {notifications.map((notif) => (
+                    {notifications.map((notif) => {
+                        const isReading = notif.mediaType === 'manga' || notif.mediaType === 'ln';
+                        const badgeLabel = notif.mediaType === 'manga' ? 'Manga' : notif.mediaType === 'ln' ? 'LN' : 'Anime';
+                        return (
                         <button
                             key={notif.id}
                             type="button"
                             onClick={() => {
-                                markAsRead(notif.anilistId, notif.latestEpisode);
-                                navigate(`/anime/details/al-${notif.anilistId}`);
+                                markAsRead(notif.seenKey, notif.latestEpisode);
+                                navigate(notif.routePath);
                             }}
                             className="flex w-full items-center gap-3.5 py-3 text-left active:opacity-80"
                         >
@@ -400,12 +410,16 @@ export function UpdatesPage() {
                                     </p>
                                 </div>
                                 <p className="mt-1 text-[13px] font-medium text-yorumi-accent">
-                                    Episode {notif.latestEpisode} is out
-                                    {notif.watchedEpisode > 0 ? ` · Watched Ep ${notif.watchedEpisode}` : ''}
+                                    <span className="mr-1.5 rounded bg-white/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-200">
+                                        {badgeLabel}
+                                    </span>
+                                    {isReading ? `Chapter ${notif.latestEpisode} is out` : `Episode ${notif.latestEpisode} is out`}
+                                    {notif.watchedEpisode > 0 ? (isReading ? ` · Read Ch ${notif.watchedEpisode}` : ` · Watched Ep ${notif.watchedEpisode}`) : ''}
                                 </p>
                             </div>
                         </button>
-                    ))}
+                        );
+                    })}
                 </div>
             )}
         </MenuPageShell>

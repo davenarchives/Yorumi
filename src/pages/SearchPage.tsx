@@ -88,7 +88,7 @@ export default function SearchPage() {
     const inputRef = useRef<HTMLInputElement>(null);
     const rowRefs = useRef<Record<SearchGroup, HTMLDivElement | null>>({ anime: null, manga: null, ln: null });
     const [query, setQuery] = useState(() => params.get('q') || '');
-    const debouncedQuery = useDebounce(query, 180);
+    const debouncedQuery = useDebounce(query, 140);
     const [results, setResults] = useState<Record<SearchGroup, SearchPreviewItem[]>>({ anime: [], manga: [], ln: [] });
     const [userResults, setUserResults] = useState<PublicUserProfile[]>([]);
     const [loadingState, setLoadingState] = useState<{ anime: boolean; manga: boolean; ln: boolean; users: boolean }>({
@@ -208,7 +208,10 @@ export default function SearchPage() {
                 if (current) setLoadingState((prev) => ({ ...prev, ln: false }));
             });
 
-        userSearchService.searchUsers(value, 12)
+        Promise.race([
+            userSearchService.searchUsers(value, 12),
+            new Promise<PublicUserProfile[]>((resolve) => window.setTimeout(() => resolve([]), 2500)),
+        ])
             .then((users) => {
                 if (current) setUserResults(users);
             })

@@ -95,6 +95,7 @@ const DOC_SECTIONS: DocSection[] = [
     title: 'Changelogs',
     lede: 'Track Yorumi releases, new features, and fixes across desktop and Android.',
     subsections: [
+      { id: 'release-v5-0-8', label: 'v5.0.8' },
       { id: 'release-v5-0-7', label: 'v5.0.7' },
       { id: 'release-v5-0-6', label: 'v5.0.6' },
       { id: 'release-v5-0-5', label: 'v5.0.5' },
@@ -108,6 +109,18 @@ const DOC_SECTIONS: DocSection[] = [
 ];
 
 const CHANGELOG_ENTRIES = [
+  {
+    id: 'release-v5-0-8',
+    version: 'v5.0.8',
+    date: 'November 27, 2026',
+    summary: 'Dedicated collapsible Tablet Navigation Rail, unsigned iOS (.ipa) beta, Anime/Manga/LN chapter & episode push notifications, faster alternative-title Search, batch download picker on Desktop & Tablet, and Explore/caption polish.',
+    highlights: [
+      { title: 'Tablet Navigation Rail & Full-Screen Readers', body: 'Added a bare-icon collapsible frosted-glass Tablet Navigation Rail (84px) with PC-style SearchModal, fixed tablet Explore landscape & sidebar overlap, made Menu drawers & sub-drawers frosted glass to the top edge, and made Manga & LN readers 100% full-screen.' },
+      { title: 'iOS Unsigned .ipa (Beta) & SideStore Repo', body: 'Added native Swift plugins (ImmersiveMode, LocalMediaProxy with HLS/image referer proxying, and YouTube HUD cleaner), automated macOS GitHub Actions .ipa builds, and 1-tap SideStore/AltStore support at yorumi.cloud/source.json.' },
+      { title: 'Faster Alt-Title Search & Anime/Manga/LN Notifications', body: 'Switched Anime search to AniList-first with 3-minute caching so English, Romaji, Native, and official synonyms resolve fast; bounded slow NovelBin/MangaKatana/Render timeouts; and extended native Android push notifications & Updates to Manga and Light Novel chapters.' },
+      { title: 'Batch Download Picker, Explore Watch Fix & Captions', body: 'Added the batch download selector (Next 1/5/10/25, Unread, All, Custom) to Desktop & Tablet details toolbars, fixed tapping episodes from Explore swipe-to-details, removed the post-scroll Explore video jump, prioritized JP Light Novel editions over Web Novels, and refined phone/desktop caption sizing.' },
+    ],
+  },
   {
     id: 'release-v5-0-7',
     version: 'v5.0.7',

@@ -14,12 +14,14 @@ type DownloadNotificationOptions = {
 };
 
 type EpisodeUpdateNotificationOptions = {
+    mediaType?: DownloadMediaType;
     entryId: string;
     title: string;
     episodeNumber: number;
     watchedEpisode?: number;
     unreadCount?: number;
     summaryText?: string;
+    body?: string;
 };
 
 type DownloadNotificationPlugin = {

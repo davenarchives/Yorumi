@@ -363,7 +363,10 @@ export default function ExploreEpisodesDrawer({ anime, isOpen, onClose }: Explor
                     <div className="w-10 h-1 rounded-full bg-white/25 mx-auto mt-2.5 mb-1 md:hidden" />
 
                     {/* Header: Clean title with total count */}
-                    <div className="flex items-center justify-between px-5 py-3 md:py-4">
+                    <div
+                    className="flex items-center justify-between px-5 py-3 md:py-4"
+                    style={{ paddingTop: 'max(env(safe-area-inset-top, 0px), 1rem)' }}
+                >
                         <div className="flex items-center gap-2.5">
                             <h2 className="text-[17px] font-extrabold text-white tracking-tight">Episodes</h2>
                             {displayedEpisodes.length > 0 && (

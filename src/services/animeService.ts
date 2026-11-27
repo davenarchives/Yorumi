@@ -1197,33 +1197,56 @@ export const animeService = {
         return fetchPromise;
     },
 
-    // TMDB owns discovery metadata. Anime-specific season boundaries are applied
-    // later by the cached AniBridge mapping layer on the details route.
+    // AniList-first search: natively matches English, Romaji, Native, and all official synonyms/alt titles
+    // in ~200ms without stalling on TMDB or missing Japanese/alternative titles. TMDB remains as fallback.
     async searchAnime(query: string, page: number = 1, limit: number = 18) {
-        const tmdbItems = await tmdbService.searchMulti(query, page).catch(() => []);
-        const tmdbResult = buildTmdbPageResult(tmdbItems, page, limit);
-        if (tmdbResult.data.length > 0) return tmdbResult;
+        const normalized = query.trim().toLowerCase();
+        const cacheKey = `anime-search:v2:${normalized}:${page}:${limit}`;
+        const cached = getCached(cacheKey, 3 * 60 * 1000);
+        if (cached) return cached;
+        const existing = inFlightRequests.get(cacheKey);
+        if (existing) return existing;
 
-        // Rare fallback for incomplete TMDB classification or a TMDB outage.
-        const data = USES_LOCAL_SOURCES
-            ? await getLocalAniListAnimePage({ page, perPage: limit, search: query, sort: ['SEARCH_MATCH'] })
-            : await fetchJsonWithTimeout(
-                `${API_BASE}/anilist/search?q=${encodeURIComponent(query)}&page=${page}&limit=${limit}`,
-                {},
-                8000
-            ).then(async (res) => {
-                if (!res.ok) throw new Error(`Anime search failed with status ${res.status}`);
-                return res.json();
-            });
+        const request = (async () => {
+            try {
+                const data = USES_LOCAL_SOURCES
+                    ? await getLocalAniListAnimePage({ page, perPage: limit, search: query, sort: ['SEARCH_MATCH', 'POPULARITY_DESC'] })
+                    : await fetchJsonWithTimeout(
+                        `${API_BASE}/anilist/search?q=${encodeURIComponent(query)}&page=${page}&limit=${limit}`,
+                        {},
+                        5000
+                    ).then(async (res) => {
+                        if (!res.ok) throw new Error(`Anime search failed with status ${res.status}`);
+                        return res.json();
+                    });
 
-        return {
-            data: data.media?.map(mapAnilistToAnime) || [],
-            pagination: {
-                last_visible_page: data.pageInfo?.lastPage || 1,
-                current_page: data.pageInfo?.currentPage || page,
-                has_next_page: data.pageInfo?.hasNextPage || false
+                const mapped = data.media?.map(mapAnilistToAnime) || [];
+                if (mapped.length > 0) {
+                    const result = {
+                        data: mapped,
+                        pagination: {
+                            last_visible_page: data.pageInfo?.lastPage || 1,
+                            current_page: data.pageInfo?.currentPage || page,
+                            has_next_page: data.pageInfo?.hasNextPage || false
+                        }
+                    };
+                    setCache(cacheKey, result, 3 * 60 * 1000);
+                    return result;
+                }
+            } catch {
+                // Fall back to TMDB if AniList is unavailable or rate-limited.
             }
-        };
+
+            const tmdbItems = await tmdbService.searchMulti(query, page).catch(() => []);
+            const tmdbResult = buildTmdbPageResult(tmdbItems, page, limit);
+            if (tmdbResult.data.length > 0) {
+                setCache(cacheKey, tmdbResult, 3 * 60 * 1000);
+            }
+            return tmdbResult;
+        })().finally(() => inFlightRequests.delete(cacheKey));
+
+        inFlightRequests.set(cacheKey, request);
+        return request;
     },
 
     async getAnimeByGenre(genre: string, page = 1, limit = 24) {

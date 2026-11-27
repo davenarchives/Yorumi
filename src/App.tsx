@@ -74,8 +74,22 @@ function App() {
         return () => cloudSyncService.stop();
     }, []);
 
+    const [tabletSidebarHidden, setTabletSidebarHidden] = useState(false);
+
+    useEffect(() => {
+        const onToggle = (e: Event) => {
+            const hidden = Boolean((e as CustomEvent<{ hidden?: boolean }>).detail?.hidden);
+            setTabletSidebarHidden(hidden);
+        };
+        window.addEventListener('yorumi-tablet-sidebar-change', onToggle);
+        return () => window.removeEventListener('yorumi-tablet-sidebar-change', onToggle);
+    }, []);
+
     const queryParams = new URLSearchParams(location.search);
     const isExploreRoute = location.pathname === '/explore';
+    const isReaderRoute =
+        location.pathname.startsWith('/manga/read/') ||
+        location.pathname.startsWith('/ln/read/');
     const isImmersiveRoute =
         location.pathname.startsWith('/manga/read/') ||
         location.pathname.startsWith('/ln/read/') ||
@@ -113,18 +127,19 @@ function App() {
         let listener: PluginListenerHandle | undefined;
         let disposed = false;
         const handleBack = () => {
-            const win = window as Window & { __yorumiCloseExploreDetails?: (() => void) | null };
-            if (typeof win.__yorumiCloseExploreDetails === 'function') {
-                win.__yorumiCloseExploreDetails();
-                return;
-            }
             const rawHash = window.location.hash.replace(/^#/, '') || '/';
             const [path, rawSearch = ''] = rawHash.split('?');
             const search = new URLSearchParams(rawSearch);
-            if (path.startsWith('/anime/details/') && search.has('ep')) {
+            if ((path.startsWith('/anime/details/') || path.startsWith('/explore')) && search.has('ep')) {
                 search.delete('ep');
+                search.delete('t');
                 const query = search.toString();
                 navigate({ pathname: path, search: query ? `?${query}` : '' }, { replace: true });
+                return;
+            }
+            const win = window as Window & { __yorumiCloseExploreDetails?: (() => void) | null };
+            if (typeof win.__yorumiCloseExploreDetails === 'function') {
+                win.__yorumiCloseExploreDetails();
                 return;
             }
             if (path.startsWith('/anime/details/')) {
@@ -222,7 +237,7 @@ function App() {
                     <Sidebar />
                     <MobilePullToRefresh />
 
-                    <div className={`yorumi-app-content relative flex ${isExploreRoute && !isMobileShell() ? 'min-h-[calc(100vh-2rem)]' : 'min-h-screen'} w-full flex-1 flex-col ${!isMobileShell() ? 'md:ml-[70px] md:w-[calc(100%-70px)]' : ''} md:pb-0 ${isImmersiveRoute ? 'pb-0' : 'pb-[calc(4rem+env(safe-area-inset-bottom))]'}`}>
+                    <div className={`yorumi-app-content relative flex ${isExploreRoute && !isMobileShell() ? 'min-h-[calc(100vh-2rem)]' : 'min-h-screen'} w-full flex-1 flex-col transition-[margin,width] duration-200 ease-out ${!isMobileShell() ? 'md:ml-[70px] md:w-[calc(100%-70px)]' : (!isReaderRoute && !tabletSidebarHidden) ? 'md:ml-[84px] md:w-[calc(100%-84px)]' : ''} md:pb-0 ${isImmersiveRoute ? 'pb-0' : 'pb-[calc(4rem+env(safe-area-inset-bottom))]'}`}>
                         <PersistentPlayerProvider>
                             <ScrollRestoration />
                             <AppRoutes />

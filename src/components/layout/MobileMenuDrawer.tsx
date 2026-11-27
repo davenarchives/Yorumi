@@ -21,6 +21,7 @@ import { useLNDownloads } from '../../hooks/useLNDownloads';
 import { useWatchlistNotifications } from '../../hooks/useWatchlistNotifications';
 import { DiscordBrandIcon } from '../shared/DiscordInviteModal';
 import { resetMobileShellShift, shiftMobileShell } from '../../utils/screenShift';
+import { isMobileShell } from '../../platform/runtime';
 import {
     AboutPage,
     DataStoragePage,
@@ -280,15 +281,17 @@ export default function MobileMenuDrawer({
         }
     };
 
+    const isDesktopAppBar = isDesktopViewport && !isMobileShell();
+
     return createPortal(
         <div
             ref={scrimRef}
             className="fixed inset-x-0 bottom-0 z-[2147483615] flex justify-end"
             style={{
-                top: isDesktopViewport
+                top: isDesktopAppBar
                     ? 'calc(2rem + var(--yorumi-mode-banner-height, 0px))'
                     : 'var(--yorumi-mode-banner-height, 0px)',
-                backgroundColor: visible ? 'rgba(0, 0, 0, 0.6)' : 'rgba(0, 0, 0, 0)',
+                backgroundColor: visible ? 'rgba(0, 0, 0, 0.55)' : 'rgba(0, 0, 0, 0)',
                 transition: shouldSkipOpenAnimRef.current ? 'none' : `background-color ${DRAWER_TRANSITION_MS}ms ease-out`,
             }}
             onClick={onClose}
@@ -302,9 +305,9 @@ export default function MobileMenuDrawer({
         >
             <aside
                 ref={drawerRef}
-                className="flex h-full w-[84vw] max-w-[340px] flex-col bg-[#121212] text-white border-l border-white/10 pb-[max(env(safe-area-inset-bottom,0px),16px)] will-change-transform"
+                className="flex h-full w-[84vw] max-w-[340px] flex-col bg-[#0d0e14]/78 backdrop-blur-2xl text-white border-l border-white/10 pb-[max(env(safe-area-inset-bottom,0px),16px)] will-change-transform"
                 style={{
-                    paddingTop: downloadedOnly ? '8px' : 'max(env(safe-area-inset-top, 0px), 12px)',
+                    paddingTop: downloadedOnly ? '8px' : 'max(env(safe-area-inset-top, 0px), 16px)',
                     transform: visible ? 'translateX(0px)' : 'translateX(100%)',
                     transition: shouldSkipOpenAnimRef.current ? 'none' : `transform ${DRAWER_TRANSITION_MS}ms ${DRAWER_EASING}`,
                 }}
@@ -406,12 +409,14 @@ export default function MobileMenuDrawer({
                 </div>
             </aside>
 
-            {/* Desktop Sub-Drawer: slides smoothly from the right with the exact same animation */}
+            {/* Desktop & Tablet Sub-Drawer: slides smoothly from the right with frosted glass */}
             {isDesktopViewport && activeSubpage && (
                 <section
-                    className="fixed right-0 bottom-0 z-[2147483616] flex w-[84vw] max-w-[340px] flex-col border-l border-white/10 bg-[#121212] text-white shadow-2xl shadow-black/80 will-change-transform"
+                    className="fixed right-0 bottom-0 z-[2147483616] flex w-[84vw] max-w-[340px] flex-col border-l border-white/10 bg-[#0d0e14]/78 backdrop-blur-2xl text-white shadow-2xl shadow-black/80 will-change-transform"
                     style={{
-                        top: 'calc(2rem + var(--yorumi-mode-banner-height, 0px))',
+                        top: isDesktopAppBar
+                            ? 'calc(2rem + var(--yorumi-mode-banner-height, 0px))'
+                            : 'var(--yorumi-mode-banner-height, 0px)',
                         transform: subpageVisible && visible ? 'translateX(0px)' : 'translateX(100%)',
                         transition: `transform ${DRAWER_TRANSITION_MS}ms ${DRAWER_EASING}`,
                     }}

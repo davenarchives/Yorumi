@@ -22,7 +22,7 @@ import { motion } from 'framer-motion';
 import type { Variants } from 'framer-motion';
 import { DocumentationGuide, type DocTabId } from './Documentation';
 
-const RELEASE_VERSION = '5.0.7';
+const RELEASE_VERSION = '5.0.8';
 const RELEASE_TAG = `v${RELEASE_VERSION}`;
 const RELEASES_URL = 'https://github.com/davenarchives/Yorumi/releases';
 const RELEASE_URL = `${RELEASES_URL}/tag/${RELEASE_TAG}`;
@@ -1347,12 +1347,12 @@ function App() {
                   </div>
                 </motion.div>
 
-                {/* Right Copy (left-aligned on mobile and desktop) */}
+                {/* Right Copy (centered on mobile, left-aligned on desktop) */}
                 <motion.div
                   variants={containerVariants}
                   initial="hidden"
                   animate="visible"
-                  className="lg:col-span-7 space-y-5 sm:space-y-6 lg:pl-6 text-left"
+                  className="lg:col-span-7 space-y-5 sm:space-y-6 lg:pl-6 text-center lg:text-left"
                 >
                   <motion.h1
                     variants={itemVariants}
@@ -1367,7 +1367,7 @@ function App() {
 
                   <motion.p
                     variants={itemVariants}
-                    className="text-[15px] sm:text-lg md:text-[19px] text-yorumi-muted leading-[1.9] font-medium max-w-xl"
+                    className="text-[15px] sm:text-lg md:text-[19px] text-yorumi-muted leading-[1.9] font-medium max-w-xl mx-auto lg:mx-0"
                   >
                     Watch{' '}
                     <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 mx-0.5 rounded-lg bg-yorumi-accent/15 text-yorumi-accent font-bold text-[0.9em] align-middle">
@@ -1389,11 +1389,11 @@ function App() {
                       <WifiOff className="w-3.5 h-3.5" />
                       offline
                     </span>{' '}
-                    on your computer and Android phone, with no account needed.
+                    on desktop, Android, and iOS — with no account needed.
                   </motion.p>
 
                   {/* Store / Platform CTA Buttons */}
-                  <motion.div variants={itemVariants} className="flex flex-nowrap items-center justify-start gap-2.5 sm:gap-3 pt-1">
+                  <motion.div variants={itemVariants} className="flex flex-nowrap items-center justify-center lg:justify-start gap-2.5 sm:gap-3 pt-1">
                     <button
                       type="button"
                       onClick={() => navigateTo('get-started')}
@@ -1414,7 +1414,7 @@ function App() {
 
                   {/* Tarsi-style Overlapping Anime Avatars + Animated Downloads Counter */}
                   <motion.div variants={itemVariants} className="pt-2 space-y-2">
-                    <div className="flex items-center justify-start gap-3 flex-wrap">
+                    <div className="flex items-center justify-center lg:justify-start gap-3 flex-wrap">
                       <div className="flex items-center -space-x-2.5 shrink-0">
                         {COMMUNITY_AVATARS.map((avatar) => (
                           <img
@@ -1509,14 +1509,14 @@ function App() {
                   </div>
                 </div>
 
-                <div className="lg:col-span-5 space-y-4 text-left">
+                <div className="lg:col-span-5 space-y-4 text-center lg:text-left">
                   <h2 className="text-3xl sm:text-4xl font-display font-extrabold leading-tight tracking-tight text-yorumi-text">
                     On your phone and computer — all in sync.
                   </h2>
                   <p className="text-sm sm:text-base text-yorumi-muted leading-relaxed">
-                    Start an episode on Windows, Mac, or Linux, then pick up right where you left off on your Android phone. Sign in with Discord to keep your watchlist and reading progress backed up automatically.
+                    Start an episode on Windows, Mac, or Linux, then pick up right where you left off on Android or iOS. Sign in with Discord to keep your watchlist and reading progress backed up automatically.
                   </p>
-                  <div className="flex flex-nowrap items-center justify-start gap-3 pt-2">
+                  <div className="flex flex-nowrap items-center justify-center lg:justify-start gap-3 pt-2">
                     <button
                       type="button"
                       onClick={() => navigateTo('get-started')}
@@ -1546,14 +1546,14 @@ function App() {
             {/* 5 & 6. STACKED CLOSER CTA + COMMUNITY CARDS */}
             <section className="max-w-[1200px] mx-auto px-5 sm:px-8 space-y-6">
               {/* Closer CTA Card */}
-              <div className="tarsi-card rounded-[32px] px-6 py-14 sm:py-16 text-left sm:text-center">
+              <div className="tarsi-card rounded-[32px] px-6 py-14 sm:py-16 text-center">
                 <h2 className="text-3xl sm:text-5xl font-display font-extrabold tracking-tight text-yorumi-text">
                   Start watching today.
                 </h2>
-                <p className="mt-3 text-base sm:text-lg text-yorumi-muted max-w-lg sm:mx-auto leading-relaxed">
-                  No sign-up needed, no ads, and completely free. Download Yorumi on your computer or Android phone in seconds.
+                <p className="mt-3 text-base sm:text-lg text-yorumi-muted max-w-lg mx-auto leading-relaxed">
+                  No sign-up needed, no ads, and completely free. Download Yorumi on desktop, Android, or iOS in seconds.
                 </p>
-                <div className="mt-8 flex flex-nowrap items-center justify-start sm:justify-center gap-2.5 sm:gap-3">
+                <div className="mt-8 flex flex-nowrap items-center justify-center gap-2.5 sm:gap-3">
                   <button
                     type="button"
                     onClick={() => navigateTo('get-started')}
@@ -1575,7 +1575,7 @@ function App() {
               </div>
 
               {/* Community Card with Floating Anime Avatars */}
-              <div className="relative rounded-[32px] bg-[#EEF4FF] dark:bg-[#121622] px-6 py-14 sm:py-16 text-left sm:text-center overflow-hidden">
+              <div className="relative rounded-[32px] bg-[#EEF4FF] dark:bg-[#121622] px-6 py-14 sm:py-16 text-center overflow-hidden">
                 {/* Scattered floating circular avatars on desktop/tablet */}
                 {FLOATING_COMMUNITY_AVATARS.map((avatar) => (
                   <motion.img
@@ -1593,14 +1593,14 @@ function App() {
                   />
                 ))}
 
-                <div className="relative z-10 max-w-lg sm:mx-auto">
+                <div className="relative z-10 max-w-lg mx-auto">
                   <h2 className="text-2xl sm:text-4xl font-display font-extrabold tracking-tight text-yorumi-text">
                     Join the Yorumi community
                   </h2>
                   <p className="mt-3 text-sm sm:text-base text-yorumi-muted leading-relaxed">
                     Hang out with other anime fans, share your favorite lists, suggest new ideas, or support Yorumi on Ko-fi.
                   </p>
-                  <div className="mt-7 flex flex-nowrap items-center justify-start sm:justify-center gap-2.5 sm:gap-3">
+                  <div className="mt-7 flex flex-nowrap items-center justify-center gap-2.5 sm:gap-3">
                     <a
                       href="https://discord.gg/3xzCQvfanb"
                       target="_blank"
@@ -1640,7 +1640,7 @@ function App() {
                   Download Yorumi
                 </h1>
                 <p className="text-base sm:text-lg text-yorumi-muted leading-relaxed">
-                  Free and ad-free on Windows, Mac, Linux, and Android. Pick your device to get started.
+                  Free and ad-free on Windows, Mac, Linux, Android, and iOS. Pick your device to get started.
                 </p>
               </div>
 
@@ -1666,7 +1666,7 @@ function App() {
             </motion.div>
 
             {/* Platform Download Cards */}
-            <div id="yorumi-desktop" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+            <div id="yorumi-desktop" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
               {[
                 {
                   id: 'windows',
@@ -1698,17 +1698,30 @@ function App() {
                 {
                   id: 'android',
                   name: 'Android',
-                  subtitle: 'Android 7.0+ with offline downloads',
+                  subtitle: 'Android 7.0+ phones & tablets',
                   icon: <Smartphone className="w-6 h-6 text-yorumi-main" />,
                   cta: 'Download .apk',
                   href: releaseDownloadUrl('Yorumi.apk'),
+                  secondaryLabel: 'All Android files',
+                  secondaryHref: RELEASE_URL,
                   primary: true,
+                },
+                {
+                  id: 'ios',
+                  name: 'iOS (Beta)',
+                  subtitle: 'Unsigned .ipa for SideStore, AltStore & Sideloadly',
+                  icon: <AppleIcon className="w-6 h-6 text-yorumi-main" />,
+                  cta: 'Download .ipa',
+                  href: releaseDownloadUrl('Yorumi.ipa'),
+                  secondaryLabel: 'Add to SideStore',
+                  secondaryHref: 'sidestore://source?url=https://yorumi.cloud/source.json',
+                  primary: false,
                 },
               ].map((platform) => (
                 <div
                   key={platform.id}
-                  id={platform.id === 'android' ? 'yorumi-android' : undefined}
-                  className="tarsi-card rounded-[28px] p-6 sm:p-7 flex flex-col justify-between gap-7 hover:-translate-y-1 transition-transform duration-300"
+                  id={platform.id === 'android' ? 'yorumi-android' : platform.id === 'ios' ? 'yorumi-ios' : undefined}
+                  className="tarsi-card rounded-[28px] p-5 flex flex-col justify-between gap-7 hover:-translate-y-1 transition-transform duration-300"
                 >
                   <div className="space-y-3">
                     <div className="text-yorumi-text">
@@ -1727,22 +1740,22 @@ function App() {
                   <div className="space-y-2">
                     <a
                       href={platform.href}
-                      className={`w-full h-11 flex items-center justify-center gap-2 px-4 rounded-2xl font-bold text-xs sm:text-sm hover:opacity-90 active:scale-[0.98] transition-all whitespace-nowrap ${
+                      className={`w-full h-11 flex items-center justify-center gap-1.5 px-2.5 rounded-2xl font-bold text-[12px] xl:text-[13px] hover:opacity-90 active:scale-[0.98] transition-all whitespace-nowrap ${
                         platform.primary
                           ? 'bg-yorumi-main text-white'
                           : 'bg-yorumi-text text-yorumi-bg'
                       }`}
                     >
-                      <Download className="w-4 h-4 shrink-0" />
+                      <Download className="w-3.5 h-3.5 shrink-0" />
                       <span>{platform.cta}</span>
                     </a>
                     <a
-                      href={RELEASE_URL}
-                      target="_blank"
+                      href={'secondaryHref' in platform && platform.secondaryHref ? platform.secondaryHref : RELEASE_URL}
+                      target={'secondaryHref' in platform && platform.secondaryHref?.startsWith('sidestore://') ? undefined : '_blank'}
                       rel="noreferrer"
                       className="w-full h-8 flex items-center justify-center text-xs font-semibold text-yorumi-muted hover:text-yorumi-text transition-colors"
                     >
-                      All {platform.name} files
+                      {'secondaryLabel' in platform && platform.secondaryLabel ? platform.secondaryLabel : `All ${platform.name} files`}
                     </a>
                   </div>
                 </div>
@@ -1756,7 +1769,7 @@ function App() {
                   What&apos;s new in {RELEASE_TAG}
                 </h2>
                 <p className="text-sm text-yorumi-muted leading-relaxed">
-                  Offline downloads on desktop and Android, automatic Discord library sync, multi-genre Browse Anime with draggable mobile filters, and faster search.
+                  Collapsible frosted-glass Tablet Navigation Rail, unsigned iOS (.ipa) beta with SideStore support, Anime/Manga/LN update notifications, faster alternative-title search, batch download picker on Desktop &amp; Tablet, and Explore watch-page fixes.
                 </p>
               </div>
               <button

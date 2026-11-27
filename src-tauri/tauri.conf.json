@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Yorumi",
-  "version": "5.0.7",
+  "version": "5.0.8",
   "identifier": "com.yorumi.app",
   "build": {
     "frontendDist": "../dist",

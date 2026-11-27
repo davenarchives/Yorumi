@@ -1,0 +1,34 @@
+{
+  "name": "Yorumi",
+  "subtitle": "All-in-One Anime, Manga & Light Novel App",
+  "description": "Official Yorumi AltStore & SideStore repository for iOS.",
+  "iconURL": "https://yorumi.cloud/yorumi-app-icon.png",
+  "website": "https://yorumi.cloud",
+  "tintColor": "#f472b6",
+  "apps": [
+    {
+      "name": "Yorumi",
+      "bundleIdentifier": "com.yorumi.app",
+      "developerName": "davenarchives",
+      "subtitle": "Watch anime, read manga & light novels ad-free",
+      "localizedDescription": "Free, open-source, ad-free companion for watching anime in HD, reading manga and light novels, and syncing your library with Discord.",
+      "iconURL": "https://yorumi.cloud/yorumi-app-icon.png",
+      "tintColor": "#f472b6",
+      "category": "entertainment",
+      "versions": [
+        {
+          "version": "5.0.8",
+          "date": "2026-11-27",
+          "localizedDescription": "Initial unsigned iOS IPA beta with native HLS/image referer proxy, clean Explore playback, and tablet/iPad navigation rail.",
+          "downloadURL": "https://github.com/davenarchives/Yorumi/releases/latest/download/Yorumi.ipa",
+          "size": 15000000
+        }
+      ],
+      "appPermissions": {
+        "entitlements": [],
+        "privacy": {}
+      }
+    }
+  ],
+  "news": []
+}

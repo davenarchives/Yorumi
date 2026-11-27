@@ -73,7 +73,10 @@ public class ImmersiveModePlugin extends Plugin {
     @PluginMethod
     public void exitLandscape(PluginCall call) {
         getActivity().runOnUiThread(() -> {
-            getActivity().setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
+            boolean isTablet = getActivity().getResources().getConfiguration().smallestScreenWidthDp >= 600;
+            getActivity().setRequestedOrientation(
+                isTablet ? ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED : ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            );
             Window window = getActivity().getWindow();
             window.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
             window.getDecorView().setSystemUiVisibility(android.view.View.SYSTEM_UI_FLAG_LAYOUT_STABLE);

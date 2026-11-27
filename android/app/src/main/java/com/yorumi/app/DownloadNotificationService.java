@@ -256,21 +256,34 @@ public class DownloadNotificationService extends Service {
 
     public static Notification buildUpdateNotification(
         Context context,
+        String mediaType,
         String entryId,
-        String animeTitle,
-        int episodeNumber,
-        int watchedEpisode
+        String entryTitle,
+        int itemNumber,
+        int watchedNumber,
+        String customBody
     ) {
         ensureChannels(context);
-        int reqCode = 1000 + Math.abs((entryId + ":" + episodeNumber).hashCode() % 1000);
-        PendingIntent openPendingIntent = createOpenEntryIntent(context, "anime", entryId, reqCode);
-        String body = watchedEpisode > 0
-            ? "Episode " + episodeNumber + " is out • Watched Ep " + watchedEpisode
-            : "Episode " + episodeNumber + " is out";
+        String safeType = ("manga".equals(mediaType) || "ln".equals(mediaType)) ? mediaType : "anime";
+        int reqCode = 1000 + Math.abs((safeType + ":" + entryId + ":" + itemNumber).hashCode() % 1000);
+        PendingIntent openPendingIntent = createOpenEntryIntent(context, safeType, entryId, reqCode);
+        String body;
+        if (customBody != null && !customBody.isEmpty()) {
+            body = customBody;
+        } else if ("manga".equals(safeType) || "ln".equals(safeType)) {
+            body = watchedNumber > 0
+                ? "Chapter " + itemNumber + " is out • Read Ch " + watchedNumber
+                : "Chapter " + itemNumber + " is out";
+        } else {
+            body = watchedNumber > 0
+                ? "Episode " + itemNumber + " is out • Watched Ep " + watchedNumber
+                : "Episode " + itemNumber + " is out";
+        }
         return new NotificationCompat.Builder(context, CHANNEL_UPDATES_ID)
             .setSmallIcon(R.drawable.ic_stat_download_done)
-            .setContentTitle(animeTitle)
+            .setContentTitle(entryTitle)
             .setContentText(body)
+            .setStyle(new NotificationCompat.BigTextStyle().bigText(body))
             .setContentIntent(openPendingIntent)
             .setGroup(UPDATES_GROUP_KEY)
             .setOngoing(false)
@@ -290,7 +303,7 @@ public class DownloadNotificationService extends Service {
         return new NotificationCompat.Builder(context, CHANNEL_UPDATES_ID)
             .setSmallIcon(R.drawable.ic_stat_download_done)
             .setContentTitle("Yorumi Updates")
-            .setContentText(summaryText != null && !summaryText.isEmpty() ? summaryText : (count + " new episodes available"))
+            .setContentText(summaryText != null && !summaryText.isEmpty() ? summaryText : (count + " new updates available"))
             .setContentIntent(openPendingIntent)
             .setGroup(UPDATES_GROUP_KEY)
             .setGroupSummary(true)

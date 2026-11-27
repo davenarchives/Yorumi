@@ -217,17 +217,22 @@ export default function ExplorePage() {
         playingTrailersRef.current = playingTrailers;
     }, [playingTrailers]);
 
+    const wasFullscreenRef = useRef(false);
     useEffect(() => {
         const isFullscreen = fullscreenAnimeId !== null;
         document.body.classList.toggle('yorumi-explore-fullscreen', isFullscreen);
         if (!isFullscreen) {
-            void exitLandscapePlayerMode();
+            if (wasFullscreenRef.current) {
+                wasFullscreenRef.current = false;
+                void exitLandscapePlayerMode();
+            }
             if (document.fullscreenElement) {
                 void document.exitFullscreen?.().catch(() => undefined);
             }
             return;
         }
 
+        wasFullscreenRef.current = true;
         void enterLandscapePlayerMode();
         if (!isMobileShell() && !document.fullscreenElement) {
             void document.documentElement.requestFullscreen?.().catch(() => undefined);
@@ -242,7 +247,10 @@ export default function ExplorePage() {
         return () => {
             window.removeEventListener('keydown', onKeyDown);
             document.body.classList.remove('yorumi-explore-fullscreen');
-            void exitLandscapePlayerMode();
+            if (wasFullscreenRef.current) {
+                wasFullscreenRef.current = false;
+                void exitLandscapePlayerMode();
+            }
             if (document.fullscreenElement) {
                 void document.exitFullscreen?.().catch(() => undefined);
             }
@@ -746,7 +754,7 @@ export default function ExplorePage() {
         let tracking = false;
 
         const onTouchStart = (e: TouchEvent) => {
-            if (e.touches.length !== 1 || fullscreenAnimeId !== null || isDetailsSheetOpen) {
+            if (window.innerWidth >= 768 || e.touches.length !== 1 || fullscreenAnimeId !== null || isDetailsSheetOpen) {
                 tracking = false;
                 return;
             }
@@ -1320,8 +1328,8 @@ export default function ExplorePage() {
                                             )}
                                         </div>
 
-                                        {/* TikTok-style Full screen pill button directly below 16:9 trailer on mobile */}
-                                        {!isFullscreen && isActive && (
+                                        {/* TikTok-style Full screen pill button directly below 16:9 trailer on mobile (always rendered so video never shifts on settle) */}
+                                        {!isFullscreen && (
                                             <div className="mt-4 flex justify-center md:hidden relative z-30">
                                                 <button
                                                     type="button"
@@ -1518,8 +1526,11 @@ export default function ExplorePage() {
                                     </>
                                 )}
 
-                                {/* Top Right Controls: Refresh Session & Sound (desktop only — mobile uses global top-right Search/Chat/Notifications) */}
-                                <div className="hidden md:flex absolute top-4 right-5 md:right-8 z-30 items-center gap-2">
+                                {/* Top Right Controls: Refresh Session & Sound (desktop & tablet landscape) */}
+                                <div
+                                    className="hidden md:flex absolute top-4 right-5 md:right-8 z-30 items-center gap-2"
+                                    style={isMobileShell() ? { top: 'calc(max(env(safe-area-inset-top, 0px), 16px) + 0.5rem)' } : undefined}
+                                >
                                     <button
                                         type="button"
                                         onClick={() => {

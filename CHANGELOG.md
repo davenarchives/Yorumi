@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+## [5.0.8] - 2026-11-27
+
+- Added the batch download selector (`BatchDownloadMenu`: Next 1/5/10/25, Unread/Unwatched, All, Custom) to Desktop and Tablet download buttons across Anime, Manga, and Light Novel details (`DetailsEpisodeGrid.tsx`, `MangaDetailsPage.tsx`, `LNDetailsPage.tsx`).
+
+- Adjusted video player caption sizing (`CustomVideoControls.tsx`) so subtitles stay compact on phones (`11px` portrait, `clamp(13px, 3.4vh, 22px)` fullscreen) and balanced on desktop (`15px` inline, `clamp(16px, 2.5vh, 21px)` fullscreen) while preserving tablet sizing.
+
+- Added unsigned iOS `.ipa` build pipeline and native Swift plugins (`@capacitor/ios`, `ios/App/App/SceneDelegate.swift`, `ios/App/App/Info.plist`, `capacitor.config.ts`, `.github/workflows/ios-release.yml`, `website/public/source.json`): implemented `YorumiBridgeViewController` (with YouTube HUD cleaner), `ImmersiveModePlugin`, and `LocalMediaProxyPlugin` (loopback `NWListener` HLS `.m3u8` + image referer proxy), automated unsigned `Yorumi.ipa` builds on `macos-latest`, and added a SideStore/AltStore `source.json` manifest.
+
+- Fixed missing navigation and tablet UX (`Sidebar.tsx`, `App.tsx`, `MobileMenuDrawer.tsx`, `MenuPages.tsx`, `ImmersiveModePlugin.java`, `ExplorePage.tsx`, `ExploreEpisodesDrawer.tsx`, `LNReaderPage.tsx`, `MangaReaderModal/index.tsx`): added a bare-icon collapsible frosted-glass Tablet Navigation Rail (`84px`) with PC-style `SearchModal`, fixed Explore being forced into portrait or overlapped by the rail on tablets, made Menu drawers & sub-drawers frosted glass extending cleanly to the top edge, and made Manga & LN readers 100% full-screen edge-to-edge without a sidebar gap.
+
+- Extended native Android push notifications and the in-app **Updates** list (`DownloadNotificationService.java`, `DownloadNotificationPlugin.java`, `downloadNotification.ts`, `useWatchlistNotifications.ts`, `MenuPages.tsx`) to notify for new **Manga** and **Light Novel** chapters alongside airing **Anime** episodes, deep-linking directly to the matching details page.
+- Accelerated Search and enabled full alternative-title matching (`animeService.ts`, `lnService.ts`, `src/features/search/api.ts`, `SearchPage.tsx`): switched Anime search to AniList-first (with 3-minute in-memory caching and native English/Romaji/Native/synonym search), bounded NovelBin & MangaKatana scraper fallbacks to `2.2s`, tightened debounce to `140ms`, and bounded Render User Search to `2.5s`.
+- Fixed mobile Explore swipe-to-details episode playback (`PersistentPlayerContext.tsx`, `DetailsVideoPlayer.tsx`, `App.tsx`) and eliminated the post-scroll Explore trailer vertical jump (`ExplorePage.tsx`).
+
 ## [5.0.7] - 2026-11-27
 
 - Upgraded the Explore trailer feed (`ExplorePage.tsx`, `useExploreFeed.ts`, `candidatePoolService.ts`): preloaded the next slide silently for instant `0:00` playback on scroll with zero bounce, removed poster flashes, auto-skipped region-blocked or dead YouTube trailers (`yorumi_explore_blocked_trailers_v1`), displayed Main Character portraits (`characters(sort: [ROLE, FAVOURITES_DESC, RELEVANCE], perPage: 1)`) with `object-top` framing on both Android and Desktop, restored 1:1 interactive horizontal swipe-left directly into the real `AnimeDetailsPage`, and immediately muted & paused Explore trailers when Details opens.

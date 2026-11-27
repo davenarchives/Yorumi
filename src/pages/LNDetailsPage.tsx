@@ -505,6 +505,7 @@ export default function LNDetailsPage() {
     }, [matchingLNDownloads]);
 
     const [mobileDownloadMenuOpen, setMobileDownloadMenuOpen] = useState(false);
+    const [toolbarDownloadMenuOpen, setToolbarDownloadMenuOpen] = useState(false);
 
     const cachedOfflineLNChapters = useMemo(
         () => offlineLibraryCache.getLNChapters([id, ln?.id, ln?.scraper_id]),
@@ -734,15 +735,24 @@ export default function LNDetailsPage() {
                                 author={ln.author}
                                 headerActions={
                                     <>
-                                        <button
-                                            type="button"
-                                            onClick={() => handleDownloadLNByMode('unread')}
-                                            className="flex h-10 w-10 items-center justify-center rounded-full bg-white/[0.10] text-white/80 transition-colors hover:bg-white/[0.15] hover:text-white border-0 outline-none focus:outline-none cursor-pointer"
-                                            title="Download all chapters for offline reading"
-                                            aria-label="Download all chapters"
-                                        >
-                                            <Download className="h-4 w-4" />
-                                        </button>
+                                        <div className="relative">
+                                            <button
+                                                type="button"
+                                                onClick={() => setToolbarDownloadMenuOpen((open) => !open)}
+                                                className="flex h-10 w-10 items-center justify-center rounded-full bg-white/[0.10] text-white/80 transition-colors hover:bg-white/[0.15] hover:text-white border-0 outline-none focus:outline-none cursor-pointer"
+                                                title="Download chapters"
+                                                aria-label="Download chapters"
+                                            >
+                                                <Download className="h-4 w-4" />
+                                            </button>
+                                            <BatchDownloadMenu
+                                                isOpen={toolbarDownloadMenuOpen}
+                                                onClose={() => setToolbarDownloadMenuOpen(false)}
+                                                unit="chapter"
+                                                placement="bottom-right"
+                                                onSelect={handleDownloadLNByMode}
+                                            />
+                                        </div>
                                         {isDesktopApp && (
                                             <button
                                                 type="button"

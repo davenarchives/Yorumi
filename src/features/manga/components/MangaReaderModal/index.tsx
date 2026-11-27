@@ -250,7 +250,7 @@ export default function MangaReaderModal({
     return (
         <div
             ref={readerRootRef}
-            className={`fixed inset-0 ${isNativeMobile() ? '' : 'top-8'} md:left-[70px] z-[130] md:z-[90] flex items-center justify-center bg-black/95 backdrop-blur-md transition-all duration-300`}
+            className={`fixed inset-0 ${isNativeMobile() ? '' : 'top-8'} z-[130] flex items-center justify-center bg-black/95 backdrop-blur-md transition-all duration-300`}
             onPointerDown={requestMobileFullscreen}
         >
             <div className="w-full h-full flex flex-col bg-[#0a0a0a] relative overflow-hidden">

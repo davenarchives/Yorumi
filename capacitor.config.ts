@@ -10,6 +10,10 @@ const config: CapacitorConfig = {
     android: {
         allowMixedContent: true,
     },
+    ios: {
+        contentInset: 'never',
+        allowsLinkPreview: false,
+    },
     server: {
         androidScheme: 'http',
         cleartext: true,

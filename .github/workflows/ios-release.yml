@@ -1,0 +1,92 @@
+name: Build iOS Release (Unsigned IPA)
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  ios:
+    name: Build Unsigned iOS IPA
+    runs-on: macos-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Build Frontend and Sync Capacitor iOS
+        run: npm run ios:sync
+
+      - name: Build Unsigned Release App (iphoneos)
+        run: |
+          xcodebuild \
+            -project ios/App/App.xcodeproj \
+            -scheme App \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build/ios \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM="" \
+            build
+
+      - name: Package Unsigned Yorumi.ipa
+        run: |
+          mkdir -p ios-artifacts Payload
+          cp -R build/ios/Build/Products/Release-iphoneos/App.app Payload/App.app
+          zip -qry ios-artifacts/Yorumi.ipa Payload
+          rm -rf Payload
+          ls -lh ios-artifacts/Yorumi.ipa
+
+      - name: Upload IPA Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Yorumi IPA
+          path: ios-artifacts/Yorumi.ipa
+
+      - name: Build Simulator App for Browser QA (Appetize.io)
+        run: |
+          xcodebuild \
+            -project ios/App/App.xcodeproj \
+            -scheme App \
+            -configuration Release \
+            -sdk iphonesimulator \
+            -derivedDataPath build/ios-sim \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+          (cd build/ios-sim/Build/Products/Release-iphonesimulator && zip -qry "$GITHUB_WORKSPACE/ios-artifacts/Yorumi-iOS-Simulator.zip" App.app)
+
+      - name: Upload Simulator Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Yorumi iOS Simulator (Appetize)
+          path: ios-artifacts/Yorumi-iOS-Simulator.zip
+
+      - name: Remove Superseded IPA Asset
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release delete-asset "${{ github.ref_name }}" 'Yorumi.ipa' --yes || true
+
+      - name: Attach IPA to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ios-artifacts/Yorumi.ipa
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -411,7 +411,7 @@ export default function LNReaderPage() {
     const coverImage = passedLN?.images?.jpg?.large_image_url || novelDetails?.cover || '';
 
     return (
-        <div className={`fixed inset-0 ${isNativeMobile() ? '' : 'top-8'} md:left-[70px] z-[130] md:z-[90] flex items-center justify-center bg-black/95 backdrop-blur-md transition-all duration-300`}>
+        <div className={`fixed inset-0 ${isNativeMobile() ? '' : 'top-8'} z-[130] flex items-center justify-center bg-black/95 backdrop-blur-md transition-all duration-300`}>
             <div className={`w-full h-full flex flex-col ${themeStyle.bg} ${themeStyle.text} relative overflow-hidden transition-colors duration-300`}>
                 {/* Header (Matching Manga Header Height & Style) */}
                 <header

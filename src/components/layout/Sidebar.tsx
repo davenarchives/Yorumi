@@ -1,6 +1,6 @@
 import { lazy, Suspense, startTransition, useEffect, useMemo, useState, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Compass, Search, Tv, BookOpen, BookText, Library, LogOut, Menu } from 'lucide-react';
+import { Compass, Search, Tv, BookOpen, BookText, Library, LogOut, Menu, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { useContinueReading } from '../../hooks/useContinueReading';
 import { useContinueWatching } from '../../hooks/useContinueWatching';
 import { useWatchList } from '../../hooks/useWatchList';
@@ -85,6 +85,12 @@ export default function Sidebar() {
     const [isMobileChatOpen, setIsMobileChatOpen] = useState(false);
     const [isMobileDiscordOpen, setIsMobileDiscordOpen] = useState(false);
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+    const [isTabletSidebarHidden, setIsTabletSidebarHidden] = useState(false);
+
+    const toggleTabletSidebar = (nextHidden: boolean) => {
+        setIsTabletSidebarHidden(nextHidden);
+        window.dispatchEvent(new CustomEvent('yorumi-tablet-sidebar-change', { detail: { hidden: nextHidden } }));
+    };
 
     // Keep watchlist notifications polling active so Android posts native push notifications for new episodes
     useWatchlistNotifications();
@@ -248,7 +254,8 @@ export default function Sidebar() {
 
     return (
         <>
-            {!isMobileShell() && (
+            {/* Desktop Left Sidebar (PC only, hidden in full-screen Manga/LN readers) */}
+            {!isMobileShell() && !location.pathname.startsWith('/manga/read/') && !location.pathname.startsWith('/ln/read/') && (
                 <aside className="yorumi-desktop-sidebar fixed left-0 top-8 h-[calc(100vh-2rem)] hidden w-[70px] bg-[#0a0a0a]/95 backdrop-blur-xl border-r border-white/10 md:flex flex-col items-center py-4 z-[100]">
                     <div className="flex flex-col items-center gap-3 w-full">
                         {/* Logo */}
@@ -315,7 +322,7 @@ export default function Sidebar() {
                         </div>
                     )}
 
-                    {!isMobileShell() && <div className="flex flex-col items-center gap-4 w-full mt-auto pt-4">
+                    <div className="flex flex-col items-center gap-4 w-full mt-auto pt-4">
                         <SidebarIcon
                             icon={LogOut}
                             title="Exit App"
@@ -333,8 +340,130 @@ export default function Sidebar() {
                             }}
                             className="text-red-500 hover:text-red-400 hover:bg-red-500/10"
                         />
-                    </div>}
+                    </div>
                 </aside>
+            )}
+
+            {/* Tablet Navigation Rail (Android/iOS >= 768px — bare icons, collapsible, frosted glass) */}
+            {isMobileShell() && !location.pathname.startsWith('/manga/read/') && !location.pathname.startsWith('/ln/read/') && (
+                <>
+                    <aside
+                        className={`yorumi-tablet-rail fixed left-0 top-0 h-screen hidden w-[84px] bg-[#0b0c12]/78 backdrop-blur-2xl border-r border-white/[0.08] md:flex flex-col items-center justify-between z-[100] select-none transition-transform duration-200 ease-out ${
+                            isTabletSidebarHidden ? '-translate-x-full pointer-events-none' : 'translate-x-0'
+                        }`}
+                        style={{
+                            paddingTop: 'calc(max(env(safe-area-inset-top, 0px), 16px) + 0.5rem)',
+                            paddingBottom: 'calc(max(env(safe-area-inset-bottom, 0px), 16px) + 0.5rem)',
+                        }}
+                        aria-label="Tablet navigation"
+                    >
+                        {/* Top: Bare Brand Logo (5x click Vault unlock preserved) */}
+                        <button
+                            type="button"
+                            onClick={handleLogoClickInternal}
+                            className="flex items-center justify-center p-1 active:scale-90 transition-transform focus:outline-none"
+                            aria-label="Yorumi Home"
+                        >
+                            <img src={yorumiIcon} alt="Yorumi" className="h-8 w-8 object-contain" />
+                        </button>
+
+                        {/* Center: Primary Media Destinations (bare icons, no containers) */}
+                        <nav className="flex w-full flex-col items-center gap-3 px-2">
+                            <TabletRailItem
+                                icon={Compass}
+                                label="Explore"
+                                isActive={location.pathname === '/explore'}
+                                activeColorClass="text-rose-400"
+                                onClick={() => {
+                                    void candidatePoolService.getCandidatePool();
+                                    if (location.pathname === '/explore') {
+                                        window.dispatchEvent(new CustomEvent('yorumi-explore-refresh'));
+                                    } else {
+                                        startTransition(() => navigate('/explore'));
+                                    }
+                                }}
+                            />
+                            <TabletRailItem
+                                icon={Tv}
+                                label="Anime"
+                                isActive={location.pathname === '/' || location.pathname.startsWith('/anime')}
+                                activeColorClass="text-yorumi-accent"
+                                onClick={() => startTransition(() => navigate('/'))}
+                            />
+                            <TabletRailItem
+                                icon={BookOpen}
+                                label="Manga"
+                                isActive={location.pathname === '/manga' || location.pathname.startsWith('/manga')}
+                                activeColorClass="text-yorumi-manga"
+                                onClick={() => startTransition(() => navigate('/manga'))}
+                            />
+                            <TabletRailItem
+                                icon={BookText}
+                                label="LN"
+                                isActive={location.pathname === '/ln' || location.pathname.startsWith('/ln')}
+                                activeColorClass="text-amber-300"
+                                onClick={() => startTransition(() => navigate('/ln'))}
+                            />
+                            <TabletRailItem
+                                icon={Library}
+                                label="Library"
+                                isActive={location.pathname === '/library'}
+                                activeColorClass="text-yorumi-accent"
+                                onClick={() => startTransition(() => navigate('/library'))}
+                            />
+                        </nav>
+
+                        {/* Bottom: Search, Menu Drawer & Hide Sidebar */}
+                        <div className="flex w-full flex-col items-center gap-2.5 border-t border-white/[0.08] pt-3 px-2">
+                            <TabletRailItem
+                                icon={Search}
+                                label="Search"
+                                isActive={isSearchOpen}
+                                activeColorClass="text-white"
+                                onClick={() => {
+                                    setIsMobileChatOpen(false);
+                                    setIsMobileMenuOpen(false);
+                                    const isLibrary = location.pathname.startsWith('/library');
+                                    const isManga = location.pathname.startsWith('/manga');
+                                    const isLN = location.pathname.startsWith('/ln');
+                                    setSearchType(isLibrary ? 'users' : isLN ? 'ln' : isManga ? 'manga' : 'anime');
+                                    setIsSearchOpen(true);
+                                }}
+                            />
+                            <TabletRailItem
+                                icon={Menu}
+                                label="Menu"
+                                isActive={isMobileMenuOpen}
+                                showDot={downloadedOnly || incognitoMode}
+                                activeColorClass="text-white"
+                                onClick={() => {
+                                    setIsMobileChatOpen(false);
+                                    setIsMobileMenuOpen(true);
+                                }}
+                            />
+                            <TabletRailItem
+                                icon={PanelLeftClose}
+                                label="Hide"
+                                onClick={() => toggleTabletSidebar(true)}
+                            />
+                        </div>
+                    </aside>
+
+                    {/* Bare floating trigger to re-open the sidebar when hidden on tablet */}
+                    {isTabletSidebarHidden && (
+                        <button
+                            type="button"
+                            onClick={() => toggleTabletSidebar(false)}
+                            aria-label="Show sidebar"
+                            className="hidden md:flex fixed left-4 z-[150] h-10 w-10 items-center justify-center text-white/90 drop-shadow-[0_2px_10px_rgba(0,0,0,0.85)] active:scale-90 transition-transform focus:outline-none"
+                            style={{
+                                top: 'calc(var(--yorumi-mode-banner-height, max(env(safe-area-inset-top, 0px), 16px)) + 0.5rem)',
+                            }}
+                        >
+                            <PanelLeftOpen className="h-5 w-5" />
+                        </button>
+                    )}
+                </>
             )}
 
             {!isImmersiveRoute && !isExploreEpisodesOpen && (
@@ -423,6 +552,53 @@ export default function Sidebar() {
                 </div>
             )}
         </>
+    );
+}
+
+interface TabletRailItemProps {
+    icon: React.ElementType;
+    label: string;
+    onClick: () => void;
+    isActive?: boolean;
+    activeColorClass?: string;
+    showDot?: boolean;
+}
+
+function TabletRailItem({
+    icon: Icon,
+    label,
+    onClick,
+    isActive = false,
+    activeColorClass = 'text-yorumi-accent',
+    showDot = false,
+}: TabletRailItemProps) {
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            aria-label={label}
+            aria-current={isActive ? 'page' : undefined}
+            className="group relative flex w-full flex-col items-center justify-center gap-1 py-1 touch-manipulation active:scale-90 transition-transform focus:outline-none"
+        >
+            <div className="relative flex items-center justify-center">
+                <Icon
+                    className={`h-[21px] w-[21px] transition-colors ${
+                        isActive ? activeColorClass : 'text-white/55 group-hover:text-white/90'
+                    }`}
+                    strokeWidth={isActive ? 2.25 : 1.85}
+                />
+                {showDot && (
+                    <span className="pointer-events-none absolute -top-0.5 -right-1.5 h-2 w-2 rounded-full bg-yorumi-accent" />
+                )}
+            </div>
+            <span
+                className={`text-[11px] leading-none tracking-tight transition-colors ${
+                    isActive ? `font-semibold ${activeColorClass}` : 'font-medium text-white/55 group-hover:text-white/85'
+                }`}
+            >
+                {label}
+            </span>
+        </button>
     );
 }
 

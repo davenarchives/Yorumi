@@ -310,7 +310,7 @@ export default function DetailsVideoPlayer({ animeId, animeTitle, anime, onClose
 
     if (isMobileShell()) {
         return createPortal((
-            <div id="details-video-player" className="fixed inset-0 z-[2147483000] flex flex-col overflow-hidden overscroll-none bg-black text-white" style={{ paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+            <div id="details-video-player" className="fixed inset-0 z-[2147483620] flex flex-col overflow-hidden overscroll-none bg-black text-white" style={{ paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
                 <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
                     <div className="relative aspect-video w-full bg-black">
                         <div ref={setInlinePlayerElement} className="absolute inset-0 bg-black" />

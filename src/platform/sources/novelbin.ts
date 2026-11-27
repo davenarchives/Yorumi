@@ -113,7 +113,14 @@ const parseNfSearch = (html: string): NovelBinResult[] => {
         });
 };
 
-const buildCandidateSlugs = (titles: string[]): string[] => {
+const isExplicitWebNovelHtml = (html: string): boolean => {
+    const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1] || '';
+    const h1Match = html.match(/<h1[^>]*>([^<]+)<\/h1>/i)?.[1] || '';
+    const combined = `${titleMatch} ${h1Match}`;
+    return /\b(?:web\s*novel|wn)\b/i.test(combined) && !/\b(?:light\s*novel|ln)\b/i.test(combined);
+};
+
+const buildCandidateSlugs = (titles: string[], preferLightNovel = false): string[] => {
     const toSlug = (s: string) => s
         .toLowerCase()
         .replace(/['\u2019\u2018`]/g, '')
@@ -121,28 +128,38 @@ const buildCandidateSlugs = (titles: string[]): string[] => {
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-+|-+$/g, '');
 
-    const candidates: string[] = [];
-    const addCandidate = (c: string) => {
-        if (c && c.length >= 3 && !candidates.includes(c)) candidates.push(c);
+    const lnCandidates: string[] = [];
+    const baseCandidates: string[] = [];
+    const addTo = (list: string[], c: string) => {
+        if (c && c.length >= 3 && !list.includes(c)) list.push(c);
     };
 
     for (const rawTitle of titles) {
         if (!/[A-Za-z0-9]/.test(rawTitle)) continue;
         const base = toSlug(rawTitle);
-        addCandidate(base);
+        if (preferLightNovel && base && !/-ln$|-light-novel$/.test(base)) {
+            addTo(lnCandidates, `${base}-ln`);
+            addTo(lnCandidates, `${base}-light-novel`);
+        }
+        addTo(baseCandidates, base);
         const stripped = toSlug(
             rawTitle
                 .replace(/^so\s+/i, '')
                 .replace(/\bas i expected\b/gi, 'as expected')
         );
-        addCandidate(stripped);
+        addTo(baseCandidates, stripped);
         const beforeColon = rawTitle.split(/[:–—―]/)[0]?.trim() || '';
         if (beforeColon.length >= 4 && beforeColon !== rawTitle) {
-            addCandidate(toSlug(beforeColon));
+            const colonSlug = toSlug(beforeColon);
+            if (preferLightNovel && colonSlug && !/-ln$|-light-novel$/.test(colonSlug)) {
+                addTo(lnCandidates, `${colonSlug}-ln`);
+                addTo(lnCandidates, `${colonSlug}-light-novel`);
+            }
+            addTo(baseCandidates, colonSlug);
         }
     }
 
-    return candidates.slice(0, 8);
+    return [...lnCandidates, ...baseCandidates].slice(0, preferLightNovel ? 12 : 8);
 };
 
 const cleanChapterContent = (container: Element | null) => {
@@ -406,22 +423,32 @@ const getNfContent = async (rawInput: string): Promise<LNChapterContent> => {
 };
 
 export const novelBinSource: LocalSourceAdapter<NovelBinDetails, LNChapterContent> & {
-    probeByTitles(titles: string[]): Promise<string | null>;
+    probeByTitles(titles: string[], expectedEdition?: 'light-novel' | 'web-novel' | 'unknown'): Promise<string | null>;
     getDetailsFast(input: string, chaptersOnly?: boolean): Promise<NovelBinDetails>;
 } = {
     id: 'novelbin',
     kind: 'novel',
     name: 'AllNovelFull / NovelFire',
 
-    async probeByTitles(titles: string[]): Promise<string | null> {
-        const candidates = buildCandidateSlugs(titles);
-        for (const slug of candidates.slice(0, 4)) {
+    async probeByTitles(titles: string[], expectedEdition: 'light-novel' | 'web-novel' | 'unknown' = 'unknown'): Promise<string | null> {
+        const preferLightNovel = expectedEdition === 'light-novel';
+        const candidates = buildCandidateSlugs(titles, preferLightNovel);
+        const probeLimit = preferLightNovel ? 6 : 4;
+        for (const slug of candidates.slice(0, probeLimit)) {
             const [anfHit, nfHit] = await Promise.all([
                 getText(`${ANF_BASE_URL}/${slug}.html`, { Referer: ANF_BASE_URL })
-                    .then((html) => (/data-novel-id="\d+"/i.test(html) ? `anf:${slug}` : null))
+                    .then((html) => {
+                        if (!/data-novel-id="\d+"/i.test(html)) return null;
+                        if (preferLightNovel && isExplicitWebNovelHtml(html)) return null;
+                        return `anf:${slug}`;
+                    })
                     .catch(() => null),
                 getText(`${NF_BASE_URL}/book/${slug}/chapters`, { Referer: NF_BASE_URL })
-                    .then((html) => (html.includes(`/book/${slug}/chapter-`) ? `nf:${slug}` : null))
+                    .then((html) => {
+                        if (!html.includes(`/book/${slug}/chapter-`)) return null;
+                        if (preferLightNovel && isExplicitWebNovelHtml(html)) return null;
+                        return `nf:${slug}`;
+                    })
                     .catch(() => null),
             ]);
             if (anfHit) return anfHit;

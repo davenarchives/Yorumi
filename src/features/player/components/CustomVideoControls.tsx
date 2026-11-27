@@ -1012,10 +1012,23 @@ export default function CustomVideoControls({
                     {activeCueTexts.map((cueText, idx) => (
                         <span
                             key={`${idx}-${cueText}`}
-                            className={`max-w-[90%] whitespace-pre-line rounded-md bg-black/75 px-3 py-1 font-semibold leading-snug text-white shadow-[0_2px_8px_rgba(0,0,0,0.85)] ${
-                                isFullscreen ? 'text-lg sm:text-2xl' : 'text-sm sm:text-lg'
+                            className={`max-w-[90%] whitespace-pre-line rounded-md bg-black/75 font-semibold leading-snug text-white shadow-[0_2px_8px_rgba(0,0,0,0.85)] ${
+                                isFullscreen
+                                    ? 'px-2.5 py-0.5 md:px-3 md:py-1'
+                                    : isMobileShell()
+                                        ? 'px-2 py-0.5 text-[11px] md:px-3 md:py-1 md:text-[17px]'
+                                        : 'px-2.5 py-0.5 text-[15px]'
                             }`}
-                            style={{ textShadow: '0 1px 3px rgba(0,0,0,0.95)' }}
+                            style={{
+                                textShadow: '0 1px 3px rgba(0,0,0,0.95)',
+                                ...(isFullscreen
+                                    ? {
+                                        fontSize: isMobileShell()
+                                            ? 'clamp(13px, 3.4vh, 22px)'
+                                            : 'clamp(16px, 2.5vh, 21px)',
+                                    }
+                                    : {}),
+                            }}
                         >
                             {cueText}
                         </span>

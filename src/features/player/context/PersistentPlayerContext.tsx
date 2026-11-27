@@ -57,7 +57,7 @@ export function PersistentPlayerProvider({ children }: { children: ReactNode }) 
         height: number;
     } | null>(null);
 
-    const isWatchRoute = location.pathname.startsWith('/anime/details');
+    const isWatchRoute = location.pathname.startsWith('/anime/details') || location.pathname.startsWith('/explore');
     const hasPlayer = Boolean(playerProps && (playerProps.streamUrl || playerProps.isLoading || playerProps.isServerSwitching || playerProps.streamExhausted));
     const isInlineMounted = Boolean(isWatchRoute && inlineElement && document.body.contains(inlineElement));
 
@@ -293,7 +293,7 @@ export function PersistentPlayerProvider({ children }: { children: ReactNode }) 
                 top: `${inlineRect.top}px`,
                 width: `${inlineRect.width}px`,
                 height: `${inlineRect.height}px`,
-                zIndex: effectivePlayerProps?.mobilePageLayout ? 2147483500 : 40,
+                zIndex: effectivePlayerProps?.mobilePageLayout ? 2147483630 : 40,
                 borderRadius: effectivePlayerProps?.mobilePageLayout ? 0 : '1rem',
                 overflow: 'hidden',
             }

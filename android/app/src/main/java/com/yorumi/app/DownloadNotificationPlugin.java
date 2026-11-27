@@ -125,20 +125,22 @@ public class DownloadNotificationPlugin extends Plugin {
         requestNotificationPermissionIfNeeded();
         if (canPostNotifications()) {
             DownloadNotificationService.ensureChannels(getContext());
+            String mediaType = call.getString("mediaType", "anime");
             String entryId = call.getString("entryId", "");
             String title = call.getString("title", "Yorumi");
             int episodeNumber = call.getInt("episodeNumber", 1);
             int watchedEpisode = call.getInt("watchedEpisode", 0);
             int unreadCount = call.getInt("unreadCount", 1);
             String summaryText = call.getString("summaryText", "");
+            String body = call.getString("body", "");
             int notifId = DownloadNotificationService.UPDATE_NOTIFICATION_ID
-                + Math.abs((entryId + ":" + episodeNumber).hashCode() % 500);
+                + Math.abs((mediaType + ":" + entryId + ":" + episodeNumber).hashCode() % 500);
             try {
                 NotificationManagerCompat nm = NotificationManagerCompat.from(getContext());
                 nm.notify(
                     notifId,
                     DownloadNotificationService.buildUpdateNotification(
-                        getContext(), entryId, title, episodeNumber, watchedEpisode
+                        getContext(), mediaType, entryId, title, episodeNumber, watchedEpisode, body
                     )
                 );
                 if (unreadCount > 1) {
